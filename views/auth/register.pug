@@ -1,0 +1,29 @@
+extends ../layout/index
+block contenedor
+    div(class="py-5")
+        h2.text-center.text-2xl.font-extrabold=pagina
+
+        .div.mt-8.mx-auto.max-w-md
+            .bg-white.py-8.px-4.shadow
+                form.space-y-5(method = "POST" action = "register")
+                    div 
+                        label(class="text-[#475569]" for="name") Your name:
+                        input(type="text" name="name" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Cuál es tu nombre")
+
+                    div 
+                        label(class="text-[#475569]" for="email") which your email?:
+                        input(type="email" name="email" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Cuál es tu email")
+
+                    div
+                        label(class="text-[#475569]" for="password") Create a password
+                        input(type="password" name="password" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Una contraseña fácil de recordar, dificil de hackear")
+
+                    div 
+                        label(class="text-[#475569]" for="email") Please insert your password again:
+                        input(type="password" name="password_again" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Repite la contraseña que escribiste arriba")
+                    
+                    input(class="w-full bg-[#0c407c] text-gray-100 p-3 cursor-pointer hover:bg-[#11539e]" type="submit" name="submit" value="Access")
+
+                    div.flex.item-center.justify-between.mt-4
+                        a(href="/admin") Acceso to my account
+                        a(href="admin/forgot") Forgot Your Password?
