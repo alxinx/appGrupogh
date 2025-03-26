@@ -4,9 +4,12 @@ const app = express();
 const port = 9090;
 
 app.set("view engine", "pug");
-app.set("viçews", "./view/");
+app.set("views", "./views/");
 
-app.use(express.static("/public"))
+app.use(express.static("public"))
+
+//Admin
+app.use("/admin", adminRoutes);
 
 
 
