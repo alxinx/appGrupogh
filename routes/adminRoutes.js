@@ -10,8 +10,7 @@ routes.get("/forgot", forgotLogin);
 
 
 
-
-
+//ADMINISTRADOR
 
 
 //POST

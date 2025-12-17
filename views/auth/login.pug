@@ -1,21 +1,51 @@
 extends ../layout/index
 block contenedor
-    div(class="py-5")
-        h2.text-center.text-2xl.font-extrabold=pagina
+    // Card
+    div(class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 sm:p-8")
+      
+      // Logo placeholder
+      div(class="flex justify-center mb-6")
+            img(src="/img/logo.png" width="100" alt="")
 
-        .div.mt-8.mx-auto.max-w-md
-            .bg-white.py-8.px-4.shadow
-                form(action="").space-y-5
-                    div 
-                        label(class="text-[#475569]" for="email") Email Register:
-                        input(type="email" name="email" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Cuál es tu email")
+      // Title
+      h1(class="h1")
+        | Hola de nuevo!! 👋
+      
+      p(class="p")
+        | Logueate para empezar a trabajar 😎
 
-                    div
-                        label(class="text-[#475569]" for="password") Password:
-                        input(type="password" name="password" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Cuál es tu email")
-                    
-                    input(class="w-full bg-[#0c407c] text-gray-100 p-3 cursor-pointer hover:bg-[#11539e]" type="submit" name="submit" value="Access")
+      // Form
+      form(class="space-y-4")
+        
+        // Email
+        div
+          label(class="label")
+            |Tu Email
+          input(
+            type="text"
+            placeholder="Ingresa el email con que estas registrado"
+            class="field-text"
+          )
 
-                    div.flex.item-center.justify-between.mt-4
-                        a(href="/admin/register") Create A New Account
-                        a(href="/admin/forgot") Forgot Your Password?
+        // Password
+        div
+          label(class="label")
+            | Password  
+          div(class="relative")
+            input(
+              type="password"
+              placeholder="••••••••"
+              class="field-text"
+            )
+            span(class="absolute inset-y-0 right-3 flex items-center text-gray-400")
+              | 👁️
+
+        // Forgot password
+        div(class="flex justify-end")
+          a(href="/forgot", class="link")
+            | Olvidaste la contraseña? 🫣
+
+        // Button
+        button(type="submit" class="btn-primary")
+    
+          | Ingresar
