@@ -8,6 +8,9 @@ routes.get("/", adminLogin);
 routes.get("/register", registerLogin);
 routes.get("/forgot", forgotLogin);
 
+
+
+
 //POST
 
 
