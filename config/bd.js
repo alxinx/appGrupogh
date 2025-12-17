@@ -1,5 +1,6 @@
 import { Sequelize } from "sequelize";
-import dotenv from "dotenv";
+import dotenv, { config } from "dotenv";
+dotenv.config()
 const db = new Sequelize(process.env.DB_NAME,process.env.DB_USER, process.env.DB_PASS, {
     host : process.env.DB_HOST,
     port : process.env.DB_PORT,
@@ -8,8 +9,8 @@ const db = new Sequelize(process.env.DB_NAME,process.env.DB_USER, process.env.DB
         timestamps : true,
     },
     pool : {
-        min : 1,
-        max : 0,
+        min : 0,
+        max : 5,
         acquire : 30000,
         idle : 10000,
     },

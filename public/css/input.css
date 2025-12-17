@@ -2,10 +2,13 @@
 
 
 @layer components {
+  
+  /* BOTONES */
   .btn-primary {
     @apply w-full bg-pink-600 text-white py-2 rounded-lg hover:bg-pink-700 transition cursor-pointer;
   }
 
+   /* CAMPOS DE TEXTO */
   .field-text {
     @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500;
   }
@@ -18,6 +21,7 @@
     @apply text-sm text-gray-500 text-center mb-6;
   }
 
+   /* H1 H2 H3 H4 */
   .h1 {
     @apply text-2xl font-semibold text-gray-800 text-center mb-2;
   }
@@ -26,6 +30,21 @@
     @apply text-sm text-pink-600 hover:underline;
   }
 
+  
+  /* MENSAJES */
+  .error {
+    @apply text-pink-500 font-bold bg-[#F8CBEE] border-blue-200 border-2 m-2 p-1 rounded-xl text-center;
+  }
+
+  .success {
+    @apply text-gray-700 font-bold bg-green-300 border-green-500 border-2 m-2 p-1 rounded-xl text-center;
+
+  }
+
+
+
+  
 }
+
 
 

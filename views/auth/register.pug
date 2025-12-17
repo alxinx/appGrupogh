@@ -1,29 +1,89 @@
 extends ../layout/index
 block contenedor
-    div(class="py-5")
-        h2.text-center.text-2xl.font-extrabold=pagina
+    // Card
+    div(class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 sm:p-8")
+      
+      // Logo placeholder
+      div(class="flex justify-center mb-6")
+            img(src="/img/logo.png" width="100" alt="")
 
-        .div.mt-8.mx-auto.max-w-md
-            .bg-white.py-8.px-4.shadow
-                form.space-y-5(method = "POST" action = "register")
-                    div 
-                        label(class="label" for="name") Your name:
-                        input(type="text" name="name" class="field-text" placeholder="Cuál es tu nombre")
+      // Title
+      h1(class="h1")
+        | Registrarse! 👋
+      
+      if errores 
+        p(class="error")=errores.msg
 
-                    div 
-                        label(class="text-[#475569]" for="email") which your email?:
-                        input(type="email" name="email" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Cuál es tu email")
+      // Form
+      form(class="space-y-4" method="post") 
+        
+        
+        if success
+          p(class="success")=success.msg
 
-                    div
-                        label(class="text-[#475569]" for="password") Create a password
-                        input(type="password" name="password" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Una contraseña fácil de recordar, dificil de hackear")
+        input(type="hidden", name="_csrf" value = csrfToken)
+        // Nombre
+        div
+          label(class="label")
+            |Nombre  usuario
+          input(
+            type="text"
+            name ="nombreUsuario"
+            value = usuario ? usuario.nombreUsuario : ""
+            placeholder="Ingresa el email con que estas registrado"
+            class="field-text"
+          )
+          if errores && errores.nombreUsuario != null
+            p(class="error")=errores.nombreUsuario
 
-                    div 
-                        label(class="text-[#475569]" for="email") Please insert your password again:
-                        input(type="password" name="password_again" class="w-full p-3 border border-gray-300 rounded-md rounded-2" placeholder="Repite la contraseña que escribiste arriba")
-                    
-                    input(class="w-full bg-[#0c407c] text-gray-100 p-3 cursor-pointer hover:bg-[#11539e]" type="submit" name="submit" value="Access")
 
-                    div.flex.item-center.justify-between.mt-4
-                        a(href="/admin") Acceso to my account
-                        a(href="/admin/forgot") Forgot Your Password?
+        // Apellido
+        div
+          label(class="label")
+            |Apellido usuario
+          input(
+            type="text"
+            name ="apellidoUsuario"
+            value = usuario ? usuario.apellidoUsuario : ""
+            placeholder="Ingresa el email con que estas registrado"
+            class="field-text"
+          )
+          if errores && errores.apellidoUsuario != null
+            p(class="error")=errores.apellidoUsuario
+
+        // Email
+        div
+          label(class="label")
+            |Tu Email
+          input(
+            type="text"
+            name ="emailUsuario"
+            value = usuario ? usuario.emailUsuario : ""
+            placeholder="Ingresa el email con que estas registrado"
+            
+            class="field-text"
+          )
+          if errores && errores.emailUsuario != null
+            p(class="error")=errores.emailUsuario 
+
+
+        // Password
+        div
+          label(class="label")
+            | Password  
+          div(class="relative")
+            input(
+              type="password"
+              name ="password"
+              placeholder="••••••••"
+              class="field-text"
+            )
+            span(class="absolute inset-y-0 right-3 flex items-center text-gray-400")
+              | 👁️
+          if errores && errores.password != null
+              p(class="error")=errores.password
+
+       
+        // Button
+        button(type="submit" class="btn-primary")
+          | Registrar

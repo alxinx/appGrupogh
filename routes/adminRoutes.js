@@ -1,5 +1,6 @@
 import express from "express";
-import {adminLogin,registerLogin, forgotLogin} from "../controller/adminControllers.js";
+import {adminLogin,registerLogin, forgotLogin, registerLoginPost} from "../controller/adminControllers.js";
+import {registerValidation} from '../middlewares/fieldValidations.js';
 const routes = express.Router();
 
 
@@ -11,6 +12,9 @@ routes.get("/forgot", forgotLogin);
 
 
 //ADMINISTRADOR
+
+
+routes.post("/register", registerValidation, registerLoginPost);
 
 
 //POST
