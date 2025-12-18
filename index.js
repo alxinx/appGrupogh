@@ -3,7 +3,7 @@ import csrf from "csurf";
 import dotenv from 'dotenv';
 import multer from "multer";
 import cookieParser from "cookie-parser";
-import adminRoutes from "./routes/adminRoutes.js";
+import loginRoutes from "./routes/loginRoutes.js";
 import db from "./config/bd.js"
 dotenv.config();
 
@@ -31,8 +31,8 @@ app.use (cookieParser());
 app.use (csrf({ cookie : true}))
 
 //Admin
-app.use("/admin", adminRoutes);
-app.use("/", adminRoutes);
+//app.use("/admin", adminRoutes);
+app.use("/", loginRoutes);
 
 
 

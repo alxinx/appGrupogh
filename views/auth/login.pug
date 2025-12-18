@@ -13,32 +13,42 @@ block contenedor
       
       p(class="p")
         | Logueate para empezar a trabajar 😎
+      
+      if errores 
+        p(class="error")=errores.msg
 
       // Form
-      form(class="space-y-4")
-        
+      form(action="", method="post") 
+        input(type="hidden", name="_csrf" value = csrfToken)
         // Email
         div
           label(class="label")
             |Tu Email
           input(
-            type="text"
+            type="email"
+            name = "emailUsuario"
+            value = usuario ? usuario.emailUsuario : ""
             placeholder="Ingresa el email con que estas registrado"
             class="field-text"
           )
+          if errores && errores.emailUsuario != null
+             p(class="error")=errores.emailUsuario
 
         // Password
         div
-          label(class="label")
+          label(class="label mt-4")
             | Password  
           div(class="relative")
             input(
               type="password"
+              name = "password"
               placeholder="••••••••"
               class="field-text"
             )
             span(class="absolute inset-y-0 right-3 flex items-center text-gray-400")
               | 👁️
+          if errores && errores.password != null
+           p(class="error")=errores.password
 
         // Forgot password
         div(class="flex justify-end")

@@ -19,4 +19,18 @@ const registerValidation = [
         .withMessage('La contraseña debe tener mínimo 8 caracteres')
 ]
 
-export {registerValidation}
+
+
+const loginValidation = [
+    
+    check('emailUsuario')
+        .trim()
+        .isEmail().withMessage('Debe ser un email válido'),
+
+    check('password')
+        .trim()
+        .isLength({ min: 8 })
+        .withMessage('La contraseña debe tener mínimo 8 caracteres')
+]
+
+export {registerValidation, loginValidation}
