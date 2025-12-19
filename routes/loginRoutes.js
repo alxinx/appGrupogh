@@ -1,5 +1,7 @@
 import express from "express";
-import {adminLogin,registerLogin, forgotLogin, registerLoginPost, loginUser} from "../controller/adminControllers.js";
+//import {adminLogin,registerLogin, forgotLogin, registerLoginPost, loginUser} from "../controller/adminControllers.js";
+import {adminLogin,registerLogin, forgotLogin, registerLoginPost, loginUser} from "../controller/loginControllers.js";
+
 import {registerValidation, loginValidation} from '../middlewares/fieldValidations.js';
 const routes = express.Router();
 
@@ -11,9 +13,9 @@ routes.get("/forgot", forgotLogin);
 
 
 
-//ADMINISTRADOR
+//REGISTROS
 
-
+//🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨BORRAR O COMENTAR CUAND DESPLIEGUE PRODUCCION🚨🚨🚨🚨🚨🚨//
 routes.post("/register", registerValidation, registerLoginPost);
 routes.post("/", loginValidation, loginUser)
 

@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 import multer from "multer";
 import cookieParser from "cookie-parser";
 import loginRoutes from "./routes/loginRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js"
+import storeRoutes from "./routes/storeRoutes.js"
+import {rutaProtegida, verificarRol} from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js"
 dotenv.config();
 
@@ -30,9 +33,12 @@ app.set("views", "./views");
 app.use (cookieParser());
 app.use (csrf({ cookie : true}))
 
+
 //Admin
 //app.use("/admin", adminRoutes);
-app.use("/", loginRoutes);
+app.use("/", loginRoutes);//LOGIN
+app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes )//ADMINISTRADOR
+app.use("/store",rutaProtegida, verificarRol('STORE'), storeRoutes )//TIENDAS
 
 
 
