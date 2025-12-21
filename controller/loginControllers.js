@@ -157,11 +157,18 @@ const loginUser = async (req, res)=>{
 }
 
 
+const logout = (req, res) => {
+    return res.clearCookie('_token').redirect('/');
+
+}
+
+
 
 export {
             adminLogin,
             registerLogin, 
             forgotLogin,
             registerLoginPost,
-            loginUser
+            loginUser,
+            logout
     }

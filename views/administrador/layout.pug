@@ -1,0 +1,12 @@
+extends ../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../partials/sidebar
+
+                div(class="flex-1 flex flex-col")
+                    include ../partials/header
+                    include ../partials/body
+
+        //script(src="/js/menu.js") 

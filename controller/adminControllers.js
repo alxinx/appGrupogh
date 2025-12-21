@@ -1,5 +1,4 @@
 import {validationResult } from "express-validator";
-//import bcrypt from "bcrypt";
 import {Usuarios} from '../models/index.js'
 import { generarId, generarJwt } from '../helpers/genToken.js'
 import { redireccion } from "../helpers/redireccion.js";
@@ -7,8 +6,12 @@ import { redireccion } from "../helpers/redireccion.js";
 
 const dashboard = async (req, res)=>{
     
-    console.log('Estoy en dashboar del administrador')
-    res.send('Hola alejo administrador')
+    return res.status(201).render('./administrador/layout', {
+        pagina: "Dashboard",
+        csrfToken : req.csrfToken(),
+        currentPath: req.path
+        
+    })
 }
 
 export {
