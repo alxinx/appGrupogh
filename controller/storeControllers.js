@@ -7,9 +7,12 @@ import { redireccion } from "../helpers/redireccion.js";
 
 const dashboardStores = async (req, res)=>{
 
-    console.log('Estoy en dashboar del STORE')
-    res.send('Hola  TIENDA')
-}
+    return res.status(201).render('./tienda/layout', {
+        pagina: `Panel principal de ${req.usuario.nombreUsuario}`,
+        csrfToken : req.csrfToken(),
+        currentPath: req.path
+        
+    })}
 
 export {
     dashboardStores

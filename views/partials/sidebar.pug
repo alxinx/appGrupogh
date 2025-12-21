@@ -8,7 +8,7 @@ aside(
   ul(class="menu bg-base-200 rounded-box w-56 mt-4")
 
     //HOME
-    li(class="btn-menu-lateral pl-8 py-4 border-amber-500")
+    li(class="btn-menu-lateral")
        a(href="/admin" class=`menu-item ${currentPath === '/' ? 'active' : ''}`) 
        
         div(class="flex items-center gap-3")
@@ -18,7 +18,7 @@ aside(
 
 
     //TIENDAS
-    li(class="btn-menu-lateral pl-8 py-4")
+    li(class="btn-menu-lateral py-4")
       div(class="flex items-center gap-3")
         i(class="fi fi-rr-store-alt text-lg")
         span Tiendas
@@ -28,8 +28,8 @@ aside(
     //INVENTARIO
     li(class="btn-menu-lateral")
       details(close)
-        summary(class="flex items-center justify-between px-4 py-2 rounded-lg cursor-pointer hover:bg-pink-100")
-          div(class="flex items-center gap-3")
+        summary(class="flex items-center justify-between py-2 rounded-lg cursor-pointer hover:bg-pink-100")
+          div(class="flex items-left gap-3")
             i(class="fi fi-rr-inventory-alt text-lg")
             span Inventario
           i(class="fi fi-rr-caret-right transition-transform duration-200")
@@ -45,23 +45,11 @@ aside(
             a(href="/")
               | Dosificar Productos
 
-      //CLIENTES
-      li(class="btn-menu-lateral pl-8 py-4")
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-users-alt text-lg")
-          span Cientes
 
-      //PERSONAL
-      li(class="btn-menu-lateral pl-8 py-4")
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-hr-person  text-lg")
-          span Personal
-
-      //PEDIDOS
-      //INVENTARIO
+    //INVENTARIO
     li(class="btn-menu-lateral")
       details(close)
-        summary(class="flex items-center justify-between px-4 py-2 rounded-lg cursor-pointer hover:bg-pink-100")
+        summary(class="flex items-center justify-between  py-2 rounded-lg cursor-pointer hover:bg-pink-100")
           div(class="flex items-center gap-3")
             i(class="fi fi-rr-shopping-cart-check text-lg")
             span Pedidos y Repartos
@@ -73,14 +61,29 @@ aside(
           li(class="btn-submenu")
             a(href="/")
               | Dosificación de Pedidos
-          
+      
+
+      
+      //CLIENTES
+      li(class="btn-menu-lateral  py-4")
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr-users-alt text-lg")
+          span Cientes
+
+      //PERSONAL
+      li(class="btn-menu-lateral  py-4")
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr-hr-person  text-lg")
+          span Personal
+
+        
 
 
 
 
 
       //ADMINISTRATIVO
-      li(class="btn-menu-lateral pl-8 py-4")
+      li(class="btn-menu-lateral  py-4")
         div(class="flex items-center gap-3")
           i(class="fi fi-rr-smile text-lg")
           span Administrativo

@@ -10,8 +10,8 @@
   }
 
   .btn-menu-lateral {
-   @apply w-full flex items-center justify-between ml-4
-       px-4 py-2 rounded-lg
+   @apply w-full flex items-center justify-between
+        rounded-lg
        text-gray-700 cursor-pointer
        transition-colors duration-200
        hover:bg-pink-100 hover:text-pink-700;

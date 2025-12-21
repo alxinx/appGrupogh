@@ -1,0 +1,65 @@
+aside(
+  id="sidebar"
+  class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-white shadow-lg transform -translate-x-full md:translate-x-0 transition-transform duration-300 flex flex-col" )
+
+  div(class="h-16 flex items-center px-6 font-bold text-xl text-pink-600 py-11")
+    img(src="/img/logo.png" width="70" alt="" class="float-right m-12 ")
+
+  ul(class="menu bg-base-200 rounded-box w-56 mt-4")
+
+    //HOME
+    li(class="btn-menu-lateral   border-amber-500")
+       a(href="/admin" class=`menu-item ${currentPath === '/' ? 'active' : ''}`) 
+       
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr-home text-lg")
+          span Panel Principal 
+    
+
+
+    //TIENDAS
+    li(class="btn-menu-lateral")
+      div(class="flex items-center  py-2 gap-3")
+        i(class="fi fi-rr-inventory-alt text-lg")
+        span Inventario
+
+    
+      //CLIENTES
+      li(class="btn-menu-lateral")
+        div(class="flex items-center  py-2 gap-3")
+          i(class="fi fi-rr-users-alt text-lg")
+          span Cientes
+
+      //HISTORIAL
+      li(class="btn-menu-lateral")
+        div(class="flex items-center  py-2 gap-3")
+          i(class="fi fi-rr-time-past text-lg")
+          span Historial
+
+      //PEDIDOS
+      //INVENTARIO
+    li(class="btn-menu-lateral")
+      details(close)
+        summary(class="flex items-center justify-between py-2 rounded-lg cursor-pointer hover:bg-pink-100")
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-shopping-cart-check text-lg")
+            span Pedidos y Traslados
+          i(class="fi fi-rr-caret-right transition-transform duration-200")
+        ul(class=" list-item")
+          li(class="btn-submenu")
+            a(href="/") 
+              | Listado de Pedidos  
+          li(class="btn-submenu")
+            a(href="/")
+              | Traslados
+          
+
+  div(class="px-4 pb-6 mt-auto")
+    form(action="/logout" method="POST")
+      input(type="hidden" name="_csrf" value=csrfToken)
+      button(
+        type="submit"
+        class="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-red-600 hover:bg-red-900 hover:text-red-100 transition cursor-pointer"
+          )
+        i(class="fi fi-rr-sign-out-alt")
+        span Cerrar sesión

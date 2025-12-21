@@ -5,9 +5,9 @@ import { redireccion } from "../helpers/redireccion.js";
 
 
 const dashboard = async (req, res)=>{
-    
+
     return res.status(201).render('./administrador/layout', {
-        pagina: "Dashboard",
+        pagina: "Pagina Principal",
         csrfToken : req.csrfToken(),
         currentPath: req.path
         
