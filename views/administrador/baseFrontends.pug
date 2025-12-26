@@ -434,7 +434,7 @@ block contenedor
                                     div.col-span-2
                                         td.px-4.py-2
                                             span.table-badge.table-badge-low 
-                                               span.table-badge-dot 
+                                                span.table-badge-dot 
                                                 |   Bajo
 
                             //*********[TARJETAS]*************//
@@ -468,9 +468,104 @@ block contenedor
                                     div(class="col-span-4 text-7xl text-green-300")
                                         i.fi-rr-point-of-sale-bill
                                 
-                                
-                                
-                                
+                            //***********[BOTONES]***************//
+
+
+                            div(class="col-span-4 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") BOTONES
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | btn |  
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class Complento:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | btn-primary    | btn-secondary | btn-ghost | btn-danger | btn-icon | btn-sm  |btn-lg
+                                    div.col-span-3
+                                        h3.h3 btn-primary 
+                                    div.col-span-4  
+                                        button.btn.btn-primary
+                                            i.fi-rr-disk
+                                            | Guardar
+                                    
+                                    
+                                    div.col-span-3
+                                        h3.h3 status-secondary 
+                                    div.col-span-4  
+                                        button.btn.btn-secondary
+                                            i.fi-rr-cross-circle
+                                            | Cancelar
+
+                                    div.col-span-3
+                                        h3.h3 btn-ghost 
+                                    div.col-span-4  
+                                        button.btn.btn-ghost
+                                            i.fi-rr-eye
+                                            | Ver Detalles
+
+
+                                    div.col-span-3
+                                        h3.h3 status-danger 
+                                    div.col-span-4  
+                                        button.btn.btn-danger
+                                            i.fi-rr-trash
+                                            | Eliminar
+                            
+
+
+                            //***************[BOTONES EN FORMULARIOS]***************//
+                            div(class="col-span-5 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") Botoneras de Formularios (Form Actions)
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | form-actions |  
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class Complento:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | form-actions-sticky
+
+                                    div.col-span-3
+                                        h3.h3 form-actions
+                                    div.col-span-4  
+                                        div.form-actions.justify-between
+                                            button.btn.btn-danger Eliminar
+                                            div.flex.gap-3
+                                                button.btn.btn-secondary Cancelar
+                                                button.btn.btn-primary Guardar cambios
+                                    
+                                    div.col-span-3
+                                        h3.h3 form-actions-sticky
+                                    div.col-span-4  
+                                        div.form-actions-sticky
+                                            div.form-actions
+                                                button.btn.btn-secondary Cancelar
+                                                button.btn.btn-primary Guardar
+                                    
+                                    div.col-span-3
+                                        h3.h3 btn btn-sm btn-secondary
+                                    div.col-span-4  
+                                        div.flex.justify-end.gap-2.mt-6
+                                            button.btn.btn-sm.btn-secondary Cancelar
+                                            button.btn.btn-sm.btn-primary Confirmar
+                                    
+                                    div.col-span-3
+                                        h3.h3 btn.btn-primary.btn-loading | btn.btn-secondary
+                                    div.col-span-4  
+                                        div.form-actions
+                                            button.btn.btn-secondary(disabled) Cancelar
+                                            button.btn.btn-primary.btn-loading(disabled)
+                                                i.fi-rr-refresh.animate-spin
+                                                | Guardando
+
+                                    div.col-span-3
+                                        h3.h3 btn.btn-primary.w-full | btn.btn-secondary.w-full
+                                    div.col-span-4  
+                                        div.form-actions
+                                            button.btn.btn-primary.w-full Guardar
+                                            button.btn.btn-secondary.w-full Cancelar
                                 
                                 
                                     

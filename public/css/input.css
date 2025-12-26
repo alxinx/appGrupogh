@@ -124,6 +124,65 @@
     @apply pr-11;
   }
 
+/******[BOTONES]************/
+
+.btn {
+    @apply inline-flex items-center justify-center gap-2
+           h-11 px-6
+           rounded-gh
+           text-sm font-semibold
+           transition-all duration-150
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-gh-primary text-white
+           hover:bg-gh-primaryHover
+           active:scale-[0.98]
+           focus-visible:ring-gh-primary
+           shadow-sm;
+  }
+  .btn-secondary {
+    @apply bg-white text-gh-grayText
+           border border-gh-grayBorder
+           hover:bg-gray-50
+           active:scale-[0.98]
+           focus-visible:ring-gray-300;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-gh-primary
+           hover:bg-gh-primarySoft
+           active:scale-[0.98]
+           focus-visible:ring-gh-primary;
+  } 
+  .btn-danger {
+    @apply bg-pink-500 text-white
+           hover:bg-pink-600
+           focus-visible:ring-pink-500
+           active:scale-[0.98];
+  }
+  .btn-icon {
+    @apply h-10 w-10 p-0
+           rounded-lg
+           text-gray-500
+           hover:bg-gray-100
+           hover:text-gray-700;
+  }
+  .btn-sm { @apply h-9 px-4 text-xs; }
+  .btn-lg { @apply h-12 px-8 text-base; }
+
+  .form-actions {
+    @apply flex flex-col-reverse gap-3
+  }
+
+  .form-actions-sticky {
+    @apply sticky bottom-0 bg-white/80 backdrop-blur
+           border-t border-gray-200
+           px-6 py-4 mt-8;
+  }
+
+  
+
 /*****[SELECTS]************/
 
 
