@@ -1,0 +1,63 @@
+// Sidebar container
+aside(
+  id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col")
+
+  // Logo
+  div(class="h-40 flex items-center justify-center border-b  border-gray-300 bg-[#eae1f2]")
+    img(
+      src="/img/logo.png"
+      alt="Logo"
+      class="max-w-40 h-30 object-contain"
+    )
+
+  // Menu
+  nav(class="flex-1 px-4 py-6 space-y-1 bg-[#F9F4FD] overflow-y-auto")
+
+    a(
+      href="/admin"  class=`menu-item ${currentPath === '/' ? 'active' : ''}`)
+      i(class="fi fi-rr-home text-lg")
+      span Panel Principal
+
+    a(
+      href="/admin/tiendas" class=`menu-item ${currentPath === '/tiendas' ? 'active' : ''}`)
+      i(class="fi fi-rr-shop text-lg")
+      span Tiendas
+
+    // Inventario (submenu)
+    details(class="group")
+      summary(class="menu-item cursor-pointer flex justify-between items-center")
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr-box text-lg")
+          span Inventario
+        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+
+      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+        a(href="/admin/inventario/ingreso" class="submenu-item") Ingreso de Producto
+        a(href="/admin/inventario/listado" class="submenu-item") Listado de producto
+        a(href="/admin/inventario/dosificar" class="submenu-item") Dosificar producto
+
+    a(href="/admin/clientes" class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`)
+      i(class="fi fi-rr-users text-lg")
+      span Clientes
+
+    a(href="/admin/personal" class=`menu-item ${currentPath === '/personal' ? 'active' : ''}`)
+      i(class="fi fi-rr-user text-lg")
+      span Personal
+
+    a(href="/admin/pedidos" class=`menu-item ${currentPath === '/pedidos' ? 'active' : ''}`)
+      i(class="fi fi-rr-truck text-lg")
+      span Pedidos y Reparto
+
+    a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
+      i(class="fi fi-rr-settings text-lg")
+      span Settings
+
+   
+  // Logout
+  div(class="p-4 border-t border-gray-300")
+    form(action="/logout" method="POST")
+        input(type="hidden" name="_csrf" value=csrfToken)
+        button(
+        class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium shadow-neutral-500 shadow-2xl cursor-pointer"    )
+            i(class="fi fi-rr-sign-out-alt")
+            span Cerrar sesión

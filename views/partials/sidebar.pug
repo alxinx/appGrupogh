@@ -18,10 +18,18 @@ aside(
 
 
     //TIENDAS
+<<<<<<< HEAD
     li(class="btn-menu-lateral py-4")
       div(class="flex items-center gap-3")
         i(class="fi fi-rr-store-alt text-lg")
         span Tiendas
+=======
+    li(class="btn-menu-lateral pl-8 py-4")
+      a(href="/admin/tiendas" class=`menu-item ${currentPath === '/tiendas' ? 'active' : ''}`) 
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr-store-alt text-lg")
+          span Tiendas
+>>>>>>> administrador
 
 
 
@@ -45,8 +53,27 @@ aside(
             a(href="/")
               | Dosificar Productos
 
+<<<<<<< HEAD
 
     //INVENTARIO
+=======
+      //CLIENTES
+      li(class="btn-menu-lateral pl-8 py-4")
+        a(href="/admin/clientes" class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`) 
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-users-alt text-lg")
+            span Cientes
+
+      //PERSONAL
+      li(class="btn-menu-lateral pl-8 py-4")
+        a(href="/admin/personal" class=`menu-item ${currentPath === '/personal' ? 'active' : ''}`) 
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-hr-person  text-lg")
+            span Personal
+
+      //PEDIDOS
+      //INVENTARIO
+>>>>>>> administrador
     li(class="btn-menu-lateral")
       details(close)
         summary(class="flex items-center justify-between  py-2 rounded-lg cursor-pointer hover:bg-pink-100")
@@ -83,10 +110,12 @@ aside(
 
 
       //ADMINISTRATIVO
-      li(class="btn-menu-lateral  py-4")
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-smile text-lg")
-          span Administrativo
+
+      li(class="btn-menu-lateral pl-8 py-4")
+        a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`) 
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-smile text-lg")
+            span Administrativo
 
       
 
@@ -100,3 +129,5 @@ aside(
           )
         i(class="fi fi-rr-sign-out-alt")
         span Cerrar sesión
+  
+  

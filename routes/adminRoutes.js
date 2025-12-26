@@ -1,8 +1,20 @@
 import express from "express";
-import {registerValidation, loginValidation} from '../middlewares/fieldValidations.js';
-import { dashboard} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, baseFrondend} from "../controller/adminControllers.js"
 const routes = express.Router();
 
+
+
+//*********************************[GETS ROUTES]**********************************/
+
 routes.get("/", dashboard);
+routes.get('/tiendas',dashboardStores);
+routes.get('/inventario',dashboardInventorys);
+routes.get('/clientes',dashboardCustomers);
+routes.get('/personal',dashboardEmployees);
+routes.get('/pedidos',dashboardOrders);
+routes.get('/configuracion',dashboardSettings);
+
+routes.get('/frontend',baseFrondend);
+
 
 export default routes
