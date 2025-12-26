@@ -16,7 +16,7 @@
   \*************************/
 (__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) {
 
-eval("{__webpack_require__.r(__webpack_exports__);\n function toggleSidebar() {\n            document.getElementById('sidebar').classList.toggle('-translate-x-full')\n            }\n\nfunction toggleMenu(id) {\n                const el = document.getElementById(id)\n                el.classList.toggle('hidden')\n                }\n\n//# sourceURL=webpack://GRUPO_GH/./src/js/menus.js?\n}");
+eval("{__webpack_require__.r(__webpack_exports__);\nfunction toggleSidebar() {\n    document.getElementById(\"sidebar\")\n      .classList.toggle(\"-translate-x-full\");\n  }\n\n//# sourceURL=webpack://GRUPO_GH/./src/js/menus.js?\n}");
 
 /***/ }
 

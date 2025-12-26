@@ -19,9 +19,10 @@ aside(
 
     //TIENDAS
     li(class="btn-menu-lateral pl-8 py-4")
-      div(class="flex items-center gap-3")
-        i(class="fi fi-rr-store-alt text-lg")
-        span Tiendas
+      a(href="/admin/tiendas" class=`menu-item ${currentPath === '/tiendas' ? 'active' : ''}`) 
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr-store-alt text-lg")
+          span Tiendas
 
 
 
@@ -47,15 +48,17 @@ aside(
 
       //CLIENTES
       li(class="btn-menu-lateral pl-8 py-4")
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-users-alt text-lg")
-          span Cientes
+        a(href="/admin/clientes" class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`) 
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-users-alt text-lg")
+            span Cientes
 
       //PERSONAL
       li(class="btn-menu-lateral pl-8 py-4")
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-hr-person  text-lg")
-          span Personal
+        a(href="/admin/personal" class=`menu-item ${currentPath === '/personal' ? 'active' : ''}`) 
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-hr-person  text-lg")
+            span Personal
 
       //PEDIDOS
       //INVENTARIO
@@ -81,9 +84,10 @@ aside(
 
       //ADMINISTRATIVO
       li(class="btn-menu-lateral pl-8 py-4")
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-smile text-lg")
-          span Administrativo
+        a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`) 
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-smile text-lg")
+            span Administrativo
 
       
 
@@ -97,3 +101,5 @@ aside(
           )
         i(class="fi fi-rr-sign-out-alt")
         span Cerrar sesión
+  
+  
