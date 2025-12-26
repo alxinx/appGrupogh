@@ -113,7 +113,7 @@
 
   .input {
     @apply w-full py-2 px-4 border border-gray-300
-           rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-primary bg-transparent;;
+           rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-primary bg-transparent;
   }
 
   .input-has-icon-left {
@@ -534,6 +534,5 @@
 details[open] summary .fi-rr-caret-right {
   transform: rotate(90deg);
 }
-
 
 
