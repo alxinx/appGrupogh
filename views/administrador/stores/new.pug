@@ -1,0 +1,26 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+                            //******************[CUERPO PANELES]*********************//
+                            
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2")
+                                div(class="grid grid-cols-1 md:grid-cols-1")
+                                    h1.h1.text-left.pt-1.pb-0.mb-0 #{subPagina}
+                                    label.label-muted.mt-0 Asegurate de tener todos los datos de la tienda que crearás antes de comenzar! 
+                                div(class="grid grid-cols-1 md:grid-cols-1 gap-4 justify-items-end")
+                                    a(href="/admin/tiendas/new" class="w-full md:w-auto")  
+                                        button(class="btn btn-primary w-full md:w-auto")
+                                            i.fi-rr-add-document
+                                            |Nuevo Punto de Venta
+                            
+                            //STATS
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cardWhite")

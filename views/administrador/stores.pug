@@ -10,3 +10,142 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         div(class="mainDashboard")
                             //******************[CUERPO PANELES]*********************//
+                            
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2")
+                                div(class="grid grid-cols-1 md:grid-cols-1")
+                                    h1.h1.text-left.pt-1.pb-0.mb-0 Resumen Tiendas
+                                    label.label-muted.mt-0 Resumen del estado global de los puntos de venta.
+                                div(class="grid grid-cols-1 md:grid-cols-1 gap-4 justify-items-end")
+                                    a(href="tiendas/new" class="w-full md:w-auto")  
+                                        button(class="btn btn-primary w-full md:w-auto")
+                                            i.fi-rr-add-document
+                                            |Nuevo Punto de Venta
+                            
+                            //STATS
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
+
+                                //VENTAS DEL DIA
+                                div(class="cardWhite flex items-center gap-4 p-6")
+                                    div(class="flex-shrink-0")
+                                        div(class="icon greenIcon bigIcon  text-green-600 text-4xl")
+                                            i.fi-rr-money-bill-wave
+
+                                    //- 2. Contenedor de Texto: Ocupa el espacio restante
+                                    div(class="flex-grow")
+                                        h4.h2.text-left.text-gray-600.mb-1 Ventas Totales Hoy
+                                        h1.h1.text-green-700.text-3xl.font-bold.text-left $12.300.000
+                                        
+                                
+                                
+                                
+                                div(class="cardWhite flex items-center gap-4 p-6")
+                                    div(class="flex-shrink-0")
+                                        div(class="icon blueIcon bigIcon  text-blue-600 text-4xl")
+                                            i.fi-rr-store-alt
+
+                                    //- 2. Contenedor de Texto: Ocupa el espacio restante
+                                    div(class="flex-grow")
+                                        h4.h2.text-left.text-gray-600.mb-1 Tiendas Activas
+                                        h1.h1.text-blue-500.text-3xl.font-bold.text-left 2 de 3
+                                
+                                div(class="cardWhite flex items-center gap-4 p-6")
+                                    div(class="flex-shrink-0")
+                                        div(class="icon redIcon bigIcon  text-gray-100 text-4xl")
+                                            i.fi-rr-triangle-warning
+
+                                    //- 2. Contenedor de Texto: Ocupa el espacio restante
+                                    div(class="flex-grow")
+                                        h4.h2.text-left.text-gray-600.mb-1 Alertas de Stock
+                                        h1.h1.text-red-500.text-3xl.font-bold.text-left 4 Productos
+                                        
+                            //PUNTOS DE VENTA
+                            div(class="col-span-12  border-t-2 border-gray-200")
+                                h1(class="h1 text-center md:text-left pt-4 mb-0") 
+                                    i(class="fi-rr-store-alt mr-3")
+                                        span(class="pl-4") Lista de Puntos de Venta
+
+                            //LISTADO DE PUNTOS DE VENTA
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3")
+
+
+                                //PUNTO DE VENTA 1 
+                                div(class="cardWhite p-5 flex flex-col gap-4")
+                                    //- --- PARTE SUPERIOR (Título y Badge) ---
+                                    div(class="flex items-center justify-between")
+                                        h1.h1.text-left GH Tienda Centro
+                                        h5.h5 Nit : 123.345.566
+                                        div(class="status-chip status-active"   ) Abierto
+
+                                    div(class="space-y-2")
+                                        div(class="flex items-center gap-2 text-gray-700")
+                                            div(class="flex-row flex-auto")
+                                                i.fi-rr-coins(class="text-3xl text-green-900 mr-2")
+                                                span.font-bold.text-green-800.text-3xl $12,450.000
+
+                                            i.fi-rr-user(class="text-lg text-right")
+                                            span.text-sm Ventas: 69
+
+                                        div(class="flex -space-x-3 pt-2")
+                                            div(class="flex-row flex-auto")
+                                                h2.h2 Empleados Activos
+                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=1" alt="Empleado")
+                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=5" alt="Empleado")
+                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=3" alt="Empleado") 
+                            
+                                //PUNTO DE VENTA 2 
+                                div(class="cardWhite p-5 flex flex-col gap-4")
+                                    //- --- PARTE SUPERIOR (Título y Badge) ---
+                                    div(class="flex items-center justify-between")
+                                        h1.h1.text-left GH Tienda Redes
+                                        h5.h5 Nit : 983.832.123
+                                        div(class="status-chip status-active"   ) Abierto
+
+                                    div(class="space-y-2")
+                                        div(class="flex items-center gap-2 text-gray-700")
+                                            div(class="flex-row flex-auto")
+                                                i.fi-rr-coins(class="text-3xl text-green-900 mr-2")
+                                                span.font-bold.text-green-800.text-3xl $3.229.000
+
+                                            i.fi-rr-user(class="text-lg text-right")
+                                            span.text-sm Ventas: 21
+
+                                        div(class="flex -space-x-3 pt-2")
+                                            div(class="flex-row flex-auto")
+                                                h2.h2 Empleados Activos
+                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=4" alt="Empleado")
+                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=2" alt="Empleado")
+                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=7" alt="Empleado")        
+                                   
+                                //TIENDA 3.
+                                div(class="cardWhite p-5 flex flex-col gap-4")
+                                    //- --- PARTE SUPERIOR (Título y Badge) ---
+                                    div(class="flex items-center justify-between")
+                                        h1.h1.text-left GH  Laureles
+                                        h5.h5 Nit : 342.434.122
+                                        div(class="status-chip status-low"   ) Cerrada
+
+                                    div(class="space-y-2")
+                                        div(class="flex items-center gap-2 text-gray-700")
+                                            div(class="flex-row flex-auto")
+                                                i.fi-rr-coins(class="text-3xl text-green-900 mr-2")
+                                                span.font-bold.text-green-800.text-3xl $0
+
+                                            i.fi-rr-user(class="text-lg text-right")
+                                            span.text-sm Ventas: 0
+
+                                        div(class="flex -space-x-3 pt-2")
+                                            div(class="flex-row flex-auto")
+                                                h2.h2 Empleados Activos
+                                
+                                
+                                //Boton de crear nueva tienda
+                                a(href="tiendas/new" class="w-full md:w-auto")  
+                                    div(class="cardEmty p-5 flex flex-col gap-4 flex-shrink-0")
+                                        h1.h1 + Agregar Mas Puntos de Venta
+                                            
+
+
+
+
+

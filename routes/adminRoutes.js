@@ -1,5 +1,5 @@
 import express from "express";
-import { dashboard,  dashboardStores, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, baseFrondend} from "../controller/adminControllers.js"
 const routes = express.Router();
 
 
@@ -8,6 +8,8 @@ const routes = express.Router();
 
 routes.get("/", dashboard);
 routes.get('/tiendas',dashboardStores);
+    routes.get('/tiendas/new',newStore);
+    
 routes.get('/inventario',dashboardInventorys);
 routes.get('/clientes',dashboardCustomers);
 routes.get('/personal',dashboardEmployees);

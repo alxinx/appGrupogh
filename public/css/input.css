@@ -17,7 +17,7 @@
 
   /*BODYS*/
   .mainDashboard {
-    @apply min-h-[200px] border-2 border-dashed border-gray-300 rounded-lg grid grid-cols-12 gap-3 items-start
+    @apply min-h-[200px]  grid grid-cols-12 gap-3 items-start
   }
 
   /*H */
@@ -181,7 +181,52 @@
            px-6 py-4 mt-8;
   }
 
-  
+/***************[CARDS]******************/
+.cardWhite {
+  @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-2 border-gray-300 shadow-md rounded-gh p-3 m-5 
+}
+
+.cardWhite:hover{
+  @apply bg-gray-200 shadow-none border-gray-200
+}
+
+.cardEmty {
+  @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-transparent border-4 border-dotted border-gray-300 shadow-md rounded-gh p-3 m-5 
+}
+.cardEmty:hover{
+    @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-gray-900 text-white border-4 border-dotted border-gray-300 shadow-md rounded-gh p-3 m-5 
+
+}
+.cardEmty:hover h1 {
+  @apply text-white
+}
+
+
+  /************* [ICONOS] ***************/
+
+  .icon {
+    @apply rounded-xl flex items-center justify-center
+  }
+  .greenIcon{
+    @apply bg-[#DCF4E1]
+  }
+
+  .blueIcon{
+    @apply bg-blue-300
+  }
+
+  .redIcon{
+    @apply bg-gh-primaryHover
+  }
+  .smallIcon {
+    @apply w-[40px] h-[40px] text-2xl
+  }
+
+  .bigIcon {
+    @apply w-[70px] h-[70px] text-5xl
+  }
+
+
 
 /*****[SELECTS]************/
 

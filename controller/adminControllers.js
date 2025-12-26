@@ -37,6 +37,19 @@ const dashboardStores = async (req, res)=>{
         
     })
 }
+
+
+//
+const newStore = async (req, res)=>{
+    return res.status(201).render('./administrador/stores/new', {
+        pagina: "Tiendas",
+        subPagina : "Nueva Tienda",
+        csrfToken : req.csrfToken(),
+        currentPath: req.path
+        
+    })
+}
+
 //PRINCIPAL INVENTARIOS
 const dashboardInventorys = async (req, res)=>{
     
@@ -86,6 +99,7 @@ const dashboardSettings = async (req, res)=>{
 export {
     dashboard,
     dashboardStores,
+    newStore,
     dashboardInventorys,
     dashboardCustomers,
     dashboardEmployees,
