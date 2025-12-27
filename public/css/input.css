@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@plugin "daisyui";  
 @import "@flaticon/flaticon-uicons/css/all/all";
 
 
@@ -45,7 +44,7 @@
   /*LABEL */
 
   .label {
-    @apply block mb-1 text-sm font-medium text-gray-700;
+    @apply block mb-1 text-sm font-medium text-pink-700;
   }
 
   .label-required::after {
@@ -124,6 +123,12 @@
     @apply pr-11;
   }
 
+  .textarea {
+    @apply text-gray-800
+         placeholder:text-gray-400
+         bg-white
+  }
+
 /******[BOTONES]************/
 
 .btn {
@@ -182,6 +187,9 @@
   }
 
 /***************[CARDS]******************/
+.cards {
+  @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-2 border-gray-300  rounded-gh p-3 m-5 
+}
 .cardWhite {
   @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-2 border-gray-300 shadow-md rounded-gh p-3 m-5 
 }
@@ -597,10 +605,6 @@
    /* CAMPOS DE TEXTO */
   .field-text {
     @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500;
-  }
-
-  .label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
   }
 
   .p {

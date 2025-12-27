@@ -1,0 +1,127 @@
+input(type="hidden", name="csrfToken" value = csrfToken)
+input(type="hidden" name="idPuntoVenta" value = idPuntoVenta ? idPuntoVenta : "")
+
+div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
+    div(class="col-span-12 md:col-span-12")
+        h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
+            i.fi-rr-pen-field 
+            span.ml-3 Datos De La Tienda
+        //INICIO FORMULARIO
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
+            div
+                label.label Nombre de la tienda
+                div(class="input-group")
+                    
+                    input(type="text", name="razonSocial"  class="field-text" placeholder = "Dame el nombre de la razón social que aparece en el RUT")
+            div
+                label.label Nombre Comercial
+                div(class="input-group")
+                    
+                    input(type="text", name="nombreComercial"  class="field-text" placeholder = "Dame el nombre que le pondrás al punto de venta")
+            div
+                label.label Tipo de tienda
+                div(class="select-wrapper")
+                    select(name="" class="field-select")
+                        option(value="Punto de venta") Punto de Venta
+                        option(value="Bodega") Bodega
+                        option(value="Transito") Tránsito
+                    span.select-icon
+                        i.fi-rr-chevron-double-down
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 mt-5")
+            div
+                label.label Dirección Principal
+                div(class="input-group")
+                    
+                    input(type="text", name="direccionPrincipal"  class="field-text" placeholder = "En dónde se encuentra ubicada la tienda?")
+            
+            div
+                label.label Departamento
+                div(class="select-wrapper")
+                    select(name="" class="field-select")
+                        option(value="05") Antioquia
+                        option(value="25") Cundinamarca
+                        option(value="17") Caldas
+                    span.select-icon
+                        i.fi-rr-chevron-double-down
+            
+            div
+                label.label Ciudad
+                div(class="select-wrapper")
+                    select(name="" class="field-select")
+                        option(value="05001") Medellín
+                        option(value="25") Bogotá
+                        option(value="17") Caldas
+                    span.select-icon
+                        i.fi-rr-chevron-double-down
+        
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 mt-5")
+            div
+                label.label Teléfono
+                div(class="input-group")
+                    
+                    input(type="text", name="telefono"  class="field-text" placeholder = "Cuál es el número de teléfono de la tienda")
+            
+            div
+                label.label Email
+                div(class="input-group")
+                    input(type="email", name="email"  class="field-text" placeholder = "Cuál será el email asignado a la tienda")
+            div
+                label.label Contraseña
+                div(class="input-group")
+                    input(type="password", name="password"  class="field-text" placeholder = "● ● ● ● ● ● ● ● ● ●")
+            
+            div
+                label.label Repite la contraseña
+                div(class="input-group")
+                    input(type="password", name="password_again"  class="field-text" placeholder = "● ● ● ● ● ● ● ● ● ●")
+            
+        
+    div(class="col-span-12 md:col-span-12 pt-5")
+        h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
+            i.fi-rr-tax 
+            span.ml-3 Datos Tributarios
+        
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-5")
+            div(class="col-span-12 text-center")
+                h3.h3
+                    i.fi-rr-light-emergency-on.mr-3
+                    | Estos datos se usan principalmente para la facturación, te recomiento que tengas el RUT a la mano para consultar cualquier dato.
+        
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 mt-5")
+            
+            div
+                label.label NIT
+                div(class="input-group")
+                    input(type="text", name="taxId"  class="field-text" placeholder = "Cuál es el NIT en el RUT?")
+            
+            div
+                label.label Prefijo DIAN
+                div(class="input-group")
+                    input(type="text", name="taxId"  class="field-text" placeholder = "EJ: FE")
+            
+            div
+                label.label  Resolución de Facturación
+                div(class="input-group")
+                    input(type="text", name="resolucionFacturacion"  class="field-text" placeholder = "Cuál es el nro de resolución que te expidió la DIAN")
+            
+            div
+                label.label  Email en RUT
+                div(class="input-group")
+                    input(type="email", name="emailRut"  class="field-text" placeholder = "El Email que registraste en el RUT")
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-5")
+            label.label  Texto pie de  factura 
+                div(class="input-group")
+                    textarea(class="field-text textarea" placeholder="Ingresa el texto que quieres que aparezca en el pie de página de cada factura,  Ejemplo, las condiciones de la garantía")
+            label(class="flex items-center gap-3 cursor-pointer")
+                label.label Adjunta la resolución DIAN NIT o documento soporte
+                div(class="bg-[#DCF4E1] w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0")
+                    i(class="fi-rr-clip text-xl")
+                div
+                    p(class="text-sm font-medium") Adjuntar archivo
+                    p(class="text-xs text-gray-400") JPG, PNG, PDF
+                input(type="file" class="hidden")
+        div(class="col-span-12 text-center  mt-10")
+            
+            button.btn.btn-primary.w-full
+                i.fi-rr-bookmark
+                |Guardar cambios
