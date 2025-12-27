@@ -1,5 +1,8 @@
 import express from "express";
-import { dashboard,  dashboardStores, newStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore,postNewStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, baseFrondend} from "../controller/adminControllers.js"
+
+import {storeRegisterValidation} from '../middlewares/fieldValidations.js';
+
 const routes = express.Router();
 
 
@@ -17,6 +20,10 @@ routes.get('/pedidos',dashboardOrders);
 routes.get('/configuracion',dashboardSettings);
 
 routes.get('/frontend',baseFrondend);
+
+
+//****************[POST]**********************/
+routes.post('/tiendas/new', storeRegisterValidation, postNewStore)
 
 
 export default routes

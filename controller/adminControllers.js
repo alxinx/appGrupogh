@@ -1,7 +1,4 @@
 import {validationResult } from "express-validator";
-import {Usuarios} from '../models/index.js'
-import { generarId, generarJwt } from '../helpers/genToken.js'
-import { redireccion } from "../helpers/redireccion.js";
 
 //************************[GET CONTROLLERS] ************************ */
  
@@ -33,7 +30,8 @@ const dashboardStores = async (req, res)=>{
     return res.status(201).render('./administrador/stores', {
         pagina: "Tiendas",
         csrfToken : req.csrfToken(),
-        currentPath: req.path
+        currentPath: req.path,
+        
         
     })
 }
@@ -45,7 +43,8 @@ const newStore = async (req, res)=>{
         pagina: "Tiendas",
         subPagina : "Nueva Tienda",
         csrfToken : req.csrfToken(),
-        currentPath: req.path
+        currentPath: req.path,
+        btn : "Crear Nuevo Punto De Venta"
         
     })
 }
@@ -93,6 +92,33 @@ const dashboardSettings = async (req, res)=>{
 
 //************************[POST CONTROLLERS] ************************ */
 
+const postNewStore = async (req, res)=>{
+
+    const erroresValidacion = validationResult(req);
+    const  {razonSocial, tipo, direccionPrincipal, departamento, ciudad, telefono, activa, taxId, DV, prefijo, resolucionFacturacion, emailRut, footerBill} = req.body
+    const errores= erroresValidacion.array();
+    const errsPorCampo = {};
+    errores.forEach(err => 
+        {
+            if (!errsPorCampo[err.path]) {
+                errsPorCampo[err.path] = err.msg;
+            }
+    });
+
+    return res.status(201).render('./administrador/stores/new', {
+        pagina: "Tiendas",
+        subPagina : "Nueva Tienda",
+        csrfToken : req.csrfToken(),
+        currentPath: req.path,
+
+        errores  : errsPorCampo,
+        btn : "Crear Nuevo Punto De Venta"
+        
+    })
+}
+
+
+
 
 //************************[JSON CONTROLLERS] ************************ */
 
@@ -100,6 +126,7 @@ export {
     dashboard,
     dashboardStores,
     newStore,
+    postNewStore,
     dashboardInventorys,
     dashboardCustomers,
     dashboardEmployees,

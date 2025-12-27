@@ -1,7 +1,6 @@
-input(type="hidden", name="csrfToken" value = csrfToken)
-input(type="hidden" name="idPuntoVenta" value = idPuntoVenta ? idPuntoVenta : "")
-
-div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
+form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards") 
+    input(type="hidden", name="_csrf" value = csrfToken)
+    input(type="hidden" name="idPuntoVenta" value = idPuntoVenta ? idPuntoVenta : "")
     div(class="col-span-12 md:col-span-12")
         h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
             i.fi-rr-pen-field 
@@ -9,27 +8,27 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
         //INICIO FORMULARIO
         div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
             div
-                label.label Nombre de la tienda
+                label.label Razón social
                 div(class="input-group")
                     
                     input(type="text", name="razonSocial"  class="field-text" placeholder = "Dame el nombre de la razón social que aparece en el RUT")
             div
-                label.label Nombre Comercial
+                label.label Nombre comercial
                 div(class="input-group")
                     
-                    input(type="text", name="nombreComercial"  class="field-text" placeholder = "Dame el nombre que le pondrás al punto de venta")
+                    input(type="text", name="nombreComercial"  class="field-text" placeholder = "Dame el nombre con que todos conocen a la tienda")
             div
                 label.label Tipo de tienda
                 div(class="select-wrapper")
-                    select(name="" class="field-select")
+                    select(name="tipo" class="field-select")
                         option(value="Punto de venta") Punto de Venta
                         option(value="Bodega") Bodega
                         option(value="Transito") Tránsito
                     span.select-icon
                         i.fi-rr-chevron-double-down
-        div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 mt-5")
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-5 gap-4 mt-5")
             div
-                label.label Dirección Principal
+                label.label Dirección comercial
                 div(class="input-group")
                     
                     input(type="text", name="direccionPrincipal"  class="field-text" placeholder = "En dónde se encuentra ubicada la tienda?")
@@ -37,7 +36,7 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
             div
                 label.label Departamento
                 div(class="select-wrapper")
-                    select(name="" class="field-select")
+                    select(name="departamento" class="field-select")
                         option(value="05") Antioquia
                         option(value="25") Cundinamarca
                         option(value="17") Caldas
@@ -47,14 +46,13 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
             div
                 label.label Ciudad
                 div(class="select-wrapper")
-                    select(name="" class="field-select")
+                    select(name="ciudad" class="field-select")
                         option(value="05001") Medellín
                         option(value="25") Bogotá
                         option(value="17") Caldas
                     span.select-icon
                         i.fi-rr-chevron-double-down
         
-        div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 mt-5")
             div
                 label.label Teléfono
                 div(class="input-group")
@@ -62,18 +60,16 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
                     input(type="text", name="telefono"  class="field-text" placeholder = "Cuál es el número de teléfono de la tienda")
             
             div
-                label.label Email
-                div(class="input-group")
-                    input(type="email", name="email"  class="field-text" placeholder = "Cuál será el email asignado a la tienda")
-            div
-                label.label Contraseña
-                div(class="input-group")
-                    input(type="password", name="password"  class="field-text" placeholder = "● ● ● ● ● ● ● ● ● ●")
+                label.label ¿Activamos la tienda al crearla?
+                label.flex.items-center.cursor-pointer.justify-center
+                    input(type="checkbox" name="activa" class="sr-only" checked)
+                    span.switch
+                        span.switch-thumb
+                    span.ml-3.text-sm.text-gray-700 
+                
             
-            div
-                label.label Repite la contraseña
-                div(class="input-group")
-                    input(type="password", name="password_again"  class="field-text" placeholder = "● ● ● ● ● ● ● ● ● ●")
+            
+            
             
         
     div(class="col-span-12 md:col-span-12 pt-5")
@@ -87,20 +83,24 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
                     i.fi-rr-light-emergency-on.mr-3
                     | Estos datos se usan principalmente para la facturación, te recomiento que tengas el RUT a la mano para consultar cualquier dato.
         
-        div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 mt-5")
+        div(class="col-span-12 grid grid-cols-1 md:grid-cols-5 gap-4 mt-5")
             
             div
                 label.label NIT
                 div(class="input-group")
                     input(type="text", name="taxId"  class="field-text" placeholder = "Cuál es el NIT en el RUT?")
+            div
+                label.label DV
+                div(class="input-group")
+                    input(type="number", name="DV"  class="field-text" placeholder = "El Dígito de verificación" min="0" max="9")
             
             div
                 label.label Prefijo DIAN
                 div(class="input-group")
-                    input(type="text", name="taxId"  class="field-text" placeholder = "EJ: FE")
+                    input(type="text", name="prefijo"  class="field-text" placeholder = "Este prefijo lo define la resolución DIAN")
             
             div
-                label.label  Resolución de Facturación
+                label.label  Resolución de facturación
                 div(class="input-group")
                     input(type="text", name="resolucionFacturacion"  class="field-text" placeholder = "Cuál es el nro de resolución que te expidió la DIAN")
             
@@ -111,7 +111,7 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
         div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-5")
             label.label  Texto pie de  factura 
                 div(class="input-group")
-                    textarea(class="field-text textarea" placeholder="Ingresa el texto que quieres que aparezca en el pie de página de cada factura,  Ejemplo, las condiciones de la garantía")
+                    textarea(class="field-text textarea" name="footerBill" placeholder="Ingresa el texto que quieres que aparezca en el pie de página de cada factura,  Ejemplo, las condiciones de la garantía")
             label(class="flex items-center gap-3 cursor-pointer")
                 label.label Adjunta la resolución DIAN NIT o documento soporte
                 div(class="bg-[#DCF4E1] w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0")
@@ -123,5 +123,5 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
         div(class="col-span-12 text-center  mt-10")
             
             button.btn.btn-primary.w-full
-                i.fi-rr-bookmark
-                |Guardar cambios
+                i.fi-rr-bookmark 
+                | #{btn}
