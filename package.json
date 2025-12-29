@@ -6,7 +6,9 @@
   "scripts": {
     "start": "nodemon index.js",
     "css": "tailwindcss -i ./public/css/input.css -o ./public/css/output.css --watch",
-    "js": "webpack"
+    "js": "webpack",
+    "db:importar": "node ./seed/seeder.js -i"
+
   },
   "keywords": [
     "contable"

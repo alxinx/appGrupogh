@@ -47,6 +47,12 @@ const storeRegisterValidation =  [
     check("DV").trim().isLength({min:1, max: 1}).withMessage('El código de verificación es importante'),
     check("resolucionFacturacion").isInt().withMessage('Debes darme un número de resolución válido.'),
     check("emailRut").trim().isEmail().withMessage('El email es importante.'),
+    //check('idDepartamento').trim().notEmpty().withMessage('Debes seleccionar un Departamento'),
+    //check('idCiudad').trim().notEmpty().withMessage('Debes seleccionar una ciudad'),
+    check('tipo').trim().isIn(['Punto de venta', 'Bodega', 'Transito']).withMessage('Debes seleccionar una ciudad')
+
+
+    
 
 ]
 

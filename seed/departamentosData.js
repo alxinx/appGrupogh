@@ -1,0 +1,38 @@
+ const nombresData = [
+  { "id": "05", "nombre": "Antioquia" },
+  { "id": "08", "nombre": "Atlántico" },
+  { "id": "11", "nombre": "Bogotá D.C." },
+  { "id": "13", "nombre": "Bolívar" },
+  { "id": "15", "nombre": "Boyacá" },
+  { "id": "17", "nombre": "Caldas" },
+  { "id": "18", "nombre": "Caquetá" },
+  { "id": "19", "nombre": "Cauca" },
+  { "id": "20", "nombre": "Cesar" },
+  { "id": "23", "nombre": "Córdoba" },
+  { "id": "25", "nombre": "Cundinamarca" },
+  { "id": "27", "nombre": "Chocó" },
+  { "id": "41", "nombre": "Huila" },
+  { "id": "44", "nombre": "La Guajira" },
+  { "id": "47", "nombre": "Magdalena" },
+  { "id": "50", "nombre": "Meta" },
+  { "id": "52", "nombre": "Nariño" },
+  { "id": "54", "nombre": "Norte de Santander" },
+  { "id": "63", "nombre": "Quindío" },
+  { "id": "66", "nombre": "Risaralda" },
+  { "id": "68", "nombre": "Santander" },
+  { "id": "70", "nombre": "Sucre" },
+  { "id": "73", "nombre": "Tolima" },
+  { "id": "76", "nombre": "Valle del Cauca" },
+  { "id": "81", "nombre": "Arauca" },
+  { "id": "85", "nombre": "Casanare" },
+  { "id": "86", "nombre": "Putumayo" },
+  { "id": "88", "nombre": "San Andrés, Providencia y Santa Catalina" },
+  { "id": "91", "nombre": "Amazonas" },
+  { "id": "94", "nombre": "Guainía" },
+  { "id": "95", "nombre": "Guaviare" },
+  { "id": "97", "nombre": "Vaupés" },
+  { "id": "99", "nombre": "Vichada" }
+]
+
+
+export default nombresData

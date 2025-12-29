@@ -1,5 +1,5 @@
 import express from "express";
-import { dashboard,  dashboardStores, newStore,postNewStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore,postNewStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation} from '../middlewares/fieldValidations.js';
 
@@ -18,6 +18,7 @@ routes.get('/clientes',dashboardCustomers);
 routes.get('/personal',dashboardEmployees);
 routes.get('/pedidos',dashboardOrders);
 routes.get('/configuracion',dashboardSettings);
+routes.get('/json/municipios/:departamentoId', municipiosJson)
 
 routes.get('/frontend',baseFrondend);
 

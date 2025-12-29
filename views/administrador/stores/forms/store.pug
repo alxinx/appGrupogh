@@ -5,73 +5,136 @@ form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3
         h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
             i.fi-rr-pen-field 
             span.ml-3 Datos De La Tienda
+        
+        
         //INICIO FORMULARIO
+        div
+            if errores && errores.msgTaxId
+                div(class="alert alert-error")
+                    div(class="alert-icon")
+                        i.fi-rr-octagon-xmark
+                    p(class="alert-title") NIT REPETIDO 🚨
+                     p(class="alert-text")=errores.msgTaxId
+
+            if successful && successful.mensaje
+                div(class="alert alert-success")
+                    div(class="alert-icon")
+                        i.fi-rr-social-network
+                    p(class="alert-title") Punto de Venta Guardado 😀
+                        
         div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
+            
+            //*****************[DATOS BÁSICOS]******************************//
+
             div
                 label.label Razón social
                 div(class="input-group")
                     
-                    input(type="text", name="razonSocial"  class="field-text" placeholder = "Dame el nombre de la razón social que aparece en el RUT")
+                    input(type="text" name="razonSocial"  class = (errores && errores.razonSocial) ? "field-text field-text-error" : "field-text" placeholder = "Dame el nombre de la razón social que aparece en el RUT" value = (dato && dato.razonSocial) ? dato.razonSocial : ""
+)
+                    if errores && errores.razonSocial
+                        p(class="label-error pl-2.5")=errores.razonSocial
+                            i.fi-rr-light-emergency-on
+                             
+                                               
+
             div
                 label.label Nombre comercial
                 div(class="input-group")
                     
-                    input(type="text", name="nombreComercial"  class="field-text" placeholder = "Dame el nombre con que todos conocen a la tienda")
+                    input(type="text", name="nombreComercial" class = (errores && errores.nombreComercial)? "field-text field-text-error" : "field-text"  placeholder = "Dame el nombre con que todos conocen a la tienda" value = (dato && dato.nombreComercial) ? dato.nombreComercial : "")
+                    if errores && errores.nombreComercial
+                        p(class="label-error pl-2.5")=errores.nombreComercial
+                            i.fi-rr-light-emergency-on
+
             div
                 label.label Tipo de tienda
                 div(class="select-wrapper")
-                    select(name="tipo" class="field-select")
-                        option(value="Punto de venta") Punto de Venta
-                        option(value="Bodega") Bodega
-                        option(value="Transito") Tránsito
+                    select(name="tipo" class="field-select" )
+                        option(value="Punto de venta" selected=(dato && dato.tipo === 'Punto de venta')) Punto de Venta
+                        option(value="Bodega" selected=(dato && dato.tipo === 'Bodega')) Bodega
+                        option(value="Transito" selected=(dato && dato.tipo === 'Transito')) Tránsito
                     span.select-icon
                         i.fi-rr-chevron-double-down
+                if errores && errores.tipo
+                        p(class="label-error pl-2.5")=errores.tipo
+                            i.fi-rr-light-emergency-on
+
+
+
+
+
         div(class="col-span-12 grid grid-cols-1 md:grid-cols-5 gap-4 mt-5")
             div
                 label.label Dirección comercial
                 div(class="input-group")
                     
-                    input(type="text", name="direccionPrincipal"  class="field-text" placeholder = "En dónde se encuentra ubicada la tienda?")
+                    input(type="text", name="direccionPrincipal"  class = (errores && errores.direccionPrincipal) ? "field-text field-text-error" : "field-text" placeholder = "En dónde se encuentra ubicada la tienda?" value = (dato && dato.direccionPrincipal) ? dato.direccionPrincipal : "")
+                    if errores && errores.direccionPrincipal
+                        p(class="label-error pl-2.5")=errores.direccionPrincipal
+                            i.fi-rr-light-emergency-on
             
             div
                 label.label Departamento
                 div(class="select-wrapper")
-                    select(name="departamento" class="field-select")
-                        option(value="05") Antioquia
-                        option(value="25") Cundinamarca
-                        option(value="17") Caldas
+                    select(name="departamento" id="departamento" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
+                        option(value="") Selecciona El Departamento 
+                        each departamento in departamentos
+                            option(value= departamento.id 
+                                selected=(dato && dato.departamento == departamento.id) ? true : false 
+                            )=departamento.nombre
                     span.select-icon
                         i.fi-rr-chevron-double-down
+                    
+                if errores && errores.departamento
+                    p(class="label-error pl-2.5")=errores.departamento
+                        i.fi-rr-light-emergency-on
             
             div
                 label.label Ciudad
                 div(class="select-wrapper")
-                    select(name="ciudad" class="field-select")
-                        option(value="05001") Medellín
-                        option(value="25") Bogotá
-                        option(value="17") Caldas
+                    select(name="ciudad" id="municipio" class = (errores && errores.ciudad) ? "field-text field-text-error" : "field-text")
+                        if ciudades
+                            option(value="") -- Seleccione Ciudad --
+                            each ciudad in ciudades
+                                option(
+                                    value=ciudad.id
+                                    selected=(dato && dato.ciudad == ciudad.id) ? true : false
+                                )= ciudad.nombre                        
+                        else 
+                            option(value="") -- Seleccione Depto primero --
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
+                    
+                    if errores && errores.ciudad
+                        p(class="label-error pl-2.5")=errores.ciudad
+                            i.fi-rr-light-emergency-on
                     span.select-icon
                         i.fi-rr-chevron-double-down
         
+            
             div
                 label.label Teléfono
                 div(class="input-group")
                     
-                    input(type="text", name="telefono"  class="field-text" placeholder = "Cuál es el número de teléfono de la tienda")
+                    input(type="text", name="telefono"  class = (errores && errores.telefono) ? "field-text field-text-error" : "field-text" placeholder = "Cuál es el número de teléfono de la tienda" value = (dato && dato.telefono) ? dato.telefono : "")
+                    if errores && errores.telefono
+                        p(class="label-error pl-2.5")=errores.telefono
+                            i.fi-rr-light-emergency-on
             
             div
                 label.label ¿Activamos la tienda al crearla?
                 label.flex.items-center.cursor-pointer.justify-center
-                    input(type="checkbox" name="activa" class="sr-only" checked)
+                    input(type="checkbox" name="activa" class="sr-only"
+                    checked=(dato && dato.activa) ? true : false)
                     span.switch
                         span.switch-thumb
                     span.ml-3.text-sm.text-gray-700 
-                
-            
-            
-            
-            
-        
+
+
+    //*****************[DATOS TRIBUTARIOS]******************************//
+
+
     div(class="col-span-12 md:col-span-12 pt-5")
         h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
             i.fi-rr-tax 
@@ -88,30 +151,48 @@ form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3
             div
                 label.label NIT
                 div(class="input-group")
-                    input(type="text", name="taxId"  class="field-text" placeholder = "Cuál es el NIT en el RUT?")
+                    input(type="text", name="taxId"  class = (errores && errores.taxId)? "field-text field-text-error" : "field-text" placeholder = "Cuál es el NIT en el RUT?" value = (dato && dato.taxId) ? dato.taxId : "")
+                    if errores && errores.taxId
+                        p(class="label-error pl-2.5")=errores.taxId
+                            i.fi-rr-light-emergency-on
             div
                 label.label DV
                 div(class="input-group")
-                    input(type="number", name="DV"  class="field-text" placeholder = "El Dígito de verificación" min="0" max="9")
+                    input(type="number", name="DV"  class = (errores && errores.DV) ? "field-text field-text-error" : "field-text" placeholder = "El Dígito de verificación" min="0" max="9" value = (dato && dato.DV) ? dato.DV : "")
+                    if errores && errores.DV
+                        p(class="label-error pl-2.5")=errores.DV
+                            i.fi-rr-light-emergency-on
             
             div
                 label.label Prefijo DIAN
                 div(class="input-group")
-                    input(type="text", name="prefijo"  class="field-text" placeholder = "Este prefijo lo define la resolución DIAN")
+                    input(type="text", name="prefijo"  class = (errores && errores.prefijo) ? "field-text field-text-error" : "field-text" placeholder = "Este prefijo lo define la resolución DIAN" value = (dato && dato.prefijo) ? dato.prefijo : "")
+                    if errores && errores.prefijo
+                        p(class="label-error pl-2.5")=errores.prefijo
+                            i.fi-rr-light-emergency-on
             
             div
                 label.label  Resolución de facturación
                 div(class="input-group")
-                    input(type="text", name="resolucionFacturacion"  class="field-text" placeholder = "Cuál es el nro de resolución que te expidió la DIAN")
+                    input(type="text", name="resolucionFacturacion"  class = (errores && errores.resolucionFacturacion) ? "field-text field-text-error" : "field-text" placeholder = "Cuál es el nro de resolución que te expidió la DIAN" value = (dato && dato.resolucionFacturacion) ? dato.resolucionFacturacion : "")
+                    if errores && errores.resolucionFacturacion
+                        p(class="label-error pl-2.5")=errores.resolucionFacturacion
+                            i.fi-rr-light-emergency-on
             
             div
                 label.label  Email en RUT
                 div(class="input-group")
-                    input(type="email", name="emailRut"  class="field-text" placeholder = "El Email que registraste en el RUT")
+                    input(type="email", name="emailRut" class = (errores && errores.emailRut) ? "field-text field-text-error" : "field-text" placeholder = "El Email que registraste en el RUT" value = (dato && dato.emailRut) ? dato.emailRut : "")
+                    if errores && errores.emailRut
+                        p(class="label-error pl-2.5")=errores.resolucionFacturacion
+                            i.fi-rr-light-emergency-on
+
         div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-5")
             label.label  Texto pie de  factura 
                 div(class="input-group")
-                    textarea(class="field-text textarea" name="footerBill" placeholder="Ingresa el texto que quieres que aparezca en el pie de página de cada factura,  Ejemplo, las condiciones de la garantía")
+                    textarea(class="field-text textarea" name="footerBill" placeholder="Ingresa el texto que quieres que aparezca en el pie de página de cada factura,  Ejemplo, las condiciones de la garantía" )=dato && dato.footerBill ? dato.footerBill : ""
+                    
+
             label(class="flex items-center gap-3 cursor-pointer")
                 label.label Adjunta la resolución DIAN NIT o documento soporte
                 div(class="bg-[#DCF4E1] w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0")

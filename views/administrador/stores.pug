@@ -68,77 +68,34 @@ block contenedor
                             //LISTADO DE PUNTOS DE VENTA
                             div(class="col-span-12 grid grid-cols-1 md:grid-cols-3")
 
+                                if listaPuntosDeVenta
+                                    each listado in listaPuntosDeVenta  
+                                        a(href="./tiendas/verPunto/"+listado.idPuntoDeVenta)                                       
+                                            div(class="cardWhite p-5 flex flex-col gap-4")
+                                                //- --- PARTE SUPERIOR (Título y Badge) ---
+                                                div(class="flex items-center justify-between")
+                                                    h1.h1.text-left=listado.nombreComercial
+                                                    h5.h5 Nit : #{listado.taxId}
+                                                    div(class="status-chip status-active"   ) Abierto
 
-                                //PUNTO DE VENTA 1 
-                                div(class="cardWhite p-5 flex flex-col gap-4")
-                                    //- --- PARTE SUPERIOR (Título y Badge) ---
-                                    div(class="flex items-center justify-between")
-                                        h1.h1.text-left GH Tienda Centro
-                                        h5.h5 Nit : 123.345.566
-                                        div(class="status-chip status-active"   ) Abierto
+                                                div(class="space-y-2")
+                                                    div(class="flex items-center gap-2 text-gray-700")
+                                                        div(class="flex-row flex-auto")
+                                                            i.fi-rr-coins(class="text-3xl text-green-900 mr-2")
+                                                            span.font-bold.text-green-800.text-3xl $12,450.000
+    
+                                                        i.fi-rr-user(class="text-lg text-right")
+                                                        span.text-sm Ventas: 69
 
-                                    div(class="space-y-2")
-                                        div(class="flex items-center gap-2 text-gray-700")
-                                            div(class="flex-row flex-auto")
-                                                i.fi-rr-coins(class="text-3xl text-green-900 mr-2")
-                                                span.font-bold.text-green-800.text-3xl $12,450.000
-
-                                            i.fi-rr-user(class="text-lg text-right")
-                                            span.text-sm Ventas: 69
-
-                                        div(class="flex -space-x-3 pt-2")
-                                            div(class="flex-row flex-auto")
-                                                h2.h2 Empleados Activos
-                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=1" alt="Empleado")
-                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=5" alt="Empleado")
-                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=3" alt="Empleado") 
-                            
-                                //PUNTO DE VENTA 2 
-                                div(class="cardWhite p-5 flex flex-col gap-4")
-                                    //- --- PARTE SUPERIOR (Título y Badge) ---
-                                    div(class="flex items-center justify-between")
-                                        h1.h1.text-left GH Tienda Redes
-                                        h5.h5 Nit : 983.832.123
-                                        div(class="status-chip status-active"   ) Abierto
-
-                                    div(class="space-y-2")
-                                        div(class="flex items-center gap-2 text-gray-700")
-                                            div(class="flex-row flex-auto")
-                                                i.fi-rr-coins(class="text-3xl text-green-900 mr-2")
-                                                span.font-bold.text-green-800.text-3xl $3.229.000
-
-                                            i.fi-rr-user(class="text-lg text-right")
-                                            span.text-sm Ventas: 21
-
-                                        div(class="flex -space-x-3 pt-2")
-                                            div(class="flex-row flex-auto")
-                                                h2.h2 Empleados Activos
-                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=4" alt="Empleado")
-                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=2" alt="Empleado")
-                                            img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=7" alt="Empleado")        
-                                   
-                                //TIENDA 3.
-                                div(class="cardWhite p-5 flex flex-col gap-4")
-                                    //- --- PARTE SUPERIOR (Título y Badge) ---
-                                    div(class="flex items-center justify-between")
-                                        h1.h1.text-left GH  Laureles
-                                        h5.h5 Nit : 342.434.122
-                                        div(class="status-chip status-low"   ) Cerrada
-
-                                    div(class="space-y-2")
-                                        div(class="flex items-center gap-2 text-gray-700")
-                                            div(class="flex-row flex-auto")
-                                                i.fi-rr-coins(class="text-3xl text-green-900 mr-2")
-                                                span.font-bold.text-green-800.text-3xl $0
-
-                                            i.fi-rr-user(class="text-lg text-right")
-                                            span.text-sm Ventas: 0
-
-                                        div(class="flex -space-x-3 pt-2")
-                                            div(class="flex-row flex-auto")
-                                                h2.h2 Empleados Activos
-                                
-                                
+                                                    div(class="flex -space-x-3 pt-2")
+                                                        div(class="flex-row flex-auto")
+                                                            h2.h2 Empleados Activos
+                                                        img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=1" alt="Empleado")
+                                                        img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=5" alt="Empleado")
+                                                        img(class="w-8 h-8 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/150?u=3" alt="Empleado") 
+                                        
+                                       
+                                        
                                 //Boton de crear nueva tienda
                                 a(href="tiendas/new" class="w-full md:w-auto")  
                                     div(class="cardEmty p-5 flex flex-col gap-4 flex-shrink-0")
