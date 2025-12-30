@@ -41,6 +41,20 @@
     @apply text-xs font-normal text-gray-400;
   }
 
+
+  /*FONTS */
+
+
+  .greenFont {
+    @apply text-green-700
+  }
+
+  .purpleFont {
+    @apply text-purple-500
+  }
+
+  
+
   /*LABEL */
 
   .label {
@@ -503,6 +517,15 @@
   }
 
 
+  .stats {
+    @apply col-span-1 
+  }
+
+  .statsBorderRight {
+    @apply border-r-2 border-stone-400 mr-3
+  }
+
+
 
 
 /*BADGE INSIDE TABLE*/
@@ -630,6 +653,8 @@
     @apply text-gray-700 font-bold bg-green-300 border-green-500 border-2 m-2 p-1 rounded-xl text-center;
 
   }
+
+
 
 
 

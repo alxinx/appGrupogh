@@ -52,8 +52,6 @@ const newStore = async (req, res)=>{
         attributes : ['id', 'nombre']
     })
 
-
-
     return res.status(201).render('./administrador/stores/new', {
         pagina: "Tiendas",
         subPagina : "Nueva Tienda",
@@ -61,13 +59,59 @@ const newStore = async (req, res)=>{
         currentPath: '/tiendas',
         departamentos : dptos,
         btn : "Crear Nuevo Punto De Venta"
-        
     })
 }
 
 //PRINCIPAL INVENTARIOS
 const dashboardInventorys = async (req, res)=>{
     
+}
+
+
+
+//************[TIENDAS]*******************//
+const verTienda = async (req,res)=>{
+
+    const {idPuntoDeVenta }=req.params
+    const puntoVenta = await PuntosDeVenta.findOne({
+        where : { idPuntoDeVenta : idPuntoDeVenta}
+    })
+    return res.status(201).render('./administrador/stores/viewStore', {
+        pagina: req.path,
+        subPagina : "Estado de la tienda ",
+        csrfToken : req.csrfToken(),
+        currentPath: '/tiendas',
+        dato : puntoVenta,
+    })
+}
+
+
+const editarTienda = async (req,res)=>{
+
+    const {idPuntoDeVenta }=req.params
+    const puntoVenta = await PuntosDeVenta.findOne({
+        where : { idPuntoDeVenta : idPuntoDeVenta}
+    })
+
+    console.log(puntoVenta.departamento)
+
+    const departamentos = await Departamentos.findAll({ raw: true });
+        let ciudades = [];        
+        ciudades = await Municipios.findAll({
+            where: { departamento_id: puntoVenta.departamento},
+            raw: true
+        });
+    return res.status(201).render('./administrador/stores/editStore', {
+        pagina: req.path,
+        subPagina : "Editar Tienda ",
+        csrfToken : req.csrfToken(),
+        currentPath: '/tiendas',
+        dato : puntoVenta,
+        departamentos : departamentos,
+        ciudades: ciudades,
+        btn : "Editar TiendaS"
+
+    })
 }
 
 
@@ -96,8 +140,6 @@ const dashboardOrders = async (req, res)=>{
 
 
 const dashboardSettings = async (req, res)=>{
-
-    //
      return res.status(201).render('./administrador/settings', {
         pagina: "Configuración",
         csrfToken : req.csrfToken(),
@@ -189,6 +231,8 @@ const postNewStore = async (req, res)=>{
 
     //INGRESO LOS DATOS A LA BASE DE DATOS
     const {razonSocial, nombreComercial, tipo, direccionPrincipal, departamento, ciudad,telefono, taxId, DV, prefijo, resolucionFacturacion, emailRut, footerBill} = req.body;
+    
+    
     const activa = req.body.activa ? true : false
     const saveStore = await PuntosDeVenta.create({
        razonSocial : razonSocial,
@@ -262,6 +306,8 @@ export {
     dashboard,
     dashboardStores,
     newStore,
+    verTienda,
+    editarTienda,
     postNewStore,
     dashboardInventorys,
     dashboardCustomers,

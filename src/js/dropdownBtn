@@ -1,0 +1,27 @@
+// js/dropdownButton.js
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 1. Selección de elementos
+  const btnMas = document.getElementById('btnMas');
+  const menuMas = document.getElementById('menuMas');
+  if (btnMas && menuMas) {
+    
+    // Abrir / Cerrar al hacer clic en el botón
+    btnMas.addEventListener('click', (e) => {
+      // Opcional: e.stopPropagation() ya no es estrictamente necesario 
+      // con la lógica de abajo, pero mal no hace aquí.
+      menuMas.classList.toggle('hidden');
+    });
+
+    // Cerrar al hacer clic fuera
+    document.addEventListener('click', (e) => {
+      const target = e.target;
+
+      // Verificamos "target instanceof Node" para calmar al editor y asegurar
+      // que estamos trabajando con un elemento HTML válido.
+      if (target instanceof Node && !btnMas.contains(target) && !menuMas.contains(target)) {
+        menuMas.classList.add('hidden');
+      }
+    });
+  }
+});

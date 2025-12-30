@@ -1,5 +1,5 @@
 import express from "express";
-import { dashboard,  dashboardStores, newStore,postNewStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNewStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation} from '../middlewares/fieldValidations.js';
 
@@ -12,6 +12,8 @@ const routes = express.Router();
 routes.get("/", dashboard);
 routes.get('/tiendas',dashboardStores);
     routes.get('/tiendas/new',newStore);
+    routes.get('/tiendas/verPunto/:idPuntoDeVenta',verTienda);
+    routes.get('/tiendas/editar/:idPuntoDeVenta',editarTienda);
     
 routes.get('/inventario',dashboardInventorys);
 routes.get('/clientes',dashboardCustomers);

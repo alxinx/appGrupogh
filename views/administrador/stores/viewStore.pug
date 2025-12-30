@@ -1,0 +1,67 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+                            //******************[CUERPO PANELES]*********************//
+                            
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                include  ./headers/headerStore.pug
+                                include  ./headers/actionBtns.pug
+                                
+
+
+                                    
+                            
+                            //STATS
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-1")
+                                div(class="col-span-3 cards md:col-span-2 grid grid-cols-3 ")
+                                   
+                                    //VENTAS DIARIAS
+                                    div(class="stats statsBorderRight mt-5 mb-4 ")
+                                        span(class="col-span-12")
+                                            h2.h2(class="pb-4")
+                                                i.fi-rr-light-emergency-on
+                                                span.text-gray-500 Ventas Diarias
+                                        span.col-span-12
+                                            span(class="greenFont  text-1xl  md:text-4xl font-bold pt-4") $50.000.000
+                                        span.col-span-12
+                                            h5.h5.text-right.pr-10.pt-5 32 Transacciones
+
+                                    //VENTAS ÚLTIMOS 30 DIAS.
+                                    div(class="stats statsBorderRight mt-5 mb-4 ")
+                                        span(class="col-span-12")
+                                            h2.h2(class="pb-4")
+                                                i.fi-rr-light-emergency-on
+                                                span.text-gray-500 Ventas Últimos 30 días
+                                        span.col-span-12
+                                            span(class="text-1xl purpleFont  md:text-4xl font-bold pt-4") $32.423.922
+                                        span.col-span-12
+                                            h5.h5.text-right.pr-10.pt-5 256 Transacciones
+
+                                    
+                                    div(class="stats  mt-5 mb-4")
+                                        span.col-span-12
+                                            h2.h2(class="pb-4")
+                                                i.fi-rr-light-emergency-on
+                                                span.text-gray-500 Resolución DIAN.
+                                        span(class="text-1xl  md:text-4xl font-bold pt-4")
+                                            h1.h1=dato.resolucionFacturacion
+                                        span.col-span-12.text-center.mt-4
+                                            h5.h5 Valida hasta eel 12 de abril
+
+
+
+
+                                div(class="col-span-1 cards")
+        
+        script(src="/js/dropdownBtn.js")            
+
+                                
