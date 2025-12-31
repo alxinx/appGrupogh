@@ -2,6 +2,7 @@ import Usuarios from './Usuarios.js'
 import Departamentos from './Departamentos.js'
 import Municipios from './Municipios.js'
 import PuntosDeVenta from './PuntosDeVenta.js'
+import RegimenFacturacion from './RegimenFacturacion.js'
 
 
 
@@ -14,5 +15,6 @@ export {
     Usuarios,
     Departamentos,
     Municipios,
-    PuntosDeVenta
+    PuntosDeVenta,
+    RegimenFacturacion
 }

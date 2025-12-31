@@ -1,6 +1,6 @@
 form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards") 
-    input(type="hidden", name="_csrf" value = csrfToken)
-    input(type="hidden" name="idPuntoVenta" value = idPuntoVenta ? idPuntoVenta : "")
+    input(type="text", name="_csrf" value = csrfToken)
+    input(type="hidden" name="idPuntoDeVenta" value = (dato && dato.idPuntoDeVenta) ? dato.idPuntoDeVenta : "")
     div(class="col-span-12 md:col-span-12")
         h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
             i.fi-rr-pen-field 
@@ -20,7 +20,7 @@ form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3
                 div(class="alert alert-success")
                     div(class="alert-icon")
                         i.fi-rr-social-network
-                    p(class="alert-title") Punto de Venta Guardado 😀
+                    p(class="alert-title")=successful.mensaje
                         
         div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
             

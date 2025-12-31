@@ -1,0 +1,18 @@
+[
+  {
+    "codigo": "01",
+    "descripcion": "Factura Electrónica de Venta"
+  },
+  {
+    "codigo": "02",
+    "descripcion": "Factura de Exportación"
+  },
+  {
+    "codigo": "03",
+    "descripcion": "Documento Equivalente (POS)"
+  },
+  {
+    "codigo": "04",
+    "descripcion": "Factura Electrónica de Venta - Tipo Contingencia"
+  }
+]

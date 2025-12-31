@@ -1,99 +1,97 @@
-import { DataTypes  } from "sequelize";
-import db from "../config/bd.js"
+import { DataTypes } from "sequelize";
+import db from "../config/bd.js";
 
 const PuntosDeVenta = db.define('PUNTO_DE_VENTA', {
     idPuntoDeVenta: {
-        type : DataTypes.UUID,
+        type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
         allowNull: false
     },
     tipo: {
-       type:  DataTypes.ENUM('Punto de venta', 'Bodega', 'Transito'),
-       allowNull : false
+        type: DataTypes.ENUM('Punto de venta', 'Bodega', 'Transito'),
+        allowNull: false
     },
-    razonSocial : {
-        type : DataTypes.STRING(100),
-        allowNull : false,
-        validate : {
-            notEmpty : { msg : "La razón social no puede ir vacia."}
+    razonSocial: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        validate: {
+            notEmpty: { msg: "La razón social no puede ir vacia." }
         }
     },
-    nombreComercial : {
-        type : DataTypes.STRING(100),
-        allowNull : false,
-        validate : {
-            notEmpty : { msg : "El nombre comercial no puede ir vacio."}
+    nombreComercial: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        validate: {
+            notEmpty: { msg: "El nombre comercial no puede ir vacio." }
         }
     },
-    direccionPrincipal : {
-        type : DataTypes.STRING,
-        allowNull : false,
-        validate : {
-            notEmpty : { msg : "La dirección comercial no puede ir vacia."}
+    direccionPrincipal: {
+        type: DataTypes.STRING(255), // Especificado para coincidir con tu SQL
+        allowNull: false,
+        validate: {
+            notEmpty: { msg: "La dirección comercial no puede ir vacia." }
         }
     },
-    departamento : {
-        type: DataTypes.STRING(5), 
-        allowNull : false,
-        references : {
-            model : 'DEPARTAMENTOS',
-            key : 'id'
+    departamento: {
+        type: DataTypes.STRING(5),
+        allowNull: false,
+        references: {
+            model: 'DEPARTAMENTOS', // Asegúrate que el nombre de la tabla sea exacto
+            key: 'id'
         },
-        onUpdate :'CASCADE',
-        onUpdate : 'RESTRICT'
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT' // Corregido: antes tenías doble onUpdate
     },
-    ciudad : {
-        type: DataTypes.STRING(5), 
-        allowNull : false,
-        references : {
-            model : 'MUNICIPIOS',
-            key : 'id'
+    ciudad: {
+        type: DataTypes.STRING(5),
+        allowNull: false,
+        references: {
+            model: 'MUNICIPIOS', // Asegúrate que el nombre de la tabla sea exacto
+            key: 'id'
         },
-        onUpdate : 'CASCADE',
-        onDelete : 'RESTRICT'
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
     },
-    telefono : DataTypes.STRING,
-    activa : {
-        type : DataTypes.BOOLEAN,
-        defaultValue : true
+    telefono: DataTypes.STRING(255),
+    activa: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
     },
-    taxId : {
+    taxId: {
         type: DataTypes.STRING(20),
-        allowNull : false,
-        unique : true
+        allowNull: true,
+        unique: true
     },
-    DV : {
-        type : DataTypes.STRING(1),
-        allowNull : false,
-        validate : {
-            isNumeric : true,
-            len : [1,1]
+    DV: {
+        type: DataTypes.STRING(1),
+        allowNull: true,
+        validate: {
+            isNumeric: true,
+            len: [1, 1]
         }
     },
-    prefijo : DataTypes.STRING,
-    resolucionFacturacion : {
-        type : DataTypes.STRING,   
-   
+    prefijo: DataTypes.STRING(255),
+    resolucionFacturacion: {
+        type: DataTypes.STRING(255),
     },
-    emailRut : {
-        type : DataTypes.STRING,
-        validate : {
-            isEmail : true
+    emailRut: {
+        type: DataTypes.STRING(255),
+        validate: {
+            isEmail: true
         }
     },
-    footerBill : DataTypes.TEXT
+    footerBill: DataTypes.TEXT
 },
 {
-    tableName : "PUNTO_DE_VENTA",
-    timestamps : true,
-    hooks : {
-        beforeSave : (punto) =>{
-            if(punto.razonSocial) punto.razonSocial =punto.razonSocial.trim();
-            if(punto.nombreComercial) punto.nombreComercial = punto.nombreComercial.trim();
+    tableName: "PUNTO_DE_VENTA",
+    timestamps: true,
+    hooks: {
+        beforeSave: (punto) => {
+            if (punto.razonSocial) punto.razonSocial = punto.razonSocial.trim();
+            if (punto.nombreComercial) punto.nombreComercial = punto.nombreComercial.trim();
         }
     }
-}
-);
+});
 
 export default PuntosDeVenta;

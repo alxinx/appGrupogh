@@ -1,0 +1,7 @@
+[
+  { "codigo": "O-13", "descripcion": "Gran Contribuyente" },
+  { "codigo": "O-15", "descripcion": "Autorretenedor" },
+  { "codigo": "O-23", "descripcion": "Agente de retención ventas" },
+  { "codigo": "O-47", "descripcion": "Régimen Simple de Tributación - RST" },
+  { "codigo": "R-99-PN", "descripcion": "No responsable" }
+]

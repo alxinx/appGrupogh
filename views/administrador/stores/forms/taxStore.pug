@@ -1,0 +1,176 @@
+div(class="col-span-12 md:col-span-12")
+    
+    
+    
+    //INICIO FORMULARIO
+    div
+        if errores && errores.msgTaxId
+                div(class="alert alert-error")
+                    div(class="alert-icon")
+                        i.fi-rr-octagon-xmark
+                    p(class="alert-title") NIT REPETIDO 🚨
+                     p(class="alert-text")=errores.msgTaxId
+
+        if successful && successful.mensaje
+            div(class="alert alert-success")
+                div(class="alert-icon")
+                    i.fi-rr-social-network
+                p(class="alert-title")=successful.mensaje
+                    
+    div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
+        
+        //*****************[DATOS TRIBUTARIOS]******************************//
+        div(class="col-span-12 md:col-span-12 pt-5")
+            h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
+                i.fi-rr-tax 
+                span.ml-3 Datos Tributarios
+            
+            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-5")
+                div(class="col-span-12 text-center")
+                    h3.h3
+                        i.fi-rr-light-emergency-on.mr-3
+                        | Estos datos se usan principalmente para la facturación, te recomiento que tengas el RUT y la
+                        a(href="https://www.dian.gov.co/impuestos/sociedades/presentacionclientes/Solicitud_de_Autorizacion_de_Numeracion_de_Facturacion.pdf" target="_blank") 
+                            | RESOLUCIÓN DE FACTURACIÓN 
+                        | a la mano para consultar cualquier dato.
+            
+            div(class="col-span-12 grid grid-cols-1 md:grid-cols-5 gap-4 mt-5 mb-8")
+                
+                div
+                    label.label NIT
+                    div(class="input-group")
+                        input(type="text", name="taxId"  class = (errores && errores.taxId)? "field-text field-text-error" : "field-text" placeholder = "Cuál es el NIT en el RUT?" value = (dato && dato.taxId) ? dato.taxId : "")
+                        if errores && errores.taxId
+                            p(class="label-error pl-2.5")=errores.taxId
+                                i.fi-rr-light-emergency-on
+                div
+                    label.label Digito de verificación.
+                    div(class="input-group")
+                        input(type="number", name="DV"  class = (errores && errores.DV) ? "field-text field-text-error" : "field-text" placeholder = "El Dígito de verificación" min="0" max="9" value = (dato && dato.DV) ? dato.DV : "")
+                        if errores && errores.DV
+                            p(class="label-error pl-2.5")=errores.DV
+                                i.fi-rr-light-emergency-on
+                
+                div
+                    label.label Prefijo DIAN
+                    div(class="input-group")
+                        input(type="text", name="prefijo"  class = (errores && errores.prefijo) ? "field-text field-text-error" : "field-text" placeholder = "Este prefijo lo define la resolución DIAN" value = (dato && dato.prefijo) ? dato.prefijo : "")
+                        if errores && errores.prefijo
+                            p(class="label-error pl-2.5")=errores.prefijo
+                                i.fi-rr-light-emergency-on
+                
+                
+                
+                div
+                    label.label  Email en RUT
+                    div(class="input-group")
+                        input(type="email", name="emailRut" class = (errores && errores.emailRut) ? "field-text field-text-error" : "field-text" placeholder = "El Email que registraste en el RUT" value = (dato && dato.emailRut) ? dato.emailRut : "")
+                        if errores && errores.emailRut
+                            p(class="label-error pl-2.5")=errores.resolucionFacturacion
+                                i.fi-rr-light-emergency-on
+                
+                div
+                    label.label Responsabilidad Fiscal
+                    div(class="select-wrapper")
+                        select(name="responsabilidades" id="responsabilidades" class = "field-text")
+                            option(value="") Selecciona El Regimen
+                            if responsabiliidadFiscal
+                                each responsabilidad in responsabiliidadFiscal
+                                    option(value =responsabilidad.codigo)= responsabilidad.descripcion
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
+
+                
+            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-5")
+                div
+                    label.label Tipo Persona Juridica
+                    div(class="select-wrapper")
+                        select(name="tipo_organizacion" id="tipo_organizacion" class = "field-text")
+                            option(value="") Selecciona El Tipo De Organización
+                            if tipoPersonaJuridica
+                                each tipoPersona in tipoPersonaJuridica
+                                    option(value =tipoPersona.codigo)= tipoPersona.descripcion
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
+                
+                div
+                    label.label Tipo de facturación
+                    div(class="select-wrapper")
+                        select(name="tipoFactura" id="tipoFactura" class = "field-text")
+                            option(value="") Selecciona El Tipo De Factura
+                            if tipoFacturas
+                                each tipoFactura in tipoFacturas
+                                    option(value =tipoFactura.codigo)= tipoFactura.descripcion
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
+
+
+            div(class="col-md-12   mt-5 pt-4  border-t-2 border-t-gh-primarySoft    ")
+                    
+                    h1.h1
+                        i.fi-rr-features.mr-3
+                        | RESOLUCIÓN DE FACTURACIÓN
+
+
+            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 mt-5")
+                
+
+                div
+                    label.label  Resolución de facturación
+                    div(class="input-group")
+                        input(type="text", name="resolucionFacturacion"  class = (errores && errores.resolucionFacturacion) ? "field-text field-text-error" : "field-text" placeholder = "Cuál es el nro de resolución que te expidió la DIAN" value = (dato && dato.resolucionFacturacion) ? dato.resolucionFacturacion : "")
+                        if errores && errores.resolucionFacturacion
+                            p(class="label-error pl-2.5")=errores.resolucionFacturacion
+                                i.fi-rr-light-emergency-on
+
+                div
+                    label.label  Fecha de Emisión
+                    div(class="input-group")
+                        input(type="date", name="fechaEmision"  class = (errores && errores.fechaEmision) ? "field-text field-text-error" : "field-text" placeholder = "La fecha desde que tiene vigencia" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+                
+                div
+                    label.label  Fecha de Vencimiento
+                    div(class="input-group")
+                        input(type="date", name="fechaVencimiento"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "La fecha en que vence la resolución" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 mt-5")
+                div
+                    label.label  Nro Inicio de la facturación
+                    div(class="input-group")
+                        input(type="number", name="nroInicio"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "Desde cuál número te autorizaron facturar" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+                
+                div
+                    label.label  Nro final de la facturación
+                    div(class="input-group")
+                        input(type="number", name="nroFin"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "Hasta cuál número autorizaron facturar?" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+                        
+                div
+                    label.label  Agrega el Pdf de la resolución. 
+                    div(class="bg-[#DCF4E1] w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0")
+                        i(class="fi-rr-clip text-xl")
+                    div
+                        p(class="text-sm font-medium") Adjuntar la resolución.
+                        p(class="text-xs text-gray-400") PDF
+                    input(type="file" class="hidden")
+
+
+
+            div(class="col-span-12 grid grid-cols-1 md:grid-cols-1 gap-4 mt-5")
+                label.label  Texto pie de  factura 
+                    div(class="input-group")
+                        textarea(class="field-text textarea" name="footerBill" placeholder="Ingresa el texto que quieres que aparezca en el pie de página de cada factura,  Ejemplo, las condiciones de la garantía" )=dato && dato.footerBill ? dato.footerBill : ""
+                        
+    
+                
+    
+        
+            div(class="form-actions justify-between mt-5 pt-4  border-t-2 border-t-gh-primarySoft")
+    div(class="flex gap-3 justify-center")
+        a(href="javascript:void(0)" data-step="1"  class="btn btn-primary step-btn")
+            | Volver a los datos básicos
+        a(href="javascript:void(0)" data-step="3"  class="btn btn-primary step-btn")
+            | Continuar con la documentación
+        
+        button(class="btn btn-secondary" )
+           i.fi-rr-disk
+           | Guardar Salir
+        

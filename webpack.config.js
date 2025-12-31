@@ -5,7 +5,8 @@ export default {
     entry : {
         menu : './src/js/menus.js',
         dataAsync : './src/js/dataAsync.js',
-        dropdownBtn : './src/js/dropdownBtn'
+        dropdownBtn : './src/js/dropdownBtn',
+        steepForms : './src/js/steepForms.js'
     },
     output : {
         filename : '[name].js',

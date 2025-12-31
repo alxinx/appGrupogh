@@ -1,0 +1,110 @@
+div(class="col-span-12 md:col-span-12")
+    h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-
+        i.fi-rr-pen-field 
+        span.ml-3 Datos De La Tienda
+    //INICIO FORMULARIO
+    div
+        if successful && successful.mensaje
+            div(class="alert alert-success")
+                div(class="alert-icon")
+                    i.fi-rr-social-network
+                p(class="alert-title")=successful.mensaje
+                    
+    div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
+
+        //*****************[DATOS BÁSICOS]******************************//
+        div
+            label.label Razón social
+            div(class="input-group")
+                
+                input(type="text" name="razonSocial"  class = (errores && errores.razonSocial) ?"field-text field-text-error" : "field-text" placeholder = "Dame el nombre de la razónsocial que aparece en el RUT" value = (dato && dato.razonSocial) ? dato.razonSocial :"")
+                if errores && errores.razonSocial
+                    p(class="label-error pl-2.5")=errores.razonSocial
+                        i.fi-rr-light-emergency-on
+        div
+            label.label Nombre comercial
+            div(class="input-group")
+                input(type="text", name="nombreComercial" class = (errores && errores.nombreComercial)?"field-text field-text-error" : "field-text"  placeholder = "Dame el nombre con quetodos conocen a la tienda" value = (dato && dato.nombreComercial) ? dato.nombreComercial : "")
+                if errores && errores.nombreComercial
+                    p(class="label-error pl-2.5")=errores.nombreComercial
+                        i.fi-rr-light-emergency-on
+        div
+            label.label Tipo de tienda
+            div(class="select-wrapper")
+                select(name="tipo" class="field-select" )
+                    option(value="Punto de venta" selected=(dato && dato.tipo === 'Punto de venta')) Punto de Venta
+                    option(value="Bodega" selected=(dato && dato.tipo === 'Bodega')) Bodega
+                    option(value="Transito" selected=(dato && dato.tipo === 'Transito')) Tránsito
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+            if errores && errores.tipo
+                    p(class="label-error pl-2.5")=errores.tipo
+                        i.fi-rr-light-emergency-on
+    div(class="col-span-12 grid grid-cols-1 md:grid-cols-5 gap-4 mt-5")
+        div
+            label.label Dirección comercial
+            div(class="input-group")
+                input(type="text", name="direccionPrincipal"  class = (errores && errores.direccionPrincipal) ? "field-text field-text-error" : "field-text" placeholder = "Endónde se encuentra ubicada la tienda?" value = (dato && dato.direccionPrincipal) ? dato.direccionPrincipal : "")
+                if errores && errores.direccionPrincipal
+                    p(class="label-error pl-2.5")=errores.direccionPrincipal
+                        i.fi-rr-light-emergency-on
+        div
+            label.label Departamento
+            div(class="select-wrapper")
+                select(name="departamento" id="departamento" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
+                    option(value="") Selecciona El Departamento 
+                    each departamento in departamentos
+                        option(value= departamento.id 
+                            selected=(dato && dato.departamento == departamento.id) ? true : false 
+                        )=departamento.nombre
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+            if errores && errores.departamento
+                p(class="label-error pl-2.5")=errores.departamento
+                    i.fi-rr-light-emergency-on
+        div
+            label.label Ciudad
+            div(class="select-wrapper")
+                select(name="ciudad" id="municipio" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text")
+                    if ciudades
+                        option(value="") -- Seleccione Ciudad --
+                        each ciudad in ciudades
+                            option(
+                                value=ciudad.id
+                                selected=(dato && dato.ciudad == ciudad.id) ? true : false
+                            )= ciudad.nombre                        
+                    else 
+                        option(value="") -- Seleccione Depto primero --
+                    span.select-icon
+                        i.fi-rr-chevron-double-down
+                if errores && errores.ciudad
+                    p(class="label-error pl-2.5")=errores.ciudad
+                        i.fi-rr-light-emergency-on
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+        div
+            label.label Teléfono
+            div(class="input-group")
+                input(type="text", name="telefono"  class = (errores && errores.telefono) ? "field-textfield-text-error" : "field-text" placeholder = "Cuál es el número de teléfono de latienda" value = (dato && dato.telefono) ? dato.telefono : "")
+                if errores && errores.telefono
+                    p(class="label-error pl-2.5")=errores.telefono
+                        i.fi-rr-light-emergency-on
+        div
+            label.label ¿Activamos la tienda al crearla?
+            label.flex.items-center.cursor-pointer.justify-center
+                input(type="checkbox" name="activa" class="sr-only"
+                checked=(dato && dato.activa) ? true : false)
+                span.switch
+                    span.switch-thumb.
+                span.ml-3.text-sm.text-gray-700 
+    
+    
+    div(class="form-actions justify-between mt-5 pt-4  border-t-2 border-t-gh-primarySoft")
+        div(class="flex gap-3 justify-center")
+            a(href="javascript:void(0)" data-step="2"  class="btn btn-primary step-btn")
+                | Continuar con datos tributarios
+            
+            button(class="btn btn-secondary")
+                i.fi-rr-disk
+                | Guardar Salir
+        
