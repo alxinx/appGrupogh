@@ -77,9 +77,6 @@ const PuntosDeVenta = db.define('PUNTO_DE_VENTA', {
     },
     emailRut: {
         type: DataTypes.STRING(255),
-        validate: {
-            isEmail: true
-        }
     },
     footerBill: DataTypes.TEXT
 },

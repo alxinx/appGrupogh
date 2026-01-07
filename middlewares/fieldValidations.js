@@ -43,20 +43,18 @@ const storeRegisterValidation =  [
     check("departamento").trim().isInt().withMessage('El departamento debe ser uno de los de la lista.'),
     check("ciudad").trim().isInt().withMessage('La ciudad debe ser uno de los de la lista.'),
     check("telefono").trim().isMobilePhone().withMessage('Debe ser un numero celular.'),
-    //check("taxId").trim().isInt().withMessage('El numero del RUT es importante'),
-    //check("DV").trim().isLength({min:1, max: 1}).withMessage('El código de verificación es importante'),
-    //check("resolucionFacturacion").isInt().withMessage('Debes darme un número de resolución válido.'),
-    //check("emailRut").trim().isEmail().withMessage('El email es importante.'),
-    //check('idDepartamento').trim().notEmpty().withMessage('Debes seleccionar un Departamento'),
-    //check('idCiudad').trim().notEmpty().withMessage('Debes seleccionar una ciudad'),
-
-
     
+]
 
+const storeBasicTaxDataValidation = [
+    check("taxId").trim().isInt().optional({checkFalsy: true}).withMessage('El numero del RUT es importante'),
+    check("DV").trim().isLength({min:1, max: 1}).optional({checkFalsy: true}).withMessage('El código de verificación es importante'),
+    check("emailRut").isEmail().optional({checkFalsy: true}).withMessage('Es necesario el email que tienes registrado ante la DIAN.'),
 ]
 
 
 export {    registerValidation,
             loginValidation,
-            storeRegisterValidation
+            storeRegisterValidation,
+            storeBasicTaxDataValidation
         }

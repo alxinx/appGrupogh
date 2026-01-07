@@ -1,7 +1,7 @@
 import express from "express";
-import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNewStore, postNuevaTienda, postEditStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, baseFrondend} from "../controller/adminControllers.js"
 
-import {storeRegisterValidation} from '../middlewares/fieldValidations.js';
+import {storeRegisterValidation, storeBasicTaxDataValidation} from '../middlewares/fieldValidations.js';
 
 const routes = express.Router();
 
@@ -27,7 +27,7 @@ routes.get('/frontend',baseFrondend);
 
 
 //****************[POST]**********************/
-routes.post('/tiendas/nueva', storeRegisterValidation, postNuevaTienda)
+routes.post('/tiendas/nueva', storeRegisterValidation, storeBasicTaxDataValidation, postNuevaTienda)
 //routes.post('/tiendas/new', storeRegisterValidation, postNewStore)
 
 routes.post('/tiendas/editar/:idPuntoDeVenta', storeRegisterValidation, postEditStore)

@@ -14,7 +14,7 @@ const RegimenFacturacion = db.define('REGIMEN_FACTURACION', {
     },
     resolucionFacturacion : {
         type : DataTypes.STRING, 
-        allowNull : false,  
+        allowNull : true,  
         unique : true
     },
     responsabilidades: {
@@ -23,33 +23,39 @@ const RegimenFacturacion = db.define('REGIMEN_FACTURACION', {
         defaultValue: 'R-99-PN' // Código estándar para "No responsable" o "Otros"
     },
     tipo_organizacion: {
-        type: DataTypes.ENUM('1', '2'), // 1 = Persona Jurídica, 2 = Persona Natural
-        allowNull: false
+    type: DataTypes.ENUM('1', '2'), 
+    allowNull: true, // Permite que sea NULL si no se ha elegido
+    defaultValue: null 
     },
     tipoFactura: {
-       type:  DataTypes.ENUM('FACTURA_ELECTRONICA', 'POS_ELECTRONICO', 'CONTINGENCIA', 'NOTA_CREDITO', 'NOTA_DEBITO'),
-       allowNull : false
+        type:  DataTypes.ENUM('FACTURA_ELECTRONICA', 'POS_ELECTRONICO', 'CONTINGENCIA', 'NOTA_CREDITO', 'NOTA_DEBITO'),
+        allowNull : true,
+        defaultValue : 'POS_ELECTRONICO'
+
     },
     fechaEmision : {
         type : DataTypes.DATE,
-        allowNull : false,
+        allowNull : true,
     },
     fechaVencimiento : {
         type : DataTypes.DATE,
-        allowNull : false,
+        allowNull : true,
+        allowNull : true,
     },
     nroInicio : {
         type :  DataTypes.BIGINT,
-        allowNull : false
+        allowNull : true,
+        defaultValue : 0
     },
     nroFin :  {
         type :  DataTypes.BIGINT,
-        allowNull : false
+        allowNull : true,
+        defaultValue : 100000000
     },
     nroActual : {
         type : DataTypes.BIGINT,
         defaultValue : 0, // Inicia en 0 para que la primera factura sea (0 + 1) = 1
-        allowNull : false
+        allowNull : true,
     } ,
     razonSocial : {
         type : DataTypes.STRING(100),
