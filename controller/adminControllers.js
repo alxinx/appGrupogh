@@ -101,19 +101,51 @@ const editarTienda = async (req,res)=>{
         where : { idPuntoDeVenta : idPuntoDeVenta}
     })
 
+    const datosRegimenFacturacion = await RegimenFacturacion.findOne({
+        where : {idPuntoDeVenta : idPuntoDeVenta},
+        order : [['createdAt', 'DESC']]
+    })
 
+
+    const obtenerDatosSelectores = async (idDepartamento) => {
+        const [departamentos, ciudades] = await Promise.all([
+            Departamentos.findAll({ raw: true }),
+            idDepartamento 
+                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+                : Promise.resolve([])
+        ]);
+        return { departamentos, ciudades };
+    };
+    const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+    
+
+    //Formateo Fechas:
+    let fechaEmisionFormateada = "";
+    let fechaFinalizacionFormateada = "";
+    fechaEmisionFormateada = datosRegimenFacturacion.fechaEmision.toISOString().split('T')[0];
+    fechaFinalizacionFormateada = datosRegimenFacturacion.fechaVencimiento.toISOString().split('T')[0];
+
+    /* 
     const departamentos = await Departamentos.findAll({ raw: true });
         let ciudades = [];        
         ciudades = await Municipios.findAll({
             where: { departamento_id: puntoVenta.departamento},
             raw: true
         });
-    return res.status(201).render('./administrador/stores/editStore', {
+
+    */
+    return res.status(201).render('./administrador/stores/nueva', {
         pagina: req.path,
         subPagina : "Editar Tienda ",
         csrfToken : req.csrfToken(),
         currentPath: '/tiendas',
         dato : puntoVenta,
+        datosRegimenFacturacion : datosRegimenFacturacion,
+        fechaEmisionFormateada :fechaEmisionFormateada,
+        fechaFinalizacionFormateada: fechaFinalizacionFormateada,
+        responsabiliidadFiscal : responsabiliidadFiscal,
+        tipoPersonaJuridica : tipoPersonaJuridica,
+        tipoFacturas : tipoFacturas,
         departamentos : departamentos,
         ciudades: ciudades,
         btn : "Editar Tienda"
@@ -161,8 +193,7 @@ const dashboardSettings = async (req, res)=>{
 const postNuevaTienda = async (req, res) => {
     // 1. Captura de errores de express-validator
     const erroresValidacion = validationResult(req);
-
-     const obtenerDatosSelectores = async (idDepartamento) => {
+    const obtenerDatosSelectores = async (idDepartamento) => {
         const [departamentos, ciudades] = await Promise.all([
             Departamentos.findAll({ raw: true }),
             idDepartamento 
@@ -171,8 +202,6 @@ const postNuevaTienda = async (req, res) => {
         ]);
         return { departamentos, ciudades };
     };
-
-    
     if (!erroresValidacion.isEmpty()) {
         const errsPorCampo = {};
         erroresValidacion.array().forEach(err => {
@@ -254,6 +283,94 @@ const postNuevaTienda = async (req, res) => {
             });
         }
     }
+
+    const nStart = Number(req.body.nroInicio) || 0;
+    const nEnd = Number(req.body.nroFin) || 0;
+    
+    if((nStart > 0 && nEnd === 0) || (nEnd > 0 && nStart === 0)){
+        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+            return res.status(409).render('./administrador/stores/nueva', {
+                pagina: "Tiendas",
+                subPagina : "Nueva Tienda",
+                csrfToken : req.csrfToken(),
+                currentPath: '/tiendas',
+                departamentos : departamentos,
+                ciudades: ciudades,
+                activa : activa,
+                dato: req.body,
+                responsabiliidadFiscal : responsabiliidadFiscal,
+                tipoPersonaJuridica : tipoPersonaJuridica,
+                tipoFacturas : tipoFacturas,
+                errores: { msgTaxId: "🚨 Si ingresas un rango de facturación, debes completar tanto el número inicial como el final." },
+                pasoActivo: "2"
+            });
+    }
+
+
+    if(nEnd > 0 && nStart >= nEnd){
+        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+            return res.status(409).render('./administrador/stores/nueva', {
+                pagina: "Tiendas",
+                subPagina : "Nueva Tienda",
+                csrfToken : req.csrfToken(),
+                currentPath: '/tiendas',
+                departamentos : departamentos,
+                ciudades: ciudades,
+                activa : activa,
+                dato: req.body,
+                responsabiliidadFiscal : responsabiliidadFiscal,
+                tipoPersonaJuridica : tipoPersonaJuridica,
+                tipoFacturas : tipoFacturas,
+                errores: { msgTaxId: `🚨 Error en rango: El inicio (${nStart}) no puede superar al final (${nEnd}).` },
+                pasoActivo: "2"
+            });
+    }
+
+    const dEmision = req.body.fechaEmision?.trim() ? new Date(req.body.fechaEmision) : null;
+    const dVencimiento = req.body.fechaVencimiento?.trim() ? new Date(req.body.fechaVencimiento) : null;
+
+    if((dEmision && !dVencimiento) || (!dEmision && dVencimiento)){
+        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+            return res.status(409).render('./administrador/stores/nueva', {
+                pagina: "Tiendas",
+                subPagina : "Nueva Tienda",
+                csrfToken : req.csrfToken(),
+                currentPath: '/tiendas',
+                departamentos : departamentos,
+                ciudades: ciudades,
+                activa : activa,
+                dato: req.body,
+                responsabiliidadFiscal : responsabiliidadFiscal,
+                tipoPersonaJuridica : tipoPersonaJuridica,
+                tipoFacturas : tipoFacturas,
+                errores: { msgTaxId: "🚨 Datos incompletos: Una resolución de facturación debe tener tanto fecha de emisión como de vencimiento." },
+                pasoActivo: "2"
+            });
+    }
+
+
+
+    if(dEmision && dVencimiento && dEmision > dVencimiento){
+        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+            return res.status(409).render('./administrador/stores/nueva', {
+                pagina: "Tiendas",
+                subPagina : "Nueva Tienda",
+                csrfToken : req.csrfToken(),
+                currentPath: '/tiendas',
+                departamentos : departamentos,
+                ciudades: ciudades,
+                activa : activa,
+                dato: req.body,
+                responsabiliidadFiscal : responsabiliidadFiscal,
+                tipoPersonaJuridica : tipoPersonaJuridica,
+                tipoFacturas : tipoFacturas,
+                errores: { msgTaxId: "🚨 La fecha de emisión no puede ser posterior a la de vencimiento." },
+                pasoActivo: "2"
+            });
+    }
+
+
+    
 
     // 4. CREACIÓN ÚNICA DE PUNTO DE VENTA
     const nuevaTienda = await PuntosDeVenta.create({

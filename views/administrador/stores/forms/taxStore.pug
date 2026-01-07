@@ -1,7 +1,5 @@
 div(class="col-span-12 md:col-span-12")
-    
-    
-    
+
     //INICIO FORMULARIO
     div
         if errores && errores.msgTaxId
@@ -76,31 +74,34 @@ div(class="col-span-12 md:col-span-12")
                             option(value="") Selecciona El Regimen
                             if responsabiliidadFiscal
                                 each responsabilidad in responsabiliidadFiscal
-                                    option(value =responsabilidad.codigo)= responsabilidad.descripcion
+                                    option(value= responsabilidad.codigo selected=(datosRegimenFacturacion && datosRegimenFacturacion.responsabilidades === responsabilidad.codigo))=responsabilidad.descripcion
+                                    
                         span.select-icon
                             i.fi-rr-chevron-double-down
 
                 
             div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-5")
                 div
-                    label.label Tipo Persona Juridica
+                    label.label Tipo Persona Juridica  
                     div(class="select-wrapper")
                         select(name="tipo_organizacion" id="tipo_organizacion" class = "field-text")
                             option(value="") Selecciona El Tipo De Organización
                             if tipoPersonaJuridica
                                 each tipoPersona in tipoPersonaJuridica
-                                    option(value =tipoPersona.codigo)= tipoPersona.descripcion
+                                    option(value=tipoPersona.codigo selected=(datosRegimenFacturacion && datosRegimenFacturacion.tipo_organizacion === tipoPersona.codigo))=tipoPersona.descripcion
+                                    //option(value =tipoPersona.codigo)= tipoPersona.descripcion
                         span.select-icon
                             i.fi-rr-chevron-double-down
                 
                 div
-                    label.label Tipo de facturación
+                    label.label Tipo de facturación 
                     div(class="select-wrapper")
                         select(name="tipoFactura" id="tipoFactura" class = "field-text")
                             option(value="") Selecciona El Tipo De Factura
                             if tipoFacturas
-                                each tipoFactura in tipoFacturas
-                                    option(value =tipoFactura.codigo)= tipoFactura.descripcion
+                                each tf in tipoFacturas
+                                    option(value=tf.codigo selected=(datosRegimenFacturacion && datosRegimenFacturacion.tipoFactura === tf.codigo))=tf.descripcion
+                                    //option(value =tf.codigo)= tf.descripcion
                         span.select-icon
                             i.fi-rr-chevron-double-down
 
@@ -118,30 +119,30 @@ div(class="col-span-12 md:col-span-12")
                 div
                     label.label  Resolución de facturación
                     div(class="input-group")
-                        input(type="text", name="resolucionFacturacion"  class = (errores && errores.resolucionFacturacion) ? "field-text field-text-error" : "field-text" placeholder = "Cuál es el nro de resolución que te expidió la DIAN" value = (dato && dato.resolucionFacturacion) ? dato.resolucionFacturacion : "")
+                        input(type="text", name="resolucionFacturacion"  class = (errores && errores.resolucionFacturacion) ? "field-text field-text-error" : "field-text" placeholder = "Cuál es el nro de resolución que te expidió la DIAN" value = (datosRegimenFacturacion && datosRegimenFacturacion.resolucionFacturacion) ? datosRegimenFacturacion.resolucionFacturacion : "")
                         if errores && errores.resolucionFacturacion
                             p(class="label-error pl-2.5")=errores.resolucionFacturacion
                                 i.fi-rr-light-emergency-on
 
                 div
-                    label.label  Fecha de Emisión
+                    label.label  Fecha de Emisión 
                     div(class="input-group")
-                        input(type="date", name="fechaEmision"  class = (errores && errores.fechaEmision) ? "field-text field-text-error" : "field-text" placeholder = "La fecha desde que tiene vigencia" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+                        input(type="date", name="fechaEmision"  class = (errores && errores.fechaEmision) ? "field-text field-text-error" : "field-text" placeholder = "La fecha desde que tiene vigencia" value = (fechaEmisionFormateada) ? fechaEmisionFormateada : "")
                 
                 div
-                    label.label  Fecha de Vencimiento
+                    label.label  Fecha de Vencimiento 
                     div(class="input-group")
-                        input(type="date", name="fechaVencimiento"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "La fecha en que vence la resolución" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+                        input(type="date", name="fechaVencimiento"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "La fecha en que vence la resolución" value = (fechaFinalizacionFormateada) ? fechaFinalizacionFormateada : "")
             div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 mt-5")
                 div
                     label.label  Nro Inicio de la facturación
                     div(class="input-group")
-                        input(type="number", name="nroInicio"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "Desde cuál número te autorizaron facturar" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+                        input(type="number", name="nroInicio"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "Desde cuál número te autorizaron facturar" value = (datosRegimenFacturacion && datosRegimenFacturacion.nroInicio) ? datosRegimenFacturacion.nroInicio : "")
                 
                 div
                     label.label  Nro final de la facturación
                     div(class="input-group")
-                        input(type="number", name="nroFin"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "Hasta cuál número autorizaron facturar?" value = (dato && dato.fechaEmision) ? dato.fechaEmision : "")
+                        input(type="number", name="nroFin"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "Hasta cuál número autorizaron facturar?" value = (datosRegimenFacturacion && datosRegimenFacturacion.nroFin) ? datosRegimenFacturacion.nroFin : "")
                         
                 div
                     label.label  Agrega el Pdf de la resolución. 
@@ -157,7 +158,11 @@ div(class="col-span-12 md:col-span-12")
             div(class="col-span-12 grid grid-cols-1 md:grid-cols-1 gap-4 mt-5")
                 label.label  Texto pie de  factura 
                     div(class="input-group")
-                        textarea(class="field-text textarea" name="footerBill" placeholder="Ingresa el texto que quieres que aparezca en el pie de página de cada factura,  Ejemplo, las condiciones de la garantía" )=dato && dato.footerBill ? dato.footerBill : ""
+                        textarea(
+                                class="field-text textarea" 
+                                name="footerBill" 
+                                placeholder="Ingresa el texto..."
+                            )= (dato && dato.footerBill) ? dato.footerBill : ""
                         
     
                 

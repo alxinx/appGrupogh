@@ -28,9 +28,9 @@ const RegimenFacturacion = db.define('REGIMEN_FACTURACION', {
     defaultValue: null 
     },
     tipoFactura: {
-        type:  DataTypes.ENUM('FACTURA_ELECTRONICA', 'POS_ELECTRONICO', 'CONTINGENCIA', 'NOTA_CREDITO', 'NOTA_DEBITO'),
+        type:  DataTypes.ENUM('01', '02', '03', '04', '05'),
         allowNull : true,
-        defaultValue : 'POS_ELECTRONICO'
+        defaultValue : '03'
 
     },
     fechaEmision : {

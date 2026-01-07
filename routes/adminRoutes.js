@@ -12,7 +12,7 @@ const routes = express.Router();
 routes.get("/", dashboard);
 routes.get('/tiendas',dashboardStores);
     routes.get('/tiendas/new',newStore);
-    routes.get('/tiendas/nueva',newStore);
+    //routes.get('/tiendas/nueva',newStore);
     routes.get('/tiendas/verPunto/:idPuntoDeVenta',verTienda);
     routes.get('/tiendas/editar/:idPuntoDeVenta',editarTienda);
     
