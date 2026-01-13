@@ -1,22 +1,18 @@
-import { Departamentos, Municipios } from "../models/index.js";
+import { Departamentos, Municipios, Categorias, Atributos, VariacionesProducto, Productos } from "../models/index.js";
+import nombresData from "./departamentosData.js";
+import municipios from "./municipiosData.js";
 import db from '../config/bd.js'
-
-// 1. IMPORTAR LOS DATOS (El archivo que está en tu misma carpeta)
-// Le pongo un nombre diferente al modelo para no confundirnos (departamentosData)
-import departamentosData from './departamentosData.js'
-//import municipiosData from './municipiosData.js'
 
 const importarDatos = async () => {
     try {
         // Autentico
         await db.authenticate();
         console.log('Conexión a DB OK');
-
         // Sincronizo
         await db.sync(); 
-
-        await Departamentos.bulkCreate(departamentosData);
-       
+        await Departamentos.bulkCreate(nombresData);
+        await Municipios.bulkCreate(municipios)
+        
         console.log('Datos Importados Correctamente');
         process.exit(0);
 
