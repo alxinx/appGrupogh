@@ -124,16 +124,6 @@ const editarTienda = async (req,res)=>{
     let fechaFinalizacionFormateada = "";
     fechaEmisionFormateada = datosRegimenFacturacion.fechaEmision.toISOString().split('T')[0];
     fechaFinalizacionFormateada = datosRegimenFacturacion.fechaVencimiento.toISOString().split('T')[0];
-
-    /* 
-    const departamentos = await Departamentos.findAll({ raw: true });
-        let ciudades = [];        
-        ciudades = await Municipios.findAll({
-            where: { departamento_id: puntoVenta.departamento},
-            raw: true
-        });
-
-    */
     return res.status(201).render('./administrador/stores/nueva', {
         pagina: req.path,
         subPagina : "Editar Tienda ",
@@ -202,11 +192,24 @@ const postNuevaTienda = async (req, res) => {
         ]);
         return { departamentos, ciudades };
     };
+
     if (!erroresValidacion.isEmpty()) {
+
+        const obtenerDatosSelectores = async (idDepartamento) => {
+        const [departamentos, ciudades] = await Promise.all([
+            Departamentos.findAll({ raw: true }),
+            idDepartamento 
+                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+                : Promise.resolve([])
+        ]);
+        return { departamentos, ciudades };
+    };
         const errsPorCampo = {};
         erroresValidacion.array().forEach(err => {
             if (!errsPorCampo[err.path]) errsPorCampo[err.path] = err.msg;
         });
+
+        console.log(departamentos);
         return res.status(201).render('./administrador/stores/nueva', {
             pagina: "Tiendas",
             subPagina : "Nueva Tienda",
