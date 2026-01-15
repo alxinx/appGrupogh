@@ -12,7 +12,12 @@ const Productos = db.define('PRODUCTOS', {
         type: DataTypes.STRING(100),
         allowNull: false,
     },
-    idCategoria: { // <--- VERIFICA QUE ESTÉ ASÍ
+    slug : {
+        type : DataTypes.STRING(100),
+        allowNull : true
+    },
+
+    idCategoria: { 
         type: DataTypes.STRING(50), 
         allowNull: true,
         defaultValue: "0"
@@ -39,9 +44,22 @@ const Productos = db.define('PRODUCTOS', {
         unique: true,
         allowNull: true,
     },
+    tags : {
+        type : DataTypes.STRING(255),
+        allowNull : true
+    },
+    descripcion : {
+        type : DataTypes.TEXT,
+        allowNull : true
+    },
+
     activo: {
         type: DataTypes.BOOLEAN,
         defaultValue: true
+    },
+    web : {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
     }
 }, {
     tableName: "PRODUCTOS",

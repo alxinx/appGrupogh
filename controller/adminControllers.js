@@ -1,5 +1,5 @@
 import {validationResult } from "express-validator";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos } from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type :'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type : 'json'}
@@ -70,9 +70,53 @@ const newStore = async (req, res)=>{
     })
 }
 
+
+//***********************[INVENTARIOS]***********************//
 //PRINCIPAL INVENTARIOS
 const dashboardInventorys = async (req, res)=>{
+
+    //Obtengo los atributos
+    const atributos = await Atributos.findAll()
+    const categorias = await Categorias.findAll()
+
+
+    return res.status(201).render('./administrador/inventarios/new', {
+        pagina: "Inventarios y Productos",
+        subPagina : "Nuevo Producto",
+        csrfToken : req.csrfToken(),
+        currentPath: '/inventario',
+        atributos,
+        categorias
     
+    })
+}
+
+const nuevoProducto = async (req, res)=>{
+    
+}
+
+const listaProductos = async (req, res)=>{
+    return res.status(201).render('./administrador/inventarios/productList', {
+        pagina: "Inventarios y Productos",
+        subPagina : "Listado De Productos",
+        csrfToken : req.csrfToken(),
+        currentPath: '/inventario',})
+}
+
+const verProducto = async (req, res)=>{
+     return res.status(201).render('./administrador/inventarios/viewProducts', {
+        pagina: "Ver Producto",
+        subPagina : "Caracteristicas producto",
+        csrfToken : req.csrfToken(),
+        currentPath: '/inventario',})
+}
+
+const dosificar = async (req, res)=>{
+     return res.status(201).render('./administrador/inventarios/dose', {
+        pagina: "Dosificacion de productos",
+        subPagina : "Dosificar Productos",
+        csrfToken : req.csrfToken(),
+        currentPath: '/inventario',})
 }
 
 
@@ -596,6 +640,28 @@ const municipiosJson = async(req, res)=>{
     return res.json(municipio)
 }
 
+const categoriasJson = async(req, res)=>{
+    const { idCategoria } = req.params; 
+    
+    const  categorias = await Categorias.findAll({
+        where : {idPadre : idCategoria },
+        attributes : ['idCategoria', 'nombreCategoria', 'tipo', 'idPadre'],
+        raw : true
+    })
+    return res.json(categorias)
+}
+
+
+const skuJson = async(req, res)=>{
+    const { checkSku } = req.params; 
+    const sku = await Productos.findOne({
+        where : {sku : checkSku },
+        attributes  :  ['idProducto', 'nombreProducto', 'sku', 'ean', ],
+        raw : true
+    })
+    return res.json(sku)
+}
+
 
 
 
@@ -609,10 +675,15 @@ export {
     postNuevaTienda,
     postEditStore,
     dashboardInventorys,
+    listaProductos,
+    verProducto,
+    dosificar,
     dashboardCustomers,
     dashboardEmployees,
     dashboardOrders,
     dashboardSettings,
     municipiosJson,
+    categoriasJson,
+    skuJson,
     baseFrondend
 }

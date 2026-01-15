@@ -213,12 +213,24 @@
            px-6 py-4 mt-8;
   }
 
+/*************[BODIES]*******************/
+
+.bdForm {
+  @apply border-1 border-gray-300  rounded-gh p-3 m-2 
+}
+.bdFormWhite {
+  @apply bg-white shadow-sm
+}
+
+
+
+
 /***************[CARDS]******************/
 .cards {
-  @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-2 border-gray-300  rounded-gh p-3 m-5 
+  @apply min-h-[100px] grid grid-cols-2 bg-white border-1 border-gray-300  rounded-gh p-3 m-2 
 }
 .cardWhite {
-  @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-2 border-gray-300 shadow-md rounded-gh p-3 m-5 
+  @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-1 border-gray-300 shadow-md rounded-gh p-3 m-5 
 }
 
 .cardWhite:hover{
@@ -334,6 +346,13 @@
     background-size: 12px;
   }
 
+
+
+/*SUBITEMS*/
+
+.subItems {
+  @apply flex items-center gap-2 bg-white border border-gray-200 px-3 py-2 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer
+}
 /*SWITCH*/
 .switch {
     @apply relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer
@@ -354,6 +373,10 @@
 
   input:checked + .switch .switch-thumb {
     @apply translate-x-5;
+  }
+
+  .inputUpload {
+    @apply border-2 border-dashed border-pink-200 bg-pink-50/30 rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all group-hover:bg-pink-50 group-hover:border-pink-300
   }
 
   /*RADIO BUTTONS*/
@@ -673,6 +696,13 @@
 
 }
 
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
 
 .menu summary::marker {
   display: none;

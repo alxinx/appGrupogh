@@ -1,0 +1,188 @@
+form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+
+    //- COLUMNA IZQUIERDA
+    input(type="hidden", name="_csrf" value = csrfToken)
+
+    div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
+        
+        //- Nombre del Producto
+        //- SEPARADOR 100% (ATRIBUTOS)
+        div(class="col-span-12 -mx-6 mt-4")
+            
+            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                i.fi-rr-features.pr-2
+                | Datos Básicos
+
+
+        div(class="col-span-12")
+            label.label Nombre Del Producto
+                input(class="field-text" type="text" name="nombreProducto" id="nombreProducto" placeholder="Cómo se llama el producto?")
+
+        //- Categoría
+        //- Columna de Categorías
+        div(class="col-span-12 md:col-span-5")
+            label.label Categoría
+            div(class="flex flex-wrap gap-2 mt-2")
+                each categoria in categorias
+                    if(categoria.tipo === "CATEGORIA")
+                        //- Puntos clave:
+                        //- 1. Cambiamos ID por clase 'categoria-checkbox'
+                        //- 2. El value debe ser el ID de la categoría
+                        label(class="subItems")
+                            input(type="checkbox" value=categoria.idCategoria class="categoria-checkbox checkbox")
+                            span(class="text-xs font-bold text-gray-700 uppercase")= categoria.nombreCategoria
+
+        //- Columna de SubCategorías
+        div(class="col-span-12 md:col-span-7")
+            label.label SubCategorías
+            //- Punto clave:
+            //- El ID debe ser exactamente 'SubCategorias' (con la S mayúscula como en el JS)
+            div(id="SubCategorias" class="flex flex-wrap gap-3 p-4 border-2 border-dashed border-gray-100 rounded-2xl min-h-[110px] items-start content-start")
+                //- Aquí es donde el JS inyectará los divs 'grupo-sub-cat-ID'
+
+
+        //- SKU
+        div(class="col-span-12 md:col-span-6")
+            label.label SKU
+                input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno")
+                #errorSku
+        
+        //- EAN
+        div(class="col-span-12 md:col-span-6")
+            label.label EAN
+                input(class="field-text" type="text" name="ean" placeholder="Código de barras")
+        
+        //- SEPARADOR 100% (ATRIBUTOS)
+        div(class="col-span-12 -mx-6 mt-4")
+            div(class="border-b border-gray-200 w-full")
+                h1.h1(class="text-left pl-11 py-4 flex items-center text-gray-700")
+                    i.fi-rr-features.pr-2
+                    | Atributos
+
+        
+        div(class="col-span-12")
+        //- SECCIÓN DE TALLAS
+        div.col-span-12
+            h3.text-lg.font-bold.text-gray-700.mb-4 Tallas Disponibles
+            div(class="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-2xl")
+                each atributo in atributos
+                    if atributo.tipo === 'TALLA'
+                        label(class="flex items-center gap-2 bg-white border border-gray-200 px-4 py-2 rounded-xl cursor-pointer hover:border-indigo-500 transition-all")
+                            //- Agregamos clase 'talla-trigger' y data-id
+                            input(type="checkbox" class="talla-trigger w-5 h-5" value=atributo.idAtributo data-nombre=atributo.valor)
+                            span(class="font-bold text-gray-700")= atributo.valor
+
+        
+        div(class="col-span-12 mt-4")
+            h4(class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3") Resumen de Combinaciones
+            input(type="hidden" name="variantes_finales" id="variantes_finales" value="{}")
+            div#resumenVariantes(class="flex flex-wrap gap-2 min-h-[40px] p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl")
+                span(class="text-gray-400 text-sm italic") No has seleccionado colores para las tallas...
+
+        //- MODAL DE COLORES 
+        div#modalColores(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center")
+            div(class="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl")
+                div.flex.justify-between.items-center.mb-6
+                    h2.h2 
+                        | Colores para Talla: 
+                        span#tallaTitulo.text-pink-600 ---
+                    button#cerrarModal(type="button" class="text-gray-400 cursor-pointer hover:text-red-500") 
+                        i.fi-rr-cross-circle.text-2xl
+
+                //- Contenedor donde se cargarán los colores
+                div(class="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-2")
+                    each atributo in atributos
+                        if atributo.tipo === 'COLOR'
+                            label(class="flex items-center gap-3 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gray-50")
+                                input(type="checkbox" value=atributo.idAtributo class="color-checkbox checkbox w-4 h-4" data-nombre=atributo.valor)
+                                //- Circulito de color 
+                                div(class="w-4 h-4 rounded-full  shadow-sm" style=`background-color: ${atributo.codigo1 || '#ccc'}`)
+
+                                if atributo.codigo2 != NULL
+                                    div(class="w-4 h-4 rounded-full  shadow-sm" style=`background-color: ${atributo.codig2 || '#ccc'}`)
+
+
+                                span(class="text-sm font-medium")= atributo.valor
+
+                button#guardarColores(type="button" class="w-full mt-8 b btn btn-primary") Guardar Colores para esta Talla
+
+
+
+
+
+
+
+
+
+                            
+    //- COLUMNA DERECHA
+    div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")
+        div(class="p-6")
+            h1.h1
+                i.fi-rr-eyes.pr-2
+                |Visibilidad del producto
+            //- Contenedor Flex para ponerlos uno al lado del otro
+            div(class="flex flex-row flex-wrap gap-2")
+                label(class="subItems")
+                    div(class="checkbox-group mr-2")
+                        input.checkbox(type="checkbox" id="activo" checked)
+                    span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Producto Activo
+
+                label(class="subItems")
+                    div(class="checkbox-group mr-2")
+                        input.checkbox(type="checkbox" id="disponible_web")
+                    span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Disponible en web
+
+        //- Dentro del div de Visibilidad, después de los labels
+        div#seccion-web-seo(class="hidden mt-6 pt-4 border-t border-dashed border-gray-100 animate-fade-in")
+            div(class="grid grid-cols-1 gap-4")
+                div
+                    h1.h1
+                        i.fi-rr-site-browser.pr-2.mt-5
+                        | Datos Para Seo Y Web
+                div
+                    label(class="label uppercase") Slug (URL Amigable)
+                    input#slug(type="text" name="slug" class="field-text field-text-disabled" readonly)
+                div
+                    label(class="label uppercase") Etiquetas / Tags
+                    input#tags(type="text" name="tags" class="field-text w-full" placeholder="ej: seda, nuevo, oferta")
+                div
+                    label(class="label uppercase") Meta Descripción
+                    textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-20 resize-none field-text" placeholder="Breve descripción para buscadores...")
+
+
+
+        
+        div(class="min-h-[150px]")
+            h1.h1
+                i.fi-rr-picture.pr-2
+                |Imágenes Del Producto
+            //- Card de Carga de Imágenes
+            div(class="shadow-sm")
+                //- Área de Drag & Drop
+                div(class="relative group")
+                    input(type="file" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" id="upload-images")
+
+                    div(class="inputUpload")
+                        //- Icono de Cámara (Estilo GH)
+                        div(class="w-16 h-16 bg-white shadow-sm rounded-full flex items-center justify-center mb-4 text-pink-400")
+                            svg(xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor")
+                                path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z")
+                                circle(cx="12" cy="13" r="3")
+                        
+                        span(class="text-sm font-bold text-gray-600") Sube o arrastra tu imagen
+                        span(class="text-xs text-gray-400 mt-1") PNG, JPG hasta 5MB
+
+                div(class="mt-6 flex flex-wrap gap-3 m-2 p-5" id="preview-container")
+                    
+                    
+                    //- Slot vacío para invitar a subir más
+                    div(class="w-20 h-20 rounded-xl border-2 border-dotted border-gray-200 flex items-center justify-center text-gray-300")
+                        svg(class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24")
+                            path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4")
+
+div(class="col-span-12")
+    div(class="flex  justify-center")
+        button(class="btn btn-primary w-full" id="guardar" )
+            i.fi-rr-disk
+            | Guardar Salir                

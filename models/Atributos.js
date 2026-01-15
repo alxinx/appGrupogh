@@ -8,10 +8,15 @@ const Atributos = db.define('ATRIBUTOS', {
         autoIncrement: true
     },
     tipo: {
-        type: DataTypes.ENUM('TELA', 'COLOR', 'TALLA', 'DETALLE'),
+        type: DataTypes.ENUM('COLOR', 'TALLA'),
         allowNull: false
     },
-    codigo: {
+    codigo1: {
+        type: DataTypes.STRING(10),
+        allowNull: true
+    },
+
+    codigo2: {
         type: DataTypes.STRING(10),
         allowNull: true
     },
