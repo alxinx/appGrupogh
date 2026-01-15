@@ -164,20 +164,16 @@ const editarTienda = async (req,res)=>{
     
 
     //Formateo Fechas:
-    let fechaEmisionFormateada = "";
-    let fechaFinalizacionFormateada = "";
-    fechaEmisionFormateada = datosRegimenFacturacion.fechaEmision.toISOString().split('T')[0];
-    fechaFinalizacionFormateada = datosRegimenFacturacion.fechaVencimiento.toISOString().split('T')[0];
+    // El símbolo ?. detiene la ejecución si el objeto es null y devuelve undefined en lugar de romper la app
+    const fechaEmisionFormateada = datosRegimenFacturacion?.fechaEmision 
+    ? new Date(datosRegimenFacturacion.fechaEmision).toISOString().split('T')[0] 
+    : "";
 
-    /* 
-    const departamentos = await Departamentos.findAll({ raw: true });
-        let ciudades = [];        
-        ciudades = await Municipios.findAll({
-            where: { departamento_id: puntoVenta.departamento},
-            raw: true
-        });
+    const fechaFinalizacionFormateada = datosRegimenFacturacion?.fechaVencimiento 
+    ? new Date(datosRegimenFacturacion.fechaVencimiento).toISOString().split('T')[0] 
+    : "";
 
-    */
+   
     return res.status(201).render('./administrador/stores/nueva', {
         pagina: req.path,
         subPagina : "Editar Tienda ",
@@ -246,18 +242,33 @@ const postNuevaTienda = async (req, res) => {
         ]);
         return { departamentos, ciudades };
     };
+
     if (!erroresValidacion.isEmpty()) {
         const errsPorCampo = {};
         erroresValidacion.array().forEach(err => {
             if (!errsPorCampo[err.path]) errsPorCampo[err.path] = err.msg;
         });
+
+        const obtenerDatosSelectores = async (idDepartamento) => {
+                const [departamentos, ciudades] = await Promise.all([
+                    Departamentos.findAll({ raw: true }),
+                    idDepartamento 
+                        ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+                        : Promise.resolve([])
+                ]);
+                return { departamentos, ciudades };
+            };
+
+        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+        const activa = req.body.activa ? true : false
+
         return res.status(201).render('./administrador/stores/nueva', {
             pagina: "Tiendas",
             subPagina : "Nueva Tienda",
             csrfToken : req.csrfToken(),
             currentPath: '/tiendas',
-            departamentos : departamentos,
-            ciudades: ciudades,
+            departamentos,
+            ciudades : ciudades,
             activa : activa,
             dato: req.body,
             responsabiliidadFiscal : responsabiliidadFiscal,
