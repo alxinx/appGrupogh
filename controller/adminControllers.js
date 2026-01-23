@@ -1,8 +1,10 @@
 import {validationResult } from "express-validator";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto} from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type :'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type : 'json'}
+
+import {limpiarPrecio, sanitizarHTML } from '../helpers/helpers.js'
 
 import { Sequelize, Op, where} from "sequelize";
 
@@ -638,6 +640,77 @@ const postEditStore = async (req, res)=>{
 }
 
 
+
+
+
+const newProduct = async (req, res) => {
+    const errores = validationResult(req);
+    
+    if (!errores.isEmpty()) {
+        const errObj = errores.array().reduce((acc, err) => {
+            acc[err.path] = err.msg;
+            return acc;
+        }, {});
+        return res.status(400).json({ 
+            errores: errObj 
+        });
+    }
+
+    try {
+
+        //Trabajo con las categoorias y. subcategorias con las que vienne el porducto, 
+        const {categorias,subcategorias }=req.body
+        const todasLasCategorias = [categorias].concat(subcategorias || []);
+        const idCategoriaParaDB = todasLasCategorias.filter(id => id && id !== '').join('|')
+
+        //Sanitizo los valores de los precios y de , (de string a int y borro el punto que me envia desde el frontend)
+        const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
+        const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
+        const descripcionLimpia = sanitizarHTML(req.body.descripcion);
+        const activo = req.body.activo === 'on'; // Esto ya devuelve true o false
+        const web = req.body.web === 'on';
+        //Ingreso todo para que me pueda generar el ID del producto y seguir con lo siguiente! 
+        // 1. Ingreso los datos  necesarios para ingresar el producto y trabajar el ID. 
+        console.log(req.body) 
+        const nuevoProducto = await Productos.create({
+            ...req.body,
+            descripcion  : descripcionLimpia,
+            precioVentaPublicoFinal: precioVentaPublicoFinal, 
+            precioVentaMayorista: precioVentaMayorista,
+            idCategoria: idCategoriaParaDB,
+            activo: activo,
+            web: web,
+           
+        });
+        
+        
+        const idProducto = nuevoProducto.idProducto;
+
+        // 2: Ingreso las variaciones del producto. (colores, y tallas)
+        const variacionesSeleccionadas = JSON.parse(req.body.variantes_finales);
+        const variacionesFinales = [];
+        Object.entries(variacionesSeleccionadas).forEach(([talla, color]) =>{
+            color.forEach(idColor =>{
+                variacionesFinales.push({
+                        idProducto: idProducto,
+                        idAtributos: `${talla}|${idColor}`, 
+                        valor: 0, 
+                    });
+            })
+        })    
+        VariacionesProducto.bulkCreate(variacionesFinales)
+
+
+        // 2. Aquí vendrá la lógica de Sharp para las imágenes (que haremos a continuación)
+        // 3. Aquí vendrá la lógica de setCategorias([id, id])
+        
+        res.json({ success: true, mensaje: 'Producto guardado con éxito' });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ mensaje: 'Error interno del servidor' });
+    }
+}
+
 //************************[JSON CONTROLLERS] ************************ */
 
 const municipiosJson = async(req, res)=>{
@@ -674,6 +747,17 @@ const skuJson = async(req, res)=>{
 }
 
 
+const eanJson = async(req, res)=>{
+    const { checkEan } = req.params; 
+    const ean = await Productos.findOne({
+        where : {ean : checkEan },
+        attributes  :  ['idProducto', 'nombreProducto', 'sku', 'ean', ],
+        raw : true
+    })
+    return res.json(ean)
+}
+
+
 
 
 
@@ -686,6 +770,7 @@ export {
     postNuevaTienda,
     postEditStore,
     dashboardInventorys,
+    newProduct,
     listaProductos,
     verProducto,
     dosificar,
@@ -696,5 +781,6 @@ export {
     municipiosJson,
     categoriasJson,
     skuJson,
+    eanJson,
     baseFrondend
 }

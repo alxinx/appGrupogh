@@ -241,29 +241,175 @@ actualizarEstadoWeb();
 })();
 
 
-//Check Sku Repetido
-(function(){
-        const checkSkuRepetido = document.getElementById('sku');
-        checkSkuRepetido.addEventListener('change', async function(e) {
-            let sku_ = e.target.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '');
-            try {
-                    const respuesta = await fetch(`/admin/json/sku/${sku_}`);
-                    const resultado = await respuesta.json();
-                    if (resultado && resultado.idProducto) {
-                        //document.getElementById('errorSku').innerHTML
-                        sku.value = ''
-                        document.getElementById('sku').focus();
-                        document.getElementById('guardar').disabled = true;
-                        errorSku.innerHTML = `
-                                <p class="text-red-600 text-xs font-bold mt-1">
-                                    ⚠️ El SKU "${sku_}" ya está registrado para otro producto.
-                                </p>
-                            `;
-                    }else{
 
-                    }
-            } catch (error) {
-                throw new Error(error)
+//GUARDO ASYNC
+(function() {
+    const formulario = document.querySelector('#formularioProducto');
+    const btnGuardar = document.querySelector('#guardar');
+
+    // Función para mostrar errores
+    function mostrarErrores(errores) {
+        // Limpio los errores que pudieron haber antes.
+        document.querySelectorAll('.error-msg').forEach(el => el.remove());
+        document.querySelectorAll('.field-text, .checkbox').forEach(el => el.classList.remove('border-red-500'));
+
+        // 'errores' ahora viene como un objeto { campo: mensaje } desde el back corregido
+        Object.entries(errores).forEach(([campo, mensaje]) => {
+            const input = document.querySelector(`[name="${campo}"]`);
+            if (input) {
+                const divError = document.createElement('div');
+                divError.className = 'label-error animate-fade-in';
+                divError.textContent = mensaje;
+                
+                input.parentElement.appendChild(divError);
+                input.classList.add('border-red-500');
             }
-        })
-})()
+        });
+    }
+
+    formulario.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        Swal.fire({
+            title: 'Guardando producto...',
+            text: 'Por favor espera un momento',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
+
+
+
+        btnGuardar.disabled = true;
+        btnGuardar.innerHTML = '<i class="fi-rr-spinner animate-spin"></i> Guardando...';
+
+        const formData = new FormData(formulario);
+        try {
+            const respuesta = await fetch(formulario.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest' 
+                }
+            });
+
+            const resultado = await respuesta.json();
+
+            if (resultado.errores) {
+                mostrarErrores(resultado.errores);
+                btnGuardar.disabled = false;
+                btnGuardar.innerHTML = '<i class="fi-rr-disk"></i> Guardar Salir';
+            } else {
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Todo listo!',
+                    text: resultado.mensaje || 'Producto creado correctamente',
+                    confirmButtonText: 'Ir al listado',
+                    timer: 2000,
+                    timerProgressBar: true
+                }).then(() => {
+                    window.location.href = '/admin/inventario/ingreso'; // Rediriges al terminar
+                });
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            btnGuardar.disabled = false;
+            // Errores de validación o del servidor
+            Swal.fire({
+                icon: 'error',
+                title: 'Ops...',
+                text: resultado.mensaje || 'Hubo un error al guardar',
+            });
+        }
+    });
+})();
+
+
+(function() {
+    const btnGuardar = document.getElementById('guardar');
+
+    // Función genérica para validar unicidad
+    const validarUnicidad = async (input, tipo) => {
+        let valor = input.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '');
+        input.value = valor; // Reflejar la limpieza en el input
+
+        if (!valor) return;
+
+        try {
+            const respuesta = await fetch(`/admin/json/${tipo}/${valor}`);
+            const resultado = await respuesta.json();
+
+            const contenedorError = document.getElementById(`error${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
+
+            if (resultado && resultado.idProducto) {
+                input.value = '';
+                input.focus();
+                btnGuardar.disabled = true;
+
+                // Usamos una alerta sutil o el mensaje de error
+                contenedorError.innerHTML = `
+                    <p class="text-red-600 text-xs font-bold mt-1 uppercase">
+                        ⚠️ EL ${tipo.toUpperCase()} "${valor}" YA EXISTE.
+                    </p>`;
+                
+                // Opcional: SweetAlert2 para una interrupción clara
+                Swal.fire({
+                    icon: 'warning',
+                    title: `${tipo.toUpperCase()} Duplicado`,
+                    text: `El código ${valor} ya pertenece a otro producto.`,
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3000
+                });
+
+            } else {
+                contenedorError.innerHTML = '';
+                btnGuardar.disabled = false;
+            }
+        } catch (error) {
+            console.error(`Error validando ${tipo}:`, error);
+        }
+    };
+
+    // Listeners limpios
+    document.getElementById('sku').addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
+    document.getElementById('ean').addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
+})();
+
+
+
+
+
+
+//FORMATO PESOS COLOMBIANOS PARA LOS PRECIOS DE MAYORISTAS Y MINORISTAS!
+(function(){
+    const inputMinorista = document.getElementById('precioVentaMayorista');
+    const inputMayorista = document.getElementById('precioVentaPublicoFinal');
+
+    const money = (n) => {
+        const value = String(n).replace(/\D/g, '');
+        if(!value) return "";
+        
+        return new Intl.NumberFormat('es-CO', {
+            maximumFractionDigits: 0
+        }).format(value);
+    };
+
+    [inputMinorista, inputMayorista].forEach(input => {
+        if(!input) return;
+        input.addEventListener('input', function(e) {
+            let cursorPosition = e.target.selectionStart;
+            let valueOriginal = e.target.value;
+
+            // Formatear
+            e.target.value = money(e.target.value);
+
+            if (valueOriginal.length < e.target.value.length) cursorPosition++;
+            e.target.setSelectionRange(cursorPosition, cursorPosition);
+        });
+    });
+})();

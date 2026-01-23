@@ -12,6 +12,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.APP_PORT;
+const upload = multer();
 
 try {
     
@@ -29,7 +30,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use( express.static('public'));
 app.set("view engine", "pug");
 app.set("views", "./views");
-//app.use(upload.any());
+app.use(upload.any());
 app.use (cookieParser());
 app.use (csrf({ cookie : true}))
 

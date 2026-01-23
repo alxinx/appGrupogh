@@ -1,7 +1,7 @@
 import express from "express";
-import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, listaProductos,verProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, listaProductos,verProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, baseFrondend} from "../controller/adminControllers.js"
 
-import {storeRegisterValidation, storeBasicTaxDataValidation} from '../middlewares/fieldValidations.js';
+import {storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation} from '../middlewares/fieldValidations.js';
 
 const routes = express.Router();
 
@@ -37,6 +37,11 @@ routes.get('/frontend',baseFrondend);
 
 //****************[POST]**********************/
 routes.post('/tiendas/nueva', storeRegisterValidation, storeBasicTaxDataValidation, postNuevaTienda)
+
+routes.post('/inventario/ingreso', productBasicValidation, newProduct );///
+
+
+
 //routes.post('/tiendas/new', storeRegisterValidation, postNewStore)
 
 routes.post('/tiendas/editar/:idPuntoDeVenta', storeRegisterValidation, postEditStore)
@@ -46,6 +51,7 @@ routes.post('/tiendas/editar/:idPuntoDeVenta', storeRegisterValidation, postEdit
 routes.get('/json/municipios/:departamentoId', municipiosJson)
 routes.get('/json/categorias/:idCategoria', categoriasJson  );
 routes.get('/json/sku/:checkSku', skuJson  );
+routes.get('/json/ean/:checkEan', eanJson  );
 
 
 

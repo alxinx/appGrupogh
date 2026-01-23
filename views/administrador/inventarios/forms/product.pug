@@ -1,8 +1,7 @@
-form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+form(action="", method="post" id="formularioProducto" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
 
     //- COLUMNA IZQUIERDA
     input(type="hidden", name="_csrf" value = csrfToken)
-
     div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
         
         //- Nombre del Producto
@@ -17,7 +16,11 @@ form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-s
         div(class="col-span-12")
             label.label Nombre Del Producto
                 input(class="field-text" type="text" name="nombreProducto" id="nombreProducto" placeholder="Cómo se llama el producto?")
-
+                #divError
+                //if errores && errores.nombreProducto
+                    
+                    //- p(class="label-error pl-2.5")=errores.nombreProducto
+                    //-     i.fi-rr-light-emergency-on
         //- Categoría
         //- Columna de Categorías
         div(class="col-span-12 md:col-span-5")
@@ -29,7 +32,7 @@ form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-s
                         //- 1. Cambiamos ID por clase 'categoria-checkbox'
                         //- 2. El value debe ser el ID de la categoría
                         label(class="subItems")
-                            input(type="checkbox" value=categoria.idCategoria class="categoria-checkbox checkbox")
+                            input(type="checkbox" name="categorias" value=categoria.idCategoria class="categoria-checkbox checkbox")
                             span(class="text-xs font-bold text-gray-700 uppercase")= categoria.nombreCategoria
 
         //- Columna de SubCategorías
@@ -42,16 +45,33 @@ form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-s
 
 
         //- SKU
-        div(class="col-span-12 md:col-span-6")
+        div(class="col-span-12 md:col-span-3")
             label.label SKU
                 input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno")
                 #errorSku
         
         //- EAN
-        div(class="col-span-12 md:col-span-6")
+        div(class="col-span-12 md:col-span-3")
             label.label EAN
-                input(class="field-text" type="text" name="ean" placeholder="Código de barras")
+                input(class="field-text" type="text" name="ean" id="ean" placeholder="Código de barras")
+                #errorEan
+
+        //- PRECIOS PARA MAYORISTA
+        div(class="col-span-12 md:col-span-3")
+            label.label PRECIO MAYORISTA
+                input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000")
+
+        //- PRECIOS PARA MINORISTA!
+        div(class="col-span-12 md:col-span-3")
+            label.label PRECIO PÚBLICO FINAL
+                input(class="field-text" type="text" id="precioVentaPublicoFinal" name="precioVentaPublicoFinal" placeholder="Ej : $80.000")
         
+        
+
+
+
+
+
         //- SEPARADOR 100% (ATRIBUTOS)
         div(class="col-span-12 -mx-6 mt-4")
             div(class="border-b border-gray-200 w-full")
@@ -125,12 +145,12 @@ form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-s
             div(class="flex flex-row flex-wrap gap-2")
                 label(class="subItems")
                     div(class="checkbox-group mr-2")
-                        input.checkbox(type="checkbox" id="activo" checked)
+                        input.checkbox(type="checkbox" id="activo" name="activo" checked)
                     span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Producto Activo
 
                 label(class="subItems")
                     div(class="checkbox-group mr-2")
-                        input.checkbox(type="checkbox" id="disponible_web")
+                        input.checkbox(type="checkbox" id="disponible_web" name="web")
                     span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Disponible en web
 
         //- Dentro del div de Visibilidad, después de los labels
@@ -149,8 +169,6 @@ form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-s
                 div
                     label(class="label uppercase") Meta Descripción
                     textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-20 resize-none field-text" placeholder="Breve descripción para buscadores...")
-
-
 
         
         div(class="min-h-[150px]")
@@ -181,8 +199,10 @@ form(action="", method="post" class="col-span-12 grid grid-cols-12 gap-6 items-s
                         svg(class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24")
                             path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4")
 
-div(class="col-span-12")
-    div(class="flex  justify-center")
-        button(class="btn btn-primary w-full" id="guardar" )
-            i.fi-rr-disk
-            | Guardar Salir                
+    div(class="col-span-12")
+        div(class="flex  justify-center")
+            button(class="btn btn-primary w-full"  type="submit" id="guardar" )
+                i.fi-rr-disk
+                | Guardar Salir
+
+script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           
