@@ -7,6 +7,7 @@ import Categorias from './Categorias.js'
 import Atributos from './Atributos.js'
 import VariacionesProducto from './VariacionesProducto.js'
 import Productos from './Productos.js'
+import Imagenes from './imagenes.js'
 
 
 
@@ -22,5 +23,6 @@ export {
     PuntosDeVenta,
     RegimenFacturacion,
     Categorias, Atributos, VariacionesProducto,
-    Productos
+    Productos, 
+    Imagenes
 }

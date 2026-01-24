@@ -184,23 +184,46 @@ actualizarEstadoWeb();
 (function(){
     const uploadInput = document.getElementById('upload-images');
     const previewContainer = document.getElementById('preview-container');
-    // Objeto para manipular los archivos del input
     let archivosActuales = new DataTransfer(); 
 
     uploadInput.addEventListener('change', function(e) {
         const files = Array.from(e.target.files);
+        
+        // Límite de cantidad total
+        if (archivosActuales.files.length + files.length > 10) {
+            Swal.fire('¡Muchos archivos!', 'El límite son 10 imágenes por producto.', 'warning');
+            return;
+        }
 
         files.forEach(file => {
             if (!file.type.startsWith('image/')) return;
-            
-            // Añadimos el archivo al manipulador
+
+            // --- INICIO DE VALIDACIÓN DE PESO ---
+            if (file.size > 2 * 1024 * 1024) {
+                Swal.fire({
+                    title: '😖 ¡Muy pesado! Me rehuso a subirlo 🤨',
+                    html: `
+                        <p class="mb-4 text-sm">La imagen <b>${file.name}</b> supera los 2MB.</p>
+                        <p class="text-xs text-gray-500">Te recomiendo ir a 
+                            <a href="https://squoosh.app" target="_blank" class="text-pink-500 font-bold underline">Squoosh.app</a> 
+                            para bajarle el peso y que puedas usarla aquí.
+                        </p>
+                    `,
+                    icon: 'error',
+                    confirmButtonText: 'Entendido',
+                    confirmButtonColor: '#f472b6'
+                });
+                return; // IMPORTANTE: Salimos de la iteración, no se añade al preview ni al DataTransfer
+            }
+            // --- FIN DE VALIDACIÓN ---
+
+            // Si pasa la validación, procedemos:
             archivosActuales.items.add(file);
 
             const reader = new FileReader();
             reader.onload = (event) => {
                 const div = document.createElement('div');
                 div.className = "w-20 h-20 rounded-xl bg-gray-100 border border-gray-100 relative overflow-hidden group animate-fade-in";
-                // Guardamos el nombre del archivo para saber cuál borrar luego
                 div.dataset.fileName = file.name; 
                 
                 div.innerHTML = `
@@ -214,28 +237,26 @@ actualizarEstadoWeb();
             reader.readAsDataURL(file);
         });
 
-        // Sincronizamos el input con nuestro manipulador
+        // Sincronizamos el input físico con nuestro manipulador de archivos
         uploadInput.files = archivosActuales.files;
     });
 
-    // Delegación de eventos para borrar
+    // Delegación de eventos para borrar (Tu lógica original impecable)
     previewContainer.addEventListener('click', function(e) {
         const btn = e.target.closest('.btn-delete-img');
         if (btn) {
             const card = btn.parentElement;
             const nombreABorrar = card.dataset.fileName;
 
-            // 1. Borrar visualmente
             card.remove();
 
-            // 2. Borrar del objeto DataTransfer
             const nuevoDataTransfer = new DataTransfer();
             Array.from(archivosActuales.files)
                 .filter(file => file.name !== nombreABorrar)
                 .forEach(file => nuevoDataTransfer.items.add(file));
             
             archivosActuales = nuevoDataTransfer;
-            uploadInput.files = archivosActuales.files; // Sincronizar input
+            uploadInput.files = archivosActuales.files;
         }
     });
 })();
@@ -290,9 +311,9 @@ actualizarEstadoWeb();
             const respuesta = await fetch(formulario.action, {
                 method: 'POST',
                 body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest' 
-                }
+                // headers: {
+                //     'X-Requested-With': 'XMLHttpRequest' 
+                // }
             });
 
             const resultado = await respuesta.json();

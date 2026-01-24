@@ -1,12 +1,17 @@
 import {validationResult } from "express-validator";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto} from "../models/index.js";
+import sharp from 'sharp';
+import { Upload } from "@aws-sdk/lib-storage";
+import s3Client from "../config/r2.js";
+import dotenv from 'dotenv';
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto, Imagenes} from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type :'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type : 'json'}
-
 import {limpiarPrecio, sanitizarHTML } from '../helpers/helpers.js'
-
 import { Sequelize, Op, where} from "sequelize";
+
+dotenv.config();
+
 
 //************************[GET CONTROLLERS] ************************ */
  
@@ -643,7 +648,7 @@ const postEditStore = async (req, res)=>{
 
 
 
-const newProduct = async (req, res) => {
+const newProduct = async (req, res, next) => {
     const errores = validationResult(req);
     
     if (!errores.isEmpty()) {
@@ -671,7 +676,6 @@ const newProduct = async (req, res) => {
         const web = req.body.web === 'on';
         //Ingreso todo para que me pueda generar el ID del producto y seguir con lo siguiente! 
         // 1. Ingreso los datos  necesarios para ingresar el producto y trabajar el ID. 
-        console.log(req.body) 
         const nuevoProducto = await Productos.create({
             ...req.body,
             descripcion  : descripcionLimpia,
@@ -698,17 +702,60 @@ const newProduct = async (req, res) => {
                     });
             })
         })    
-        VariacionesProducto.bulkCreate(variacionesFinales)
+        await VariacionesProducto.bulkCreate(variacionesFinales)
 
 
         // 2. Aquí vendrá la lógica de Sharp para las imágenes (que haremos a continuación)
-        // 3. Aquí vendrá la lógica de setCategorias([id, id])
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(async (file, index) => {
+                // aqui genero  un nombre único para evitar colisiones
+                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`; 
+
+                // 1. Procesamiento con Sharp (Optimización)
+                const bufferOptimizado = await sharp(file.buffer)
+                    .resize(1000, 1000, { 
+                        fit: 'inside', 
+                        withoutEnlargement: true 
+                    })
+                    .webp({ quality: 80 })
+                    .toBuffer();
+
+                // 2. Preparar subida a Cloudflare R2
+                const parallelUploads3 = new Upload({
+                    client: s3Client,
+                    params: {
+                        Bucket: process.env.R2_BUCKET_NAME,
+                        Key: `productos/${nombreArchivo}`,
+                        Body: bufferOptimizado,
+                        ContentType: "image/webp",
+                    },
+                });
+
+                // Ejecutar subida
+                await parallelUploads3.done();
+
+                // Retornar objeto para Sequelize (bulkCreate)
+                return {
+                    idProducto: nuevoProducto.idProducto, // Asegúrate de tener el ID del producto creado arriba
+                    nombreImagen: nombreArchivo,
+                    tipo: index === 0 ? 'principal' : 'galeria'
+                };
+            });
+
+    // 3. Esperar a que todas suban y guardar registros en la DB
+    const imagenesData = await Promise.all(uploadPromises);
+    await Imagenes.bulkCreate(imagenesData); // Tu modelo de imágenes de Sequelize
+}
+        // 3: Imágenes con Sharp y R2
+    
+
+
         
         res.json({ success: true, mensaje: 'Producto guardado con éxito' });
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ mensaje: 'Error interno del servidor' });
-    }
+            } catch (error) {
+                console.log(error);
+                res.status(500).json({ mensaje: 'Error interno del servidor' });
+            }
 }
 
 //************************[JSON CONTROLLERS] ************************ */
