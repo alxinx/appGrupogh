@@ -253,6 +253,23 @@
 }
 
 
+/********************[PAGINADOR]******************/
+
+.paginador {
+  @apply px-3 py-2 mx-0.5 text-sm font-medium rounded-md transition-colors border cursor-pointer
+}
+
+.paginadorActivo {
+  @apply bg-gh-primary text-white bg-gh-primaryHover shadow-sm
+}
+
+.paginadorInactivo {
+  @apply bg-white text-gray-700 hover:bg-gray-50 border-gray-200;
+}
+
+.paginadorDeshabilidado {
+  @apply opacity-50 cursor-not-allowed bg-gray-100 text-gray-400
+}
   /************* [ICONOS] ***************/
 
   .icon {

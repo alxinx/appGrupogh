@@ -819,7 +819,13 @@ const eanJson = async(req, res)=>{
 
 const filterProductListJson = async(req, res) => {
     try {
-        const { busqueda, categoria, estado, web } = req.query;
+        // 1. Capturamos la página y aseguramos que sea un número
+        const { busqueda, categoria, estado, web, pagina = 1 } = req.query;
+        const numPagina = parseInt(pagina) || 1;
+        
+        const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+        const offset = (numPagina - 1) * limite;   
+
         let condiciones = {};
 
         // 1. Búsqueda por texto (corregido con % al inicio y final)
@@ -848,20 +854,26 @@ const filterProductListJson = async(req, res) => {
 
 
 
-        const productosInstancias = await Productos.findAll({
+       // 2. Usamos findAndCountAll para obtener 'count' (total) y 'rows' (productos de la página)
+        const { count, rows: productosInstancias } = await Productos.findAndCountAll({
             where: condiciones,
             include: [{ association: 'imagenes', required: false }],
             order: [['createdAt', 'DESC']],
-            raw: false,
-            nest: true,
-            });
+            limit: limite,   // <--- VITAL: Aplicar el límite
+            offset: offset,  // <--- VITAL: Aplicar el salto de registros
+            distinct: true   // Evita conteos duplicados cuando hay joins
+        });
+
+        const totalPaginas = Math.ceil(count / limite);
 
 
         // 5. Respuesta JSON
         res.json({
             success: true,
-            total: productosInstancias.length,
-            productos: productosInstancias // Usamos un nombre plural para que el frontend lo entienda mejor
+            productos: productosInstancias,
+            totalPaginas,
+            paginaActual: numPagina,
+            totalRegistros: count
         });
 
     } catch (error) {
