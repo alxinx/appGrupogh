@@ -98,16 +98,23 @@ const dashboardInventorys = async (req, res)=>{
     })
 }
 
-const nuevoProducto = async (req, res)=>{
-    
-}
+
 
 const listaProductos = async (req, res)=>{
+
+    const categorias = await Categorias.findAll()
+
+
     return res.status(201).render('./administrador/inventarios/productList', {
         pagina: "Inventarios y Productos",
         subPagina : "Listado De Productos",
         csrfToken : req.csrfToken(),
-        currentPath: '/inventario',})
+        currentPath: '/inventario',
+        subPath : 'listado',
+
+        categorias,
+    
+    })
 }
 
 const verProducto = async (req, res)=>{
@@ -123,7 +130,9 @@ const dosificar = async (req, res)=>{
         pagina: "Dosificacion de productos",
         subPagina : "Dosificar Productos",
         csrfToken : req.csrfToken(),
-        currentPath: '/inventario',})
+        currentPath: '/inventario',
+        subPath : 'dosificar'
+    })
 }
 
 
@@ -808,6 +817,96 @@ const eanJson = async(req, res)=>{
 
 
 
+const filterProductListJson = async(req, res) => {
+    try {
+        const { busqueda, categoria, estado, web } = req.query;
+        let condiciones = {};
+
+        // 1. Búsqueda por texto (corregido con % al inicio y final)
+        if (busqueda && busqueda.trim() !== '') {
+            const term = `%${busqueda.trim()}%`;
+            condiciones[Op.or] = [
+                { nombreProducto: { [Op.like]: term } },
+                { sku: { [Op.like]: term } },
+                { ean: { [Op.like]: term } }
+            ];
+        }
+
+        // 2. Filtro de Categoría (corregido)
+        let categoriaId = parseInt(categoria);
+        if (categoriaId > 0) {
+            condiciones.idCategoria = { [Op.like]: `%${categoriaId}%` };
+        }
+
+        // 3. Filtros de Estado y Web
+        if (estado && estado.trim() !== '') {
+            condiciones.activo = estado;
+        }
+        if (web !== undefined && web !== '') {
+            condiciones.web = web === 'true' ? 1 : 0;
+        }
+
+
+
+        const productosInstancias = await Productos.findAll({
+            where: condiciones,
+            include: [{ association: 'imagenes', required: false }],
+            order: [['createdAt', 'DESC']],
+            raw: false,
+            nest: true,
+            });
+
+
+        // 5. Respuesta JSON
+        res.json({
+            success: true,
+            total: productosInstancias.length,
+            productos: productosInstancias // Usamos un nombre plural para que el frontend lo entienda mejor
+        });
+
+    } catch (error) {
+        console.error('Error en filterProductListJson:', error);
+        res.status(500).json({ success: false, mensaje: 'Error al procesar productos' });
+    }
+}
+
+
+//jsonImageProduct
+
+const jsonImageProduct = async (req, res) => {
+  try {
+    const { idProducto } = req.params; 
+
+    if (!idProducto) {
+      return res.status(400).json({
+        success: false,
+        mensaje: 'idProducto es obligatorio'
+      });
+    }
+
+    const imagen = await Imagenes.findOne({
+      where: {
+        idProducto,
+        tipo: 'principal'
+      }
+    });
+
+    res.json({
+      success: true,
+      imagen
+    });
+
+  } catch (error) {
+    console.error('jsonImageProduct:', error);
+    res.status(500).json({
+      success: false,
+      mensaje: 'Error al obtener imagen'
+    });
+  }
+};
+
+
+
 export {
     dashboard,
     dashboardStores,
@@ -829,5 +928,7 @@ export {
     categoriasJson,
     skuJson,
     eanJson,
+    filterProductListJson,
+    jsonImageProduct,
     baseFrondend
 }

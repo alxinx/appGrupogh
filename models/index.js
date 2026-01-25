@@ -7,12 +7,22 @@ import Categorias from './Categorias.js'
 import Atributos from './Atributos.js'
 import VariacionesProducto from './VariacionesProducto.js'
 import Productos from './Productos.js'
-import Imagenes from './imagenes.js'
+import Imagenes from './Imagenes.js'
 
 
 
 //ASOCIACIONES
 
+
+Productos.hasMany(Imagenes, {
+  as: 'imagenes',
+  foreignKey: 'idProducto'
+});
+
+Imagenes.belongsTo(Productos, {
+  as: 'producto',
+  foreignKey: 'idProducto'
+});
 
 
 

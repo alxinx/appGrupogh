@@ -1,7 +1,7 @@
 import express from "express";
 import csrf from 'csurf';
 const csrfProtection = csrf({ cookie: true });
-import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, listaProductos,verProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, listaProductos,verProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation} from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
@@ -58,6 +58,8 @@ routes.get('/json/municipios/:departamentoId', municipiosJson)
 routes.get('/json/categorias/:idCategoria', categoriasJson  );
 routes.get('/json/sku/:checkSku', skuJson  );
 routes.get('/json/ean/:checkEan', eanJson  );
+routes.get('/json/productos/', filterProductListJson)
+routes.get('/json/imageProduct/:idProducto', jsonImageProduct)
 
 
 

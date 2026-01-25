@@ -1,0 +1,64 @@
+form(id="filtroListadoProductos" class="col-span-12 grid grid-cols-2 md:grid-cols-4 cards cardsWhite p-6")
+    //-FORM BUSQUEDA
+    div(class="col-span-12 grid grid-cols-2 md:grid-cols-4 cards cardSearch")
+        h3.h3.col-span-12
+            i.fi-rr-filter-list.mr-2
+            |Filtra la lista        
+        div(class="col-span-12 p-2 md:col-span-2")
+                div.input-group
+                    i.fi-rr-search.input-icon.input-icon-left
+                    input.input.input-has-icon-left(
+                    type="text"
+                    name = "busquedaText"
+                    id = "busquedaText"
+                    placeholder="Busca y filtra por nombre, SKU, EAN"
+                )
+        //Categoría
+        div(class="col-span-12 p-2 md:col-span-1")
+            div.col-span-9.select-wrapper
+                select(name="categoriaProductos" id="categoriaProductos" class="field-select bg-[#F9F4FD] ") 
+                    option(value="") Categoría
+                    if categorias
+                        each categoria in categorias
+                            if categoria.tipo ==='CATEGORIA'
+                                option(value=categoria.idCategoria )=categoria.nombreCategoria
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+
+        div(class="col-span-12 p-2 md:col-span-1")
+            //Estado
+            div(class="col-span-1")
+                div.col-span-9.select-wrapper
+                    select(name="estadoProductos" id="estadoProductos" class="field-select bg-[#F9F4FD] ") 
+                        option(value="") Estado
+                        option(value="1") Producto Activo 
+                        option(value="0")  Producto Inactivo
+                    span.select-icon
+                        i.fi-rr-chevron-double-down
+
+        div(class="col-span-12 p-2 md:col-span-1")
+            //Dispobible en web
+            div(class="col-span-1 p-2 ")
+                label.flex.items-center.cursor-pointer
+                    input(name="filtroWeb" id="filtroWeb"  type="checkbox" class="sr-only"  checked)
+                    span.switch
+                        span.switch-thumb
+                    span.ml-3.text-sm.text-gray-700 Disponible En Web
+
+        //-LISTADO DE PROODUCTOS
+    div(class="overflow-x-auto col-span-12 grid grid-cols-1 md:grid-cols-1")
+        table(class="w-full text-left border-collapse")
+            thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
+                tr
+                    th(class="p-4 text-sm font-semibold text-gray-600") Imagen
+                    th(class="p-4 text-sm font-semibold text-gray-600") Producto
+                    th(class="p-4 text-sm font-semibold text-gray-600") Precio
+                    th(class="p-4 text-sm font-semibold text-gray-600") Stock
+                    th(class="p-4 text-sm font-semibold text-gray-600") Estado
+                    th(class="p-4 text-sm font-semibold text-gray-600") Web
+                    th(class="p-4 text-sm font-semibold text-gray-600") Acciones
+            
+            //- Este es el corazón del listado dinámico
+            tbody(id="contenedor-productos")
+                //- Aquí JavaScript inyectará las filas (tr)
+        

@@ -6,7 +6,8 @@ import loginRoutes from "./routes/loginRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js"
 import storeRoutes from "./routes/storeRoutes.js"
 import {rutaProtegida, verificarRol} from "./middlewares/authMiddleware.js"
-import db from "./config/bd.js"
+import db from "./config/bd.js";
+
 
 dotenv.config();
 

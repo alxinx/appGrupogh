@@ -8,7 +8,7 @@ const Imagenes = db.define('IMAGENES', {
         autoIncrement: true
     },
     idProducto: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.UUID, // CAMBIAR de INTEGER a UUID
         allowNull: true
     },
     nombreImagen: {

@@ -248,6 +248,10 @@
   @apply text-white
 }
 
+.cardSearch {
+  @apply bg-[#F9F4FD] border-0
+}
+
 
   /************* [ICONOS] ***************/
 

@@ -7,7 +7,8 @@ export default {
         dataAsync : './src/js/dataAsync.js',
         dropdownBtn : './src/js/dropdownBtn',
         steepForms : './src/js/steepForms.js',
-        productDataForm : '/src/js/productDataForm.js'
+        productDataForm : '/src/js/productDataForm.js',
+        productList : '/src/js/productList.js'
     },
     output : {
         filename : '[name].js',
