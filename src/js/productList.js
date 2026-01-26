@@ -38,10 +38,16 @@
                             ${producto.activo ? 'Activo' : 'Inactivo'}
                         </span>
                     </td>
-                    <td class="p-4"><div class="w-4 h-4 rounded-full ${producto.web ? 'bg-pink-500' : 'bg-gray-300'}"></div></td>
+                    <td class="p-4"><div class="w-4 h-4 rounded-full ${producto.web ? 'bg-green-500' : 'bg-gray-300'}"></div></td>
                     <td class="p-4">
-                        <a href="/admin/editar-producto/${producto.idProducto}" class="text-gh-primary hover:text-gh-primaryHover">
-                            <i class="fi-rr-edit text-lg"></i>
+                        <a href="/admin/inventario/ver/${producto.idProducto}" class="text-gh-primary hover:text-gh-primaryHover">
+                            <div class="btn btn-secondary" >
+                                <i class="fi-rr-eye text-lg"></i>
+                                Ver Detalles
+                            </div>
+
+                        
+                        
                         </a>
                     </td>
                 </tr>`;

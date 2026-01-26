@@ -40,9 +40,19 @@ const Productos = db.define('PRODUCTOS', {
         allowNull: false,
     },
     ean: {
-        type: DataTypes.STRING(13),
-        unique: true,
-        allowNull: true,
+    type: DataTypes.STRING(13),
+    unique: true,
+    allowNull: true,
+    validate: {
+        len: [0, 13] // Valida que no exceda los 13 caracteres
+    },
+    set(val) {
+        if (val === '' || (typeof val === 'string' && val.trim() === '')) {
+            this.setDataValue('ean', null);
+        } else {
+            this.setDataValue('ean', val);
+        }
+    }
     },
     tags : {
         type : DataTypes.STRING(255),

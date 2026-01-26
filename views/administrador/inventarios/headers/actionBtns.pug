@@ -1,4 +1,9 @@
 div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+    
+
+    
+    
+    
     a(onclick='history.back()') 
         button(class="btn btn-outline flex items-center gap-2")
             i(class="fi fi-rr-arrow-left")
@@ -16,18 +21,24 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
             div(class="py-1" role="none")
             
             //- OPCIÓN 1: EDITAR (Icono Lápiz)
-            a(href="/admin/tiendas/editar/" class="text-gray-700 hover:bg-gray-100 group flex items-center px-4 py-2 text-sm" role="menuitem")
+            a(href="/admin/inventario/listado/" class="text-gray-700 hover:bg-gray-100 group flex items-center px-4 py-2 text-sm" role="menuitem")
                 span(class="pr-3")
-                    i.fi-rr-pencil
-                | Editar Tienda
+                    i.fi-rr-list
+                | Lista Productos
             
-            a(href="/admin/tiendas/new/" class="text-gray-700 hover:bg-gray-100 group flex items-center px-4 py-2 text-sm" role="menuitem")
+            a(href="/admin/inventario/dosificar/" class="text-gray-700 hover:bg-gray-100 group flex items-center px-4 py-2 text-sm" role="menuitem")
                 span(class="pr-3")
                     i.fi-rr-add-document
-                | Crear Nuevo Punto De Venta
+                | Dosificar Productos
             
             a(href="#" class="text-red-700 hover:bg-red-800 hover:text-white group flex items-center px-4 py-2 text-sm" role="menuitem")
                 span(class="pr-3")
                     i.fi-rr-triangle-warning
-                | Suspender Tienda
+                | Suspender Producto
+    
+    if subPagina === 'Producto'
+        a(href=`/admin/inventario/editar/${producto.idProducto}`) 
+            button(class="btn btn btn-danger flex items-center gap-2")
+                i(class="fi fi-rr-edit")
+                | Editar Producto
 

@@ -1,88 +1,110 @@
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
         
-        // --- 1. LÓGICA DE CATEGORÍAS Y SUBCATEGORÍAS ---
-        const checkboxesCategorias = document.querySelectorAll('.categoria-checkbox');
+        // --- 1. ESTADO INICIAL Y REFERENCIAS ---
+        const inputHiddenVariantes = document.getElementById('variantes_finales');
         const contenedorSubCategorias = document.getElementById('SubCategorias');
+        const resumenContainer = document.getElementById('resumenVariantes');
+        const modal = document.getElementById('modalColores');
+        const btnGuardarMaster = document.getElementById('guardar');
+        
+        const categoriasYaMarcadas = typeof categoriasSeleccionadas !== 'undefined' ? categoriasSeleccionadas : [];
+        
+        let variantesSeleccionadas = inputHiddenVariantes && inputHiddenVariantes.value !== "{}" 
+            ? JSON.parse(inputHiddenVariantes.value) 
+            : {}; 
+        
+        let tallaActualId = null;
+
+        // --- 2. LÓGICA DE CATEGORÍAS Y SUBCATEGORÍAS ---
+        const checkboxesCategorias = document.querySelectorAll('.categoria-checkbox');
+
+        const cargarSubcategorias = async (idCategoria) => {
+            const idContenedorGrupo = `grupo-sub-cat-${idCategoria}`;
+            if (document.getElementById(idContenedorGrupo)) return;
+
+            try {
+                const respuesta = await fetch(`/admin/json/categorias/${idCategoria}`);
+                const resultado = await respuesta.json();
+                
+                if (resultado.length > 0) {
+                    const grupoDiv = document.createElement('div');
+                    grupoDiv.id = idContenedorGrupo;
+                    grupoDiv.className = 'flex flex-wrap gap-2 contents';
+                    
+                    resultado.forEach(element => {
+                        const isChecked = categoriasYaMarcadas.includes(element.idCategoria) ? 'checked' : '';
+                        
+                        grupoDiv.innerHTML += `
+                            <label class="subItems bg-[#EBE1F2] cursor-pointer" data-parent="${idCategoria}">
+                                <input type="checkbox" name="categorias" value="${element.idCategoria}" 
+                                       class="w-4 h-4 rounded border-gray-300 checkbox" ${isChecked}>
+                                <span class="text-[10px] font-bold uppercase">${element.nombreCategoria}</span>
+                            </label>`;
+                    });
+                    contenedorSubCategorias.appendChild(grupoDiv);
+                }
+            } catch (error) { console.error("Error en subcategorías:", error); }
+        };
 
         checkboxesCategorias.forEach(checkbox => {
-            checkbox.addEventListener('change', async function(e) {
-                const idCategoria = e.target.value;
-                const idContenedorGrupo = `grupo-sub-cat-${idCategoria}`;
-
+            checkbox.addEventListener('change', function(e) {
                 if (e.target.checked) {
-                    if (document.getElementById(idContenedorGrupo)) return;
-                    try {
-                        const respuesta = await fetch(`/admin/json/categorias/${idCategoria}`);
-                        const resultado = await respuesta.json();
-                        if (resultado.length > 0) {
-                            const grupoDiv = document.createElement('div');
-                            grupoDiv.id = idContenedorGrupo;
-                            grupoDiv.className = 'flex flex-wrap gap-2 contents';
-                            resultado.forEach(element => {
-                                grupoDiv.innerHTML += `
-                                    <label class="subItems bg-[#EBE1F2]" data-parent="${idCategoria}">
-                                        <input type="checkbox" name="subcategorias" value="${element.idCategoria}" class="w-4 h-4 rounded border-gray-300">
-                                        <span class="text-[10px] font-bold uppercase">${element.nombreCategoria}</span>
-                                    </label>`;
-                            });
-                            contenedorSubCategorias.appendChild(grupoDiv);
-                        }
-                    } catch (error) { console.error("Error:", error); }
+                    cargarSubcategorias(e.target.value);
                 } else {
-                    const grupoAEliminar = document.getElementById(idContenedorGrupo);
-                    if (grupoAEliminar) grupoAEliminar.remove();
+                    const grupo = document.getElementById(`grupo-sub-cat-${e.target.value}`);
+                    if (grupo) grupo.remove();
                 }
             });
         });
 
-        // --- 2. LÓGICA DE VARIANTES (TALLA / COLOR) ---
-        let variantesSeleccionadas = {}; 
-        let tallaActualId = null;
-
-        const modal = document.getElementById('modalColores');
+        // --- 3. LÓGICA DE VARIANTES Y RESUMEN INTERACTIVO ---
         const triggersTalla = document.querySelectorAll('.talla-trigger');
         const checksColor = document.querySelectorAll('.color-checkbox');
 
-        // Función para actualizar el resumen (Movida adentro para acceder a variables locales)
         const renderizarResumen = () => {
-            const contenedor = document.getElementById('resumenVariantes');
-            if(!contenedor) return;
+            if(!resumenContainer) return;
+            resumenContainer.innerHTML = '';
             
-            contenedor.innerHTML = '';
             const keys = Object.keys(variantesSeleccionadas);
-            //Aqui miro si el usuario seleccioono una talla pero no selecciono ningún color :( 
             if (keys.length === 0) {
-                contenedor.innerHTML = '<span class="text-gray-400 text-sm italic">No hay combinaciones seleccionadas...</span>';
+                resumenContainer.innerHTML = '<span class="text-gray-400 text-sm italic">No hay combinaciones seleccionadas...</span>';
                 return;
             }
 
             keys.forEach(idTalla => {
                 const trigger = document.querySelector(`.talla-trigger[value="${idTalla}"]`);
-                const nombreTalla = trigger ? trigger.dataset.nombre : idTalla;
+                const nombreTalla = trigger ? trigger.dataset.nombre : 'S/N';
                 
                 const card = document.createElement('div');
-                card.className = "flex items-center bg-white border border-gray-200 rounded-lg p-2 shadow-sm animate-fade-in";
+                card.className = "flex items-center bg-white border border-gray-200 rounded-lg p-2 shadow-sm animate-fade-in cursor-pointer hover:bg-gray-50 transition-all";
                 
+                card.onclick = (e) => {
+                    if (e.target.closest('button')) return;
+                    tallaActualId = idTalla;
+                    document.getElementById('tallaTitulo').innerText = nombreTalla;
+                    const seleccionados = variantesSeleccionadas[idTalla] || [];
+                    checksColor.forEach(c => c.checked = seleccionados.includes(c.value));
+                    modal.classList.remove('hidden');
+                };
+
                 const nombresColores = variantesSeleccionadas[idTalla].map(idColor => {
                     const check = document.querySelector(`.color-checkbox[value="${idColor}"]`);
                     return check ? check.dataset.nombre : 'Color';
                 }).join(', ');
 
                 card.innerHTML = `
-                    <div class="flex flex-col">
-                        <span class="text-[12px] font-black  text-gh-primaryHover uppercase">Talla ${nombreTalla}</span>
+                    <div class="flex flex-col flex-1">
+                        <span class="text-[12px] font-black text-gh-primaryHover uppercase">Talla ${nombreTalla}</span>
                         <span class="text-xs text-gray-600 font-medium">${nombresColores}</span>
                     </div>
-                    <button type="button" class="ml-3 text-gray-300 cursor-pointer hover:text-red-500" onclick="eliminarTalla('${idTalla}')">
+                    <button type="button" class="ml-3 text-gray-300 hover:text-red-500 p-1" onclick="event.stopPropagation(); eliminarTalla('${idTalla}')">
                         <i class="fi-rr-trash text-sm"></i>
                     </button>`;
-                contenedor.appendChild(card);
+                resumenContainer.appendChild(card);
             });
 
-            // Sincronizar con el input hidden para el post
-            const inputHidden = document.getElementById('variantes_finales');
-            if(inputHidden) inputHidden.value = JSON.stringify(variantesSeleccionadas);
+            if(inputHiddenVariantes) inputHiddenVariantes.value = JSON.stringify(variantesSeleccionadas);
         };
 
         triggersTalla.forEach(trigger => {
@@ -90,13 +112,26 @@
                 if (this.checked) {
                     tallaActualId = this.value;
                     document.getElementById('tallaTitulo').innerText = this.dataset.nombre;
-                    // preparo el modal
                     const seleccionados = variantesSeleccionadas[tallaActualId] || [];
                     checksColor.forEach(c => c.checked = seleccionados.includes(c.value));
                     modal.classList.remove('hidden');
                 } else {
-                    delete variantesSeleccionadas[this.value];
-                    renderizarResumen();
+                    Swal.fire({
+                        title: '¿Eliminar combinación?',
+                        text: "Se borrarán los colores de esta talla.",
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#f472b6',
+                        confirmButtonText: 'Sí, borrar',
+                        cancelButtonText: 'Cancelar'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            delete variantesSeleccionadas[this.value];
+                            renderizarResumen();
+                        } else {
+                            this.checked = true;
+                        }
+                    });
                 }
             });
         });
@@ -114,322 +149,263 @@
             renderizarResumen();
         });
 
-        document.getElementById('cerrarModal').addEventListener('click', () => modal.classList.add('hidden'));
+        // --- 4. PROCESO DE HIDRATACIÓN INICIAL ---
+        const hidratarFormulario = () => {
+            checkboxesCategorias.forEach(checkbox => {
+                if(checkbox.checked) cargarSubcategorias(checkbox.value);
+            });
 
-        // Exponer eliminarTalla al objeto global window
-        window.eliminarTalla = function(idTalla) {
-            const checkTalla = document.querySelector(`.talla-trigger[value="${idTalla}"]`);
-            if (checkTalla) {
-                checkTalla.checked = false;
-                checkTalla.dispatchEvent(new Event('change'));
-            }
+            Object.keys(variantesSeleccionadas).forEach(idTalla => {
+                const check = document.querySelector(`.talla-trigger[value="${idTalla}"]`);
+                if(check) check.checked = true;
+            });
+
+            renderizarResumen();
         };
+
+        hidratarFormulario();
+
+        document.getElementById('cerrarModal').onclick = () => modal.classList.add('hidden');
+        
+        window.eliminarTalla = (idTalla) => {
+            Swal.fire({
+                title: '¿Quitar talla?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#f472b6',
+                confirmButtonText: 'Eliminar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const checkTalla = document.querySelector(`.talla-trigger[value="${idTalla}"]`);
+                    if (checkTalla) checkTalla.checked = false;
+                    delete variantesSeleccionadas[idTalla];
+                    renderizarResumen();
+                }
+            });
+        };
+
+        // --- 5. VALIDACIÓN ASÍNCRONA SKU / EAN ---
+        const validarUnicidad = async (input, tipo) => {
+            let valor = input.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '');
+            input.value = valor; 
+
+            if (!valor) return;
+
+            try {
+                const respuesta = await fetch(`/admin/json/${tipo}/${valor}`);
+                const resultado = await respuesta.json();
+                const contenedorError = document.getElementById(`error${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
+
+                if (resultado && resultado.idProducto) {
+                    input.value = '';
+                    input.focus();
+                    if(btnGuardarMaster) btnGuardarMaster.disabled = true;
+
+                    contenedorError.innerHTML = `
+                        <p class="text-red-600 text-xs font-bold mt-1 uppercase animate-pulse">
+                            ⚠️ EL ${tipo.toUpperCase()} "${valor}" YA EXISTE.
+                        </p>`;
+                    
+                    Swal.fire({
+                        icon: 'warning',
+                        title: `${tipo.toUpperCase()} Duplicado`,
+                        text: `El código ${valor} ya pertenece a otro producto.`,
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 3000
+                    });
+                } else {
+                    if(contenedorError) contenedorError.innerHTML = '';
+                    if(btnGuardarMaster) btnGuardarMaster.disabled = false;
+                }
+            } catch (error) { console.error(`Error validando ${tipo}:`, error); }
+        };
+
+        const skuInput = document.getElementById('sku');
+        const eanInput = document.getElementById('ean');
+        if(skuInput) skuInput.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
+        if(eanInput) eanInput.addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
+
     });
 })();
 
-
-
-// Referencias
+// --- 6. VISIBILIDAD, SEO Y SLUG ---
 const checkActivo = document.getElementById('activo');
 const checkWeb = document.getElementById('disponible_web');
 const seccionSeo = document.getElementById('seccion-web-seo');
 const inputNombre = document.getElementById('nombreProducto'); 
 const inputSlug = document.getElementById('slug');
 
-// 1. Lógica de visibilidad y dependencia
 function actualizarEstadoWeb() {
-    if (!checkActivo.checked) {
-        // Si el producto no está activo, forzamos web a false y disabled
-        checkWeb.checked = false;
-        checkWeb.disabled = true;
-        checkWeb.closest('label').classList.add('opacity-50', 'cursor-not-allowed');
+    if (!checkActivo?.checked) {
+        if(checkWeb) {
+            checkWeb.checked = false;
+            checkWeb.disabled = true;
+            checkWeb.closest('label')?.classList.add('opacity-50', 'cursor-not-allowed');
+        }
     } else {
-        checkWeb.disabled = false;
-        checkWeb.closest('label').classList.remove('opacity-50', 'cursor-not-allowed');
+        if(checkWeb) {
+            checkWeb.disabled = false;
+            checkWeb.closest('label')?.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
     }
     
-    // Mostrar/Ocultar formularios SEO
-    if (checkWeb.checked && !checkWeb.disabled) {
-        seccionSeo.classList.remove('hidden');
+    if (checkWeb?.checked && !checkWeb?.disabled) {
+        seccionSeo?.classList.remove('hidden');
     } else {
-        seccionSeo.classList.add('hidden');
+        seccionSeo?.classList.add('hidden');
     }
 }
 
-// 2. Generador de Slug
 function generarSlug(texto) {
-    return texto
-        .toString()
-        .toLowerCase()
-        .trim()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Quito tildes
-        .replace(/\s+/g, '-')           // este Cambia espacios por guiones
-        .replace(/[^\w\-]+/g, '')       // Esto Quita caracteres no permitidos
-        .replace(/\-\-+/g, '-');        // Aqui evito guiones dobles
+    return texto.toString().toLowerCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
 }
 
-// Listeners
-checkActivo.addEventListener('change', actualizarEstadoWeb);
-checkWeb.addEventListener('change', actualizarEstadoWeb);
-
-inputNombre.addEventListener('input', (e) => {
-    inputSlug.value = generarSlug(e.target.value);
+if(checkActivo) checkActivo.addEventListener('change', actualizarEstadoWeb);
+if(checkWeb) checkWeb.addEventListener('change', actualizarEstadoWeb);
+if(inputNombre) inputNombre.addEventListener('input', (e) => {
+    if(inputSlug) inputSlug.value = generarSlug(e.target.value);
 });
 
-// Ejecutar al cargar por si vienen datos de edición
 actualizarEstadoWeb();
 
-
-//VISUALIZACION DE IMAGENES Y PRE-CARGA
+// --- 7. GESTIÓN DE IMÁGENES ---
 (function(){
     const uploadInput = document.getElementById('upload-images');
     const previewContainer = document.getElementById('preview-container');
     let archivosActuales = new DataTransfer(); 
 
+    if(!uploadInput) return;
+
     uploadInput.addEventListener('change', function(e) {
         const files = Array.from(e.target.files);
-        
-        // Límite de cantidad total
-        if (archivosActuales.files.length + files.length > 10) {
-            Swal.fire('¡Muchos archivos!', 'El límite son 10 imágenes por producto.', 'warning');
-            return;
-        }
-
         files.forEach(file => {
             if (!file.type.startsWith('image/')) return;
-
-            // --- INICIO DE VALIDACIÓN DE PESO ---
             if (file.size > 2 * 1024 * 1024) {
-                Swal.fire({
-                    title: '😖 ¡Muy pesado! Me rehuso a subirlo 🤨',
-                    html: `
-                        <p class="mb-4 text-sm">La imagen <b>${file.name}</b> supera los 2MB.</p>
-                        <p class="text-xs text-gray-500">Te recomiendo ir a 
-                            <a href="https://squoosh.app" target="_blank" class="text-pink-500 font-bold underline">Squoosh.app</a> 
-                            para bajarle el peso y que puedas usarla aquí.
-                        </p>
-                    `,
-                    icon: 'error',
-                    confirmButtonText: 'Entendido',
-                    confirmButtonColor: '#f472b6'
-                });
-                return; // IMPORTANTE: Salimos de la iteración, no se añade al preview ni al DataTransfer
+                Swal.fire('Error', 'Límite de 2MB superado', 'error');
+                return;
             }
-            // --- FIN DE VALIDACIÓN ---
 
-            // Si pasa la validación, procedemos:
             archivosActuales.items.add(file);
-
             const reader = new FileReader();
-            reader.onload = (event) => {
+            reader.onload = (ev) => {
                 const div = document.createElement('div');
-                div.className = "w-20 h-20 rounded-xl bg-gray-100 border border-gray-100 relative overflow-hidden group animate-fade-in";
+                div.className = "w-20 h-20 rounded-xl bg-gray-100 border relative group animate-fade-in";
                 div.dataset.fileName = file.name; 
-                
                 div.innerHTML = `
-                    <img src="${event.target.result}" class="w-full h-full object-cover">
-                    <button type="button" class="btn-delete-img absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                `;
+                    <img src="${ev.target.result}" class="w-full h-full object-cover rounded-xl">
+                    <button type="button" class="btn-delete-img absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md">
+                        <i class="fi-rr-cross-small text-[10px]"></i>
+                    </button>`;
                 previewContainer.insertBefore(div, previewContainer.lastElementChild);
             };
             reader.readAsDataURL(file);
         });
-
-        // Sincronizamos el input físico con nuestro manipulador de archivos
         uploadInput.files = archivosActuales.files;
     });
 
-    // Delegación de eventos para borrar (Tu lógica original impecable)
-    previewContainer.addEventListener('click', function(e) {
+    previewContainer?.addEventListener('click', (e) => {
         const btn = e.target.closest('.btn-delete-img');
         if (btn) {
             const card = btn.parentElement;
-            const nombreABorrar = card.dataset.fileName;
-
+            const nombre = card.dataset.fileName;
             card.remove();
-
-            const nuevoDataTransfer = new DataTransfer();
-            Array.from(archivosActuales.files)
-                .filter(file => file.name !== nombreABorrar)
-                .forEach(file => nuevoDataTransfer.items.add(file));
-            
-            archivosActuales = nuevoDataTransfer;
+            const dt = new DataTransfer();
+            Array.from(archivosActuales.files).filter(f => f.name !== nombre).forEach(f => dt.items.add(f));
+            archivosActuales = dt;
             uploadInput.files = archivosActuales.files;
         }
     });
 })();
 
-
-
-//GUARDO ASYNC
+// --- 8. GUARDADO ASYNC Y REDIRECCIÓN ---
 (function() {
     const formulario = document.querySelector('#formularioProducto');
-    const btnGuardar = document.querySelector('#guardar');
-
-    // Función para mostrar errores
-    function mostrarErrores(errores) {
-        // Limpio los errores que pudieron haber antes.
-        document.querySelectorAll('.error-msg').forEach(el => el.remove());
-        document.querySelectorAll('.field-text, .checkbox').forEach(el => el.classList.remove('border-red-500'));
-
-        // 'errores' ahora viene como un objeto { campo: mensaje } desde el back corregido
-        Object.entries(errores).forEach(([campo, mensaje]) => {
-            const input = document.querySelector(`[name="${campo}"]`);
-            if (input) {
-                const divError = document.createElement('div');
-                divError.className = 'label-error animate-fade-in';
-                divError.textContent = mensaje;
-                
-                input.parentElement.appendChild(divError);
-                input.classList.add('border-red-500');
-            }
-        });
-    }
+    if (!formulario) return;
 
     formulario.addEventListener('submit', async function(e) {
-        e.preventDefault();
+        e.preventDefault(); 
         
         Swal.fire({
             title: 'Guardando producto...',
-            text: 'Por favor espera un momento',
+            text: 'Estamos procesando los datos e imágenes para el inventario.',
             allowOutsideClick: false,
-            didOpen: () => {
-                Swal.showLoading();
-            }
+            didOpen: () => { Swal.showLoading(); }
         });
-        
-
-
-
-        btnGuardar.disabled = true;
-        btnGuardar.innerHTML = '<i class="fi-rr-spinner animate-spin"></i> Guardando...';
 
         const formData = new FormData(formulario);
+
         try {
             const respuesta = await fetch(formulario.action, {
                 method: 'POST',
-                body: formData,
-                // headers: {
-                //     'X-Requested-With': 'XMLHttpRequest' 
-                // }
+                body: formData
             });
 
             const resultado = await respuesta.json();
 
             if (resultado.errores) {
-                mostrarErrores(resultado.errores);
-                btnGuardar.disabled = false;
-                btnGuardar.innerHTML = '<i class="fi-rr-disk"></i> Guardar Salir';
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error de validación',
+                    text: 'Revisa los campos del formulario.'
+                });
             } else {
-                
                 Swal.fire({
                     icon: 'success',
-                    title: '¡Todo listo!',
-                    text: resultado.mensaje || 'Producto creado correctamente',
-                    confirmButtonText: 'Ir al listado',
+                    title: '¡Producto Guardado!',
+                    text: 'Los cambios se aplicaron correctamente.',
                     timer: 2000,
-                    timerProgressBar: true
+                    showConfirmButton: false
                 }).then(() => {
-                    window.location.href = '/admin/inventario/ingreso'; // Rediriges al terminar
+                    window.location.href = '/admin/inventario/ingreso'; 
                 });
             }
+
         } catch (error) {
-            console.error('Error:', error);
-            btnGuardar.disabled = false;
-            // Errores de validación o del servidor
-            Swal.fire({
-                icon: 'error',
-                title: 'Ops...',
-                text: resultado.mensaje || 'Hubo un error al guardar',
-            });
+            console.error("Error en el envío:", error);
+            Swal.fire('Error crítico', 'No se pudo conectar con el servidor.', 'error');
         }
     });
 })();
 
-
-(function() {
-    const btnGuardar = document.getElementById('guardar');
-
-    // Función genérica para validar unicidad
-    const validarUnicidad = async (input, tipo) => {
-        let valor = input.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '');
-        input.value = valor; // Reflejar la limpieza en el input
-
-        if (!valor) return;
-
-        try {
-            const respuesta = await fetch(`/admin/json/${tipo}/${valor}`);
-            const resultado = await respuesta.json();
-
-            const contenedorError = document.getElementById(`error${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
-
-            if (resultado && resultado.idProducto) {
-                input.value = '';
-                input.focus();
-                btnGuardar.disabled = true;
-
-                // Usamos una alerta sutil o el mensaje de error
-                contenedorError.innerHTML = `
-                    <p class="text-red-600 text-xs font-bold mt-1 uppercase">
-                        ⚠️ EL ${tipo.toUpperCase()} "${valor}" YA EXISTE.
-                    </p>`;
-                
-                // Opcional: SweetAlert2 para una interrupción clara
-                Swal.fire({
-                    icon: 'warning',
-                    title: `${tipo.toUpperCase()} Duplicado`,
-                    text: `El código ${valor} ya pertenece a otro producto.`,
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 3000
-                });
-
-            } else {
-                contenedorError.innerHTML = '';
-                btnGuardar.disabled = false;
-            }
-        } catch (error) {
-            console.error(`Error validando ${tipo}:`, error);
-        }
-    };
-
-    // Listeners limpios
-    document.getElementById('sku').addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
-    document.getElementById('ean').addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
-})();
-
-
-
-
-
-
-//FORMATO PESOS COLOMBIANOS PARA LOS PRECIOS DE MAYORISTAS Y MINORISTAS!
+// FORMATO PESOS COLOMBIANOS PARA LOS PRECIOS
 (function(){
-    const inputMinorista = document.getElementById('precioVentaMayorista');
-    const inputMayorista = document.getElementById('precioVentaPublicoFinal');
+    const inputMayorista = document.getElementById('precioVentaMayorista');
+    const inputPublico = document.getElementById('precioVentaPublicoFinal');
 
-    const money = (n) => {
+    // Función de formateo centralizada
+    const formatMoney = (n) => {
+        // Extraemos solo los números
         const value = String(n).replace(/\D/g, '');
         if(!value) return "";
         
+        // Formateamos usando el estándar de Colombia
         return new Intl.NumberFormat('es-CO', {
+            style: 'decimal',
             maximumFractionDigits: 0
         }).format(value);
     };
 
-    [inputMinorista, inputMayorista].forEach(input => {
+    [inputMayorista, inputPublico].forEach(input => {
         if(!input) return;
+
         input.addEventListener('input', function(e) {
+            // Guardamos la posición del cursor antes de formatear
             let cursorPosition = e.target.selectionStart;
             let valueOriginal = e.target.value;
 
-            // Formatear
-            e.target.value = money(e.target.value);
+            // Aplicamos el formato
+            const formattedValue = formatMoney(valueOriginal);
+            e.target.value = formattedValue;
 
-            if (valueOriginal.length < e.target.value.length) cursorPosition++;
+            // Ajustamos la posición del cursor si se agregaron puntos separadores
+            if (valueOriginal.length < formattedValue.length) {
+                cursorPosition++;
+            }
+            
             e.target.setSelectionRange(cursorPosition, cursorPosition);
         });
     });

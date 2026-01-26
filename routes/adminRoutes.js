@@ -1,7 +1,7 @@
 import express from "express";
 import csrf from 'csurf';
 const csrfProtection = csrf({ cookie: true });
-import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, listaProductos,verProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation} from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
@@ -24,7 +24,8 @@ routes.get('/tiendas',dashboardStores);
 //INVENTARIOS Y PRODUCTOS.
 routes.get('/inventario/ingreso',csrfProtection,dashboardInventorys);
     routes.get('/inventario/listado',listaProductos);
-    routes.get('/inventario/ver/', verProducto)
+    routes.get('/inventario/ver/:idProducto', verProducto)
+    routes.get('/inventario/editar/:idProducto', editarProducto)
     routes.get('/inventario/dosificar/', dosificar)
     
 
@@ -39,7 +40,6 @@ routes.get('/frontend',baseFrondend);
 
 //****************[POST]**********************/
 routes.post('/tiendas/nueva',csrfProtection, storeRegisterValidation, storeBasicTaxDataValidation, postNuevaTienda)
-
 routes.post('/inventario/ingreso', 
     uploadImages.array('imagenes', 10), // 1. Multer procesa los binarios y el body
     csrfProtection,                     // 2. Ahora que req.body existe, validamos el token

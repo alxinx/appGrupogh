@@ -92,6 +92,9 @@ const dashboardInventorys = async (req, res)=>{
         subPagina : "Nuevo Producto",
         csrfToken : req.csrfToken(),
         currentPath: '/inventario',
+        producto: {}, 
+        categoriasSeleccionadas: [], 
+        atributosSeleccionados: [],  
         atributos,
         categorias
     
@@ -117,12 +120,100 @@ const listaProductos = async (req, res)=>{
     })
 }
 
+
+
 const verProducto = async (req, res)=>{
-     return res.status(201).render('./administrador/inventarios/viewProducts', {
-        pagina: "Ver Producto",
-        subPagina : "Caracteristicas producto",
-        csrfToken : req.csrfToken(),
-        currentPath: '/inventario',})
+        const {idProducto} = req.params;
+        console.log(idProducto)
+        try {
+                const [categorias, atributos, producto] = await Promise.all([
+                    Categorias.findAll(),
+                    Atributos.findAll(),
+                    Productos.findByPk(idProducto, {
+                    include: [{ association: 'imagenes' }] 
+                    })
+                ])
+
+            if (!producto) return res.redirect('/admin/inventario/listado');
+            return res.status(201).render('./administrador/inventarios/productView', {
+                pagina: "Ver Producto",
+                subPagina : "Producto",
+                csrfToken : req.csrfToken(),
+                currentPath: '/inventario',
+                subPath : process.env.R2_PUBLIC_URL,
+                atributos,
+                categorias,
+                producto,
+            })
+            
+        } catch (error) {
+            console.error(error);
+            //res.redirect('/admin/inventario');
+        }
+ 
+}
+
+
+
+const editarProducto = async (req, res)=>{
+
+        const {idProducto} = req.params;
+
+
+        try {
+            const [categorias, atributos, producto, variacionesDb]  = await  Promise.all([
+                Categorias.findAll(),
+                Atributos.findAll(),
+                Productos.findByPk(idProducto ,{
+                    include: [
+                        { association: 'imagenes' },
+                    ],},
+                ),
+                VariacionesProducto.findAll({ where: { idProducto } })
+            ])
+
+            //Selecciono las categorias a las que pertenece el producto
+            const categoriasId = producto.idCategoria 
+                    ? producto.idCategoria.split(/[,|]/).map(id => parseInt(id)) : []
+
+            if(!producto) return res.redirect('/admin/inventario/listado/')
+            const variantesMapa = {};
+            variacionesDb.forEach(v => {
+            // Separamos el "58|15" -> [58, 15]
+            const partes = v.idAtributos.split('|');
+                if (partes.length === 2) {
+                    const idTalla = partes[0];
+                    const idColor = partes[1];
+
+                    if (!variantesMapa[idTalla]) {
+                        variantesMapa[idTalla] = [];
+                    }
+                // Agregamos el color a esa talla
+                    variantesMapa[idTalla].push(idColor);
+                }
+            });
+
+            const variantesJson = JSON.stringify(variantesMapa);
+            // Convertimos "58|15" en [58, 15]
+            const atributosIds = variacionesDb.flatMap(
+                    v =>v.idAtributos.split('|').map(id => parseInt(id)));
+
+            return res.status(201).render('./administrador/inventarios/edit', {
+            pagina: "Editar Producto",
+            subPagina :  producto.nombreProducto,
+            csrfToken : req.csrfToken(),
+            currentPath: '/inventario',
+            subPath : 'Editar Producto',
+            atributos,
+            atributosSeleccionados: atributosIds,
+            variantesJson : variantesJson, 
+            categorias,
+            categoriasSeleccionadas: categoriasId,
+            producto
+    })
+        } catch (error) {
+            return res.redirect('/admin/inventario/listado/')
+        }
 }
 
 const dosificar = async (req, res)=>{
@@ -674,6 +765,8 @@ const newProduct = async (req, res, next) => {
 
         //Trabajo con las categoorias y. subcategorias con las que vienne el porducto, 
         const {categorias,subcategorias }=req.body
+        
+        console.log(categorias)
         const todasLasCategorias = [categorias].concat(subcategorias || []);
         const idCategoriaParaDB = todasLasCategorias.filter(id => id && id !== '').join('|')
 
@@ -685,6 +778,8 @@ const newProduct = async (req, res, next) => {
         const web = req.body.web === 'on';
         //Ingreso todo para que me pueda generar el ID del producto y seguir con lo siguiente! 
         // 1. Ingreso los datos  necesarios para ingresar el producto y trabajar el ID. 
+
+        console.log(`Categoorias para guardar: ${idCategoriaParaDB}`)
         const nuevoProducto = await Productos.create({
             ...req.body,
             descripcion  : descripcionLimpia,
@@ -929,6 +1024,7 @@ export {
     postEditStore,
     dashboardInventorys,
     newProduct,
+    editarProducto,
     listaProductos,
     verProducto,
     dosificar,

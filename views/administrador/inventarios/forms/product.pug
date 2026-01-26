@@ -15,7 +15,7 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
 
         div(class="col-span-12")
             label.label Nombre Del Producto
-                input(class="field-text" type="text" name="nombreProducto" id="nombreProducto" placeholder="Cómo se llama el producto?")
+                input(class="field-text" type="text" name="nombreProducto" id="nombreProducto" placeholder="Cómo se llama el producto?" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
                 #divError
                 //if errores && errores.nombreProducto
                     
@@ -28,11 +28,10 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
             div(class="flex flex-wrap gap-2 mt-2")
                 each categoria in categorias
                     if(categoria.tipo === "CATEGORIA")
-                        //- Puntos clave:
-                        //- 1. Cambiamos ID por clase 'categoria-checkbox'
-                        //- 2. El value debe ser el ID de la categoría
                         label(class="subItems")
-                            input(type="checkbox" name="categorias" value=categoria.idCategoria class="categoria-checkbox checkbox")
+                            input(type="checkbox" name="categorias" value=categoria.idCategoria  
+                            checked=categoriasSeleccionadas.includes(categoria.idCategoria)    
+                            class="categoria-checkbox checkbox")
                             span(class="text-xs font-bold text-gray-700 uppercase")= categoria.nombreCategoria
 
         //- Columna de SubCategorías
@@ -47,24 +46,24 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
         //- SKU
         div(class="col-span-12 md:col-span-3")
             label.label SKU
-                input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno")
+                input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno" value = (producto && producto.sku) ? producto.sku : "")
                 #errorSku
         
         //- EAN
         div(class="col-span-12 md:col-span-3")
             label.label EAN
-                input(class="field-text" type="text" name="ean" id="ean" placeholder="Código de barras")
+                input(class="field-text" type="text" name="ean" id="ean" placeholder="Código de barras" value = (producto && producto.ean) ? producto.ean : "")
                 #errorEan
 
         //- PRECIOS PARA MAYORISTA
         div(class="col-span-12 md:col-span-3")
             label.label PRECIO MAYORISTA
-                input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000")
+                input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000" value = (producto && producto.precioVentaMayorista) ? producto.precioVentaMayorista : "")
 
         //- PRECIOS PARA MINORISTA!
         div(class="col-span-12 md:col-span-3")
             label.label PRECIO PÚBLICO FINAL
-                input(class="field-text" type="text" id="precioVentaPublicoFinal" name="precioVentaPublicoFinal" placeholder="Ej : $80.000")
+                input(class="field-text" type="text" id="precioVentaPublicoFinal" name="precioVentaPublicoFinal" placeholder="Ej : $80.000" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
         
         
 
@@ -89,13 +88,15 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                     if atributo.tipo === 'TALLA'
                         label(class="flex items-center gap-2 bg-white border border-gray-200 px-4 py-2 rounded-xl cursor-pointer hover:border-indigo-500 transition-all")
                             //- Agregamos clase 'talla-trigger' y data-id
-                            input(type="checkbox" class="talla-trigger w-5 h-5" value=atributo.idAtributo data-nombre=atributo.valor)
+                            input(type="checkbox" class="talla-trigger w-5 h-5" value=atributo.idAtributo checked=atributosSeleccionados.includes(atributo.idAtributo) data-nombre=atributo.valor)
                             span(class="font-bold text-gray-700")= atributo.valor
+
+                           
 
         
         div(class="col-span-12 mt-4")
             h4(class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3") Resumen de Combinaciones
-            input(type="hidden" name="variantes_finales" id="variantes_finales" value="{}")
+            input(type="hidden" name="variantes_finales" id="variantes_finales" value = (variantesJson) ? variantesJson : "{}" )
             div#resumenVariantes(class="flex flex-wrap gap-2 min-h-[40px] p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl")
                 span(class="text-gray-400 text-sm italic") No has seleccionado colores para las tallas...
 
@@ -145,12 +146,16 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
             div(class="flex flex-row flex-wrap gap-2")
                 label(class="subItems")
                     div(class="checkbox-group mr-2")
-                        input.checkbox(type="checkbox" id="activo" name="activo" checked)
+                        input.checkbox(type="checkbox"  id="activo" name ="activo" checked=producto.activo === true )
+
                     span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Producto Activo
 
                 label(class="subItems")
+                   
                     div(class="checkbox-group mr-2")
-                        input.checkbox(type="checkbox" id="disponible_web" name="web")
+                        //input.checkbox(type="checkbox" id="disponible_web" name="web" checked )
+                        input.checkbox(type="checkbox"  id="disponible_web" name ="web" checked=producto.web === true )
+                        
                     span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Disponible en web
 
         //- Dentro del div de Visibilidad, después de los labels
@@ -162,13 +167,13 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                         | Datos Para Seo Y Web
                 div
                     label(class="label uppercase") Slug (URL Amigable)
-                    input#slug(type="text" name="slug" class="field-text field-text-disabled" readonly)
+                    input#slug(type="text" name="slug" class="field-text field-text-disabled" value = (producto && producto.slug) ? producto.slug : ""  readonly )
                 div
                     label(class="label uppercase") Etiquetas / Tags
-                    input#tags(type="text" name="tags" class="field-text w-full" placeholder="ej: seda, nuevo, oferta")
+                    input#tags(type="text" name="tags" class="field-text w-full" placeholder="ej: seda, nuevo, oferta" value = (producto && producto.tags) ? producto.tags : "")
                 div
                     label(class="label uppercase") Meta Descripción
-                    textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-20 resize-none field-text" placeholder="Breve descripción para buscadores...")
+                    textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-20 resize-none field-text" placeholder="Breve descripción para buscadores...")=(producto && producto.descripcion) ? producto.descripcion : ""
 
         
         div(class="min-h-[150px]")
@@ -204,5 +209,10 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
             button(class="btn btn-primary w-full"  type="submit" id="guardar" )
                 i.fi-rr-disk
                 | Guardar Salir
+
+script.
+    // Inyectamos el array de IDs de categorías y subcategorías que procesamos en el controlador
+    const categoriasSeleccionadas = !{JSON.stringify(categoriasSeleccionadas)};
+
 
 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           
