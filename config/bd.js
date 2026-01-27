@@ -15,7 +15,6 @@ const db = new Sequelize(process.env.DB_NAME,process.env.DB_USER, process.env.DB
         idle : 10000,
     },
     logging : false,
-    minifyAliases : true,
     
 })
 

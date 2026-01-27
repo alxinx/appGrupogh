@@ -1,5 +1,4 @@
 (function() { // Envolvemos todo en una función autoejecutable para no ensuciar el global
-    console.log('✅ JS dataAsync cargado correctamente'); 
     // Escuchamos cuando el DOM esté listo (por seguridad extra)
     document.addEventListener('DOMContentLoaded', function() {
 

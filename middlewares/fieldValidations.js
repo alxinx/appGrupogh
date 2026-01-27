@@ -32,7 +32,7 @@ const loginValidation = [
         .isLength({ min: 8 })
         .withMessage('La contraseña debe tener mínimo 8 caracteres')
 ]
-
+ 
 
 const storeRegisterValidation =  [
 
@@ -53,8 +53,21 @@ const storeBasicTaxDataValidation = [
 ]
 
 
+const productBasicValidation = [
+    check("nombreProducto").trim().isLength({min : 2}).withMessage('🚨 Necesito saber como llamarás al producto '),
+    check('sku')
+    .trim()
+    .isLength({min: 2})
+    .customSanitizer(value => {
+        return value.toUpperCase().replace(/[^A-Z0-9-_]/g, '');
+    }).withMessage('🚨 El Sku debe ser válido o mayor a 2 caracteres. ')
+
+]   
+
+
 export {    registerValidation,
             loginValidation,
             storeRegisterValidation,
-            storeBasicTaxDataValidation
+            storeBasicTaxDataValidation,
+            productBasicValidation
         }

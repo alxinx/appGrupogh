@@ -1,0 +1,27 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+                            //******************[CUERPO PANELES]*********************//
+                            
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                include  ./headers/headerProducts.pug
+                                include  ./headers/actionBtns.pug
+
+                            
+                            //FORMULARIO
+                            include ./forms/listaProductos.pug
+                        
+        
+        script(src="/js/helpers.js")
+        script(src="/js/productList.js")
+        script(src="/js/paginador.js")
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")

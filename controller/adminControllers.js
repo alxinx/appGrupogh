@@ -1,10 +1,18 @@
 import {validationResult } from "express-validator";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion } from "../models/index.js";
+import sharp from 'sharp';
+import { Upload } from "@aws-sdk/lib-storage";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import s3Client from "../config/r2.js";
+import dotenv from 'dotenv';
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto, Imagenes} from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type :'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type : 'json'}
-
+import {limpiarPrecio, sanitizarHTML } from '../helpers/helpers.js'
 import { Sequelize, Op, where} from "sequelize";
+
+dotenv.config();
+
 
 //************************[GET CONTROLLERS] ************************ */
  
@@ -70,9 +78,155 @@ const newStore = async (req, res)=>{
     })
 }
 
+
+//***********************[INVENTARIOS]***********************//
 //PRINCIPAL INVENTARIOS
 const dashboardInventorys = async (req, res)=>{
+
+    //Obtengo los atributos
+    const atributos = await Atributos.findAll()
+    const categorias = await Categorias.findAll()
+
+
+    return res.status(201).render('./administrador/inventarios/new', {
+        pagina: "Inventarios y Productos",
+        subPagina : "Nuevo Producto",
+        csrfToken : req.csrfToken(),
+        currentPath: '/inventario',
+        producto: {}, 
+        categoriasSeleccionadas: [], 
+        atributosSeleccionados: [],  
+        atributos,
+        categorias,
+        btnName : "Guardar Producto"
     
+    })
+}
+
+
+
+const listaProductos = async (req, res)=>{
+
+    const categorias = await Categorias.findAll()
+
+
+    return res.status(201).render('./administrador/inventarios/productList', {
+        pagina: "Inventarios y Productos",
+        subPagina : "Listado De Productos",
+        csrfToken : req.csrfToken(),
+        currentPath: '/inventario',
+        subPath : 'listado',
+
+        categorias,
+    
+    })
+}
+
+
+
+const verProducto = async (req, res)=>{
+        const {idProducto} = req.params;
+        try {
+                const [categorias, atributos, producto] = await Promise.all([
+                    Categorias.findAll(),
+                    Atributos.findAll(),
+                    Productos.findByPk(idProducto, {
+                    include: [{ association: 'imagenes' }] 
+                    })
+                ])
+
+            if (!producto) return res.redirect('/admin/inventario/listado');
+            return res.status(201).render('./administrador/inventarios/productView', {
+                pagina: "Ver Producto",
+                subPagina : "Producto",
+                csrfToken : req.csrfToken(),
+                currentPath: '/inventario',
+                subPath : process.env.R2_PUBLIC_URL,
+                atributos,
+                categorias,
+                producto,
+            })
+            
+        } catch (error) {
+            console.error(error);
+            //res.redirect('/admin/inventario');
+        }
+ 
+}
+
+
+
+const editarProducto = async (req, res)=>{
+
+        const {idProducto} = req.params;
+
+
+        try {
+            const [categorias, atributos, producto, variacionesDb]  = await  Promise.all([
+                Categorias.findAll(),
+                Atributos.findAll(),
+                Productos.findByPk(idProducto ,{
+                    include: [
+                        { association: 'imagenes' },
+                    ],},
+                ),
+                VariacionesProducto.findAll({ where: { idProducto } })
+            ])
+
+            //Selecciono las categorias a las que pertenece el producto
+            const categoriasId = producto.idCategoria 
+                    ? producto.idCategoria.split(/[,|]/).map(id => parseInt(id)) : []
+
+            if(!producto) return res.redirect('/admin/inventario/listado/')
+            const variantesMapa = {};
+            variacionesDb.forEach(v => {
+            // Separamos el "58|15" -> [58, 15]
+            const partes = v.idAtributos.split('|');
+                if (partes.length === 2) {
+                    const idTalla = partes[0];
+                    const idColor = partes[1];
+
+                    if (!variantesMapa[idTalla]) {
+                        variantesMapa[idTalla] = [];
+                    }
+                // Agregamos el color a esa talla
+                    variantesMapa[idTalla].push(idColor);
+                }
+            });
+
+            const variantesJson = JSON.stringify(variantesMapa);
+            // Convertimos "58|15" en [58, 15]
+            const atributosIds = variacionesDb.flatMap(
+                    v =>v.idAtributos.split('|').map(id => parseInt(id)));
+
+            return res.status(201).render('./administrador/inventarios/edit', {
+            pagina: "Editar Producto",
+            subPagina :  producto.nombreProducto,
+            csrfToken : req.csrfToken(),
+            currentPath: '/inventario',
+            subPath : 'Editar Producto',
+            atributos,
+            atributosSeleccionados: atributosIds,
+            variantesJson : variantesJson, 
+            categorias,
+            categoriasSeleccionadas: categoriasId,
+            producto,
+            subPath : process.env.R2_PUBLIC_URL,
+            btnName : 'Actualizar Producto  '
+    })
+        } catch (error) {
+            return res.redirect('/admin/inventario/listado/')
+        }
+}
+
+const dosificar = async (req, res)=>{
+     return res.status(201).render('./administrador/inventarios/dose', {
+        pagina: "Dosificacion de productos",
+        subPagina : "Dosificar Productos",
+        csrfToken : req.csrfToken(),
+        currentPath: '/inventario',
+        subPath : 'dosificar'
+    })
 }
 
 
@@ -120,10 +274,17 @@ const editarTienda = async (req,res)=>{
     
 
     //Formateo Fechas:
-    let fechaEmisionFormateada = "";
-    let fechaFinalizacionFormateada = "";
-    fechaEmisionFormateada = datosRegimenFacturacion.fechaEmision.toISOString().split('T')[0];
-    fechaFinalizacionFormateada = datosRegimenFacturacion.fechaVencimiento.toISOString().split('T')[0];
+    // Formateo Fechas:
+    // El símbolo ?. detiene la ejecución si el objeto es null y devuelve undefined en lugar de romper la app
+    const fechaEmisionFormateada = datosRegimenFacturacion?.fechaEmision
+    ? new Date(datosRegimenFacturacion.fechaEmision).toISOString().split('T')[0]
+    : "";
+
+    const fechaFinalizacionFormateada = datosRegimenFacturacion?.fechaVencimiento
+    ? new Date(datosRegimenFacturacion.fechaVencimiento).toISOString().split('T')[0]
+    : "";
+
+
     return res.status(201).render('./administrador/stores/nueva', {
         pagina: req.path,
         subPagina : "Editar Tienda ",
@@ -209,14 +370,30 @@ const postNuevaTienda = async (req, res) => {
             if (!errsPorCampo[err.path]) errsPorCampo[err.path] = err.msg;
         });
 
+<<<<<<< HEAD
         console.log(departamentos);
+=======
+        const obtenerDatosSelectores = async (idDepartamento) => {
+                const [departamentos, ciudades] = await Promise.all([
+                    Departamentos.findAll({ raw: true }),
+                    idDepartamento 
+                        ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+                        : Promise.resolve([])
+                ]);
+                return { departamentos, ciudades };
+            };
+
+        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+        const activa = req.body.activa ? true : false
+
+>>>>>>> productos
         return res.status(201).render('./administrador/stores/nueva', {
             pagina: "Tiendas",
             subPagina : "Nueva Tienda",
             csrfToken : req.csrfToken(),
             currentPath: '/tiendas',
-            departamentos : departamentos,
-            ciudades: ciudades,
+            departamentos,
+            ciudades : ciudades,
             activa : activa,
             dato: req.body,
             responsabiliidadFiscal : responsabiliidadFiscal,
@@ -586,6 +763,248 @@ const postEditStore = async (req, res)=>{
 }
 
 
+const saveProduct = async (req, res, next) => {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) {
+        return res.status(400).json({ 
+            errores: errores.array().reduce((acc, err) => ({ ...acc, [err.path]: err.msg }), {}) 
+        });
+    }
+    
+
+    try {
+        const { idProducto, categorias, variantes_finales, imagenes_borrar } = req.body;
+        const csrfToken = req.csrfToken();
+
+        // 1. Sanitización de Datos
+        const idCategoriaParaDB = Array.isArray(categorias) ? categorias.join('|') : categorias;
+        const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
+        const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
+        const descripcionLimpia = sanitizarHTML(req.body.descripcion); // Usamos el name="descripcion" del pug
+        const activo = req.body.activo === 'on' || req.body.activo === true;
+        const web = req.body.web === 'on' || req.body.web === true;
+
+        let producto;
+        const datosParaDB = {
+            nombreProducto: req.body.nombreProducto,
+            sku: req.body.sku,
+            ean: req.body.ean,
+            idCategoria: idCategoriaParaDB,
+            precioVentaPublicoFinal,
+            precioVentaMayorista,
+            descripcion: descripcionLimpia,
+            activo,
+            web,
+            tags: req.body.tags // Si tu modelo tiene tags, inclúyelo aquí
+        };
+
+        // 2. Upsert
+        if (idProducto && idProducto !== "" && idProducto !== "undefined") {
+            
+            producto = await Productos.findByPk(idProducto);
+            
+            if (!producto) {
+                return res.status(404).json({ mensaje: 'Producto no encontrado' });
+            }
+
+            // Actualizamos usando el objeto limpio
+            await producto.update(datosParaDB);
+        } else {
+            
+            // Creamos usando el objeto limpio
+            producto = await Productos.create(datosParaDB);
+        }
+
+        const idReal = producto.idProducto;
+
+        // 3. Reconstrucción de Variaciones
+        await VariacionesProducto.destroy({ where: { idProducto: idReal } });
+        const variacionesSeleccionadas = JSON.parse(variantes_finales || '{}');
+        const variacionesFinales = [];
+
+        Object.entries(variacionesSeleccionadas).forEach(([talla, colores]) => {
+            colores.forEach(idColor => {
+                variacionesFinales.push({
+                    idProducto: idReal,
+                    idAtributos: `${talla}|${idColor}`,
+                    valor: 0 
+                });
+            });
+        });
+        if (variacionesFinales.length > 0) await VariacionesProducto.bulkCreate(variacionesFinales);
+
+        // 4. Borrado de Imágenes (Bloque Independiente)
+        if (imagenes_borrar) {
+            const idsBorrar = Array.isArray(imagenes_borrar) ? imagenes_borrar : [imagenes_borrar];
+            const imagenesAEliminar = await Imagenes.findAll({ where: { idMultimedia: idsBorrar } });
+
+            
+            for (const img of imagenesAEliminar) { 
+                const deleteParams = {
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: `productos/${img.nombreImagen}`,
+                };
+                await s3Client.send(new DeleteObjectCommand(deleteParams));
+            }
+            await Imagenes.destroy({ where: { idMultimedia: idsBorrar } });
+        } // <--- AQUÍ SE CIERRA EL IF DE BORRADO
+
+        // 5. Subida de Nuevas Imágenes (Bloque Independiente)
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(async (file, index) => {
+                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`;
+                const bufferOptimizado = await sharp(file.buffer)
+                    .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toBuffer();
+
+                const parallelUploads3 = new Upload({
+                    client: s3Client,
+                    params: {
+                        Bucket: process.env.R2_BUCKET_NAME,
+                        Key: `productos/${nombreArchivo}`,
+                        Body: bufferOptimizado,
+                        ContentType: "image/webp",
+                    },
+                });
+
+                await parallelUploads3.done();
+                return {
+                    idProducto: idReal,
+                    nombreImagen: nombreArchivo,
+                    tipo: 'galeria'
+                };
+            });
+            const imagenesData = await Promise.all(uploadPromises);
+            await Imagenes.bulkCreate(imagenesData);
+        }
+
+        // 6. Respuesta final (Fuera de los bloques condicionales)
+        res.json({ success: true, mensaje: 'Producto procesado con éxito', idProducto: idReal });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ mensaje: 'Error interno del servidor' });
+    }
+};
+
+
+
+
+//OLD
+const newProduct = async (req, res, next) => {
+    const errores = validationResult(req);
+    
+    if (!errores.isEmpty()) {
+        const errObj = errores.array().reduce((acc, err) => {
+            acc[err.path] = err.msg;
+            return acc;
+        }, {});
+        return res.status(400).json({ 
+            errores: errObj 
+        });
+    }
+
+    try {
+
+        //Trabajo con las categoorias y. subcategorias con las que vienne el porducto, 
+        const {categorias,subcategorias }=req.body
+        
+        const todasLasCategorias = [categorias].concat(subcategorias || []);
+        const idCategoriaParaDB = todasLasCategorias.filter(id => id && id !== '').join('|')
+
+        //Sanitizo los valores de los precios y de , (de string a int y borro el punto que me envia desde el frontend)
+        const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
+        const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
+        const descripcionLimpia = sanitizarHTML(req.body.descripcion);
+        const activo = req.body.activo === 'on'; // Esto ya devuelve true o false
+        const web = req.body.web === 'on';
+        //Ingreso todo para que me pueda generar el ID del producto y seguir con lo siguiente! 
+        // 1. Ingreso los datos  necesarios para ingresar el producto y trabajar el ID. 
+
+        const nuevoProducto = await Productos.create({
+            ...req.body,
+            descripcion  : descripcionLimpia,
+            precioVentaPublicoFinal: precioVentaPublicoFinal, 
+            precioVentaMayorista: precioVentaMayorista,
+            idCategoria: idCategoriaParaDB,
+            activo: activo,
+            web: web,
+            btnName : 'Guardar Producto'
+           
+        });
+        
+        
+        const idProducto = nuevoProducto.idProducto;
+
+        // 2: Ingreso las variaciones del producto. (colores, y tallas)
+        const variacionesSeleccionadas = JSON.parse(req.body.variantes_finales);
+        const variacionesFinales = [];
+        Object.entries(variacionesSeleccionadas).forEach(([talla, color]) =>{
+            color.forEach(idColor =>{
+                variacionesFinales.push({
+                        idProducto: idProducto,
+                        idAtributos: `${talla}|${idColor}`, 
+                        valor: 0, 
+                    });
+            })
+        })    
+        await VariacionesProducto.bulkCreate(variacionesFinales)
+
+
+        // 2. Aquí vendrá la lógica de Sharp para las imágenes (que haremos a continuación)
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(async (file, index) => {
+                // aqui genero  un nombre único para evitar colisiones
+                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`; 
+
+                // 1. Procesamiento con Sharp (Optimización)
+                const bufferOptimizado = await sharp(file.buffer)
+                    .resize(1000, 1000, { 
+                        fit: 'inside', 
+                        withoutEnlargement: true 
+                    })
+                    .webp({ quality: 80 })
+                    .toBuffer();
+
+                // 2. Preparar subida a Cloudflare R2
+                const parallelUploads3 = new Upload({
+                    client: s3Client,
+                    params: {
+                        Bucket: process.env.R2_BUCKET_NAME,
+                        Key: `productos/${nombreArchivo}`,
+                        Body: bufferOptimizado,
+                        ContentType: "image/webp",
+                    },
+                });
+
+                // Ejecutar subida
+                await parallelUploads3.done();
+
+                // Retornar objeto para Sequelize (bulkCreate)
+                return {
+                    idProducto: nuevoProducto.idProducto, // Asegúrate de tener el ID del producto creado arriba
+                    nombreImagen: nombreArchivo,
+                    tipo: index === 0 ? 'principal' : 'galeria'
+                };
+            });
+
+    // 3. Esperar a que todas suban y guardar registros en la DB
+    const imagenesData = await Promise.all(uploadPromises);
+    await Imagenes.bulkCreate(imagenesData); // Tu modelo de imágenes de Sequelize
+}
+        // 3: Imágenes con Sharp y R2
+    
+
+
+        
+        res.json({ success: true, mensaje: 'Producto guardado con éxito' });
+            } catch (error) {
+                console.log(error);
+                res.status(500).json({ mensaje: 'Error interno del servidor' });
+            }
+}
+
 //************************[JSON CONTROLLERS] ************************ */
 
 const municipiosJson = async(req, res)=>{
@@ -599,7 +1018,166 @@ const municipiosJson = async(req, res)=>{
     return res.json(municipio)
 }
 
+const categoriasJson = async(req, res)=>{
+    const { idCategoria } = req.params; 
+    
+    const  categorias = await Categorias.findAll({
+        where : {idPadre : idCategoria },
+        attributes : ['idCategoria', 'nombreCategoria', 'tipo', 'idPadre'],
+        raw : true
+    })
+    return res.json(categorias)
+}
 
+
+const skuJson = async(req, res)=>{
+    const { checkSku } = req.params; 
+    const sku = await Productos.findOne({
+        where : {sku : checkSku },
+        attributes  :  ['idProducto', 'nombreProducto', 'sku', 'ean', ],
+        raw : true
+    })
+    return res.json(sku)
+}
+
+
+const eanJson = async(req, res)=>{
+    const { checkEan } = req.params; 
+    const ean = await Productos.findOne({
+        where : {ean : checkEan },
+        attributes  :  ['idProducto', 'nombreProducto', 'sku', 'ean', ],
+        raw : true
+    })
+    return res.json(ean)
+}
+
+
+
+
+
+const filterProductListJson = async(req, res) => {
+    try {
+        // 1. Capturamos la página y aseguramos que sea un número
+        const { busqueda, categoria, estado, web, pagina = 1 } = req.query;
+        const numPagina = parseInt(pagina) || 1;
+        
+        const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+        const offset = (numPagina - 1) * limite;   
+
+        let condiciones = {};
+
+        // 1. Búsqueda por texto (corregido con % al inicio y final)
+        if (busqueda && busqueda.trim() !== '') {
+            const term = `%${busqueda.trim()}%`;
+            condiciones[Op.or] = [
+                { nombreProducto: { [Op.like]: term } },
+                { sku: { [Op.like]: term } },
+                { ean: { [Op.like]: term } }
+            ];
+        }
+
+        // 2. Filtro de Categoría (corregido)
+        let categoriaId = parseInt(categoria);
+        if (categoriaId > 0) {
+            condiciones.idCategoria = { [Op.like]: `%${categoriaId}%` };
+        }
+
+        // 3. Filtros de Estado y Web
+        if (estado && estado.trim() !== '') {
+            condiciones.activo = estado;
+        }
+        if (web !== undefined && web !== '') {
+            condiciones.web = web === 'true' ? 1 : 0;
+        }
+
+
+
+       // 2. Usamos findAndCountAll para obtener 'count' (total) y 'rows' (productos de la página)
+        const { count, rows: productosInstancias } = await Productos.findAndCountAll({
+            where: condiciones,
+            include: [{ association: 'imagenes', required: false }],
+            order: [['createdAt', 'DESC']],
+            limit: limite,   // <--- VITAL: Aplicar el límite
+            offset: offset,  // <--- VITAL: Aplicar el salto de registros
+            distinct: true   // Evita conteos duplicados cuando hay joins
+        });
+
+        const totalPaginas = Math.ceil(count / limite);
+
+
+        // 5. Respuesta JSON
+        res.json({
+            success: true,
+            productos: productosInstancias,
+            totalPaginas,
+            paginaActual: numPagina,
+            totalRegistros: count
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, mensaje: 'Error al procesar productos' });
+    }
+}
+
+
+//jsonImageProduct
+
+const jsonImageProduct = async (req, res) => {
+  try {
+    const { idProducto } = req.params; 
+
+    if (!idProducto) {
+      return res.status(400).json({
+        success: false,
+        mensaje: 'idProducto es obligatorio'
+      });
+    }
+
+    const imagen = await Imagenes.findOne({
+      where: {
+        idProducto,
+        tipo: 'principal'
+      }
+    });
+
+    res.json({
+      success: true,
+      imagen
+    });
+
+  } catch (error) {
+    console.error('jsonImageProduct:', error);
+    res.status(500).json({
+      success: false,
+      mensaje: 'Error al obtener imagen'
+    });
+  }
+};
+
+
+//Valido si un sku o un ean existen en un registro distinto al que estoy editando.
+const jsonUnicidad = async (req, res) => {
+    const { tipo, valor } = req.params; // tipo = 'sku' o 'ean'
+    const { idProductoActual } = req.query; // Para ignorar el propio producto en edición
+
+    try {
+        const query = { [tipo]: valor };
+        
+        // Si estamos editando, buscamos otro producto que tenga ese código, excluyendo al actual
+        const donde = idProductoActual 
+            ? { ...query, idProducto: { [Op.ne]: idProductoActual } }
+            : query;
+
+        const producto = await Productos.findOne({ 
+            where: donde,
+            attributes: ['idProducto', 'nombreProducto'] 
+        });
+
+        res.json(producto); 
+    } catch (error) {
+        res.status(500).json({ error: 'Error al validar código' });
+    }
+};
 
 
 
@@ -612,10 +1190,22 @@ export {
     postNuevaTienda,
     postEditStore,
     dashboardInventorys,
+    newProduct,
+    saveProduct,
+    editarProducto,
+    listaProductos,
+    verProducto,
+    dosificar,
     dashboardCustomers,
     dashboardEmployees,
     dashboardOrders,
     dashboardSettings,
     municipiosJson,
+    categoriasJson,
+    skuJson,
+    eanJson,
+    filterProductListJson,
+    jsonImageProduct,
+    jsonUnicidad,
     baseFrondend
 }

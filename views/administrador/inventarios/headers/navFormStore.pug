@@ -1,0 +1,31 @@
+div(class="col-span-12 grid grid-cols-1 md:grid-cols-3")
+        a(href="javascript:void(0)" data-step="1" class="step-btn") 
+            div(class="flex items-center gap-4 w-full mt-4")
+                    div(class=`itemInCircle ${(pasoActivo == 1 || !pasoActivo) ? 'circlePink' : 'circleGray' }`)
+                        | 1
+                    span(class="text-pink-500 font-medium text-lg")
+                        | Datos básicos
+                    // Línea
+                    div(class="flex-1 h-[2px] bg-gray-200 rounded-full")
+
+
+
+        a(href="javascript:void(0)" data-step="2"  class="step-btn") 
+            div(class="col-md-4 mt-4")
+                div(class="flex items-center gap-4 w-full")
+                    div(class=`itemInCircle ${(pasoActivo == 2) ? 'circlePink' : 'circleGray' }`)
+                        | 2
+                    span(class="text-pink-500 font-medium text-lg")
+                        | Datos Tributarios
+                    // Línea
+                    div(class="flex-1 h-[2px] bg-gray-200 rounded-full")
+        a(href="javascript:void(0)" data-step="3"  class="step-btn") 
+            div(class="col-md-4 mt-4")
+                div(class="flex items-center gap-4 w-full")
+                    div(class=`itemInCircle ${(pasoActivo == 3) ? 'circlePink' : 'circleGray' }`)
+                        | 3
+                    span(class="text-pink-500 font-medium text-lg")
+                        | Documentación
+                    // Línea
+                    div(class="flex-1 h-[2px] bg-gray-200 rounded-full")
+                            

@@ -25,14 +25,14 @@ aside(
 
     // Inventario (submenu)
     details(class="group")
-      summary(class="menu-item cursor-pointer flex justify-between items-center")
+      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/inventario' ? 'active' : ''}`)
         div(class="flex items-center gap-3")
           i(class="fi fi-rr-box text-lg")
-          span Inventario
+          span Inventario y Productos
         i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
 
       div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/admin/inventario/ingreso" class="submenu-item") Ingreso de Producto
+        a(href="/admin/inventario/ingreso" class=`submenu-item`) Ingreso de Producto
         a(href="/admin/inventario/listado" class="submenu-item") Listado de producto
         a(href="/admin/inventario/dosificar" class="submenu-item") Dosificar producto
 
