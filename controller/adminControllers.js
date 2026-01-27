@@ -126,7 +126,6 @@ const listaProductos = async (req, res)=>{
 
 const verProducto = async (req, res)=>{
         const {idProducto} = req.params;
-        console.log(idProducto)
         try {
                 const [categorias, atributos, producto] = await Promise.all([
                     Categorias.findAll(),
@@ -761,13 +760,7 @@ const saveProduct = async (req, res, next) => {
     try {
         const { idProducto, categorias, variantes_finales, imagenes_borrar } = req.body;
         const csrfToken = req.csrfToken();
-        console.log(csrfToken)
 
-        if(!idProducto || idProducto==''){
-            console.log('No pasa id producto')
-        }else{
-            console.log('Si esta pasando el id y es '+idProducto)
-        }
         // 1. Sanitización de Datos
         const idCategoriaParaDB = Array.isArray(categorias) ? categorias.join('|') : categorias;
         const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
@@ -792,7 +785,6 @@ const saveProduct = async (req, res, next) => {
 
         // 2. Upsert
         if (idProducto && idProducto !== "" && idProducto !== "undefined") {
-            console.log('ENTRANDO EN MODO EDICIÓN PARA ID:', idProducto);
             
             producto = await Productos.findByPk(idProducto);
             
@@ -803,7 +795,6 @@ const saveProduct = async (req, res, next) => {
             // Actualizamos usando el objeto limpio
             await producto.update(datosParaDB);
         } else {
-            console.log('ENTRANDO EN MODO CREACIÓN');
             
             // Creamos usando el objeto limpio
             producto = await Productos.create(datosParaDB);
@@ -834,7 +825,6 @@ const saveProduct = async (req, res, next) => {
 
             
             for (const img of imagenesAEliminar) { 
-                console.log('')
                 const deleteParams = {
                     Bucket: process.env.R2_BUCKET_NAME,
                     Key: `productos/${img.nombreImagen}`,
@@ -905,7 +895,6 @@ const newProduct = async (req, res, next) => {
         //Trabajo con las categoorias y. subcategorias con las que vienne el porducto, 
         const {categorias,subcategorias }=req.body
         
-        console.log(categorias)
         const todasLasCategorias = [categorias].concat(subcategorias || []);
         const idCategoriaParaDB = todasLasCategorias.filter(id => id && id !== '').join('|')
 
@@ -918,7 +907,6 @@ const newProduct = async (req, res, next) => {
         //Ingreso todo para que me pueda generar el ID del producto y seguir con lo siguiente! 
         // 1. Ingreso los datos  necesarios para ingresar el producto y trabajar el ID. 
 
-        console.log(`Categoorias para guardar: ${idCategoriaParaDB}`)
         const nuevoProducto = await Productos.create({
             ...req.body,
             descripcion  : descripcionLimpia,
@@ -1112,7 +1100,6 @@ const filterProductListJson = async(req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en filterProductListJson:', error);
         res.status(500).json({ success: false, mensaje: 'Error al procesar productos' });
     }
 }
