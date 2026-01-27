@@ -1,7 +1,7 @@
 import express from "express";
 import csrf from 'csurf';
 const csrfProtection = csrf({ cookie: true });
-import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, saveProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation} from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
@@ -40,12 +40,22 @@ routes.get('/frontend',baseFrondend);
 
 //****************[POST]**********************/
 routes.post('/tiendas/nueva',csrfProtection, storeRegisterValidation, storeBasicTaxDataValidation, postNuevaTienda)
+
+
 routes.post('/inventario/ingreso', 
-    uploadImages.array('imagenes', 10), // 1. Multer procesa los binarios y el body
-    csrfProtection,                     // 2. Ahora que req.body existe, validamos el token
-    productBasicValidation,             // 3. Validaciones de texto
-    newProduct                          // 4. Controlador final
+    uploadImages.array('imagenes', 10), 
+    csrfProtection,                     
+    productBasicValidation,             
+    saveProduct                              
 );
+
+
+routes.post('/inventario/editar/:idProducto',
+    uploadImages.array('imagenes', 10), 
+    csrfProtection, 
+    productBasicValidation,                 
+    saveProduct);
+
 
 
 //routes.post('/tiendas/new', storeRegisterValidation, postNewStore)
@@ -60,6 +70,7 @@ routes.get('/json/sku/:checkSku', skuJson  );
 routes.get('/json/ean/:checkEan', eanJson  );
 routes.get('/json/productos/', filterProductListJson)
 routes.get('/json/imageProduct/:idProducto', jsonImageProduct)
+routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
 
 
 

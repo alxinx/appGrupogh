@@ -6,7 +6,8 @@ const Productos = db.define('PRODUCTOS', {
         type: DataTypes.UUID,
         defaultValue: UUIDV4,
         primaryKey: true,
-        unique: true
+        unique: true,
+        allowNull : false
     },
     nombreProducto: {
         type: DataTypes.STRING(100),

@@ -296,9 +296,9 @@ actualizarEstadoWeb();
                 div.className = "w-20 h-20 rounded-xl bg-gray-100 border relative group animate-fade-in";
                 div.dataset.fileName = file.name; 
                 div.innerHTML = `
-                    <img src="${ev.target.result}" class="w-full h-full object-cover rounded-xl">
-                    <button type="button" class="btn-delete-img absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md">
-                        <i class="fi-rr-cross-small text-[10px]"></i>
+                    <img src="${ev.target.result}" class="w-full h-full object-cover rounded-xl ">
+                    <button type="button" class="btn-delete-img absolute -top-2 -right-2 cursor-pointer mt-1 ">
+                        <i class="fi fi-rr-cross-circle bg-gh-primaryHover rounded-2xl p-1 pt-1.5 text-white "></i>
                     </button>`;
                 previewContainer.insertBefore(div, previewContainer.lastElementChild);
             };
@@ -321,6 +321,58 @@ actualizarEstadoWeb();
     });
 })();
 
+// --- 7.1 GESTIÓN DE IMÁGENES EXISTENTES (Versión Blindada) ---
+(function() {
+    const previewContainer = document.getElementById('preview-container');
+    const formulario = document.getElementById('formularioProducto');
+
+    if (!previewContainer || !formulario) return;
+
+    // Usamos delegación de eventos: escuchamos en el contenedor padre
+    previewContainer.addEventListener('click', function(e) {
+        // Buscamos si el clic fue en el botón de borrar existente
+        const btnDelete = e.target.closest('.btn-delete-existente');
+        
+        if (btnDelete) {
+            // Importante: Prevenir que el clic dispare otros eventos
+            e.preventDefault();
+            e.stopPropagation();
+
+            const idImagen = btnDelete.dataset.id;
+            const card = btnDelete.parentElement;
+
+            Swal.fire({
+                title: '¿Marcar para eliminar?',
+                text: "La imagen se borrará permanentemente al actualizar el producto.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#f472b6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: '✅ Sí, QUITAR',
+                cancelButtonText: '❌ Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Verificamos si ya existe el input para este ID para no duplicar
+                    const yaExiste = formulario.querySelector(`input[name="imagenes_borrar[]"][value="${idImagen}"]`);
+                    
+                    if (!yaExiste) {
+                        // 1. Creamos el input oculto con el ID correcto
+                        const inputBorrado = document.createElement('input');
+                        inputBorrado.type = 'hidden';
+                        inputBorrado.name = 'imagenes_borrar[]';
+                        inputBorrado.value = idImagen;
+                        formulario.appendChild(inputBorrado);
+
+                        // 2. Feedback visual: Ocultamos la tarjeta
+                        card.classList.add('hidden');
+                        
+                    }
+                }
+            });
+        }
+    });
+})();
+
 // --- 8. GUARDADO ASYNC Y REDIRECCIÓN ---
 (function() {
     const formulario = document.querySelector('#formularioProducto');
@@ -337,12 +389,19 @@ actualizarEstadoWeb();
         });
 
         const formData = new FormData(formulario);
-
+        const token = document.querySelector('input[name="_csrf"]').value;
         try {
             const respuesta = await fetch(formulario.action, {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: { 'x-csrf-token': token }
+                
             });
+
+            if (!respuesta.ok) {
+                const textoError = await respuesta.text();
+                throw new Error("Respuesta del servidor no es JSON");
+            }
 
             const resultado = await respuesta.json();
 
@@ -360,7 +419,7 @@ actualizarEstadoWeb();
                     timer: 2000,
                     showConfirmButton: false
                 }).then(() => {
-                    window.location.href = '/admin/inventario/ingreso'; 
+                    window.location.href = '/admin/inventario/listado'; 
                 });
             }
 
@@ -376,37 +435,115 @@ actualizarEstadoWeb();
     const inputMayorista = document.getElementById('precioVentaMayorista');
     const inputPublico = document.getElementById('precioVentaPublicoFinal');
 
-    // Función de formateo centralizada
-    const formatMoney = (n) => {
-        // Extraemos solo los números
-        const value = String(n).replace(/\D/g, '');
-        if(!value) return "";
-        
-        // Formateamos usando el estándar de Colombia
-        return new Intl.NumberFormat('es-CO', {
-            style: 'decimal',
-            maximumFractionDigits: 0
-        }).format(value);
+    // 1. Función para limpiar y formatear SOLO al cargar (Backend -> UI)
+    const formatInitialValue = (n) => {
+        if (!n) return "";
+        // Quitamos decimales .00 solo si existen (viniendo de la DB)
+        const value = String(n).split('.')[0].replace(/\D/g, '');
+        return new Intl.NumberFormat('es-CO').format(value);
     };
 
-    [inputMayorista, inputPublico].forEach(input => {
+    // 2. Función para formatear mientras se escribe (User -> UI)
+    const formatOnInput = (n) => {
+        // Aquí NO usamos split('.'), solo dejamos los números
+        const value = String(n).replace(/\D/g, '');
+        if (!value) return "";
+        return new Intl.NumberFormat('es-CO').format(value);
+    };
+
+    const inputs = [inputMayorista, inputPublico];
+
+    inputs.forEach(input => {
         if(!input) return;
 
+        // --- PASO A: Hidratación al cargar ---
+        // Usamos la lógica que limpia el ".00"
+        if (input.value) {
+            input.value = formatInitialValue(input.value);
+        }
+
+        // --- PASO B: Evento de escritura ---
         input.addEventListener('input', function(e) {
-            // Guardamos la posición del cursor antes de formatear
             let cursorPosition = e.target.selectionStart;
             let valueOriginal = e.target.value;
 
-            // Aplicamos el formato
-            const formattedValue = formatMoney(valueOriginal);
+            // Usamos la lógica que NO corta por el punto
+            const formattedValue = formatOnInput(valueOriginal);
+            
+            const diff = formattedValue.length - valueOriginal.length;
             e.target.value = formattedValue;
 
-            // Ajustamos la posición del cursor si se agregaron puntos separadores
-            if (valueOriginal.length < formattedValue.length) {
-                cursorPosition++;
-            }
-            
-            e.target.setSelectionRange(cursorPosition, cursorPosition);
+            // Ajuste de cursor para que la experiencia sea fluida en Medellín
+            e.target.setSelectionRange(cursorPosition + diff, cursorPosition + diff);
         });
+    });
+})();
+
+
+//**************************SECCION DE EDICION **************************///
+// --- 5. VALIDACIÓN DE UNICIDAD (SKU / EAN) ---
+(function() {
+    // Definimos la función de validación
+    const validarUnicidad = async (input, tipo) => {
+        const valor = input.value.trim().toUpperCase();
+        const idProducto = document.querySelector('input[name="idProducto"]')?.value;
+        const idContenedor = `error${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`;
+        const contenedorError = document.getElementById(idContenedor);
+        const btnGuardar = document.getElementById('guardar');
+
+        if (!valor) return;
+
+        try {
+            const url = `/admin/json/unicidad/${tipo}/${valor}${idProducto ? '?excludeId=' + idProducto : ''}`;
+            const respuesta = await fetch(url);
+            const resultado = await respuesta.json();
+
+            if (resultado && resultado.idProducto) {
+                // ESTADO: DUPLICADO
+                input.classList.add('border-red-500', 'bg-red-50');
+                if (btnGuardar) {
+                    btnGuardar.disabled = true;
+                    btnGuardar.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+
+                Swal.fire({
+                    icon: 'error',
+                    title: `${tipo.toUpperCase()} Duplicado`,
+                    text: `El código "${valor}" ya pertenece al producto: ${resultado.nombreProducto}`,
+                    confirmButtonColor: '#f472b6'
+                });
+
+                if (contenedorError) {
+                    contenedorError.innerHTML = `<p class="text-red-500 text-[10px] font-bold mt-1 uppercase">⚠️ ${tipo} en uso</p>`;
+                    contenedorError.classList.remove('hidden');
+                }
+            } else {
+                // ESTADO: LIBRE
+                input.classList.remove('border-red-500', 'bg-red-50');
+                input.classList.add('border-green-500');
+                
+                if (btnGuardar) {
+                    btnGuardar.disabled = false;
+                    btnGuardar.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+
+                if (contenedorError) contenedorError.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error(`Error validando ${tipo}:`, error);
+        }
+    };
+
+    // --- ASIGNACIÓN DE EVENTOS (VITAL: Fuera de la función) ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const inputSku = document.getElementById('sku');
+        const inputEan = document.getElementById('ean');
+
+        if (inputSku) {
+            inputSku.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
+        }
+        if (inputEan) {
+            inputEan.addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
+        }
     });
 })();

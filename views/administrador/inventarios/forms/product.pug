@@ -1,7 +1,11 @@
 form(action="", method="post" id="formularioProducto" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
 
+
     //- COLUMNA IZQUIERDA
     input(type="hidden", name="_csrf" value = csrfToken)
+    input(type="hidden", name="idProducto" value=producto ? producto.idProducto : '')
+    
+
     div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
         
         //- Nombre del Producto
@@ -197,6 +201,19 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                         span(class="text-xs text-gray-400 mt-1") PNG, JPG hasta 5MB
 
                 div(class="mt-6 flex flex-wrap gap-3 m-2 p-5" id="preview-container")
+
+                    //- Precarga de las imagenes que ya estan en server.
+                    if producto.imagenes
+                        each imagen in producto.imagenes
+                            div(class="w-20 h-20 rounded-xl border border-b-gh-primaryHover relative group animate-fade-in")
+                                img(src=`${subPath}/productos/${imagen.nombreImagen}`  class="w-full h-full object-cover rounded-xl")
+                                button(
+                                    type="button" 
+                                    class="btn-delete-existente absolute -top-2 -right-2 bg-white text-gh-grayText rounded-full p-1 shadow-md cursor-pointer hover:text-red-500"
+                                    data-id =imagen.idMultimedia
+                                    data-nombreimg=imagen.nombreImagen
+                                )
+                                    i.fi-rr-trash-xmark
                     
                     
                     //- Slot vacío para invitar a subir más
@@ -208,7 +225,7 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
         div(class="flex  justify-center")
             button(class="btn btn-primary w-full"  type="submit" id="guardar" )
                 i.fi-rr-disk
-                | Guardar Salir
+                | #{btnName}
 
 script.
     // Inyectamos el array de IDs de categorías y subcategorías que procesamos en el controlador

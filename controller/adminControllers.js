@@ -1,6 +1,7 @@
 import {validationResult } from "express-validator";
 import sharp from 'sharp';
 import { Upload } from "@aws-sdk/lib-storage";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto, Imagenes} from "../models/index.js";
@@ -96,7 +97,8 @@ const dashboardInventorys = async (req, res)=>{
         categoriasSeleccionadas: [], 
         atributosSeleccionados: [],  
         atributos,
-        categorias
+        categorias,
+        btnName : "Guardar Producto"
     
     })
 }
@@ -209,7 +211,9 @@ const editarProducto = async (req, res)=>{
             variantesJson : variantesJson, 
             categorias,
             categoriasSeleccionadas: categoriasId,
-            producto
+            producto,
+            subPath : process.env.R2_PUBLIC_URL,
+            btnName : 'Actualizar Producto  '
     })
         } catch (error) {
             return res.redirect('/admin/inventario/listado/')
@@ -745,9 +749,144 @@ const postEditStore = async (req, res)=>{
 }
 
 
+const saveProduct = async (req, res, next) => {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) {
+        return res.status(400).json({ 
+            errores: errores.array().reduce((acc, err) => ({ ...acc, [err.path]: err.msg }), {}) 
+        });
+    }
+    
+
+    try {
+        const { idProducto, categorias, variantes_finales, imagenes_borrar } = req.body;
+        const csrfToken = req.csrfToken();
+        console.log(csrfToken)
+
+        if(!idProducto || idProducto==''){
+            console.log('No pasa id producto')
+        }else{
+            console.log('Si esta pasando el id y es '+idProducto)
+        }
+        // 1. Sanitización de Datos
+        const idCategoriaParaDB = Array.isArray(categorias) ? categorias.join('|') : categorias;
+        const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
+        const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
+        const descripcionLimpia = sanitizarHTML(req.body.descripcion); // Usamos el name="descripcion" del pug
+        const activo = req.body.activo === 'on' || req.body.activo === true;
+        const web = req.body.web === 'on' || req.body.web === true;
+
+        let producto;
+        const datosParaDB = {
+            nombreProducto: req.body.nombreProducto,
+            sku: req.body.sku,
+            ean: req.body.ean,
+            idCategoria: idCategoriaParaDB,
+            precioVentaPublicoFinal,
+            precioVentaMayorista,
+            descripcion: descripcionLimpia,
+            activo,
+            web,
+            tags: req.body.tags // Si tu modelo tiene tags, inclúyelo aquí
+        };
+
+        // 2. Upsert
+        if (idProducto && idProducto !== "" && idProducto !== "undefined") {
+            console.log('ENTRANDO EN MODO EDICIÓN PARA ID:', idProducto);
+            
+            producto = await Productos.findByPk(idProducto);
+            
+            if (!producto) {
+                return res.status(404).json({ mensaje: 'Producto no encontrado' });
+            }
+
+            // Actualizamos usando el objeto limpio
+            await producto.update(datosParaDB);
+        } else {
+            console.log('ENTRANDO EN MODO CREACIÓN');
+            
+            // Creamos usando el objeto limpio
+            producto = await Productos.create(datosParaDB);
+        }
+
+        const idReal = producto.idProducto;
+
+        // 3. Reconstrucción de Variaciones
+        await VariacionesProducto.destroy({ where: { idProducto: idReal } });
+        const variacionesSeleccionadas = JSON.parse(variantes_finales || '{}');
+        const variacionesFinales = [];
+
+        Object.entries(variacionesSeleccionadas).forEach(([talla, colores]) => {
+            colores.forEach(idColor => {
+                variacionesFinales.push({
+                    idProducto: idReal,
+                    idAtributos: `${talla}|${idColor}`,
+                    valor: 0 
+                });
+            });
+        });
+        if (variacionesFinales.length > 0) await VariacionesProducto.bulkCreate(variacionesFinales);
+
+        // 4. Borrado de Imágenes (Bloque Independiente)
+        if (imagenes_borrar) {
+            const idsBorrar = Array.isArray(imagenes_borrar) ? imagenes_borrar : [imagenes_borrar];
+            const imagenesAEliminar = await Imagenes.findAll({ where: { idMultimedia: idsBorrar } });
+
+            
+            for (const img of imagenesAEliminar) { 
+                console.log('')
+                const deleteParams = {
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: `productos/${img.nombreImagen}`,
+                };
+                await s3Client.send(new DeleteObjectCommand(deleteParams));
+            }
+            await Imagenes.destroy({ where: { idMultimedia: idsBorrar } });
+        } // <--- AQUÍ SE CIERRA EL IF DE BORRADO
+
+        // 5. Subida de Nuevas Imágenes (Bloque Independiente)
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(async (file, index) => {
+                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`;
+                const bufferOptimizado = await sharp(file.buffer)
+                    .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toBuffer();
+
+                const parallelUploads3 = new Upload({
+                    client: s3Client,
+                    params: {
+                        Bucket: process.env.R2_BUCKET_NAME,
+                        Key: `productos/${nombreArchivo}`,
+                        Body: bufferOptimizado,
+                        ContentType: "image/webp",
+                    },
+                });
+
+                await parallelUploads3.done();
+                return {
+                    idProducto: idReal,
+                    nombreImagen: nombreArchivo,
+                    tipo: 'galeria'
+                };
+            });
+            const imagenesData = await Promise.all(uploadPromises);
+            await Imagenes.bulkCreate(imagenesData);
+        }
+
+        // 6. Respuesta final (Fuera de los bloques condicionales)
+        res.json({ success: true, mensaje: 'Producto procesado con éxito', idProducto: idReal });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ mensaje: 'Error interno del servidor' });
+    }
+};
 
 
 
+
+//OLD
 const newProduct = async (req, res, next) => {
     const errores = validationResult(req);
     
@@ -788,6 +927,7 @@ const newProduct = async (req, res, next) => {
             idCategoria: idCategoriaParaDB,
             activo: activo,
             web: web,
+            btnName : 'Guardar Producto'
            
         });
         
@@ -1013,6 +1153,31 @@ const jsonImageProduct = async (req, res) => {
 };
 
 
+//Valido si un sku o un ean existen en un registro distinto al que estoy editando.
+const jsonUnicidad = async (req, res) => {
+    const { tipo, valor } = req.params; // tipo = 'sku' o 'ean'
+    const { idProductoActual } = req.query; // Para ignorar el propio producto en edición
+
+    try {
+        const query = { [tipo]: valor };
+        
+        // Si estamos editando, buscamos otro producto que tenga ese código, excluyendo al actual
+        const donde = idProductoActual 
+            ? { ...query, idProducto: { [Op.ne]: idProductoActual } }
+            : query;
+
+        const producto = await Productos.findOne({ 
+            where: donde,
+            attributes: ['idProducto', 'nombreProducto'] 
+        });
+
+        res.json(producto); 
+    } catch (error) {
+        res.status(500).json({ error: 'Error al validar código' });
+    }
+};
+
+
 
 export {
     dashboard,
@@ -1024,6 +1189,7 @@ export {
     postEditStore,
     dashboardInventorys,
     newProduct,
+    saveProduct,
     editarProducto,
     listaProductos,
     verProducto,
@@ -1038,5 +1204,6 @@ export {
     eanJson,
     filterProductListJson,
     jsonImageProduct,
+    jsonUnicidad,
     baseFrondend
 }
