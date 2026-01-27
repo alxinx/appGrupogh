@@ -274,17 +274,16 @@ const editarTienda = async (req,res)=>{
     
 
     //Formateo Fechas:
-    // Formateo Fechas:
     // El símbolo ?. detiene la ejecución si el objeto es null y devuelve undefined en lugar de romper la app
-    const fechaEmisionFormateada = datosRegimenFacturacion?.fechaEmision
-    ? new Date(datosRegimenFacturacion.fechaEmision).toISOString().split('T')[0]
+    const fechaEmisionFormateada = datosRegimenFacturacion?.fechaEmision 
+    ? new Date(datosRegimenFacturacion.fechaEmision).toISOString().split('T')[0] 
     : "";
 
-    const fechaFinalizacionFormateada = datosRegimenFacturacion?.fechaVencimiento
-    ? new Date(datosRegimenFacturacion.fechaVencimiento).toISOString().split('T')[0]
+    const fechaFinalizacionFormateada = datosRegimenFacturacion?.fechaVencimiento 
+    ? new Date(datosRegimenFacturacion.fechaVencimiento).toISOString().split('T')[0] 
     : "";
 
-
+   
     return res.status(201).render('./administrador/stores/nueva', {
         pagina: req.path,
         subPagina : "Editar Tienda ",
@@ -355,24 +354,11 @@ const postNuevaTienda = async (req, res) => {
     };
 
     if (!erroresValidacion.isEmpty()) {
-
-        const obtenerDatosSelectores = async (idDepartamento) => {
-        const [departamentos, ciudades] = await Promise.all([
-            Departamentos.findAll({ raw: true }),
-            idDepartamento 
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
-                : Promise.resolve([])
-        ]);
-        return { departamentos, ciudades };
-    };
         const errsPorCampo = {};
         erroresValidacion.array().forEach(err => {
             if (!errsPorCampo[err.path]) errsPorCampo[err.path] = err.msg;
         });
 
-<<<<<<< HEAD
-        console.log(departamentos);
-=======
         const obtenerDatosSelectores = async (idDepartamento) => {
                 const [departamentos, ciudades] = await Promise.all([
                     Departamentos.findAll({ raw: true }),
@@ -386,7 +372,6 @@ const postNuevaTienda = async (req, res) => {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
         const activa = req.body.activa ? true : false
 
->>>>>>> productos
         return res.status(201).render('./administrador/stores/nueva', {
             pagina: "Tiendas",
             subPagina : "Nueva Tienda",
