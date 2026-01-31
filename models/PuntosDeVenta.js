@@ -9,7 +9,7 @@ const PuntosDeVenta = db.define('PUNTO_DE_VENTA', {
         allowNull: false
     },
     tipo: {
-        type: DataTypes.ENUM('Punto de venta', 'Bodega', 'Transito'),
+        type: DataTypes.ENUM('Punto de venta', 'Bodega', 'Transito', 'web'),
         allowNull: false
     },
     razonSocial: {
@@ -83,6 +83,7 @@ const PuntosDeVenta = db.define('PUNTO_DE_VENTA', {
 {
     tableName: "PUNTO_DE_VENTA",
     timestamps: true,
+    paranoid: true,
     hooks: {
         beforeSave: (punto) => {
             if (punto.razonSocial) punto.razonSocial = punto.razonSocial.trim();

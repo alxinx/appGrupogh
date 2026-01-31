@@ -10,22 +10,27 @@ document.querySelectorAll('.step-btn').forEach(btn => {
         document.querySelectorAll('.step-content').forEach(c => c.classList.add('hidden'));
         targetContent.classList.remove('hidden');
         document.querySelectorAll('.step-btn').forEach(b => {
-            const circle = b.querySelector('.itemInCircle');
-            const text = b.querySelector('span');
+    const circle = b.querySelector('.itemInCircle');
+    const text = b.querySelector('span');
 
-            if (b === btn) {
-                // ESTADO ACTIVADO
-                circle.classList.remove('circleGray');
-                circle.classList.add('circlePink');
-                text.classList.remove('text-gray-400');
-                text.classList.add('text-pink-500');
-            } else {
-                // ESTADO DESACTIVADO
-                circle.classList.remove('circlePink');
-                circle.classList.add('circleGray');
-                text.classList.remove('text-pink-500');
-                text.classList.add('text-gray-400');
-            }
-        });
+    // VALIDACIÓN DEFENSIVA: Solo actúa si los elementos existen
+    if (circle && text) {
+        if (b === btn) {
+            // ESTADO ACTIVADO
+            circle.classList.remove('circleGray');
+            circle.classList.add('circlePink');
+            text.classList.remove('text-gray-400');
+            text.classList.add('text-pink-500');
+        } else {
+            // ESTADO DESACTIVADO
+            circle.classList.remove('circlePink');
+            circle.classList.add('circleGray');
+            text.classList.remove('text-pink-500');
+            text.classList.add('text-gray-400');
+        }
+    } else {
+        //console.warn("Estructura incompleta en un step-btn", b);
+    }
+});
     });
 });

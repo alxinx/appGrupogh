@@ -9,9 +9,12 @@
   --color-gh-primarySoft: #FDE7F2;
   --color-gh-grayText: #4B5563;
   --color-gh-grayBorder: #E5E7EB;
-
+  --color-card-light : #FFFFFF;
+  --color-card-dark : #1A1926;
+  
   --radius-gh: 12px;
 }
+
 @layer components {
 
   /*BODYS*/
@@ -590,6 +593,27 @@
     @apply border-r-2 border-stone-400 mr-3
   }
 
+
+
+  
+
+  .tarjetaBase {
+    @apply bg-white  p-6 rounded-2xl shadow-sm border border-slate-100   relative overflow-hidden 
+
+  }
+
+  .tarjetaBase h3 {
+    @apply text-3xl font-bold text-slate-800
+  }
+
+  .tarjetaBase i {
+    @apply  mr-2 mt-1
+  }
+
+  .trends {
+    @apply flex items-center text-emerald-500 text-sm font-semibold mb-1 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full
+  }
+  
 
 
 

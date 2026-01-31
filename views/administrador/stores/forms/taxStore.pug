@@ -127,14 +127,13 @@ div(class="col-span-12 md:col-span-12")
                 div
                     label.label  Fecha de Emisión 
                     div(class="input-group")
-                        input(type="date", name="fechaEmision"  class = (errores && errores.fechaEmision) ? "field-text field-text-error" : "field-text" placeholder = "La fecha desde que tiene vigencia" value = (fechaEmisionFormateada) ? fechaEmisionFormateada : "")
-                
+                        input(type="date", name="fechaEmision" class="field-text" value=fechaEmisionFormateada)                
                 div
                     label.label  Fecha de Vencimiento 
                     div(class="input-group")
-                        input(type="date", name="fechaVencimiento"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "La fecha en que vence la resolución" value = (fechaFinalizacionFormateada) ? fechaFinalizacionFormateada : "")
+                        input(type="date", name="fechaVencimiento" class="field-text" value=fechaVencimientoFormateada)
             div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 mt-5")
-                div
+                div 
                     label.label  Nro Inicio de la facturación
                     div(class="input-group")
                         input(type="number", name="nroInicio"  class = (errores && errores.fechaVencimiento) ? "field-text field-text-error" : "field-text" placeholder = "Desde cuál número te autorizaron facturar" value = (datosRegimenFacturacion && datosRegimenFacturacion.nroInicio) ? datosRegimenFacturacion.nroInicio : "")
@@ -169,13 +168,22 @@ div(class="col-span-12 md:col-span-12")
     
         
             div(class="form-actions justify-between mt-5 pt-4  border-t-2 border-t-gh-primarySoft")
-    div(class="flex gap-3 justify-center")
-        a(href="javascript:void(0)" data-step="1"  class="btn btn-primary step-btn")
-            | Volver a los datos básicos
-        a(href="javascript:void(0)" data-step="3"  class="btn btn-primary step-btn")
-            | Continuar con la documentación
-        
-        button(class="btn btn-secondary" )
-           i.fi-rr-disk
-           | Guardar Salir
-        
+    
+
+    div(class="form-actions justify-between mt-5 pt-4 border-t-2 border-t-gh-primarySoft")
+        div(class="flex gap-3 justify-center")
+            //- Botón Volver: Solo cambia visibilidad
+            a(href="javascript:void(0)" data-step="1" class="btn btn-primary step-btn")
+                i.fi-rr-arrow-small-left.mr-2
+                | Volver a los datos básicos
+            
+            //- Botón Continuar: Valida y guarda asíncronamente
+            a(href="javascript:void(0)" data-step="3" class="btn btn-primary step-btn")
+                | Continuar con la documentación
+                i.fi-rr-arrow-small-right.ml-2
+            
+            //- Botón Guardar y Salir: IMPORTANTE el type="button"
+            button(type="button" id="btnGuardarTienda" class="btn btn-secondary btn-guardar-salir")
+                i.fi-rr-disk.mr-2
+                | Guardar y Salir
+            

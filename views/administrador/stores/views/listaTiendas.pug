@@ -1,0 +1,55 @@
+div(class="bg-gray-50  rounded-t-2xl  p-3 shadow-sm border border-slate-100  overflow-hidden")
+        h2.h2.text-gh-primaryHover
+            i.fi-rr-store-alt 
+            | Estado Actual de las tiendas
+        p(class="text-sm text-slate-400") Lista completa de las tiendas que administras
+
+        div(class="overflow-x-auto pt-4 ")
+          table(class="w-full text-left text-2xs border-collapse ")
+            thead
+              tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                th(class="px-8 py-4    text-center text-gray-600") Nombre de Tienda & NIT
+                th(class="px-2  text-center text-gray-600") Estado de Caja
+                th(class="px-2   text-center text-gray-600") Ventas del Día
+                th(class="px-2  text-center text-gray-600") Egresos del Día
+                th(class="px-8   text-center text-gray-600") 
+
+            tbody(class="divide-y divide-slate-100 ")
+              //- Row 1
+              tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+                td(class="px-8 py-5")
+                  div(class="flex items-center space-x-3")
+                   
+                    div
+                      p(class="font-bold text-slate-800 ") Tienda Norte Central
+                      p(class="text-xs text-slate-400") NIT: 900.123.456-1
+
+                td(class="px-6 py-5")
+                  span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 ")
+                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                    | ABIERTA
+
+                td(class="px-6 py-5 text-right")
+                  p(class="font-bold text-slate-800 ") $12,450.00
+
+                td(class="px-6 py-5")
+                  div(class="flex -space-x-2")
+                    p(class="font-bold text-red-800 ") $12,450.00
+                    
+                td(class="px-8 py-5 text-center")
+                  button(class="btn btn-secondary text-xs")
+                    i.fi-rr-eye.text-xs
+                    |Ver Mas
+
+
+        div(class="px-8 py-4 bg-slate-50/30  border-t border-slate-100  flex items-center justify-between")
+            p(class="text-xs text-slate-400")
+                | Mostrando 
+                span(class="font-bold text-slate-600 ") 4
+                |  de 
+                span(class="font-bold text-slate-600 ") 12
+                |  tiendas activas
+
+              
+              
+

@@ -12,16 +12,32 @@ block contenedor
                             //******************[CUERPO PANELES]*********************//
                             
                             //HEADER
-                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2")
-                                div(class="grid grid-cols-1 md:grid-cols-1")
-                                    h1.h1.text-left.pt-1.pb-0.mb-0 #{subPagina}
-                                    label.label-muted.mt-0 Asegurate de tener todos los datos de la tienda que crearás antes de comenzar! 
-
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                include ./headers/headerHomeStore.pug
+                                include ./headers/actionBtns.pug
                             
-                            //FORMULARIO
-                            include ./forms/store
-                            
-        script(src="/js/dataAsync.js")            
+                            //NAV
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 ")
+                                include ./headers/navFormStore.pug
+
+                            form(action="/admin/tiendas/new", method="post" id="formulario" class="col-span-12 grid grid-cols-1 md:grid-cols-1 gap-4 cards") 
+                                input(type="hidden", name="_csrf" value = csrfToken)
+                                input(type="hidden" name="idPuntoDeVenta" value = (dato && dato.idPuntoDeVenta) ? dato.idPuntoDeVenta :"")  
+                                div(class=`step-content ${ (pasoActivo === "1" || !pasoActivo) ? '' : 'hidden' }` data-content="1")
+                                    include ./forms/basicStore.pug
 
 
-                               
+                                div(class=`step-content ${ (pasoActivo === "2") ? '' : 'hidden' }` data-content="2")
+                                    include ./forms/taxStore.pug
+                                
+                                div(class=`step-content ${ (pasoActivo === "3") ? '' : 'hidden' }` data-content="3")
+                                    include ./forms/documentLoader.pug
+                              
+                              
+                                
+
+        script(src="/js/steepForms.js")   
+        script(src="/js/dataAsync.js") 
+        script(src="/js/dropdownBtn.js")  
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+

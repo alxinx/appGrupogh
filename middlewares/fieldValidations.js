@@ -42,7 +42,6 @@ const storeRegisterValidation =  [
     check("direccionPrincipal").trim().notEmpty().withMessage('La dirección del punto de venta es importante.'),
     check("departamento").trim().isInt().withMessage('El departamento debe ser uno de los de la lista.'),
     check("ciudad").trim().isInt().withMessage('La ciudad debe ser uno de los de la lista.'),
-    check("telefono").trim().isMobilePhone().withMessage('Debe ser un numero celular.'),
     
 ]
 

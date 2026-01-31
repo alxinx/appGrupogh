@@ -1,7 +1,8 @@
 import express from "express";
 import csrf from 'csurf';
+const router = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard,  dashboardStores, newStore, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, saveProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, saveProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation} from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
@@ -39,8 +40,8 @@ routes.get('/frontend',baseFrondend);
 
 
 //****************[POST]**********************/
-routes.post('/tiendas/nueva',csrfProtection, storeRegisterValidation, storeBasicTaxDataValidation, postNuevaTienda)
-
+//routes.post('/tiendas/nueva',csrfProtection, storeRegisterValidation, storeBasicTaxDataValidation, postNuevaTienda)
+routes.post('/tiendas/new/', saveStoreBasic)
 
 routes.post('/inventario/ingreso', 
     uploadImages.array('imagenes', 10), 

@@ -10,9 +10,15 @@ const RegimenFacturacion = db.define('REGIMEN_FACTURACION', {
     },
     idPuntoDeVenta: {
         type : DataTypes.UUID,
-        allowNull: false
+        allowNull: false,
+        references: {
+            model: 'PUNTO_DE_VENTA',
+            key: 'idPuntoDeVenta'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT' // Si se borra la sede, se borra su historial de facturación
     },
-    resolucionFacturacion : {
+    resolucionFacturacion : {   
         type : DataTypes.STRING, 
         allowNull : true,  
         unique : true
@@ -70,22 +76,28 @@ const RegimenFacturacion = db.define('REGIMEN_FACTURACION', {
     },
     taxId : { // EL NIT.
         type: DataTypes.STRING(20),
-        allowNull : false,
+        allowNull : true,
     },
-    DV : {//Digito de verificación de la DIAN.
-        type : DataTypes.STRING(1),
-        allowNull : false,
-        validate : {
-            isNumeric : true,
-            len : [1,1]
+    DV: {
+    type: DataTypes.STRING(1),
+    allowNull: true, // Esto es clave
+    validate: {
+            isNumeric: {
+                msg: "El DV debe ser un número"
+            },
+            len: {
+                args: [1, 1],
+                msg: "El DV debe tener exactamente 1 dígito"
+            }
         }
     },
     prefijo : DataTypes.STRING, // EL AUTORIZADO POR LA DIAN
     
 },
-{
+{ 
     tableName : "REGIMEN_FACTURACION",
     timestamps : true,
+    paranoid : true,
     hooks : {
         beforeSave : (punto) =>{
             if(punto.razonSocial) punto.razonSocial =punto.razonSocial.trim();  

@@ -1,0 +1,19 @@
+div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6")
+    div(class="flex justify-center  md:items-center gap-4")
+         div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+           
+            if subPagina === "Gestión Tiendas"
+                img(src="/img/avatars/tiendaLila.webp" alt="Tienda" class="w-14 h-14 object-contain")
+            if subPagina === "Nueva Tienda"
+                img(src="/img/avatars/tiendaNueva.webp" alt="Tienda" class="w-14 h-14 object-contain")
+
+
+            
+            
+    div(class="flex flex-col gap-1")
+        h1.h1 #{subPagina}
+        
+        div(class="flex justify-center md:items-center gap-2")
+    
+
+  

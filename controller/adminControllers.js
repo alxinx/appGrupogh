@@ -4,6 +4,7 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
+import db from "../config/bd.js";
 import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto, Imagenes} from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type :'json'}
@@ -47,8 +48,9 @@ const dashboardStores = async (req, res)=>{
         attributes : ['idPuntoDeVenta', 'nombreComercial', 'taxId']
     })
 
-    return res.status(201).render('./administrador/stores', {
+    return res.status(201).render('./administrador/stores/homeStores', {
         pagina: "Tiendas",
+        subPagina : "Gestión Tiendas",
         csrfToken : req.csrfToken(),
         currentPath: req.path,
         listaPuntosDeVenta : listaPuntosDeVenta
@@ -65,7 +67,9 @@ const newStore = async (req, res)=>{
         attributes : ['id', 'nombre']
     })
     responsabiliidadFiscal
-    return res.status(201).render('./administrador/stores/nueva', {
+    return res.status(201).render('./administrador/stores/new', {
+    //return res.status(201).render('./administrador/stores/DELETE_nueva', {
+
         pagina: "Tiendas",
         subPagina : "Nueva Tienda",
         csrfToken : req.csrfToken(),
@@ -77,6 +81,122 @@ const newStore = async (req, res)=>{
         btn : "Crear Nuevo Punto De Venta"
     })
 }
+
+
+
+//GUARDO DATOS BÁSICOS DE LA TIENDA.
+
+const saveStoreBasic = async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        const errorMessages = errors.array().map(err => `• ${err.msg}`).join('<br>');
+        return res.status(400).json({ success: false, mensaje: errorMessages });
+    }
+
+    const { 
+        idPuntoDeVenta, razonSocial, nombreComercial, tipo, direccionPrincipal, 
+        departamento, ciudad, telefono, activa,
+        taxId, DV, prefijo, resolucionFacturacion, emailRut, footerBill,
+        responsabilidades, tipo_organizacion, tipoFactura,
+        fechaEmision, fechaVencimiento, nroInicio, nroFin
+    } = req.body;
+
+    // 1. LIMPIEZA DE DATOS: Convertir strings vacíos en null para que Sequelize no valide
+    const nitLimpio = (taxId && taxId.trim() !== "") ? taxId.trim() : null;
+    const dvLimpio = (DV && DV.trim() !== "") ? DV.trim() : null;
+
+    const t = await db.transaction();
+
+    try {
+        let sede;
+
+        // --- LÓGICA PASO 1: DATOS BÁSICOS ---
+        const datosSede = {
+            razonSocial,
+            nombreComercial,
+            tipo,
+            direccionPrincipal,
+            departamento,
+            ciudad,
+            telefono,
+            activa: activa === 'on' || activa === true,
+            // IMPORTANTE: El nombre de la propiedad debe ser igual al del modelo (taxId y DV)
+            taxId: nitLimpio, 
+            DV: dvLimpio, 
+            prefijo, 
+            resolucionFacturacion, 
+            emailRut, 
+            footerBill
+        };
+
+        if (idPuntoDeVenta && idPuntoDeVenta !== "" && idPuntoDeVenta !== "undefined") {
+            sede = await PuntosDeVenta.findByPk(idPuntoDeVenta, { transaction: t });
+            if (!sede) {
+                await t.rollback();
+                return res.status(404).json({ success: false, mensaje: 'La sede no existe' });
+            }
+            await sede.update(datosSede, { transaction: t });
+        } else {
+            sede = await PuntosDeVenta.create(datosSede, { transaction: t });
+        }
+
+        // --- LÓGICA PASO 2: RÉGIMEN TRIBUTARIO (Solo si hay NIT) ---
+        if (nitLimpio) {
+            const [regimen, created] = await RegimenFacturacion.findOrCreate({
+                where: { idPuntoDeVenta: sede.idPuntoDeVenta, activa: true },
+                defaults: {
+                    idPuntoDeVenta: sede.idPuntoDeVenta,
+                    razonSocial, 
+                    taxId: nitLimpio, 
+                    DV: dvLimpio, 
+                    prefijo,
+                    resolucionFacturacion, responsabilidades, 
+                    tipo_organizacion, tipoFactura,
+                    fechaEmision: fechaEmision || null, 
+                    fechaVencimiento: fechaVencimiento || null, 
+                    nroInicio: nroInicio || 0, 
+                    nroFin: nroFin || 1000000
+                },
+                transaction: t
+            });
+
+            if (!created) {
+                await regimen.update({
+                    razonSocial, 
+                    taxId: nitLimpio, 
+                    DV: dvLimpio, 
+                    prefijo,
+                    resolucionFacturacion, responsabilidades, 
+                    tipo_organizacion, tipoFactura,
+                    fechaEmision: fechaEmision || null,
+                    fechaVencimiento: fechaVencimiento || null,
+                    nroInicio: nroInicio || 0,
+                    nroFin: nroFin || 1000000
+                }, { transaction: t });
+            }
+        }
+
+        await t.commit();
+        return res.json({ 
+            success: true, 
+            idPuntoDeVenta: sede.idPuntoDeVenta,
+            mensaje: 'Información guardada correctamente' 
+        });
+
+    } catch (error) {
+        await t.rollback();
+        if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
+            const erroresSequelize = error.errors.map(err => `• ${err.message}`).join('<br>');
+            return res.status(400).json({ success: false, mensaje: erroresSequelize });
+        }
+        console.error("ERROR EN SAVE_STORE_BASIC:", error);
+        return res.status(500).json({ success: false, mensaje: 'Error interno en el servidor' });
+    }
+};
+
+
+
+
 
 
 //***********************[INVENTARIOS]***********************//
@@ -868,7 +988,8 @@ const saveProduct = async (req, res, next) => {
         res.json({ success: true, mensaje: 'Producto procesado con éxito', idProducto: idReal });
 
     } catch (error) {
-        console.error(error);
+
+        
         res.status(500).json({ mensaje: 'Error interno del servidor' });
     }
 };
@@ -1169,7 +1290,8 @@ const jsonUnicidad = async (req, res) => {
 export {
     dashboard,
     dashboardStores,
-    newStore,
+    newStore, // [DELETE?]
+    saveStoreBasic,
     verTienda,
     editarTienda,
     postNuevaTienda,

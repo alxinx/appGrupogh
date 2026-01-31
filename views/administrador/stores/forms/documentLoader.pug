@@ -1,0 +1,10 @@
+.grid.grid-cols-12.gap-4
+        h1.h1.col-span-12 Repositorio de Documentos
+        .col-span-12.md-col-span-6
+            label.label Tipo de Documento
+            select.field-text(name="tipoDocumento")
+                option(value="RUT") RUT
+                option(value="CAMARA_COMERCIO") Cámara de Comercio
+        .col-span-12.md-col-span-6
+            label.label Adjuntar Archivo (PDF/JPG)
+            input(type="file" name="documentoSede" class="field-text")
