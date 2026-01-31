@@ -1,0 +1,292 @@
+doctype html
+html(lang="es")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    title Grupo GH | Nueva Colección
+
+    link(rel="preconnect" href="https://fonts.googleapis.com")
+    link(rel="preconnect" href="https://fonts.gstatic.com" crossorigin="")
+    link(rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&family=Material+Icons+Outlined&display=swap")
+
+    script(src="https://cdn.tailwindcss.com?plugins=forms,typography")
+    script.
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#db5374",
+              "background-light": "#fffcfd",
+              "background-dark": "#1a1617",
+              "accent-pink": "#fce7f3",
+            },
+            fontFamily: {
+              display: ["Playfair Display", "serif"],
+              sans: ["Inter", "sans-serif"],
+            },
+            borderRadius: { DEFAULT: "4px" },
+          },
+        },
+      };
+
+    style.
+      body { font-family: 'Inter', sans-serif; }
+      .font-display { font-family: 'Playfair Display', serif; }
+      .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(8px); }
+      .dark .glass-card { background: rgba(26, 22, 23, 0.8); }
+
+  body(class="bg-background-light dark:bg-background-dark text-slate-800 dark:text-slate-100 transition-colors duration-300")
+    header(class="sticky top-0 z-50 bg-white/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-pink-100 dark:border-pink-900/30")
+      nav(class="container mx-auto px-4 h-20 flex items-center justify-between")
+        button(class="lg:hidden text-slate-600 dark:text-slate-300")
+          span.material-icons-outlined menu
+
+        div(class="hidden lg:flex items-center space-x-8 text-sm font-medium tracking-wide uppercase")
+          a(class="border-b-2 border-primary pb-1 text-primary" href="#") Inicio
+          a(class="hover:text-primary transition-colors" href="#") Tienda
+          a(class="hover:text-primary transition-colors" href="pagina/colecciones") Colecciones
+          a(class="text-primary font-bold" href="#") Sale
+          a(class="hover:text-primary transition-colors" href="#") Nosotros
+
+        div(class="absolute left-1/2 -translate-x-1/2")
+          img(src="./img/logo.png"  width="70"  alt="")
+
+
+        div(class="flex items-center space-x-5")
+          button(class="hover:text-primary transition-colors")
+            span.material-icons-outlined search
+          button(class="hover:text-primary transition-colors")
+            span.material-icons-outlined favorite_border
+          button(class="hover:text-primary transition-colors relative")
+            span.material-icons-outlined shopping_bag
+            span(class="absolute -top-1 -right-1 bg-primary text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center") 3
+          button(class="hover:text-primary transition-colors")
+            span.material-icons-outlined person_outline
+
+    main
+      section(class="relative h-[600px] md:h-[750px] overflow-hidden")
+        div(class="absolute inset-0 bg-gradient-to-r from-pink-100 to-pink-50 dark:from-pink-950 dark:to-slate-900 flex items-center justify-end")
+          img(
+            alt="Modelo Nueva Colección"
+            class="h-full w-2/3 object-cover object-top opacity-90 mix-blend-multiply dark:mix-blend-normal hidden md:block"
+            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAa4sPqBoxwoej-_Oy63OSZlx59PXkIvVXYwgGzgCxreycZU3VDbJa0xk6YcO1-C9PEimI9Xhb9VJ3QFbWK9hfFsrf4n9cq3YC0kmDmBQ2iHTgz6tJX0oWn1Bw7kAoRWV0qvM8ytIOfK6uUmHcqjUesHcDVUR6YxBS-shfKRCwyHedLhenKy-ibIFeARtytPfQnCLMQrh_MPy9rOrbZBLeTmVwJthsAGGIQYbCo6erQf2b0oAPguSp9NwcoIunaR7CF6PqdxRIOK0kv"
+          )
+          img(
+            alt="Modelo Nueva Colección Mobile"
+            class="absolute inset-0 h-full w-full object-cover opacity-60 md:hidden"
+            src="https://lh3.googleusercontent.com/aida-public/AB6AXuB3JMGa7hgpbVuyx5ViRZk82jLm-WSRqJS5p45gVyhOiMps_5QDeVcTkUu31v3-OATlcyNe6qnBVe5_Ci3bUcSh0VoRWpZQG5PJiojTKNzx8cD_awwUliA-6-RiO38tREVIkJvhwR7au5e_Qs7WD2J6Grz3gWY9g0cLDR-NpI9eqcNhw1paA9LBX2TGYSrNu3NvdKF3tCTEm0Ztv2BrMXAYizv7KPJgbAL0HGZGa9tQTiOwEDuFUbePNZpOcKJdASzk-blI9YZratZb"
+          )
+
+        div(class="container mx-auto px-4 h-full flex flex-col justify-center relative z-10")
+          div(class="max-w-xl space-y-6")
+            h2(class="font-display text-5xl md:text-7xl italic text-slate-900 dark:text-white leading-tight") Nueva colección
+            p(class="text-xl md:text-2xl font-light italic text-slate-700 dark:text-pink-100") Elegancia que se siente
+            div(class="flex flex-col sm:flex-row gap-4 pt-4")
+              a(class="bg-primary hover:bg-opacity-90 text-white px-10 py-4 text-center rounded-sm font-medium tracking-wider transition-all shadow-lg shadow-primary/20" href="#") Comprar ahora
+              a(class="bg-white/80 dark:bg-white/10 border border-slate-200 dark:border-white/20 hover:bg-white dark:hover:bg-white/20 px-10 py-4 text-center rounded-sm font-medium tracking-wider transition-all" href="#") Ver colección
+
+      section(class="py-16 bg-white dark:bg-slate-900/50")
+        div(class="container mx-auto px-4")
+          div(class="grid grid-cols-2 md:grid-cols-4 gap-6")
+            a(class="group relative aspect-[3/4] overflow-hidden rounded-lg" href="#")
+              img(
+                alt="Vestidos"
+                class="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIesTD9li2GNW1lkAdp05Oauia1m58f-KMLeMSbGHO9bIQBLBQXqTfnAF2iAjKrGQaTF_9c4VY18FcN6M5U8eq1gF0D8G5Ogp8OBUUZGMaLkdQq5EcRoEqGkTiQ9HvVINEqbm_5NNwkgEJOqNN4MdkmWmmvRzd83U_kfhbaL-dps298vywgerjijUKaWsXmNbM35-1hpvnY8FeulaftQWeuRFbtxU7-3lm6sdBvjeN8YX1sJNhlr1-WKEssFLOSPhF4AVqDsGSnL0v"
+              )
+              div(class="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors")
+              div(class="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 text-center")
+                span(class="block py-2 glass-card font-display text-lg italic text-slate-900 dark:text-white rounded shadow-sm") Vestidos
+
+            a(class="group relative aspect-[3/4] overflow-hidden rounded-lg" href="#")
+              img(
+                alt="Tops"
+                class="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuD2jvDFkGeLf4o_2GjkDQhR0gYccW5HjqrCv17UlXSUP-ovmELYOQWEs1EEB2OPePO9VvS7me_5I64h78mvLAn8-UlHglcSGSkseafZO5hPWmfvDQgtCwCii9abu2JxHarYIhY_Nw_8b7FYAOGKsXYxqmq2dviO00dM8RYRVlxE7pB3EJS2FA65Fo1ma2WC9_qCqTUxHeEwpNoiIjwc9mFRbne7EB04xQqatNul1Z68A0dnddT7YQBR1bXkb2kE4s8TRRlDHihGiUqq"
+              )
+              div(class="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors")
+              div(class="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 text-center")
+                span(class="block py-2 glass-card font-display text-lg italic text-slate-900 dark:text-white rounded shadow-sm") Tops
+
+            a(class="group relative aspect-[3/4] overflow-hidden rounded-lg" href="#")
+              img(
+                alt="Jeans"
+                class="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQ6kDLlyqi3hgiWoXnMgFtgYc1CkBwM9MvZa9VeFK8TZgGF5LuNwNBm7U7Zd5z2ztiqY8-xPSuieFLNW4eHx0TxyBC_f8tXaTQSskpQhVFpJRjc18MfsVcJHNnZNGJfHtT1chAZs_2N-fyHNB5iQWRxe9vTgrfDp8Amy2GhO4lRtZdx4_0rS0oX4yLCBBCzPORrTs7k9pWC7CWw6vzevPaPLLbWIkNbCOTCDAPj0gL2MKF4LEWTyIM1QKe9PrGWrsQwqhtvslLHI6P"
+              )
+              div(class="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors")
+              div(class="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 text-center")
+                span(class="block py-2 glass-card font-display text-lg italic text-slate-900 dark:text-white rounded shadow-sm") Jeans
+
+            a(class="group relative aspect-[3/4] overflow-hidden rounded-lg" href="#")
+              img(
+                alt="Accesorios"
+                class="h-full w-full object-cover group-hover:scale-110 transition-transform duration-700"
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBAJcwAEN5O-1ZggQ4AbjSLJ5OaRI3rCn2MJOu44lBsyu2IGQGCt0m8fFZc08kt1DJa4gvbsTg7iREkq0-gcLWhsfmZ3EKmai8wWGgxoi9wKGAV9EqggroukHxq-pJuM2SvUEub9zaYs9mYGy6KZY_rXKEsvkXET6ve25NCuZd3Bw-T05bZjZdotFVFfhnOaacilRXOsSpZZ6uh9mh8E92g6nMAoBgH3ZPIDfeWX0W90qY-eN2KPe40aEbOCIP4f395N2muAsr5p35D"
+              )
+              div(class="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors")
+              div(class="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 text-center")
+                span(class="block py-2 glass-card font-display text-lg italic text-slate-900 dark:text-white rounded shadow-sm") Accesorios
+
+      section(class="py-16")
+        div(class="container mx-auto px-4")
+          div(class="flex items-center justify-center mb-12 space-x-6")
+            div(class="h-px bg-slate-200 dark:bg-slate-700 flex-grow hidden md:block")
+            h2(class="font-display text-3xl italic text-slate-800 dark:text-white px-4 whitespace-nowrap") Más Vendidos
+            div(class="h-px bg-slate-200 dark:bg-slate-700 flex-grow hidden md:block")
+
+          div(class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8")
+            //- Card 1
+            div(class="group")
+              div(class="relative aspect-[4/5] overflow-hidden rounded-lg bg-pink-50 dark:bg-pink-900/10 mb-4")
+                img(
+                  alt="Vestido Aurora"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1lZLteE_xTy8HPV6U-NdeO5vRIlB3Ed-bBzYnpINo9Vdj3e7uF4uffgs31f8dUu25ztP24YxjdLTZ9DfvO5q1jOSSjsbcbB59Wo5riHHwy_asIqB8zs5GLObY5SyfbwDVlnwkukQbns913hdJOzMA_Gjb-xdhAnO24nReXcWg5uUsxueH1ft47Yh0Aq6PP__cTDH-35_74GrfhsDfNDccLdfhED0kJWtGiPMIJkovkYLpZSUZnGzpfno7SOUc1EoiAAmnN4L9Z8Rh"
+                )
+                button(class="absolute top-4 right-4 text-slate-400 hover:text-primary bg-white dark:bg-slate-800 p-2 rounded-full shadow-md transition-colors opacity-0 group-hover:opacity-100")
+                  span.material-icons-outlined(class="text-sm") favorite_border
+              div(class="space-y-1")
+                h3(class="font-display text-lg text-slate-900 dark:text-white") Vestido Aurora
+                p(class="text-primary font-bold text-lg") $189.000
+                button(class="w-full mt-4 bg-primary hover:bg-opacity-90 text-white py-3 rounded text-sm font-medium tracking-wide transition-colors") Agregar al carrito
+
+            //- Card 2
+            div(class="group")
+              div(class="relative aspect-[4/5] overflow-hidden rounded-lg bg-pink-50 dark:bg-pink-900/10 mb-4")
+                img(
+                  alt="Top Básico"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjGG9gW_CHmSo8D72_2BHraYKTeYWfik89luel_wK0-jPQDeB2MFqEBWZL9iLgAmhpl7qh66P0tzAodloYBKorsMYt9HAcvXcsiFwg64KC2gNbcFGzEGeNinGLIAfKhIg5JosFTUEG36cOxlN0bNzvUHYDeBYC7OtYILWrLI4p2JGjgTZYTDRoMPnCz6t5RP2fcOvxIkow8BXDOxkebCN_3wlu74IM1y-nOBsj5Z7Bbc9VnuZrT21a6NpZ0pEMGJJvhCu6EjWVY3F0"
+                )
+                button(class="absolute top-4 right-4 text-slate-400 hover:text-primary bg-white dark:bg-slate-800 p-2 rounded-full shadow-md transition-colors opacity-0 group-hover:opacity-100")
+                  span.material-icons-outlined(class="text-sm") favorite_border
+              div(class="space-y-1")
+                h3(class="font-display text-lg text-slate-900 dark:text-white") Top Básico
+                p(class="text-primary font-bold text-lg") $79.000
+                button(class="w-full mt-4 bg-primary hover:bg-opacity-90 text-white py-3 rounded text-sm font-medium tracking-wide transition-colors") Agregar al carrito
+
+            //- Card 3
+            div(class="group")
+              div(class="relative aspect-[4/5] overflow-hidden rounded-lg bg-pink-50 dark:bg-pink-900/10 mb-4")
+                img(
+                  alt="Jeans Classic"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAr-hT3jteql5gNFxlNhKhQqSKUDPSOOuWzvGA7lndeM41DKgtAuKKOtOLx4Ut6Ro-cLVCAyO0WpVfSwKtFGrMRMs1pN4Cqa35-RZ4xKxzrnIhxZGHsvO1zOZAiJpdNJce0TwqirpBpWhmPJvNjCPEOmPU8OzUOe30uSNBAK4_IgSEtXzTYTNJ_u_vk2v6d1fqp_suGQoDofmdqLlDaZt76E5WEh1NXPNGePbz_wNzsIFF7V-l474KzriFGuA8EmK7udcKK-jRie0h7"
+                )
+                button(class="absolute top-4 right-4 text-slate-400 hover:text-primary bg-white dark:bg-slate-800 p-2 rounded-full shadow-md transition-colors opacity-0 group-hover:opacity-100")
+                  span.material-icons-outlined(class="text-sm") favorite_border
+              div(class="space-y-1")
+                h3(class="font-display text-lg text-slate-900 dark:text-white") Jeans Classic
+                p(class="text-primary font-bold text-lg") $129.000
+                button(class="w-full mt-4 bg-primary hover:bg-opacity-90 text-white py-3 rounded text-sm font-medium tracking-wide transition-colors") Agregar al carrito
+
+            //- Card 4
+            div(class="group")
+              div(class="relative aspect-[4/5] overflow-hidden rounded-lg bg-pink-50 dark:bg-pink-900/10 mb-4")
+                img(
+                  alt="Blusa Encaje"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAE5F39FJibipzzucsZL_0dW5wv1FN5Lz-56ltCh73qyKs7PIfH5fRYrd7r8R9yj5oBCYtqmL1QniB_qXKa0sYxp94kGr7XHrTRj8KCZex3--KYPDjeivXWh0zWCwzHBcEokZT3lN_k1wLZiY0omGVj_x3xImo7kYcAha8A1bd3IcT4MmgeTD4c16Wd9rfQ81UtUR4V0HOSTekRlLperOBUuJPRiQJXdMla_ckpB3WYB9sdgamH3kR6PjOuwgJNicIvyo5H05GtM_Yn"
+                )
+                button(class="absolute top-4 right-4 text-slate-400 hover:text-primary bg-white dark:bg-slate-800 p-2 rounded-full shadow-md transition-colors opacity-0 group-hover:opacity-100")
+                  span.material-icons-outlined(class="text-sm") favorite_border
+              div(class="space-y-1")
+                h3(class="font-display text-lg text-slate-900 dark:text-white") Blusa Encaje
+                p(class="text-primary font-bold text-lg") $95.000
+                button(class="w-full mt-4 bg-primary hover:bg-opacity-90 text-white py-3 rounded text-sm font-medium tracking-wide transition-colors") Agregar al carrito
+
+      section(class="py-20 relative bg-primary overflow-hidden")
+        div(class="absolute -top-24 -left-24 w-64 h-64 bg-white/10 rounded-full blur-3xl")
+        div(class="absolute -bottom-24 -right-24 w-96 h-96 bg-black/10 rounded-full blur-3xl")
+        div(class="container mx-auto px-4 text-center relative z-10")
+          h2(class="font-display text-5xl md:text-7xl italic text-white mb-4") Hasta 40% OFF
+          p(class="text-xl md:text-2xl text-pink-100 mb-8 font-light italic") Lo que amas, ahora
+          a(class="inline-flex items-center space-x-2 bg-white text-primary px-10 py-4 rounded font-bold uppercase tracking-widest hover:bg-pink-50 transition-colors" href="#")
+            span Ver ofertas
+            span.material-icons-outlined chevron_right
+
+      section(class="py-12 bg-pink-50 dark:bg-slate-900 border-y border-pink-100 dark:border-pink-900/20")
+        div(class="container mx-auto px-4")
+          div(class="grid grid-cols-2 md:grid-cols-4 gap-8")
+            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
+              span.material-icons-outlined(class="text-primary text-3xl") local_shipping
+              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Envíos rápidos
+            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
+              span.material-icons-outlined(class="text-primary text-3xl") sync
+              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Cambios fáciles
+            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
+              span.material-icons-outlined(class="text-primary text-3xl") verified_user
+              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Pagos seguros
+            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
+              span.material-icons-outlined(class="text-primary text-3xl") auto_awesome
+              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Diseño exclusivo
+
+      
+
+    footer(class="bg-pink-50 dark:bg-background-dark border-t border-pink-100 dark:border-pink-900/30 pt-16 pb-8")
+      div(class="container mx-auto px-4")
+        div(class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12")
+          div(class="space-y-4")
+            h3(class="font-display text-2xl font-bold italic text-slate-900 dark:text-white") Grupo GH
+            p(class="text-slate-600 dark:text-slate-400 text-sm leading-relaxed")
+              | Moda que redefine tu esencia. Descubre la elegancia contemporánea con nuestras colecciones exclusivas.
+            div(class="flex space-x-4 pt-2")
+              a(class="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm text-slate-400 hover:text-primary transition-colors" href="#")
+                span.material-icons-outlined facebook
+              a(class="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm text-slate-400 hover:text-primary transition-colors" href="#")
+                span.material-icons-outlined(class="text-lg") camera_alt
+
+          div
+            h4(class="font-bold text-xs uppercase tracking-widest text-slate-900 dark:text-white mb-6") Explorar
+            ul(class="space-y-4 text-sm text-slate-600 dark:text-slate-400")
+              li
+                a(class="hover:text-primary transition-colors" href="#") Nuevas Llegadas
+              li
+                a(class="hover:text-primary transition-colors" href="#") Blusas
+              
+              li
+                a(class="hover:text-primary transition-colors" href="#") Pijamas
+            
+              li
+                a(class="hover:text-primary transition-colors" href="#") Tops
+            
+            
+
+          div
+            h4(class="font-bold text-xs uppercase tracking-widest text-slate-900 dark:text-white mb-6") Servicio al Cliente
+            ul(class="space-y-4 text-sm text-slate-600 dark:text-slate-400")
+              li
+                a(class="hover:text-primary transition-colors" href="#") Contacto
+              li
+                a(class="hover:text-primary transition-colors" href="#") Envíos y Retornos
+              li
+                a(class="hover:text-primary transition-colors" href="#") Guía de Tallas
+              li
+                a(class="hover:text-primary transition-colors" href="#") Preguntas Frecuentes
+
+          div
+            h4(class="font-bold text-xs uppercase tracking-widest text-slate-900 dark:text-white mb-6") Newsletter
+            p(class="text-sm text-slate-600 dark:text-slate-400 mb-4") Únete para recibir ofertas exclusivas y novedades.
+            form(class="flex")
+              input(class="flex-grow bg-white dark:bg-slate-800 border-none rounded-l-sm focus:ring-1 focus:ring-primary text-sm px-4 py-3" placeholder="Tu email" type="email")
+              button(class="bg-primary text-white px-4 rounded-r-sm hover:bg-opacity-90 transition-all" type="submit")
+                span.material-icons-outlined arrow_forward
+
+        div(class="border-t border-pink-200 dark:border-pink-900/30 pt-8 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 text-xs text-slate-400")
+          p © 2024 Grupo GH. Todos los derechos reservados.
+          div(class="flex space-x-6")
+            a(class="hover:text-slate-600" href="#") Privacidad
+            a(class="hover:text-slate-600" href="#") Términos
+            a(class="hover:text-slate-600" href="#") Cookies
+          div(class="flex items-center space-x-2 grayscale opacity-50")
+            span.material-icons-outlined(class="text-lg") payments
+            span.material-icons-outlined(class="text-lg") credit_card
+
+    button(
+      class="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center shadow-xl z-[100] hover:scale-110 transition-transform"
+      onclick="document.documentElement.classList.toggle('dark')"
+    )
+      span.material-icons-outlined(class="block dark:hidden") dark_mode
+      span.material-icons-outlined(class="hidden dark:block") light_mode

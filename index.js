@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import loginRoutes from "./routes/loginRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js"
 import storeRoutes from "./routes/storeRoutes.js"
+import webRouters from "./routes/webRoutes.js"
 import {rutaProtegida, verificarRol} from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
 
@@ -49,6 +50,7 @@ app.use((req, res, next) => {
 });
 
 // 4. Rutas
+app.use("/pagina", webRouters )
 app.use("/", loginRoutes); // LOGIN
 app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes); // ADMINISTRADOR
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS

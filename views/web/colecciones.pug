@@ -1,0 +1,312 @@
+doctype html
+html(lang="es")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    title Vestidos - Grupo GH
+
+    link(rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap")
+    link(rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap")
+    script(src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries")
+    script.
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#db5a7c",
+              secondary: "#fdf2f4",
+              "background-light": "#fffafb",
+              "background-dark": "#121212",
+            },
+            fontFamily: {
+              display: ["Playfair Display", "serif"],
+              sans: ["Inter", "sans-serif"],
+            },
+            borderRadius: {
+              DEFAULT: "4px",
+              lg: "8px",
+            },
+          },
+        },
+      };
+
+    style(type="text/tailwindcss").
+      body { font-family: 'Inter', sans-serif; }
+      h1, h2, h3, .font-display { font-family: 'Playfair Display', serif; }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        font-size: 20px;
+      }
+      .filter-checkbox:checked {
+        background-color: #db5a7c;
+        border-color: #db5a7c;
+      }
+
+  body(class="bg-background-light dark:bg-background-dark text-gray-800 dark:text-gray-200 transition-colors duration-300")
+    nav(class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800")
+      div(class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8")
+        div(class="flex justify-between items-center h-20")
+          div(class="hidden md:flex space-x-8")
+            a(class="text-sm uppercase tracking-widest hover:text-primary transition-colors" href="#") Inicio
+            a(class="text-sm uppercase tracking-widest hover:text-primary transition-colors border-b-2 border-primary" href="#") Tienda
+            a(class="text-sm uppercase tracking-widest hover:text-primary transition-colors" href="#") Colecciones
+            a(class="text-sm uppercase tracking-widest hover:text-primary transition-colors" href="#") Sale
+
+          div(class="flex-shrink-0 flex items-center")
+            span(class="text-2xl font-display font-bold tracking-tighter italic") Grupo GH
+
+          div(class="flex items-center space-x-5")
+            button(class="p-1 hover:text-primary transition-colors")
+              span.material-symbols-outlined search
+            button(class="p-1 hover:text-primary transition-colors")
+              span.material-symbols-outlined favorite
+            button(class="p-1 hover:text-primary transition-colors relative")
+              span.material-symbols-outlined shopping_bag
+              span(class="absolute -top-1 -right-1 bg-primary text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold") 3
+            button(class="p-1 hover:text-primary transition-colors")
+              span.material-symbols-outlined person
+
+    main(class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8")
+      div(class="flex flex-col md:flex-row md:items-end justify-between mb-8")
+        div
+          nav(aria-label="Breadcrumb" class="flex mb-4 text-xs uppercase tracking-widest text-gray-500")
+            ol(class="flex items-center space-x-2")
+              li
+                a(class="hover:text-primary transition-colors" href="#") Tienda
+              li(class="flex items-center")
+                span.material-symbols-outlined(class="text-xs mx-1") chevron_right
+                span(class="text-primary font-medium") Vestidos
+
+          h1(class="text-4xl font-display italic text-gray-900 dark:text-white") Vestidos
+          p(class="text-sm text-gray-500 mt-2 font-light") Explora nuestra colección de vestidos exclusivos diseñados para cada ocasión.
+
+        div(class="mt-6 md:mt-0 flex items-center space-x-4")
+          span(class="text-xs uppercase tracking-widest text-gray-400") Ordenar por:
+          div(class="relative inline-block text-left")
+            select(class="appearance-none bg-transparent border-none text-sm font-medium pr-8 focus:ring-0 cursor-pointer")
+              option Destacados
+              option Precio: Menor a Mayor
+              option Precio: Mayor a Menor
+              option Novedades
+            span.material-symbols-outlined(class="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400") expand_more
+
+      div(class="flex flex-col lg:flex-row gap-12")
+        //- FILTROS
+        aside(class="w-full lg:w-64 flex-shrink-0 space-y-8")
+          //- Talla
+          div
+            button(class="flex items-center justify-between w-full text-sm font-semibold uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 pb-3 mb-4")
+              | Talla
+              span.material-symbols-outlined(class="text-sm") remove
+
+            div(class="grid grid-cols-4 gap-2")
+              button(class="border border-gray-200 py-2 text-xs hover:border-primary hover:text-primary transition-colors") XS
+              button(class="border border-primary bg-primary/5 text-primary py-2 text-xs") S
+              button(class="border border-gray-200 py-2 text-xs hover:border-primary hover:text-primary transition-colors") M
+              button(class="border border-gray-200 py-2 text-xs hover:border-primary hover:text-primary transition-colors") L
+              button(class="border border-gray-200 py-2 text-xs hover:border-primary hover:text-primary transition-colors") XL
+
+          //- Color
+          div
+            button(class="flex items-center justify-between w-full text-sm font-semibold uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 pb-3 mb-4")
+              | Color
+              span.material-symbols-outlined(class="text-sm") remove
+
+            div(class="flex flex-wrap gap-3")
+              button(class="w-6 h-6 rounded-full bg-[#f48fb1] ring-1 ring-offset-2 ring-primary")
+              button(class="w-6 h-6 rounded-full bg-white border border-gray-200")
+              button(class="w-6 h-6 rounded-full bg-black")
+              button(class="w-6 h-6 rounded-full bg-[#d7ccc8]")
+              button(class="w-6 h-6 rounded-full bg-[#c5e1a5]")
+
+          //- Precio
+          div
+            button(class="flex items-center justify-between w-full text-sm font-semibold uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 pb-3 mb-4")
+              | Precio
+              span.material-symbols-outlined(class="text-sm") remove
+
+            div(class="space-y-2")
+              label(class="flex items-center space-x-3 cursor-pointer")
+                input(type="checkbox" class="filter-checkbox rounded border-gray-300 text-primary focus:ring-primary w-4 h-4")
+                span(class="text-sm text-gray-600 dark:text-gray-400") $0 - $100.000
+              label(class="flex items-center space-x-3 cursor-pointer")
+                input(type="checkbox" class="filter-checkbox rounded border-gray-300 text-primary focus:ring-primary w-4 h-4")
+                span(class="text-sm text-gray-600 dark:text-gray-400") $100.000 - $200.000
+              label(class="flex items-center space-x-3 cursor-pointer")
+                input(type="checkbox" class="filter-checkbox rounded border-gray-300 text-primary focus:ring-primary w-4 h-4")
+                span(class="text-sm text-gray-600 dark:text-gray-400") +$200.000
+
+          //- Colección (colapsado)
+          div
+            button(class="flex items-center justify-between w-full text-sm font-semibold uppercase tracking-widest border-b border-gray-100 dark:border-gray-800 pb-3 mb-4")
+              | Colección
+              span.material-symbols-outlined(class="text-sm") add
+
+        //- GRID PRODUCTOS
+        div(class="flex-grow")
+          div(class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-8 gap-y-12")
+            //- Card 1
+            div(class="group relative flex flex-col")
+              div(class="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 mb-4")
+                img(
+                  alt="Vestido Aurora"
+                  class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQ_uNeN-vPK6AahfB1TGMkRYxh2LL7ZDhwSV7o55qLM7OKoPtXsyEcSkMCTYQpLgY0FuQxwOoL23RGuxANB7t7XZoVTDzm6JsBOrwuqQeJz5Gr7jRFCHrYlxlewjop2vz459lM4RtgbGu2TPEmRiHggSll-aD2fOeUbgyXzlPHFsW9MC2Ij-9_DivLqlAQUG7-OGgv_ChdxsKo8u_IrndTGCFKkKMrUMdp0U5V6aOJkw9mnfi7gHdin5sjFiTdNJTGC3CAxqt70qs_"
+                )
+                div(class="absolute top-4 right-4 flex flex-col space-y-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined favorite
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined shopping_bag
+                div(class="absolute bottom-4 left-4 right-4 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-full bg-white/90 backdrop-blur py-3 text-xs font-bold uppercase tracking-[0.2em] text-gray-900 rounded") Vista Rápida
+              h3(class="font-display italic text-xl text-gray-900 dark:text-white mb-1")
+                a(href="producto/vestido-aurora") Vestido Aurora
+              p(class="text-primary font-medium tracking-tight") $189.000
+
+            //- Card 2
+            div(class="group relative flex flex-col")
+              div(class="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 mb-4")
+                img(
+                  alt="Vestido Emma"
+                  class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAItdm8i6IvP6Xm4w9MCe3f4ZHKXLH_2tbkANtnav5zYg8iJDo2Sb81ZrjrJGGmiECnOOveGaNvKzXKIaWCjT36V3M5C1_G_QKuhwd50YlJo2SMVayT9UeZ5RDqD6klIgLhWz_Z0wAoAFpRmIejbvjxuG8FNdDAiPVrXnaBctYs5l-Pae1x-do-8EcEHcGZBNUwfjKZKPsXE6UOCtPp_Kii37s4RasayLLRZwKxvVpMh9ZmCNP-55uRpYFFhJhHa-f6QzWR_8OX1aqG"
+                )
+                div(class="absolute top-4 right-4 flex flex-col space-y-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined(class="text-primary") favorite
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined shopping_bag
+                div(class="absolute bottom-4 left-4 right-4 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-full bg-white/90 backdrop-blur py-3 text-xs font-bold uppercase tracking-[0.2em] text-gray-900 rounded") Vista Rápida
+              h3(class="font-display italic text-xl text-gray-900 dark:text-white mb-1")
+                a(href="#") Vestido Emma
+              p(class="text-primary font-medium tracking-tight") $185.000
+
+            //- Card 3
+            div(class="group relative flex flex-col")
+              div(class="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 mb-4")
+                img(
+                  alt="Vestido Malena"
+                  class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuBGYIU1gVNcKVBymMDxfIJA11HPT3P-h9I8DYkW-zbnksjdn2HJ18V8kw6HYqWahBLJqccdfEo_Pcz4c8XKtChhtE1yPdbzUUN9O719IBVzds-6hl7XhhhPmc7yJG0p_0tCGrVp4s0bgQNyK4DQP2RgxWmyKKm6cJI-TFE1FkI1J7HPseahcMR515Zhwu7ZeMnOt4YoTSiTvwQp5-dFWvJ27UixYmEyiGGHrH3qv5hgxMPb5uPDtMkdNgGj_O7UcZOeXtQO1FmyWLvv"
+                )
+                div(class="absolute top-4 right-4 flex flex-col space-y-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined favorite
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined shopping_bag
+                div(class="absolute bottom-4 left-4 right-4 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-full bg-white/90 backdrop-blur py-3 text-xs font-bold uppercase tracking-[0.2em] text-gray-900 rounded") Vista Rápida
+              h3(class="font-display italic text-xl text-gray-900 dark:text-white mb-1")
+                a(href="#") Vestido Malena
+              p(class="text-primary font-medium tracking-tight") $195.000
+
+            //- Card 4 (Nuevo)
+            div(class="group relative flex flex-col")
+              div(class="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 mb-4")
+                img(
+                  alt="Vestido Luna"
+                  class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuADLSZgcSHt2QPKUeFWeXn-XFHyGvLICGBP74HPg0Qm_KPwWTpionqmFhsuEj5pwgfFNusxiJcdvIYkbjMTii9iYO4JTqNZPZMUjY8aTpPU0XBFJZK9xkc9Pf02cRhhynklQ1Hu1qDsA4MPmOnXYiYlfu562cCb62QkksmTbTza63d6QKbjE1bd6i5anIx-TZZEFV3xGR_Ei-e3UTxzwk1WZBDpgjXCMQW5WO7lwpoP6sn62310wvPwg-pc7XRlSQd99PLWa8u61U22"
+                )
+                span(class="absolute top-4 left-4 bg-primary text-white text-[10px] uppercase tracking-widest px-2 py-1 font-bold") Nuevo
+                div(class="absolute top-4 right-4 flex flex-col space-y-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined favorite
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined shopping_bag
+                div(class="absolute bottom-4 left-4 right-4 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-full bg-white/90 backdrop-blur py-3 text-xs font-bold uppercase tracking-[0.2em] text-gray-900 rounded") Vista Rápida
+              h3(class="font-display italic text-xl text-gray-900 dark:text-white mb-1")
+                a(href="#") Vestido Luna
+              p(class="text-primary font-medium tracking-tight") $210.000
+
+            //- Card 5
+            div(class="group relative flex flex-col")
+              div(class="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 mb-4")
+                img(
+                  alt="Vestido Clara"
+                  class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhTp49MXnv8VB65ZZikYmCXaZ_ovUn4cwZEVko1Ny-Uo_iFRqkm3J0khZSMSikqFQaotqs6BY4NpiG62z5M2w6D4Wfyr8Da83FUYMO45PVwlbWBDutm2iHzfZshMBSI67b5azNI1IflfVLDhUqjKnoOcj_Z2MUk9mWFIDxDoHg8qBRgaA9pS4Yd2g7dyApg4Tp7jAJygu5ijlq2kogJ1E5LfiVrkH5h2kfBg2MgameRm9Z6y9_swWGYxeA7EJ9E--AcZDig2bm9-sy"
+                )
+                div(class="absolute top-4 right-4 flex flex-col space-y-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined favorite
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined shopping_bag
+                div(class="absolute bottom-4 left-4 right-4 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-full bg-white/90 backdrop-blur py-3 text-xs font-bold uppercase tracking-[0.2em] text-gray-900 rounded") Vista Rápida
+              h3(class="font-display italic text-xl text-gray-900 dark:text-white mb-1")
+                a(href="#") Vestido Clara
+              p(class="text-primary font-medium tracking-tight") $175.000
+
+            //- Card 6 (Agotado)
+            div(class="group relative flex flex-col")
+              div(class="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 mb-4")
+                img(
+                  alt="Detalle Seda"
+                  class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwXWqVJ_E8gsm50hcoDmhDHJ1yCGmXOGlgef2RkYC2aNoFJKM-EShqtkj52itIxfh4Yjq_7lSDaPibkjX3BeSoPfe4OUMfLtU8qSUTAqVL-kzOH-tVX34Jfv1zjZxpW52XVGx_fHNGVFI1aJPjPWbh68VwEUfvCP14hOH_JashVa0FK8uzcWTwqxjoZ4U7lBa7MqQXUeLLQ2IljfCSr618ClxxtfWR1IDnw5h3COGctCkDaXMJenmNbuM8RwGVHjHsXW0UQBGYENYF"
+                )
+                span(class="absolute top-4 left-4 bg-gray-900 text-white text-[10px] uppercase tracking-widest px-2 py-1 font-bold") Agotado
+                div(class="absolute top-4 right-4 flex flex-col space-y-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-300")
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined favorite
+                  button(class="w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-gray-900 hover:text-primary shadow-sm")
+                    span.material-symbols-outlined shopping_bag
+              h3(class="font-display italic text-xl text-gray-900 dark:text-white mb-1 opacity-50")
+                a(href="#") Vestido Silk Bloom
+              p(class="text-gray-400 font-medium tracking-tight") $225.000
+
+          //- Load more
+          div(class="mt-20 flex flex-col items-center")
+            p(class="text-xs text-gray-500 mb-6 uppercase tracking-widest") Viendo 6 de 48 productos
+            div(class="w-64 h-px bg-gray-100 relative mb-12")
+              div(class="absolute inset-y-0 left-0 bg-primary w-1/8")
+            button(class="px-12 py-4 border border-gray-900 dark:border-white text-xs font-bold uppercase tracking-[0.3em] hover:bg-gray-900 hover:text-white dark:hover:bg-white dark:hover:text-gray-900 transition-all duration-300")
+              | Cargar más productos
+
+    footer(class="bg-gray-50 dark:bg-gray-900/50 mt-20 py-12 border-t border-gray-100 dark:border-gray-800")
+      div(class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8")
+        div(class="grid grid-cols-2 md:grid-cols-4 gap-8")
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") local_shipping
+            h4(class="text-xs font-semibold uppercase tracking-widest") Envío rápido
+            p(class="text-[10px] text-gray-500") Recibe tu pedido en tiempo récord
+
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") sync_alt
+            h4(class="text-xs font-semibold uppercase tracking-widest") Cambios fáciles
+            p(class="text-[10px] text-gray-500") 30 días para devoluciones sin costo
+
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") lock
+            h4(class="text-xs font-semibold uppercase tracking-widest") Pago Seguro
+            p(class="text-[10px] text-gray-500") Múltiples medios de pago encriptados
+
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") auto_awesome
+            h4(class="text-xs font-semibold uppercase tracking-widest") Diseño Exclusivo
+            p(class="text-[10px] text-gray-500") Prendas únicas hechas con amor
+
+        div(class="mt-16 pt-8 border-t border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0")
+          div(class="flex space-x-6")
+            a(class="text-gray-400 hover:text-primary transition-colors" href="#")
+              span.material-symbols-outlined social_leaderboard
+            a(class="text-gray-400 hover:text-primary transition-colors" href="#")
+              svg(class="h-5 w-5 fill-current" viewBox="0 0 24 24")
+                path(d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 011.772 1.153 4.902 4.902 0 011.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06h-.08c-2.643 0-2.987-.012-4.043-.06-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.047-1.024-.06-1.379-.06-3.808v-.63c0-2.43.013-2.784.06-3.808.049-1.064.218-1.791.465-2.427a4.902 4.902 0 011.153-1.772A4.902 4.902 0 015.45 2.525c.636-.247 1.363-.416 2.427-.465C8.901 2.013 9.256 2 11.685 2h.63zm-.081 1.802h-.468c-2.456 0-2.784.011-3.807.058-.975.045-1.504.207-1.857.344-.467.182-.8.398-1.15.748-.35.35-.566.683-.748 1.15-.137.353-.3.882-.344 1.857-.047 1.023-.058 1.351-.058 3.807v.468c0 2.456.011 2.784.058 3.807.045.975.207 1.504.344 1.857.182.466.399.8.748 1.15.35.35.683.566 1.15.748.353.137.882.3 1.857.344 1.054.048 1.37.058 4.041.058h.08c2.597 0 2.917-.01 3.96-.058.976-.045 1.505-.207 1.858-.344.466-.182.8-.398 1.15-.748.35-.35.566-.683.748-1.15.137-.353.3-.882.344-1.857.048-1.055.058-1.37.058-4.041v-.08c0-2.597-.01-2.917-.058-3.96-.045-.976-.207-1.505-.344-1.858a3.097 3.097 0 00-.748-1.15 3.098 3.098 0 00-1.15-.748c-.353-.137-.882-.3-1.857-.344-1.023-.047-1.351-.058-3.807-.058zM12 6.865a5.135 5.135 0 100 10.27 5.135 5.135 0 000-10.27zm0 1.802a3.333 3.333 0 110 6.666 3.333 3.333 0 010-6.666zm5.338-3.205a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z")
+          p(class="text-[10px] text-gray-400 uppercase tracking-widest") © 2024 Grupo GH Fashion. Todos los derechos reservados.
+          div(class="flex space-x-4")
+            img(
+              alt="Visa"
+              class="h-3 opacity-30 grayscale hover:grayscale-0 transition-all"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBO8KPLZO4Ip_-ZNPVzTMsLxMLmw251HmBA33svqvSAXfkPwKj7qWdMViX1oRS80OFQ6vSQDYxuAeVyTWg9sGY7wxPiBJhUcnGHqVUcn5RWP8wZE3Eq_PIwWrsgV1WkQblW9Xi4JfjVi7lXBXun8-QVUr6o7LgXXoVBLrJY-uahdRxvv2h7ZnKUjFCKbii6H5xOONxlj-umU9EUKrGiD6RtLNb_WLQh1XEgYMoHLZD3bKb9GLsnHER6in_oo-2LyVLoL1Ah5crWnEcV"
+            )
+            img(
+              alt="Mastercard"
+              class="h-3 opacity-30 grayscale hover:grayscale-0 transition-all"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFgPpTgJH7QX-cYQANc9CkXL0hYhIGJzR2PYyDKe2RLEZ8mnFwY9zM6USQZEsqkN4bj51swiyks17BoDWbKrTfraZzBuNiJfDGWhtMbnK7Y61t65CxrQ7ILaaKjA3qfQDWXAlVMMyQB5zKdDmmEwXfIkmJlXj_pEQ0i1YNuJTaWJuX5EoMwBeFUjdOVD9zvpLs21dBB7BS_40hAUPemTKkprOrNaGp8xQIYtCSuUXaVqjNnskdOVSbIJi9RWfVVkflxrH6pAG1Oh5L"
+            )

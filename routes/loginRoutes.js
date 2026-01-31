@@ -7,7 +7,7 @@ const routes = express.Router();
 
 
 //GET 
-routes.get("/loginAdmin", adminLogin);
+routes.get("/", adminLogin);
 routes.get("/register", registerLogin);
 routes.get("/forgot", forgotLogin);
 
@@ -21,7 +21,7 @@ routes.post("/logout", logout);
 
 //🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨BORRAR O COMENTAR CUAND DESPLIEGUE PRODUCCION🚨🚨🚨🚨🚨🚨//
 routes.post("/register", registerValidation, registerLoginPost);
-routes.post("/loginAdmin/", loginValidation, loginUser)
+routes.post("/", loginValidation, loginUser)
 
 
 //POST
