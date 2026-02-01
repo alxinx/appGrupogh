@@ -1,9 +1,4 @@
 div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
-    
-
-    
-    
-    
     a(onclick='history.back()') 
         button(class="btn btn-outline flex items-center gap-2")
             i(class="fi fi-rr-arrow-left")
@@ -11,30 +6,7 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
     div(class="relative inline-block text-left")
     
         
-        button#btnMas(type="button" class="btn btn-outline flex items-center gap-2")
-            //- Tres puntos (...)
-            span(class="")
-            i.fi-rr-grip-dots-vertical
-            | Más
-        //- MENÚ DESPLEGABLE (Oculto por defecto con class="hidden")
-        div#menuMas(class="hidden absolute right-0 z-10 mt-2 w-56 origin-top-right bg-white rounded-md shadow-lg focus:outline-none" role="menu" aria-orientation="vertical" aria-labelledby="menu-button" tabindex="-1")
-            div(class="py-1" role="none")
-            
-            //- OPCIÓN 1: EDITAR (Icono Lápiz)
-            a(href="/admin/inventario/listado/" class="text-gray-700 hover:bg-gray-100 group flex items-center px-4 py-2 text-sm" role="menuitem")
-                span(class="pr-3")
-                    i.fi-rr-list
-                | Lista Productos
-            
-            a(href="/admin/inventario/dosificar/" class="text-gray-700 hover:bg-gray-100 group flex items-center px-4 py-2 text-sm" role="menuitem")
-                span(class="pr-3")
-                    i.fi-rr-add-document
-                | Dosificar Productos
-            
-            a(href="#" class="text-red-700 hover:bg-red-800 hover:text-white group flex items-center px-4 py-2 text-sm" role="menuitem")
-                span(class="pr-3")
-                    i.fi-rr-triangle-warning
-                | Suspender Tienda
+       
     
     if subPagina === 'Gestión Tiendas'
         a(href=`/admin/tiendas/new/`) 
@@ -42,4 +14,10 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
                 span.material-symbols-outlined add_business
 
                 | Nueva Tienda
+
+    if subPagina === 'Estado de la tienda '
+        a(href=`/admin/tiendas/editar/${dato.idPuntoDeVenta}`) 
+            button(class="btn btn btn-danger flex items-center gap-2")
+                i(class="fi fi-rr-edit")
+                | Editar Tienda 
 

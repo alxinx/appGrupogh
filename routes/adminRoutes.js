@@ -2,7 +2,7 @@ import express from "express";
 import csrf from 'csurf';
 const router = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard,  dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys, newProduct, saveProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys,storeInventory, billingToday, storeEmployers, storeDocuments, newProduct, saveProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation} from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
@@ -17,8 +17,14 @@ routes.get("/", dashboard);
 //TIENDAS
 routes.get('/tiendas',dashboardStores);
     routes.get('/tiendas/new',newStore);
+    routes.get('/tiendas/ver/:idPuntoDeVenta',verTienda);
+    routes.get('/tiendas/partials/facturacionHoy/:idPuntoDeVenta', billingToday)
+    routes.get('/tiendas/partials/inventario/:idPuntoDeVenta', storeInventory)
+    routes.get('/tiendas/partials/empleados/:idPuntoDeVenta', storeEmployers)
+    routes.get('/tiendas/partials/documentacion/:idPuntoDeVenta', storeDocuments)
+
     //routes.get('/tiendas/nueva',newStore);
-    routes.get('/tiendas/verPunto/:idPuntoDeVenta',verTienda);
+    //routes.get('/tiendas/verPunto/:idPuntoDeVenta',verTienda);
     routes.get('/tiendas/editar/:idPuntoDeVenta',editarTienda);
     
 

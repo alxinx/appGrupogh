@@ -224,6 +224,51 @@ const dashboardInventorys = async (req, res)=>{
 }
 
 
+//
+const billingToday = async (req, res)=>{
+    const {idPuntoDeVenta} = req.params;
+    res.send(`
+        <div class="p-8 text-center">
+            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: FACTURACIÓN HOY</h2>
+            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
+        </div>
+    `);
+}
+
+
+const storeInventory = async (req, res)=>{
+    const {idPuntoDeVenta} = req.params;
+    res.send(`
+        <div class="p-8 text-center">
+            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: INNVENTARIOO TIENDA</h2>
+            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
+        </div>
+    `);
+}
+
+const storeEmployers = async (req, res)=>{
+    const {idPuntoDeVenta} = req.params;
+    res.send(`
+        <div class="p-8 text-center">
+            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: EMPLEADOS TIENDA</h2>
+            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
+        </div>
+    `);
+}
+
+
+const storeDocuments = async (req, res)=>{
+
+    const {idPuntoDeVenta} = req.params;
+    res.send(`
+        <div class="p-8 text-center">
+            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: DOCUMENTOS TIENDA</h2>
+            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
+        </div>
+    `);
+}
+
+
 
 const listaProductos = async (req, res)=>{
 
@@ -256,6 +301,8 @@ const verProducto = async (req, res)=>{
                 ])
 
             if (!producto) return res.redirect('/admin/inventario/listado');
+            
+            
             return res.status(201).render('./administrador/inventarios/productView', {
                 pagina: "Ver Producto",
                 subPagina : "Producto",
@@ -363,6 +410,8 @@ const verTienda = async (req,res)=>{
         subPagina : "Estado de la tienda ",
         csrfToken : req.csrfToken(),
         currentPath: '/tiendas',
+        subPath : process.env.R2_PUBLIC_URL,
+
         dato : puntoVenta,
     })
 }
@@ -404,9 +453,9 @@ const editarTienda = async (req,res)=>{
     : "";
 
    
-    return res.status(201).render('./administrador/stores/nueva', {
+    return res.status(201).render('./administrador/stores/new', {
         pagina: req.path,
-        subPagina : "Editar Tienda ",
+        subPagina : "Editar Tienda",
         csrfToken : req.csrfToken(),
         currentPath: '/tiendas',
         dato : puntoVenta,
@@ -1297,6 +1346,10 @@ export {
     postNuevaTienda,
     postEditStore,
     dashboardInventorys,
+    billingToday,
+    storeInventory,
+    storeEmployers,
+    storeDocuments,
     newProduct,
     saveProduct,
     editarProducto,

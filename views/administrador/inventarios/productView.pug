@@ -18,7 +18,13 @@ block contenedor
 
                             
                             //FORMULARIO
-                            include ./view/product.pug
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+                                include ./stats/saleToday.pug
+                                include ./stats/unitSold.pug
+                                include ./stats/selfThrough.pug
+                                include ./stats/inventoryDays.pug
+                            div(class="col-span-12 grid grid-cols-12 items-start")
+                                include ./view/product.pug
 
                 script(src="/js/dropdownBtn.js")  
                  

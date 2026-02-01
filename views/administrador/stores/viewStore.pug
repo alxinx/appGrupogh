@@ -20,48 +20,34 @@ block contenedor
 
                                     
                             
-                            //STATS
-                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-1")
-                                div(class="col-span-3 cards md:col-span-2 grid grid-cols-3 ")
-                                   
-                                    //VENTAS DIARIAS
-                                    div(class="stats statsBorderRight mt-5 mb-4 ")
-                                        span(class="col-span-12")
-                                            h2.h2(class="pb-4")
-                                                i.fi-rr-light-emergency-on
-                                                span.text-gray-500 Ventas Diarias
-                                        span.col-span-12
-                                            span(class="greenFont  text-1xl  md:text-4xl font-bold pt-4") $50.000.000
-                                        span.col-span-12
-                                            h5.h5.text-right.pr-10.pt-5 32 Transacciones
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+                                //- Card 1
+                                include ./stats/dailySales.pug 
+                                include ./stats/cashRegister.pug 
+                                include ./stats/debitAndCardRegister.pug 
+                                include ./stats/wallets.pug 
 
-                                    //VENTAS ÚLTIMOS 30 DIAS.
-                                    div(class="stats statsBorderRight mt-5 mb-4 ")
-                                        span(class="col-span-12")
-                                            h2.h2(class="pb-4")
-                                                i.fi-rr-light-emergency-on
-                                                span.text-gray-500 Ventas Últimos 30 días
-                                        span.col-span-12
-                                            span(class="text-1xl purpleFont  md:text-4xl font-bold pt-4") $32.423.922
-                                        span.col-span-12
-                                            h5.h5.text-right.pr-10.pt-5 256 Transacciones
 
+
+
+                            div(class="col-span-12 grid grid-cols-12 items-start")
+                                //COLUMNA 1
+                                div(class="col-span-12 md:col-span-8 grid grid-cols-1 gap-4 cards cardsWhite p-6")
+                                    include ./headers/navInsideStore.pug
                                     
-                                    div(class="stats  mt-5 mb-4")
-                                        span.col-span-12
-                                            h2.h2(class="pb-4")
-                                                i.fi-rr-light-emergency-on
-                                                span.text-gray-500 Resolución DIAN.
-                                        span(class="text-1xl  md:text-4xl font-bold pt-4")
-                                            h1.h1=dato.resolucionFacturacion
-                                        span.col-span-12.text-center.mt-4
-                                            h5.h5 Valida hasta eel 12 de abril
+                                    div(class="p-0")
+                                        #loadDataStore
+                                        //include ./views/listaFacturasDia.pug
 
 
 
 
-                                div(class="col-span-1 cards")
+
+                                //COLUMNA 2
+                                div(class="col-span-12 md:col-span-4 grid grid-cols-1 gap-4 cards cardsWhite p-6")
+                                    include ./views/overdueBills.pug
         
-        script(src="/js/dropdownBtn.js")            
+        script(src="/js/dropdownBtn.js")
+        script(src="/js/dataStore.js")          
 
                                 

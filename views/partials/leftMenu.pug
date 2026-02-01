@@ -32,10 +32,16 @@ aside(
         i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
 
       div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/admin/inventario/ingreso" class=`submenu-item`) Ingreso de Producto
+        a(href="/admin/inventario/ingreso" class=`submenu-item`) Ingreso de Nuevo Producto
         a(href="/admin/inventario/listado" class="submenu-item") Listado de producto
+        a(href="/admin/inventario/" class="submenu-item") Agregar Productos Al inventario
+
         a(href="/admin/inventario/dosificar" class="submenu-item") Dosificar producto
 
+    a(href="/admin/provedores" class=`menu-item ${currentPath === '/provedores' ? 'active' : ''}`)
+      i(class="fi fi-rr-supplier-alt text-lg")
+      span Provedores
+    
     a(href="/admin/clientes" class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`)
       i(class="fi fi-rr-users text-lg")
       span Clientes

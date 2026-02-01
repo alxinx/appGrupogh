@@ -1,0 +1,44 @@
+table(class="w-full text-left text-2xs border-collapse ")
+  thead
+    tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+      th(class="px-8 py-2    text-center text-gray-600") Nro Factura
+      th(class="px-2  text-center text-gray-600") Cliente
+      th(class="px-2   text-center text-gray-600") Métodos de pago
+      th(class="px-2  text-center text-gray-600") Total
+      th(class="px-8   text-center text-gray-600") 
+  tbody(class="divide-y divide-slate-100 ")
+    
+    //- Row 1
+    tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+      td(class="px-8 py-2")
+        div(class="flex items-center space-x-1")
+        
+          div
+            p(class="font-bold text-slate-800 ") FE-332
+            
+      td(class="px-6 py-3")
+        h4.h4 Alejandro Gonzalez
+      
+      td(class="px-6 py-3 text-center")
+        h5.h5 Tarjeta Crédito, Nequi, Transferencia
+      td(class="px-6 py-3")
+        div(class="flex -space-x-2")
+          p(class="font-bold text-green-800 ") $440.000
+          
+      td(class="px-8 py-3 text-center")
+        a(href=`contabilidad/factura/` class="btn btn-secondary text-xs") 
+          i.fi-rr-eye.text-xs
+          |Ver Mas
+
+
+div(class="px-8 py-4 bg-slate-50/30  border-t border-slate-100  flex items-center justify-between")
+    p(class="text-xs text-slate-400")
+        | Mostrando 
+        span(class="font-bold text-slate-600 ") 10
+        |  de 
+        span(class="font-bold text-slate-600 ") 56
+        |  Facturas hechas hoy
+
+              
+              
+

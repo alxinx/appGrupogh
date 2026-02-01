@@ -10,7 +10,8 @@ export default {
         productDataForm : '/src/js/productDataForm.js',
         productList : '/src/js/productList.js',
         paginador : '/src/js/paginador.js',
-        helpers : '/src/js/helpers.js'
+        helpers : '/src/js/helpers.js',
+        dataStore : '/src/js/dataStore.js'
     },
     output : {
         filename : '[name].js',

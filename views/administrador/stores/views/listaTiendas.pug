@@ -15,31 +15,33 @@ div(class="bg-gray-50  rounded-t-2xl  p-3 shadow-sm border border-slate-100  ove
                 th(class="px-8   text-center text-gray-600") 
 
             tbody(class="divide-y divide-slate-100 ")
-              //- Row 1
-              tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
-                td(class="px-8 py-5")
-                  div(class="flex items-center space-x-3")
-                   
-                    div
-                      p(class="font-bold text-slate-800 ") Tienda Norte Central
-                      p(class="text-xs text-slate-400") NIT: 900.123.456-1
+              if listaPuntosDeVenta
+                each listado in listaPuntosDeVenta
+                  //- Row 1
+                  tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+                    td(class="px-8 py-5")
+                      div(class="flex items-center space-x-3")
+                      
+                        div
+                          p(class="font-bold text-slate-800 ")=listado.nombreComercial
+                          p(class="text-xs text-slate-400") NIT: #{listado.taxId}
 
-                td(class="px-6 py-5")
-                  span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 ")
-                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
-                    | ABIERTA
+                    td(class="px-6 py-5")
+                      span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 ")
+                        span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                        | ABIERTA
 
-                td(class="px-6 py-5 text-right")
-                  p(class="font-bold text-slate-800 ") $12,450.00
+                    td(class="px-6 py-5 text-right")
+                      p(class="font-bold text-slate-800 ") $12,450.00
 
-                td(class="px-6 py-5")
-                  div(class="flex -space-x-2")
-                    p(class="font-bold text-red-800 ") $12,450.00
-                    
-                td(class="px-8 py-5 text-center")
-                  button(class="btn btn-secondary text-xs")
-                    i.fi-rr-eye.text-xs
-                    |Ver Mas
+                    td(class="px-6 py-5")
+                      div(class="flex -space-x-2")
+                        p(class="font-bold text-red-800 ") $12,450.00
+                        
+                    td(class="px-8 py-5 text-center")
+                      a(href=`tiendas/ver/${listado.idPuntoDeVenta}` class="btn btn-secondary text-xs") 
+                        i.fi-rr-eye.text-xs
+                        |Ver Mas
 
 
         div(class="px-8 py-4 bg-slate-50/30  border-t border-slate-100  flex items-center justify-between")
