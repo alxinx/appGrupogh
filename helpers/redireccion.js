@@ -1,7 +1,5 @@
 
 const redireccion = (rol)=>{
-
-    console.log(rol)
     if(rol === 'ADMIN'){
         return '/admin'
     }else if(rol === 'STORE'){

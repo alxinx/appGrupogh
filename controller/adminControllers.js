@@ -68,7 +68,6 @@ const newStore = async (req, res)=>{
     })
     responsabiliidadFiscal
     return res.status(201).render('./administrador/stores/new', {
-    //return res.status(201).render('./administrador/stores/DELETE_nueva', {
 
         pagina: "Tiendas",
         subPagina : "Nueva Tienda",
@@ -258,7 +257,6 @@ const storeEmployers = async (req, res)=>{
 
 
 const storeDocuments = async (req, res)=>{
-
     const {idPuntoDeVenta} = req.params;
     res.send(`
         <div class="p-8 text-center">
@@ -504,6 +502,35 @@ const dashboardSettings = async (req, res)=>{
         currentPath: req.path
     })
 } 
+
+
+
+//PROVEDORES
+
+const dashboardSupplier = async (req, res)=>{
+    return res.status(201).render('./administrador/supplier/homeSupplier', {
+        pagina: "Provedores",
+        subPagina : "Gestión Provedores",
+        csrfToken : req.csrfToken(),
+        currentPath: req.path
+    })
+
+}
+
+
+const newSupplier = async (req, res)=>{
+    return res.status(201).render('./administrador/supplier/new', {
+        pagina: "Provedores",
+        subPagina : "Nuevo Provedor",
+        subPath : "nuevo provedor",
+        csrfToken : req.csrfToken(),
+        currentPath: req.path,
+        btnName : 'Guardar Provedor'
+    })
+
+}
+
+
 
 
 //************************[POST CONTROLLERS] ************************ */
@@ -772,149 +799,6 @@ const postNuevaTienda = async (req, res) => {
     });
 };
 
-
-
-
-
-
-
-
-
-const postEditStore = async (req, res)=>{
-/*
-    const erroresValidacion = validationResult(req);
-    const errores= erroresValidacion.array();
-    const errsPorCampo = {};
-    errores.forEach(err => 
-        {
-            if (!errsPorCampo[err.path]) {
-                errsPorCampo[err.path] = err.msg;
-            }
-    });
-
-     const dptos = await  Departamentos.findAll({
-        raw : true,
-        attributes : ['id', 'nombre']
-    })
-
-
-    //Validamos todos los campos obligatorios, 
-    if(!erroresValidacion.isEmpty()){
-
-        
-        const departamentos = await Departamentos.findAll({ raw: true });
-        let ciudades = [];        
-        if(req.body.departamento) {
-            ciudades = await Municipios.findAll({
-                where: { departamento_id: req.body.departamento },
-                raw: true
-            });
-        }
-        
-        const activa = req.body.activa ? true : false
-        return res.status(201).render('./administrador/stores/editStore', {
-        pagina: "Tiendas",
-        subPagina : "Nueva Tienda",
-        csrfToken : req.csrfToken(),
-        currentPath: '/tiendas',
-        departamentos : departamentos,
-        ciudades: ciudades,
-        activa : activa,
-        dato: req.body,
-        errores  : errsPorCampo,
-        btn : "Editar punto de venta"
-        })
-    }
-
-    //Si los campos obligatorios estan ok. entonces procedemos a validar que los campos que deben ser únicos, no existan en la base de datos.
-    const checkTaxId = await PuntosDeVenta.findOne(
-        {where : {
-                taxId : req.body.taxId,
-                idPuntoDeVenta : {
-                    [Op.ne] : req.body.idPuntoDeVenta
-                }
-            }}
-    )   
-    
-    
-    if(checkTaxId){
-        const activa = req.body.activa ? true : false
-        const idDepartamentoSeleccionado = req.body?.departamento; 
-        const [departamentos, ciudades] = await Promise.all(
-            [Departamentos.findAll({ raw: true }),
-            
-            idDepartamentoSeleccionado ? Municipios.findAll({ 
-                    where: { departamento_id: idDepartamentoSeleccionado }, 
-                    raw: true 
-                }) 
-                : Promise.resolve([]) // Correcto: devolvemos una promesa resuelta con array vacío
-            ]);
-
-        return res.status(200).render('./administrador/stores/editStore', {
-        pagina: "Tiendas",
-        subPagina : "Nueva Tienda",
-        csrfToken : req.csrfToken(),
-        currentPath: '/tiendas',
-        departamentos : departamentos,
-        ciudades: ciudades,
-        activa : activa,
-        dato: req.body,
-        errores  : {
-            msgTaxId : "El NIT ya esta registrado"
-        },
-        btn : "Intentar editar de nuevoo"
-        })
-    }
-    //COMO YA TODO ESTA OK, PROCEDEMOS A GUARDAR. 
-
-    //INGRESO LOS DATOS A LA BASE DE DATOS
-    const {razonSocial, nombreComercial, tipo, direccionPrincipal, departamento, ciudad,telefono, taxId, DV, prefijo, resolucionFacturacion, emailRut, footerBill, idPuntoDeVenta} = req.body;
-    
-    const activa = req.body.activa ? true : false
-
-    const edit = await PuntosDeVenta.findByPk(idPuntoDeVenta)
-        edit.razonSocial = razonSocial,
-        edit.nombreComercial = nombreComercial,
-        edit.tipo = tipo,
-        edit.direccionPrincipal = direccionPrincipal,
-        edit.departamento = departamento,
-        edit.ciudad = ciudad,
-        edit.telefono = telefono,
-        edit.taxId = taxId,
-        edit.DV = DV,
-        edit.activa = activa,
-        edit.prefijo = prefijo,
-        edit.resolucionFacturacion = resolucionFacturacion,
-        edit.emailRut = emailRut,
-        edit.footerBill = footerBill,
-        edit.save()
-
-
-    const idDepartamentoSeleccionado = req.body?.departamento; 
-    const [departamentos, ciudades] = await Promise.all(
-            [Departamentos.findAll({ raw: true }),
-            idDepartamentoSeleccionado ? Municipios.findAll({ 
-                    where: { departamento_id: idDepartamentoSeleccionado }, 
-                    raw: true 
-                }) 
-                : Promise.resolve([]) // Correcto: devolvemos una promesa resuelta con array vacío
-            ]);
-        return res.status(200).render('./administrador/stores/editStore', {
-        pagina: "Tiendas",
-        subPagina : "Editar",
-        csrfToken : req.csrfToken(),
-        currentPath: '/tiendas',
-        departamentos : departamentos,
-        ciudades: ciudades,
-        activa : activa,
-        dato: req.body,
-        successful  : {
-            mensaje : "El punto ya quedo editado 😀! "
-        },
-        btn : "Volver a editar "
-        })
-        */
-}
 
 
 const saveProduct = async (req, res, next) => {
@@ -1344,18 +1228,15 @@ export {
     verTienda,
     editarTienda,
     postNuevaTienda,
-    postEditStore,
+    //postEditStore,
     dashboardInventorys,
     billingToday,
     storeInventory,
     storeEmployers,
     storeDocuments,
-    newProduct,
-    saveProduct,
-    editarProducto,
-    listaProductos,
-    verProducto,
+    saveProduct,editarProducto, listaProductos, verProducto,newProduct,
     dosificar,
+    dashboardSupplier, newSupplier,
     dashboardCustomers,
     dashboardEmployees,
     dashboardOrders,

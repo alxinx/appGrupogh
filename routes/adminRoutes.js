@@ -2,7 +2,7 @@ import express from "express";
 import csrf from 'csurf';
 const router = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard,  dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, postEditStore, dashboardInventorys,storeInventory, billingToday, storeEmployers, storeDocuments, newProduct, saveProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend} from "../controller/adminControllers.js"
+import { dashboard,  dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, dashboardInventorys,storeInventory, billingToday, storeEmployers, storeDocuments, newProduct, saveProduct, listaProductos,verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend} from "../controller/adminControllers.js"
 
 import {storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation} from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
@@ -36,6 +36,12 @@ routes.get('/inventario/ingreso',csrfProtection,dashboardInventorys);
     routes.get('/inventario/dosificar/', dosificar)
     
 
+
+//PROVEDORES
+routes.get('/provedores/', dashboardSupplier);
+    routes.get('/provedores/new/', newSupplier);
+
+
 routes.get('/clientes',dashboardCustomers);
 routes.get('/personal',dashboardEmployees);
 routes.get('/pedidos',dashboardOrders);
@@ -63,11 +69,6 @@ routes.post('/inventario/editar/:idProducto',
     productBasicValidation,                 
     saveProduct);
 
-
-
-//routes.post('/tiendas/new', storeRegisterValidation, postNewStore)
-
-routes.post('/tiendas/editar/:idPuntoDeVenta', csrfProtection, storeRegisterValidation, postEditStore)
 
 /************************[JSON]******************************/
 

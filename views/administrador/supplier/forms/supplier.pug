@@ -1,0 +1,161 @@
+form(action="", method="post" id="formularioProvedor" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+
+
+    //- COLUMNA IZQUIERDA
+    input(type="hidden", name="_csrf" value = csrfToken)
+    input(type="hidden", name="idProveedor" value=provedor ? provedor.idProveedor : '')
+    
+
+    div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
+        
+        //- Nombre del Producto
+        //- SEPARADOR 100% (ATRIBUTOS)
+        div(class="col-span-12 -mx-6 mt-4")
+            
+            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                i.fi-rr-features.pr-2
+                | Datos Básicos
+
+
+        div(class="col-span-12")
+            label.label Razón social (nombre del provedor)
+                input(class="field-text" type="text" name="razonSocial" id="razonSocial" placeholder="Cómo se llama el producto?" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
+                #divError
+
+        //- Categoría
+        //- Columna de Categorías
+        div(class="col-span-12 md:col-span-5")
+            label.label Categoría
+            div(class="flex flex-wrap gap-2 mt-2")
+                
+        //- Columna de SubCategorías
+        div(class="col-span-12 md:col-span-7")
+            
+
+        //- SKU
+        div(class="col-span-12 md:col-span-3")
+            label.label SKU
+                input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno" value = (producto && producto.sku) ? producto.sku : "")
+                #errorSku
+        
+        //- EAN
+        div(class="col-span-12 md:col-span-3")
+            label.label EAN
+                input(class="field-text" type="text" name="ean" id="ean" placeholder="Código de barras" value = (producto && producto.ean) ? producto.ean : "")
+                #errorEan
+
+        //- PRECIOS PARA MAYORISTA
+        div(class="col-span-12 md:col-span-3")
+            label.label PRECIO MAYORISTA
+                input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000" value = (producto && producto.precioVentaMayorista) ? producto.precioVentaMayorista : "")
+
+        //- PRECIOS PARA MINORISTA!
+        div(class="col-span-12 md:col-span-3")
+            label.label PRECIO PÚBLICO FINAL
+                input(class="field-text" type="text" id="precioVentaPublicoFinal" name="precioVentaPublicoFinal" placeholder="Ej : $80.000" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
+        
+        
+
+
+
+
+
+        //- SEPARADOR 100% (ATRIBUTOS)
+        div(class="col-span-12 -mx-6 mt-4")
+            div(class="border-b border-gray-200 w-full")
+                h1.h1(class="text-left pl-11 py-4 flex items-center text-gray-700")
+                    i.fi-rr-features.pr-2
+                    | Atributos
+
+        
+        div(class="col-span-12")
+        //- SECCIÓN DE TALLAS
+        div.col-span-12
+            h3.text-lg.font-bold.text-gray-700.mb-4 Tallas Disponibles
+            div(class="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-2xl")
+               
+                           
+
+        
+        
+
+
+
+                            
+    //- COLUMNA DERECHA
+    div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")
+        div(class="p-6")
+            h1.h1
+                i.fi-rr-eyes.pr-2
+                |Visibilidad del producto
+            //- Contenedor Flex para ponerlos uno al lado del otro
+            div(class="flex flex-row flex-wrap gap-2")
+                label(class="subItems")
+                    div(class="checkbox-group mr-2")
+                       // input.checkbox(type="checkbox"  id="activo" name ="activo" checked=producto.activo === true )
+
+                    span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Producto Activo
+
+                label(class="subItems")
+                   
+                    div(class="checkbox-group mr-2")
+                        //input.checkbox(type="checkbox" id="disponible_web" name="web" checked )
+                        //input.checkbox(type="checkbox"  id="disponible_web" name ="web" checked=producto.web === true )
+                        
+                    span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Disponible en web
+
+        //- Dentro del div de Visibilidad, después de los labels
+        div#seccion-web-seo(class="hidden mt-6 pt-4 border-t border-dashed border-gray-100 animate-fade-in")
+            div(class="grid grid-cols-1 gap-4")
+                div
+                    h1.h1
+                        i.fi-rr-site-browser.pr-2.mt-5
+                        | Datos Para Seo Y Web
+                div
+                    label(class="label uppercase") Slug (URL Amigable)
+                    //input#slug(type="text" name="slug" class="field-text field-text-disabled" value = (producto && producto.slug) ? producto.slug : ""  readonly )
+                div
+                    label(class="label uppercase") Etiquetas / Tags
+                    //input#tags(type="text" name="tags" class="field-text w-full" placeholder="ej: seda, nuevo, oferta" value = (producto && producto.tags) ? producto.tags : "")
+                div
+                    label(class="label uppercase") Meta Descripción
+                    //textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-20 resize-none field-text" placeholder="Breve descripción para buscadores...")=(producto && producto.descripcion) ? producto.descripcion : ""
+
+        
+        div(class="min-h-[150px]")
+            h1.h1
+                i.fi-rr-picture.pr-2
+                | Documentos del provedor
+            //- Card de Carga de Imágenes
+            div(class="shadow-sm")
+                //- Área de Drag & Drop
+                div(class="relative group")
+                    input(type="file" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" name="imagenes" id="upload-images")
+
+                    div(class="inputUpload")
+                        //- Icono de Cámara (Estilo GH)
+                        div(class="w-16 h-16 bg-white shadow-sm rounded-full flex items-center justify-center mb-4 text-pink-400")
+                            svg(xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor")
+                                path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z")
+                                circle(cx="12" cy="13" r="3")
+                        
+                        span(class="text-sm font-bold text-gray-600") Sube o arrastra tu imagen
+                        span(class="text-xs text-gray-400 mt-1") PNG, JPG hasta 5MB
+
+                div(class="mt-6 flex flex-wrap gap-3 m-2 p-5" id="preview-container")
+
+                    //- Precarga de las imagenes que ya estan en server.
+                  
+                    //- Slot vacío para invitar a subir más
+                    div(class="w-20 h-20 rounded-xl border-2 border-dotted border-gray-200 flex items-center justify-center text-gray-300")
+                        svg(class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24")
+                            path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4")
+
+    div(class="col-span-12")
+        div(class="flex  justify-center")
+            button(class="btn btn-primary w-full"  type="submit" id="guardar" )
+                i.fi-rr-disk
+                | #{btnName}
+
+
+script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           

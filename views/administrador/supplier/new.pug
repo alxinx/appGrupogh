@@ -12,16 +12,16 @@ block contenedor
                             //******************[CUERPO PANELES]*********************//
                             
                             //HEADER
-                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2")
-                                div(class="grid grid-cols-1 md:grid-cols-1")
-                                    h1.h1.text-left.pt-1.pb-0.mb-0 #{subPagina}
-                                    label.label-muted.mt-0 Asegurate de tener todos los datos de la tienda que crearás antes de comenzar! 
-
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                include ./headers/headerSupplier.pug
+                                include ./headers/actionBtns.pug
                             
-                            //FORMULARIO
-                            include ./forms/store
-                            
-        script(src="/js/dataAsync.js")            
+                            //STATS
+                            //div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+                            include ./forms/supplier.pug
 
 
-                               
+
+ 
+                script(src="/js/dropdownBtn.js")  
+

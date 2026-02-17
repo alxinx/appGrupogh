@@ -26,14 +26,11 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
                     i.fi-rr-add-document
                 | Dosificar Productos
             
-            a(href="#" class="text-red-700 hover:bg-red-800 hover:text-white group flex items-center px-4 py-2 text-sm" role="menuitem")
-                span(class="pr-3")
-                    i.fi-rr-triangle-warning
-                | Suspender Producto
+            
     
-    if subPagina === 'Producto'
-        a(href=`/admin/inventario/editar/${producto.idProducto}`) 
+    if subPagina === 'Gestión Provedores'
+        a(href=`/admin/provedores/new`) 
             button(class="btn btn btn-danger flex items-center gap-2")
-                i(class="fi fi-rr-edit")
-                | Editar Producto
+                span.material-symbols-outlined add_business
+                | Nuevo Provedor
 
