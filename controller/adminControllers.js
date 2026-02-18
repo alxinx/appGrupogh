@@ -1,39 +1,40 @@
-import {validationResult } from "express-validator";
+import { validationResult } from "express-validator";
 import sharp from 'sharp';
 import { Upload } from "@aws-sdk/lib-storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto, Imagenes, CategoriasDeProvedores} from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores } from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
-import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type :'json'}
-import tipoFacturas from '../src/json/tipoFacturas.json' with {type : 'json'}
-import {limpiarPrecio, sanitizarHTML } from '../helpers/helpers.js'
-import { Sequelize, Op, where} from "sequelize";
+import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
+import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
+import { limpiarPrecio, sanitizarHTML } from '../helpers/helpers.js'
+import { Sequelize, Op, where } from "sequelize";
 
 dotenv.config();
 
 
 //************************[GET CONTROLLERS] ************************ */
- 
+
 //PRINCIPAL ADMINISTRADOR
 
 
-const baseFrondend = async (req, res)=>{
-    return res.status(201).render('./administrador/baseFrontends', { pagina: "Dashboard",
-        csrfToken : req.csrfToken(),
+const baseFrondend = async (req, res) => {
+    return res.status(201).render('./administrador/baseFrontends', {
+        pagina: "Dashboard",
+        csrfToken: req.csrfToken(),
         currentPath: req.path
-        
+
     })
-} 
-const dashboard = async (req, res)=>{
+}
+const dashboard = async (req, res) => {
 
     return res.status(201).render('./administrador/layout', {
         pagina: "Pagina Principal",
-        csrfToken : req.csrfToken(),
+        csrfToken: req.csrfToken(),
         currentPath: req.path
-        
+
     })
 }
 
@@ -41,43 +42,43 @@ const dashboard = async (req, res)=>{
 
 
 //PRINCIPAL TIENDAS
-const dashboardStores = async (req, res)=>{
+const dashboardStores = async (req, res) => {
 
-    const  listaPuntosDeVenta = await  PuntosDeVenta.findAll({
-        raw : true,
-        attributes : ['idPuntoDeVenta', 'nombreComercial', 'taxId']
+    const listaPuntosDeVenta = await PuntosDeVenta.findAll({
+        raw: true,
+        attributes: ['idPuntoDeVenta', 'nombreComercial', 'taxId']
     })
 
     return res.status(201).render('./administrador/stores/homeStores', {
         pagina: "Tiendas",
-        subPagina : "Gestión Tiendas",
-        csrfToken : req.csrfToken(),
+        subPagina: "Gestión Tiendas",
+        csrfToken: req.csrfToken(),
         currentPath: req.path,
-        listaPuntosDeVenta : listaPuntosDeVenta
-        
+        listaPuntosDeVenta: listaPuntosDeVenta
+
     })
 }
 
 
 //
-const newStore = async (req, res)=>{
+const newStore = async (req, res) => {
 
-    const dptos = await  Departamentos.findAll({
-        raw : true,
-        attributes : ['id', 'nombre']
+    const dptos = await Departamentos.findAll({
+        raw: true,
+        attributes: ['id', 'nombre']
     })
     responsabiliidadFiscal
     return res.status(201).render('./administrador/stores/new', {
 
         pagina: "Tiendas",
-        subPagina : "Nueva Tienda",
-        csrfToken : req.csrfToken(),
+        subPagina: "Nueva Tienda",
+        csrfToken: req.csrfToken(),
         currentPath: '/tiendas',
-        responsabiliidadFiscal : responsabiliidadFiscal,
-        tipoPersonaJuridica : tipoPersonaJuridica,
-        tipoFacturas : tipoFacturas,
-        departamentos : dptos,
-        btn : "Crear Nuevo Punto De Venta"
+        responsabiliidadFiscal: responsabiliidadFiscal,
+        tipoPersonaJuridica: tipoPersonaJuridica,
+        tipoFacturas: tipoFacturas,
+        departamentos: dptos,
+        btn: "Crear Nuevo Punto De Venta"
     })
 }
 
@@ -92,8 +93,8 @@ const saveStoreBasic = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: errorMessages });
     }
 
-    const { 
-        idPuntoDeVenta, razonSocial, nombreComercial, tipo, direccionPrincipal, 
+    const {
+        idPuntoDeVenta, razonSocial, nombreComercial, tipo, direccionPrincipal,
         departamento, ciudad, telefono, activa,
         taxId, DV, prefijo, resolucionFacturacion, emailRut, footerBill,
         responsabilidades, tipo_organizacion, tipoFactura,
@@ -120,11 +121,11 @@ const saveStoreBasic = async (req, res) => {
             telefono,
             activa: activa === 'on' || activa === true,
             // IMPORTANTE: El nombre de la propiedad debe ser igual al del modelo (taxId y DV)
-            taxId: nitLimpio, 
-            DV: dvLimpio, 
-            prefijo, 
-            resolucionFacturacion, 
-            emailRut, 
+            taxId: nitLimpio,
+            DV: dvLimpio,
+            prefijo,
+            resolucionFacturacion,
+            emailRut,
             footerBill
         };
 
@@ -145,15 +146,15 @@ const saveStoreBasic = async (req, res) => {
                 where: { idPuntoDeVenta: sede.idPuntoDeVenta, activa: true },
                 defaults: {
                     idPuntoDeVenta: sede.idPuntoDeVenta,
-                    razonSocial, 
-                    taxId: nitLimpio, 
-                    DV: dvLimpio, 
+                    razonSocial,
+                    taxId: nitLimpio,
+                    DV: dvLimpio,
                     prefijo,
-                    resolucionFacturacion, responsabilidades, 
+                    resolucionFacturacion, responsabilidades,
                     tipo_organizacion, tipoFactura,
-                    fechaEmision: fechaEmision || null, 
-                    fechaVencimiento: fechaVencimiento || null, 
-                    nroInicio: nroInicio || 0, 
+                    fechaEmision: fechaEmision || null,
+                    fechaVencimiento: fechaVencimiento || null,
+                    nroInicio: nroInicio || 0,
                     nroFin: nroFin || 1000000
                 },
                 transaction: t
@@ -161,11 +162,11 @@ const saveStoreBasic = async (req, res) => {
 
             if (!created) {
                 await regimen.update({
-                    razonSocial, 
-                    taxId: nitLimpio, 
-                    DV: dvLimpio, 
+                    razonSocial,
+                    taxId: nitLimpio,
+                    DV: dvLimpio,
                     prefijo,
-                    resolucionFacturacion, responsabilidades, 
+                    resolucionFacturacion, responsabilidades,
                     tipo_organizacion, tipoFactura,
                     fechaEmision: fechaEmision || null,
                     fechaVencimiento: fechaVencimiento || null,
@@ -176,10 +177,10 @@ const saveStoreBasic = async (req, res) => {
         }
 
         await t.commit();
-        return res.json({ 
-            success: true, 
+        return res.json({
+            success: true,
             idPuntoDeVenta: sede.idPuntoDeVenta,
-            mensaje: 'Información guardada correctamente' 
+            mensaje: 'Información guardada correctamente'
         });
 
     } catch (error) {
@@ -200,7 +201,7 @@ const saveStoreBasic = async (req, res) => {
 
 //***********************[INVENTARIOS]***********************//
 //PRINCIPAL INVENTARIOS
-const dashboardInventorys = async (req, res)=>{
+const dashboardInventorys = async (req, res) => {
 
     //Obtengo los atributos
     const atributos = await Atributos.findAll()
@@ -209,23 +210,23 @@ const dashboardInventorys = async (req, res)=>{
 
     return res.status(201).render('./administrador/inventarios/new', {
         pagina: "Inventarios y Productos",
-        subPagina : "Nuevo Producto",
-        csrfToken : req.csrfToken(),
+        subPagina: "Nuevo Producto",
+        csrfToken: req.csrfToken(),
         currentPath: '/inventario',
-        producto: {}, 
-        categoriasSeleccionadas: [], 
-        atributosSeleccionados: [],  
+        producto: {},
+        categoriasSeleccionadas: [],
+        atributosSeleccionados: [],
         atributos,
         categorias,
-        btnName : "Guardar Producto"
-    
+        btnName: "Guardar Producto"
+
     })
 }
 
 
 //
-const billingToday = async (req, res)=>{
-    const {idPuntoDeVenta} = req.params;
+const billingToday = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
     res.send(`
         <div class="p-8 text-center">
             <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: FACTURACIÓN HOY</h2>
@@ -235,8 +236,8 @@ const billingToday = async (req, res)=>{
 }
 
 
-const storeInventory = async (req, res)=>{
-    const {idPuntoDeVenta} = req.params;
+const storeInventory = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
     res.send(`
         <div class="p-8 text-center">
             <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: INNVENTARIOO TIENDA</h2>
@@ -245,8 +246,8 @@ const storeInventory = async (req, res)=>{
     `);
 }
 
-const storeEmployers = async (req, res)=>{
-    const {idPuntoDeVenta} = req.params;
+const storeEmployers = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
     res.send(`
         <div class="p-8 text-center">
             <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: EMPLEADOS TIENDA</h2>
@@ -256,8 +257,8 @@ const storeEmployers = async (req, res)=>{
 }
 
 
-const storeDocuments = async (req, res)=>{
-    const {idPuntoDeVenta} = req.params;
+const storeDocuments = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
     res.send(`
         <div class="p-8 text-center">
             <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: DOCUMENTOS TIENDA</h2>
@@ -268,280 +269,281 @@ const storeDocuments = async (req, res)=>{
 
 
 
-const listaProductos = async (req, res)=>{
+const listaProductos = async (req, res) => {
 
     const categorias = await Categorias.findAll()
 
 
     return res.status(201).render('./administrador/inventarios/productList', {
         pagina: "Inventarios y Productos",
-        subPagina : "Listado De Productos",
-        csrfToken : req.csrfToken(),
+        subPagina: "Listado De Productos",
+        csrfToken: req.csrfToken(),
         currentPath: '/inventario',
-        subPath : 'listado',
+        subPath: 'listado',
 
         categorias,
-    
+
     })
 }
 
 
 
-const verProducto = async (req, res)=>{
-        const {idProducto} = req.params;
-        try {
-                const [categorias, atributos, producto] = await Promise.all([
-                    Categorias.findAll(),
-                    Atributos.findAll(),
-                    Productos.findByPk(idProducto, {
-                    include: [{ association: 'imagenes' }] 
-                    })
-                ])
-
-            if (!producto) return res.redirect('/admin/inventario/listado');
-            
-            
-            return res.status(201).render('./administrador/inventarios/productView', {
-                pagina: "Ver Producto",
-                subPagina : "Producto",
-                csrfToken : req.csrfToken(),
-                currentPath: '/inventario',
-                subPath : process.env.R2_PUBLIC_URL,
-                atributos,
-                categorias,
-                producto,
+const verProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    try {
+        const [categorias, atributos, producto] = await Promise.all([
+            Categorias.findAll(),
+            Atributos.findAll(),
+            Productos.findByPk(idProducto, {
+                include: [{ association: 'imagenes' }]
             })
-            
-        } catch (error) {
-            console.error(error);
-            //res.redirect('/admin/inventario');
-        }
- 
+        ])
+
+        if (!producto) return res.redirect('/admin/inventario/listado');
+
+
+        return res.status(201).render('./administrador/inventarios/productView', {
+            pagina: "Ver Producto",
+            subPagina: "Producto",
+            csrfToken: req.csrfToken(),
+            currentPath: '/inventario',
+            subPath: process.env.R2_PUBLIC_URL,
+            atributos,
+            categorias,
+            producto,
+        })
+
+    } catch (error) {
+        console.error(error);
+        //res.redirect('/admin/inventario');
+    }
+
 }
 
 
 
-const editarProducto = async (req, res)=>{
+const editarProducto = async (req, res) => {
 
-        const {idProducto} = req.params;
+    const { idProducto } = req.params;
 
 
-        try {
-            const [categorias, atributos, producto, variacionesDb]  = await  Promise.all([
-                Categorias.findAll(),
-                Atributos.findAll(),
-                Productos.findByPk(idProducto ,{
-                    include: [
-                        { association: 'imagenes' },
-                    ],},
-                ),
-                VariacionesProducto.findAll({ where: { idProducto } })
-            ])
+    try {
+        const [categorias, atributos, producto, variacionesDb] = await Promise.all([
+            Categorias.findAll(),
+            Atributos.findAll(),
+            Productos.findByPk(idProducto, {
+                include: [
+                    { association: 'imagenes' },
+                ],
+            },
+            ),
+            VariacionesProducto.findAll({ where: { idProducto } })
+        ])
 
-            //Selecciono las categorias a las que pertenece el producto
-            const categoriasId = producto.idCategoria 
-                    ? producto.idCategoria.split(/[,|]/).map(id => parseInt(id)) : []
+        //Selecciono las categorias a las que pertenece el producto
+        const categoriasId = producto.idCategoria
+            ? producto.idCategoria.split(/[,|]/).map(id => parseInt(id)) : []
 
-            if(!producto) return res.redirect('/admin/inventario/listado/')
-            const variantesMapa = {};
-            variacionesDb.forEach(v => {
+        if (!producto) return res.redirect('/admin/inventario/listado/')
+        const variantesMapa = {};
+        variacionesDb.forEach(v => {
             // Separamos el "58|15" -> [58, 15]
             const partes = v.idAtributos.split('|');
-                if (partes.length === 2) {
-                    const idTalla = partes[0];
-                    const idColor = partes[1];
+            if (partes.length === 2) {
+                const idTalla = partes[0];
+                const idColor = partes[1];
 
-                    if (!variantesMapa[idTalla]) {
-                        variantesMapa[idTalla] = [];
-                    }
-                // Agregamos el color a esa talla
-                    variantesMapa[idTalla].push(idColor);
+                if (!variantesMapa[idTalla]) {
+                    variantesMapa[idTalla] = [];
                 }
-            });
+                // Agregamos el color a esa talla
+                variantesMapa[idTalla].push(idColor);
+            }
+        });
 
-            const variantesJson = JSON.stringify(variantesMapa);
-            // Convertimos "58|15" en [58, 15]
-            const atributosIds = variacionesDb.flatMap(
-                    v =>v.idAtributos.split('|').map(id => parseInt(id)));
+        const variantesJson = JSON.stringify(variantesMapa);
+        // Convertimos "58|15" en [58, 15]
+        const atributosIds = variacionesDb.flatMap(
+            v => v.idAtributos.split('|').map(id => parseInt(id)));
 
-            return res.status(201).render('./administrador/inventarios/edit', {
+        return res.status(201).render('./administrador/inventarios/edit', {
             pagina: "Editar Producto",
-            subPagina :  producto.nombreProducto,
-            csrfToken : req.csrfToken(),
+            subPagina: producto.nombreProducto,
+            csrfToken: req.csrfToken(),
             currentPath: '/inventario',
-            subPath : 'Editar Producto',
+            subPath: 'Editar Producto',
             atributos,
             atributosSeleccionados: atributosIds,
-            variantesJson : variantesJson, 
+            variantesJson: variantesJson,
             categorias,
             categoriasSeleccionadas: categoriasId,
             producto,
-            subPath : process.env.R2_PUBLIC_URL,
-            btnName : 'Actualizar Producto  '
-    })
-        } catch (error) {
-            return res.redirect('/admin/inventario/listado/')
-        }
+            subPath: process.env.R2_PUBLIC_URL,
+            btnName: 'Actualizar Producto  '
+        })
+    } catch (error) {
+        return res.redirect('/admin/inventario/listado/')
+    }
 }
 
-const dosificar = async (req, res)=>{
-     return res.status(201).render('./administrador/inventarios/dose', {
+const dosificar = async (req, res) => {
+    return res.status(201).render('./administrador/inventarios/dose', {
         pagina: "Dosificacion de productos",
-        subPagina : "Dosificar Productos",
-        csrfToken : req.csrfToken(),
+        subPagina: "Dosificar Productos",
+        csrfToken: req.csrfToken(),
         currentPath: '/inventario',
-        subPath : 'dosificar'
+        subPath: 'dosificar'
     })
 }
 
 
 
 //************[TIENDAS]*******************//
-const verTienda = async (req,res)=>{
+const verTienda = async (req, res) => {
 
-    const {idPuntoDeVenta }=req.params
+    const { idPuntoDeVenta } = req.params
     const puntoVenta = await PuntosDeVenta.findOne({
-        where : { idPuntoDeVenta : idPuntoDeVenta}
+        where: { idPuntoDeVenta: idPuntoDeVenta }
     })
     return res.status(201).render('./administrador/stores/viewStore', {
         pagina: req.path,
-        subPagina : "Estado de la tienda ",
-        csrfToken : req.csrfToken(),
+        subPagina: "Estado de la tienda ",
+        csrfToken: req.csrfToken(),
         currentPath: '/tiendas',
-        subPath : process.env.R2_PUBLIC_URL,
+        subPath: process.env.R2_PUBLIC_URL,
 
-        dato : puntoVenta,
+        dato: puntoVenta,
     })
 }
 
 
-const editarTienda = async (req,res)=>{
+const editarTienda = async (req, res) => {
 
-    const {idPuntoDeVenta }=req.params
+    const { idPuntoDeVenta } = req.params
     const puntoVenta = await PuntosDeVenta.findOne({
-        where : { idPuntoDeVenta : idPuntoDeVenta}
+        where: { idPuntoDeVenta: idPuntoDeVenta }
     })
 
     const datosRegimenFacturacion = await RegimenFacturacion.findOne({
-        where : {idPuntoDeVenta : idPuntoDeVenta},
-        order : [['createdAt', 'DESC']]
+        where: { idPuntoDeVenta: idPuntoDeVenta },
+        order: [['createdAt', 'DESC']]
     })
 
 
     const obtenerDatosSelectores = async (idDepartamento) => {
         const [departamentos, ciudades] = await Promise.all([
             Departamentos.findAll({ raw: true }),
-            idDepartamento 
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+            idDepartamento
+                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
                 : Promise.resolve([])
         ]);
         return { departamentos, ciudades };
     };
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-    
+
 
     //Formateo Fechas:
     // El símbolo ?. detiene la ejecución si el objeto es null y devuelve undefined en lugar de romper la app
-    const fechaEmisionFormateada = datosRegimenFacturacion?.fechaEmision 
-    ? new Date(datosRegimenFacturacion.fechaEmision).toISOString().split('T')[0] 
-    : "";
+    const fechaEmisionFormateada = datosRegimenFacturacion?.fechaEmision
+        ? new Date(datosRegimenFacturacion.fechaEmision).toISOString().split('T')[0]
+        : "";
 
-    const fechaFinalizacionFormateada = datosRegimenFacturacion?.fechaVencimiento 
-    ? new Date(datosRegimenFacturacion.fechaVencimiento).toISOString().split('T')[0] 
-    : "";
+    const fechaFinalizacionFormateada = datosRegimenFacturacion?.fechaVencimiento
+        ? new Date(datosRegimenFacturacion.fechaVencimiento).toISOString().split('T')[0]
+        : "";
 
-   
+
     return res.status(201).render('./administrador/stores/new', {
         pagina: req.path,
-        subPagina : "Editar Tienda",
-        csrfToken : req.csrfToken(),
+        subPagina: "Editar Tienda",
+        csrfToken: req.csrfToken(),
         currentPath: '/tiendas',
-        dato : puntoVenta,
-        datosRegimenFacturacion : datosRegimenFacturacion,
-        fechaEmisionFormateada :fechaEmisionFormateada,
+        dato: puntoVenta,
+        datosRegimenFacturacion: datosRegimenFacturacion,
+        fechaEmisionFormateada: fechaEmisionFormateada,
         fechaFinalizacionFormateada: fechaFinalizacionFormateada,
-        responsabiliidadFiscal : responsabiliidadFiscal,
-        tipoPersonaJuridica : tipoPersonaJuridica,
-        tipoFacturas : tipoFacturas,
-        departamentos : departamentos,
+        responsabiliidadFiscal: responsabiliidadFiscal,
+        tipoPersonaJuridica: tipoPersonaJuridica,
+        tipoFacturas: tipoFacturas,
+        departamentos: departamentos,
         ciudades: ciudades,
-        btn : "Editar Tienda"
+        btn: "Editar Tienda"
 
     })
 }
 
 
 //PRINCIPAL CLIENTES
-const dashboardCustomers = async (req, res)=>{
+const dashboardCustomers = async (req, res) => {
     return res.status(201).render('./administrador/customers', {
         pagina: "Clientes",
-        csrfToken : req.csrfToken(),
+        csrfToken: req.csrfToken(),
         currentPath: req.path
-        
-    })
-}   
 
-const dashboardEmployees = async (req, res)=>{
+    })
+}
+
+const dashboardEmployees = async (req, res) => {
     return res.status(201).render('./administrador/employees', {
         pagina: "Empleados",
-        csrfToken : req.csrfToken(),
+        csrfToken: req.csrfToken(),
         currentPath: req.path
     })
-} 
+}
 
-const dashboardOrders = async (req, res)=>{
-    
-} 
+const dashboardOrders = async (req, res) => {
+
+}
 
 
 
-const dashboardSettings = async (req, res)=>{
-     return res.status(201).render('./administrador/settings', {
+const dashboardSettings = async (req, res) => {
+    return res.status(201).render('./administrador/settings', {
         pagina: "Configuración",
-        csrfToken : req.csrfToken(),
+        csrfToken: req.csrfToken(),
         currentPath: req.path
     })
-} 
+}
 
 
 
 //PROVEDORES
 
-const dashboardSupplier = async (req, res)=>{
+const dashboardSupplier = async (req, res) => {
     return res.status(201).render('./administrador/supplier/homeSupplier', {
         pagina: "Provedores",
-        subPagina : "Gestión Provedores",
-        csrfToken : req.csrfToken(),
+        subPagina: "Gestión Provedores",
+        csrfToken: req.csrfToken(),
         currentPath: req.path
     })
 
 }
 
 
-const newSupplier = async (req, res)=>{
+const newSupplier = async (req, res) => {
 
     //Importo las categorias de los provedores;
     const categoriasProvedores = await CategoriasDeProvedores.findAll()
     const obtenerDatosSelectores = async (idDepartamento) => {
         const [departamentos, ciudades] = await Promise.all([
             Departamentos.findAll({ raw: true }),
-            idDepartamento 
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+            idDepartamento
+                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
                 : Promise.resolve([])
         ]);
         return { departamentos, ciudades };
     };
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-    
+
 
 
     return res.status(201).render('./administrador/supplier/new', {
         pagina: "Provedores",
-        subPagina : "Nuevo Provedor",
-        subPath : "nuevo provedor",
-        csrfToken : req.csrfToken(),
+        subPagina: "Nuevo Provedor",
+        subPath: "nuevo provedor",
+        csrfToken: req.csrfToken(),
         currentPath: req.path,
-        btnName : 'Guardar',
+        btnName: 'Guardar',
 
 
         categoriasProvedores,
@@ -566,8 +568,8 @@ const postNuevaTienda = async (req, res) => {
     const obtenerDatosSelectores = async (idDepartamento) => {
         const [departamentos, ciudades] = await Promise.all([
             Departamentos.findAll({ raw: true }),
-            idDepartamento 
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+            idDepartamento
+                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
                 : Promise.resolve([])
         ]);
         return { departamentos, ciudades };
@@ -580,30 +582,30 @@ const postNuevaTienda = async (req, res) => {
         });
 
         const obtenerDatosSelectores = async (idDepartamento) => {
-                const [departamentos, ciudades] = await Promise.all([
-                    Departamentos.findAll({ raw: true }),
-                    idDepartamento 
-                        ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
-                        : Promise.resolve([])
-                ]);
-                return { departamentos, ciudades };
-            };
+            const [departamentos, ciudades] = await Promise.all([
+                Departamentos.findAll({ raw: true }),
+                idDepartamento
+                    ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
+                    : Promise.resolve([])
+            ]);
+            return { departamentos, ciudades };
+        };
 
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
         const activa = req.body.activa ? true : false
 
         return res.status(201).render('./administrador/stores/nueva', {
             pagina: "Tiendas",
-            subPagina : "Nueva Tienda",
-            csrfToken : req.csrfToken(),
+            subPagina: "Nueva Tienda",
+            csrfToken: req.csrfToken(),
             currentPath: '/tiendas',
             departamentos,
-            ciudades : ciudades,
-            activa : activa,
+            ciudades: ciudades,
+            activa: activa,
             dato: req.body,
-            responsabiliidadFiscal : responsabiliidadFiscal,
-            tipoPersonaJuridica : tipoPersonaJuridica,
-            tipoFacturas : tipoFacturas,
+            responsabiliidadFiscal: responsabiliidadFiscal,
+            tipoPersonaJuridica: tipoPersonaJuridica,
+            tipoFacturas: tipoFacturas,
             errores: errsPorCampo,
             pasoActivo: "1"
         });
@@ -623,16 +625,16 @@ const postNuevaTienda = async (req, res) => {
             const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
             return res.status(200).render('./administrador/stores/nueva', {
                 pagina: "Tiendas",
-                subPagina : "Nueva Tienda",
-                csrfToken : req.csrfToken(),
+                subPagina: "Nueva Tienda",
+                csrfToken: req.csrfToken(),
                 currentPath: '/tiendas',
-                departamentos : departamentos,
+                departamentos: departamentos,
                 ciudades: ciudades,
-                activa : activa,
+                activa: activa,
                 dato: req.body,
-                responsabiliidadFiscal : responsabiliidadFiscal,
-                tipoPersonaJuridica : tipoPersonaJuridica,
-                tipoFacturas : tipoFacturas,
+                responsabiliidadFiscal: responsabiliidadFiscal,
+                tipoPersonaJuridica: tipoPersonaJuridica,
+                tipoFacturas: tipoFacturas,
                 errores: { msgTaxId: "El NIT ya está registrado" },
                 pasoActivo: "2"
             });
@@ -653,16 +655,16 @@ const postNuevaTienda = async (req, res) => {
             const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
             return res.status(409).render('./administrador/stores/nueva', {
                 pagina: "Tiendas",
-                subPagina : "Nueva Tienda",
-                csrfToken : req.csrfToken(),
+                subPagina: "Nueva Tienda",
+                csrfToken: req.csrfToken(),
                 currentPath: '/tiendas',
-                departamentos : departamentos,
+                departamentos: departamentos,
                 ciudades: ciudades,
-                activa : activa,
+                activa: activa,
                 dato: req.body,
-                responsabiliidadFiscal : responsabiliidadFiscal,
-                tipoPersonaJuridica : tipoPersonaJuridica,
-                tipoFacturas : tipoFacturas,
+                responsabiliidadFiscal: responsabiliidadFiscal,
+                tipoPersonaJuridica: tipoPersonaJuridica,
+                tipoFacturas: tipoFacturas,
                 errores: { msgTaxId: "🚨 La resolución de facturación está repetida." },
                 pasoActivo: "2"
             });
@@ -671,91 +673,91 @@ const postNuevaTienda = async (req, res) => {
 
     const nStart = Number(req.body.nroInicio) || 0;
     const nEnd = Number(req.body.nroFin) || 0;
-    
-    if((nStart > 0 && nEnd === 0) || (nEnd > 0 && nStart === 0)){
+
+    if ((nStart > 0 && nEnd === 0) || (nEnd > 0 && nStart === 0)) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(409).render('./administrador/stores/nueva', {
-                pagina: "Tiendas",
-                subPagina : "Nueva Tienda",
-                csrfToken : req.csrfToken(),
-                currentPath: '/tiendas',
-                departamentos : departamentos,
-                ciudades: ciudades,
-                activa : activa,
-                dato: req.body,
-                responsabiliidadFiscal : responsabiliidadFiscal,
-                tipoPersonaJuridica : tipoPersonaJuridica,
-                tipoFacturas : tipoFacturas,
-                errores: { msgTaxId: "🚨 Si ingresas un rango de facturación, debes completar tanto el número inicial como el final." },
-                pasoActivo: "2"
-            });
+        return res.status(409).render('./administrador/stores/nueva', {
+            pagina: "Tiendas",
+            subPagina: "Nueva Tienda",
+            csrfToken: req.csrfToken(),
+            currentPath: '/tiendas',
+            departamentos: departamentos,
+            ciudades: ciudades,
+            activa: activa,
+            dato: req.body,
+            responsabiliidadFiscal: responsabiliidadFiscal,
+            tipoPersonaJuridica: tipoPersonaJuridica,
+            tipoFacturas: tipoFacturas,
+            errores: { msgTaxId: "🚨 Si ingresas un rango de facturación, debes completar tanto el número inicial como el final." },
+            pasoActivo: "2"
+        });
     }
 
 
-    if(nEnd > 0 && nStart >= nEnd){
+    if (nEnd > 0 && nStart >= nEnd) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(409).render('./administrador/stores/nueva', {
-                pagina: "Tiendas",
-                subPagina : "Nueva Tienda",
-                csrfToken : req.csrfToken(),
-                currentPath: '/tiendas',
-                departamentos : departamentos,
-                ciudades: ciudades,
-                activa : activa,
-                dato: req.body,
-                responsabiliidadFiscal : responsabiliidadFiscal,
-                tipoPersonaJuridica : tipoPersonaJuridica,
-                tipoFacturas : tipoFacturas,
-                errores: { msgTaxId: `🚨 Error en rango: El inicio (${nStart}) no puede superar al final (${nEnd}).` },
-                pasoActivo: "2"
-            });
+        return res.status(409).render('./administrador/stores/nueva', {
+            pagina: "Tiendas",
+            subPagina: "Nueva Tienda",
+            csrfToken: req.csrfToken(),
+            currentPath: '/tiendas',
+            departamentos: departamentos,
+            ciudades: ciudades,
+            activa: activa,
+            dato: req.body,
+            responsabiliidadFiscal: responsabiliidadFiscal,
+            tipoPersonaJuridica: tipoPersonaJuridica,
+            tipoFacturas: tipoFacturas,
+            errores: { msgTaxId: `🚨 Error en rango: El inicio (${nStart}) no puede superar al final (${nEnd}).` },
+            pasoActivo: "2"
+        });
     }
 
     const dEmision = req.body.fechaEmision?.trim() ? new Date(req.body.fechaEmision) : null;
     const dVencimiento = req.body.fechaVencimiento?.trim() ? new Date(req.body.fechaVencimiento) : null;
 
-    if((dEmision && !dVencimiento) || (!dEmision && dVencimiento)){
+    if ((dEmision && !dVencimiento) || (!dEmision && dVencimiento)) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(409).render('./administrador/stores/nueva', {
-                pagina: "Tiendas",
-                subPagina : "Nueva Tienda",
-                csrfToken : req.csrfToken(),
-                currentPath: '/tiendas',
-                departamentos : departamentos,
-                ciudades: ciudades,
-                activa : activa,
-                dato: req.body,
-                responsabiliidadFiscal : responsabiliidadFiscal,
-                tipoPersonaJuridica : tipoPersonaJuridica,
-                tipoFacturas : tipoFacturas,
-                errores: { msgTaxId: "🚨 Datos incompletos: Una resolución de facturación debe tener tanto fecha de emisión como de vencimiento." },
-                pasoActivo: "2"
-            });
+        return res.status(409).render('./administrador/stores/nueva', {
+            pagina: "Tiendas",
+            subPagina: "Nueva Tienda",
+            csrfToken: req.csrfToken(),
+            currentPath: '/tiendas',
+            departamentos: departamentos,
+            ciudades: ciudades,
+            activa: activa,
+            dato: req.body,
+            responsabiliidadFiscal: responsabiliidadFiscal,
+            tipoPersonaJuridica: tipoPersonaJuridica,
+            tipoFacturas: tipoFacturas,
+            errores: { msgTaxId: "🚨 Datos incompletos: Una resolución de facturación debe tener tanto fecha de emisión como de vencimiento." },
+            pasoActivo: "2"
+        });
     }
 
 
 
-    if(dEmision && dVencimiento && dEmision > dVencimiento){
+    if (dEmision && dVencimiento && dEmision > dVencimiento) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(409).render('./administrador/stores/nueva', {
-                pagina: "Tiendas",
-                subPagina : "Nueva Tienda",
-                csrfToken : req.csrfToken(),
-                currentPath: '/tiendas',
-                departamentos : departamentos,
-                ciudades: ciudades,
-                activa : activa,
-                dato: req.body,
-                responsabiliidadFiscal : responsabiliidadFiscal,
-                tipoPersonaJuridica : tipoPersonaJuridica,
-                tipoFacturas : tipoFacturas,
-                errores: { msgTaxId: "🚨 La fecha de emisión no puede ser posterior a la de vencimiento." },
-                pasoActivo: "2"
-            });
+        return res.status(409).render('./administrador/stores/nueva', {
+            pagina: "Tiendas",
+            subPagina: "Nueva Tienda",
+            csrfToken: req.csrfToken(),
+            currentPath: '/tiendas',
+            departamentos: departamentos,
+            ciudades: ciudades,
+            activa: activa,
+            dato: req.body,
+            responsabiliidadFiscal: responsabiliidadFiscal,
+            tipoPersonaJuridica: tipoPersonaJuridica,
+            tipoFacturas: tipoFacturas,
+            errores: { msgTaxId: "🚨 La fecha de emisión no puede ser posterior a la de vencimiento." },
+            pasoActivo: "2"
+        });
     }
 
 
-    
+
 
     // 4. CREACIÓN ÚNICA DE PUNTO DE VENTA
     const nuevaTienda = await PuntosDeVenta.create({
@@ -809,16 +811,16 @@ const postNuevaTienda = async (req, res) => {
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
     return res.render('./administrador/stores/nueva', {
         pagina: "Tiendas",
-        subPagina : "Nueva Tienda",
-        csrfToken : req.csrfToken(),
+        subPagina: "Nueva Tienda",
+        csrfToken: req.csrfToken(),
         currentPath: '/tiendas',
-        departamentos : departamentos,
+        departamentos: departamentos,
         ciudades: ciudades,
-        activa : activa,
+        activa: activa,
         pasoActivo: "1",
-        responsabiliidadFiscal : responsabiliidadFiscal,
-        tipoPersonaJuridica : tipoPersonaJuridica,
-        tipoFacturas : tipoFacturas,
+        responsabiliidadFiscal: responsabiliidadFiscal,
+        tipoPersonaJuridica: tipoPersonaJuridica,
+        tipoFacturas: tipoFacturas,
         successful: { mensaje: '¡Punto de venta creado con éxito! 😌' }
     });
 };
@@ -828,11 +830,11 @@ const postNuevaTienda = async (req, res) => {
 const saveProduct = async (req, res, next) => {
     const errores = validationResult(req);
     if (!errores.isEmpty()) {
-        return res.status(400).json({ 
-            errores: errores.array().reduce((acc, err) => ({ ...acc, [err.path]: err.msg }), {}) 
+        return res.status(400).json({
+            errores: errores.array().reduce((acc, err) => ({ ...acc, [err.path]: err.msg }), {})
         });
     }
-    
+
 
     try {
         const { idProducto, categorias, variantes_finales, imagenes_borrar } = req.body;
@@ -862,9 +864,9 @@ const saveProduct = async (req, res, next) => {
 
         // 2. Upsert
         if (idProducto && idProducto !== "" && idProducto !== "undefined") {
-            
+
             producto = await Productos.findByPk(idProducto);
-            
+
             if (!producto) {
                 return res.status(404).json({ mensaje: 'Producto no encontrado' });
             }
@@ -872,7 +874,7 @@ const saveProduct = async (req, res, next) => {
             // Actualizamos usando el objeto limpio
             await producto.update(datosParaDB);
         } else {
-            
+
             // Creamos usando el objeto limpio
             producto = await Productos.create(datosParaDB);
         }
@@ -889,7 +891,7 @@ const saveProduct = async (req, res, next) => {
                 variacionesFinales.push({
                     idProducto: idReal,
                     idAtributos: `${talla}|${idColor}`,
-                    valor: 0 
+                    valor: 0
                 });
             });
         });
@@ -900,8 +902,8 @@ const saveProduct = async (req, res, next) => {
             const idsBorrar = Array.isArray(imagenes_borrar) ? imagenes_borrar : [imagenes_borrar];
             const imagenesAEliminar = await Imagenes.findAll({ where: { idMultimedia: idsBorrar } });
 
-            
-            for (const img of imagenesAEliminar) { 
+
+            for (const img of imagenesAEliminar) {
                 const deleteParams = {
                     Bucket: process.env.R2_BUCKET_NAME,
                     Key: `productos/${img.nombreImagen}`,
@@ -946,7 +948,7 @@ const saveProduct = async (req, res, next) => {
 
     } catch (error) {
 
-        
+
         res.status(500).json({ mensaje: 'Error interno del servidor' });
     }
 };
@@ -957,22 +959,22 @@ const saveProduct = async (req, res, next) => {
 //OLD
 const newProduct = async (req, res, next) => {
     const errores = validationResult(req);
-    
+
     if (!errores.isEmpty()) {
         const errObj = errores.array().reduce((acc, err) => {
             acc[err.path] = err.msg;
             return acc;
         }, {});
-        return res.status(400).json({ 
-            errores: errObj 
+        return res.status(400).json({
+            errores: errObj
         });
     }
 
     try {
 
         //Trabajo con las categoorias y. subcategorias con las que vienne el porducto, 
-        const {categorias,subcategorias }=req.body
-        
+        const { categorias, subcategorias } = req.body
+
         const todasLasCategorias = [categorias].concat(subcategorias || []);
         const idCategoriaParaDB = todasLasCategorias.filter(id => id && id !== '').join('|')
 
@@ -987,31 +989,31 @@ const newProduct = async (req, res, next) => {
 
         const nuevoProducto = await Productos.create({
             ...req.body,
-            descripcion  : descripcionLimpia,
-            precioVentaPublicoFinal: precioVentaPublicoFinal, 
+            descripcion: descripcionLimpia,
+            precioVentaPublicoFinal: precioVentaPublicoFinal,
             precioVentaMayorista: precioVentaMayorista,
             idCategoria: idCategoriaParaDB,
             activo: activo,
             web: web,
-            btnName : 'Guardar Producto'
-           
+            btnName: 'Guardar Producto'
+
         });
-        
-        
+
+
         const idProducto = nuevoProducto.idProducto;
 
         // 2: Ingreso las variaciones del producto. (colores, y tallas)
         const variacionesSeleccionadas = JSON.parse(req.body.variantes_finales);
         const variacionesFinales = [];
-        Object.entries(variacionesSeleccionadas).forEach(([talla, color]) =>{
-            color.forEach(idColor =>{
+        Object.entries(variacionesSeleccionadas).forEach(([talla, color]) => {
+            color.forEach(idColor => {
                 variacionesFinales.push({
-                        idProducto: idProducto,
-                        idAtributos: `${talla}|${idColor}`, 
-                        valor: 0, 
-                    });
+                    idProducto: idProducto,
+                    idAtributos: `${talla}|${idColor}`,
+                    valor: 0,
+                });
             })
-        })    
+        })
         await VariacionesProducto.bulkCreate(variacionesFinales)
 
 
@@ -1019,13 +1021,13 @@ const newProduct = async (req, res, next) => {
         if (req.files && req.files.length > 0) {
             const uploadPromises = req.files.map(async (file, index) => {
                 // aqui genero  un nombre único para evitar colisiones
-                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`; 
+                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`;
 
                 // 1. Procesamiento con Sharp (Optimización)
                 const bufferOptimizado = await sharp(file.buffer)
-                    .resize(1000, 1000, { 
-                        fit: 'inside', 
-                        withoutEnlargement: true 
+                    .resize(1000, 1000, {
+                        fit: 'inside',
+                        withoutEnlargement: true
                     })
                     .webp({ quality: 80 })
                     .toBuffer();
@@ -1052,64 +1054,64 @@ const newProduct = async (req, res, next) => {
                 };
             });
 
-    // 3. Esperar a que todas suban y guardar registros en la DB
-    const imagenesData = await Promise.all(uploadPromises);
-    await Imagenes.bulkCreate(imagenesData); // Tu modelo de imágenes de Sequelize
-}
+            // 3. Esperar a que todas suban y guardar registros en la DB
+            const imagenesData = await Promise.all(uploadPromises);
+            await Imagenes.bulkCreate(imagenesData); // Tu modelo de imágenes de Sequelize
+        }
         // 3: Imágenes con Sharp y R2
-    
 
 
-        
+
+
         res.json({ success: true, mensaje: 'Producto guardado con éxito' });
-            } catch (error) {
-                console.log(error);
-                res.status(500).json({ mensaje: 'Error interno del servidor' });
-            }
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ mensaje: 'Error interno del servidor' });
+    }
 }
 
 //************************[JSON CONTROLLERS] ************************ */
 
-const municipiosJson = async(req, res)=>{
-    const { departamentoId } = req.params; 
-    
-    const  municipio = await Municipios.findAll({
-        where : {departamento_id : departamentoId },
-        attributes : ['id', 'nombre'],
-        raw : true
+const municipiosJson = async (req, res) => {
+    const { departamentoId } = req.params;
+
+    const municipio = await Municipios.findAll({
+        where: { departamento_id: departamentoId },
+        attributes: ['id', 'nombre'],
+        raw: true
     })
     return res.json(municipio)
 }
 
-const categoriasJson = async(req, res)=>{
-    const { idCategoria } = req.params; 
-    
-    const  categorias = await Categorias.findAll({
-        where : {idPadre : idCategoria },
-        attributes : ['idCategoria', 'nombreCategoria', 'tipo', 'idPadre'],
-        raw : true
+const categoriasJson = async (req, res) => {
+    const { idCategoria } = req.params;
+
+    const categorias = await Categorias.findAll({
+        where: { idPadre: idCategoria },
+        attributes: ['idCategoria', 'nombreCategoria', 'tipo', 'idPadre'],
+        raw: true
     })
     return res.json(categorias)
 }
 
 
-const skuJson = async(req, res)=>{
-    const { checkSku } = req.params; 
+const skuJson = async (req, res) => {
+    const { checkSku } = req.params;
     const sku = await Productos.findOne({
-        where : {sku : checkSku },
-        attributes  :  ['idProducto', 'nombreProducto', 'sku', 'ean', ],
-        raw : true
+        where: { sku: checkSku },
+        attributes: ['idProducto', 'nombreProducto', 'sku', 'ean',],
+        raw: true
     })
     return res.json(sku)
 }
 
 
-const eanJson = async(req, res)=>{
-    const { checkEan } = req.params; 
+const eanJson = async (req, res) => {
+    const { checkEan } = req.params;
     const ean = await Productos.findOne({
-        where : {ean : checkEan },
-        attributes  :  ['idProducto', 'nombreProducto', 'sku', 'ean', ],
-        raw : true
+        where: { ean: checkEan },
+        attributes: ['idProducto', 'nombreProducto', 'sku', 'ean',],
+        raw: true
     })
     return res.json(ean)
 }
@@ -1118,14 +1120,14 @@ const eanJson = async(req, res)=>{
 
 
 
-const filterProductListJson = async(req, res) => {
+const filterProductListJson = async (req, res) => {
     try {
         // 1. Capturamos la página y aseguramos que sea un número
         const { busqueda, categoria, estado, web, pagina = 1 } = req.query;
         const numPagina = parseInt(pagina) || 1;
-        
+
         const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
-        const offset = (numPagina - 1) * limite;   
+        const offset = (numPagina - 1) * limite;
 
         let condiciones = {};
 
@@ -1155,7 +1157,7 @@ const filterProductListJson = async(req, res) => {
 
 
 
-       // 2. Usamos findAndCountAll para obtener 'count' (total) y 'rows' (productos de la página)
+        // 2. Usamos findAndCountAll para obtener 'count' (total) y 'rows' (productos de la página)
         const { count, rows: productosInstancias } = await Productos.findAndCountAll({
             where: condiciones,
             include: [{ association: 'imagenes', required: false }],
@@ -1186,35 +1188,35 @@ const filterProductListJson = async(req, res) => {
 //jsonImageProduct
 
 const jsonImageProduct = async (req, res) => {
-  try {
-    const { idProducto } = req.params; 
+    try {
+        const { idProducto } = req.params;
 
-    if (!idProducto) {
-      return res.status(400).json({
-        success: false,
-        mensaje: 'idProducto es obligatorio'
-      });
+        if (!idProducto) {
+            return res.status(400).json({
+                success: false,
+                mensaje: 'idProducto es obligatorio'
+            });
+        }
+
+        const imagen = await Imagenes.findOne({
+            where: {
+                idProducto,
+                tipo: 'principal'
+            }
+        });
+
+        res.json({
+            success: true,
+            imagen
+        });
+
+    } catch (error) {
+        console.error('jsonImageProduct:', error);
+        res.status(500).json({
+            success: false,
+            mensaje: 'Error al obtener imagen'
+        });
     }
-
-    const imagen = await Imagenes.findOne({
-      where: {
-        idProducto,
-        tipo: 'principal'
-      }
-    });
-
-    res.json({
-      success: true,
-      imagen
-    });
-
-  } catch (error) {
-    console.error('jsonImageProduct:', error);
-    res.status(500).json({
-      success: false,
-      mensaje: 'Error al obtener imagen'
-    });
-  }
 };
 
 
@@ -1225,23 +1227,155 @@ const jsonUnicidad = async (req, res) => {
 
     try {
         const query = { [tipo]: valor };
-        
+
         // Si estamos editando, buscamos otro producto que tenga ese código, excluyendo al actual
-        const donde = idProductoActual 
+        const donde = idProductoActual
             ? { ...query, idProducto: { [Op.ne]: idProductoActual } }
             : query;
 
-        const producto = await Productos.findOne({ 
+        const producto = await Productos.findOne({
             where: donde,
-            attributes: ['idProducto', 'nombreProducto'] 
+            attributes: ['idProducto', 'nombreProducto']
         });
 
-        res.json(producto); 
+        res.json(producto);
     } catch (error) {
         res.status(500).json({ error: 'Error al validar código' });
     }
 };
 
+
+
+//************************[PROVEDORES API & ACTIONS]************************ */
+
+
+
+//Verifico nits de provedores. 
+const checkNitSupplier = async (req, res) => {
+    const { nit } = req.params;
+    try {
+        const existing = await Provedores.findOne({ where: { taxIdSupplier: nit } });
+        // Retornamos true si existe, false si no
+        return res.json({ exists: !!existing });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Error al verificar NIT' });
+    }
+};
+
+const saveSupplier = async (req, res) => {
+    // 1. Validación básica de campos requeridos (backend backup)
+    const { razonSocial, nit, nombreContacto, telefonoContacto, emailProvedor, direccionProvedor, departamentoSelect, ciudadSelect, "categorias[]": categorias } = req.body;
+
+    // Categorias puede venir como string único o array de strings
+    let categoriasArray = [];
+    if (Array.isArray(categorias)) {
+        categoriasArray = categorias;
+    } else if (categorias) {
+        categoriasArray = [categorias];
+    } else if (req.body.categorias) {
+        // Si viene como "categorias" en lugar de "categorias[]" (depende de como lo envíe el frontend)
+        if (Array.isArray(req.body.categorias)) categoriasArray = req.body.categorias;
+        else categoriasArray = [req.body.categorias];
+    }
+
+    if (!razonSocial || !nit || categoriasArray.length === 0) {
+        return res.status(400).json({ success: false, mensaje: 'Faltan datos obligatorios (Razón Social, NIT o Categorías).' });
+    }
+
+    const t = await db.transaction();
+
+    try {
+        // 2. Crear Provedor
+        const nuevoProvedor = await Provedores.create({
+            razonSocial,
+            taxIdSupplier: nit,
+            nombreContacto,
+            telefonoContacto,
+            emailProvedor,
+            direccionProvedor, // Nuevo campo
+            departamento: departamentoSelect,
+            ciudad: ciudadSelect,
+            // telefonoProvedor, estado... (defaults or nullable)
+        }, { transaction: t });
+
+        const idProveedor = nuevoProvedor.idProveedor;
+
+        // 3. Asociar Categorías
+        // Sequelize belongsToMany
+        if (categoriasArray.length > 0) {
+            await nuevoProvedor.addCategorias(categoriasArray, { transaction: t });
+        }
+
+
+        // 4. Procesar Documentos (Upload to R2)
+        if (req.files && req.files.length > 0) {
+            const documentPromises = req.files.map(async (file, index) => {
+
+                // Determinamos tipo y nombre
+                const isImage = file.mimetype.startsWith('image/');
+                const ext = file.originalname.split('.').pop();
+                const nombreArchivo = `doc-${nit}-${Date.now()}-${index}.${isImage ? 'webp' : ext}`;
+                const r2Key = `documentacion/provedores/${nombreArchivo}`;
+
+                let bufferToUpload = file.buffer;
+                let contentType = file.mimetype;
+
+                // Si es imagen, optimizar a WebP
+                if (isImage) {
+                    bufferToUpload = await sharp(file.buffer)
+                        .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
+                        .webp({ quality: 80 })
+                        .toBuffer();
+                    contentType = 'image/webp';
+                }
+
+                // Subir a R2
+                const uploadParams = {
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: r2Key,
+                    Body: bufferToUpload,
+                    ContentType: contentType,
+                };
+
+                const upload = new Upload({
+                    client: s3Client,
+                    params: uploadParams
+                });
+
+                await upload.done();
+
+                // Crear registro en DOCUMENTACION
+                return {
+                    idPropietario: idProveedor,
+                    nombreDocumento: file.originalname, // Nombre original para mostrar
+                    keyName: r2Key, // Ruta en R2
+                    formato: isImage ? 'WEBP' : ext.toUpperCase(),
+                    pertenece: 'provedor'
+                };
+            });
+
+            // Esperar subidas
+            const docsData = await Promise.all(documentPromises);
+            // Guardar en DB
+            await Documentacion.bulkCreate(docsData, { transaction: t });
+        }
+
+        await t.commit();
+        res.json({ success: true, mensaje: 'Provedor guardado con éxito' });
+
+    } catch (error) {
+        await t.rollback();
+        console.error("Error en saveSupplier:", error);
+
+        // Manejo de error unique
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({ success: false, mensaje: 'El NIT ya existe en la base de datos.' });
+        }
+
+        res.status(500).json({ success: false, mensaje: 'Error interno del servidor al guardar proveedor' });
+    }
+};
 
 
 export {
@@ -1258,9 +1392,9 @@ export {
     storeInventory,
     storeEmployers,
     storeDocuments,
-    saveProduct,editarProducto, listaProductos, verProducto,newProduct,
+    saveProduct, editarProducto, listaProductos, verProducto, newProduct,
     dosificar,
-    dashboardSupplier, newSupplier,
+    dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier,
     dashboardCustomers,
     dashboardEmployees,
     dashboardOrders,

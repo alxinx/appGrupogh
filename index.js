@@ -6,7 +6,7 @@ import loginRoutes from "./routes/loginRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js"
 import storeRoutes from "./routes/storeRoutes.js"
 import webRouters from "./routes/webRoutes.js"
-import {rutaProtegida, verificarRol} from "./middlewares/authMiddleware.js"
+import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
 
 
@@ -17,7 +17,7 @@ const port = process.env.APP_PORT;
 
 // Conexión a la Base de Datos
 try {
-    if(process.env.DB_SYNC === "true"){
+    if (process.env.DB_SYNC === "true") {
         await db.sync();
     }
     await db.authenticate();
@@ -41,16 +41,16 @@ const csrfMiddleware = csrf({ cookie: true });
 
 // Aplicación Global con Excepción para la ruta de imágenes
 app.use((req, res, next) => {
-    // Excluimos SOLO el POST de inventario para que el middleware uploadImages de la ruta pueda actuar primero
-    if (req.path === '/admin/inventario/ingreso' && req.method === 'POST') {
-        return next(); 
+    // Excluimos SOLO el POST de inventario y provedores para que el middleware uploadImages/Mixed actué primero
+    if ((req.path === '/admin/inventario/ingreso' || req.path === '/admin/provedores/new') && req.method === 'POST') {
+        return next();
     }
     // Para todos los demás (Login, Tiendas, GET de inventario), se aplica aquí
     csrfMiddleware(req, res, next);
 });
 
 // 4. Rutas
-app.use("/pagina", webRouters )
+app.use("/pagina", webRouters)
 app.use("/", loginRoutes); // LOGIN
 app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes); // ADMINISTRADOR
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS

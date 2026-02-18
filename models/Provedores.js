@@ -23,6 +23,10 @@ const Provedores = db.define('PROVEDORES', {
         type : DataTypes.STRING,
         allowNull : false
     },
+    direccionProvedor : {
+        type : DataTypes.STRING,
+        allowNull : false
+    },
     telefonoContacto : {
         type : DataTypes.STRING(10),
         allowNull : true

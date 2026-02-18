@@ -73,8 +73,8 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
 
         //- Dirección Principal
         div(class="col-span-12 md:col-span-3")
-            label.label Dirección Principal
-                input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000" value = (producto && producto.precioVentaMayorista) ? producto.precioVentaMayorista : "")
+            label.label Direccion Provedor
+                input(class="field-text" type="text" id="direccionProvedor" name="direccionProvedor" placeholder="Calle 10 # 20 - 30" value = (producto && producto.direccionProvedor) ? producto.direccionProvedor : "")
 
         //- EMAIL PROVEDOR
         div(class="col-span-12 md:col-span-3")
@@ -125,17 +125,22 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
             div(class="shadow-sm")
                 //- Área de Drag & Drop
                 div(class="relative group")
-                    input(type="file" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" name="imagenes" id="upload-images")
+                    input(
+                        type="file" 
+                        multiple 
+                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                        name="documentos" 
+                        id="upload-images"
+                        accept=".jpg, .jpeg, .png, .webp, .pdf, .doc, .docx, .xls, .xlsx"
+                    )
 
                     div(class="inputUpload")
-                        //- Icono de Cámara (Estilo GH)
-                        div(class="w-16 h-16 bg-white shadow-sm rounded-full flex items-center justify-center mb-4 text-pink-400")
-                            svg(xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor")
-                                path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z")
-                                circle(cx="12" cy="13" r="3")
+                        //- Icono de Archivos 
+                        div(class="w-16 h-16 bg-white shadow-sm rounded-full flex items-center justify-center mb-4 text-purple-500")
+                            i.fi-rr-file-add.text-3xl
                         
-                        span(class="text-sm font-bold text-gray-600") Sube o arrastra Pdfs i imágenes.
-                        span(class="text-xs text-gray-400 mt-1") PDF, IMAGENES  hasta 5MB
+                        span(class="text-sm font-bold text-gray-600") Sube o arrastra PDF, Word, Excel o Imágenes.
+                        span(class="text-xs text-gray-400 mt-1") Máx 10 archivos, hasta 5MB c/u
 
                 div(class="mt-6 flex flex-wrap gap-3 m-2 p-5" id="preview-container")
 
