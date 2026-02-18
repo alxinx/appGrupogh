@@ -5,7 +5,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto, Imagenes} from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos , VariacionesProducto, Imagenes, CategoriasDeProvedores} from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type :'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type : 'json'}
@@ -519,13 +519,37 @@ const dashboardSupplier = async (req, res)=>{
 
 
 const newSupplier = async (req, res)=>{
+
+    //Importo las categorias de los provedores;
+    const categoriasProvedores = await CategoriasDeProvedores.findAll()
+    const obtenerDatosSelectores = async (idDepartamento) => {
+        const [departamentos, ciudades] = await Promise.all([
+            Departamentos.findAll({ raw: true }),
+            idDepartamento 
+                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true }) 
+                : Promise.resolve([])
+        ]);
+        return { departamentos, ciudades };
+    };
+    const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+    
+
+
     return res.status(201).render('./administrador/supplier/new', {
         pagina: "Provedores",
         subPagina : "Nuevo Provedor",
         subPath : "nuevo provedor",
         csrfToken : req.csrfToken(),
         currentPath: req.path,
-        btnName : 'Guardar Provedor'
+        btnName : 'Guardar',
+
+
+        categoriasProvedores,
+        departamentos,
+        ciudades
+
+
+
     })
 
 }

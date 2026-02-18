@@ -1,9 +1,10 @@
-import { Departamentos, Municipios, Categorias, Atributos, VariacionesProducto, Productos } from "../models/index.js";
+import { Departamentos, Municipios, Categorias, Atributos, VariacionesProducto, Productos , CategoriasDeProvedores} from "../models/index.js";
 //import nombresData from "./departamentosData.js";
 //import municipios from "./municipiosData.js";
 //import nombresData from "./atributos.js";
 //import nombresData from "./categorias.js";
-import productosData from './productosData.js'
+import categoriaProvedores from './categoriasProvedores.js';
+//import productosData from './productosData.js'
 import db from '../config/bd.js'
 
 const importarDatos = async () => {
@@ -11,9 +12,9 @@ const importarDatos = async () => {
         // Autentico
         await db.authenticate();
         console.log('Conexión a DB OK');
-        // Sincronizo
+        // Sincronizoz
         await db.sync(); 
-       // await Productos.bulkCreate(productosData)
+        await CategoriasDeProvedores.bulkCreate(categoriaProvedores)
        // await Departamentos.bulkCreate(nombresData);
        // await Municipios.bulkCreate(municipios)
         

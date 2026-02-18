@@ -1,0 +1,49 @@
+/*
+ * ATTENTION: The "eval" devtool has been used (maybe by default in mode: "development").
+ * This devtool is neither made for production nor for readable output files.
+ * It uses "eval()" calls to create a separate source file in the browser devtools.
+ * If you are trying to read the output file, select a different devtool (https://webpack.js.org/configuration/devtool/)
+ * or disable the default devtool with "devtool: false".
+ * If you are looking for production-ready output files, see mode: "production" (https://webpack.js.org/configuration/mode/).
+ */
+/******/ (() => { // webpackBootstrap
+/******/ 	"use strict";
+/******/ 	var __webpack_modules__ = ({
+
+/***/ "./src/js/dataSupplier.js"
+/*!********************************!*\
+  !*** ./src/js/dataSupplier.js ***!
+  \********************************/
+(__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) {
+
+eval("{__webpack_require__.r(__webpack_exports__);\n(function(){\n    if (departamentoSelect && ciudadSelect) {\n            departamentoSelect.addEventListener('change', async function(e) {\n                const departamentoId = e.target.value;\n                ciudadSelect.innerHTML = '<option value=\"\">-- Cargando --</option>';\n                if (departamentoId === '') {\n                    ciudadSelect.innerHTML = '<option value=\"\">-- Seleccione Dpto --</option>';\n                    ciudadSelect.disabled = true;\n                    return;\n                }\n                try {\n                    const url = `/admin/json/municipios/${departamentoId}`;\n                    const res = await fetch(url);\n                    const municipios = await res.json();\n                    ciudadSelect.innerHTML = '<option value=\"\">-- Seleccione Ciudad --</option>';\n                    municipios.forEach(m => {\n                        const option = document.createElement('option');\n                        option.value = m.id;\n                        option.textContent = m.nombre;\n                        if (ciudadSelect.dataset.selected == m.id) option.selected = true;\n                        ciudadSelect.appendChild(option);\n                    });\n                    ciudadSelect.disabled = false;\n                } catch (err) { console.error(err); }\n            });\n            if (departamentoSelect.value !== '') departamentoSelect.dispatchEvent(new Event('change'));\n        }\n})()\n\n\n//# sourceURL=webpack://GRUPO_GH/./src/js/dataSupplier.js?\n}");
+
+/***/ }
+
+/******/ 	});
+/************************************************************************/
+/******/ 	// The require scope
+/******/ 	var __webpack_require__ = {};
+/******/ 	
+/************************************************************************/
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	(() => {
+/******/ 		// define __esModule on exports
+/******/ 		__webpack_require__.r = (exports) => {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	})();
+/******/ 	
+/************************************************************************/
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module can't be inlined because the eval devtool is used.
+/******/ 	var __webpack_exports__ = {};
+/******/ 	__webpack_modules__["./src/js/dataSupplier.js"](0,__webpack_exports__,__webpack_require__);
+/******/ 	
+/******/ })()
+;

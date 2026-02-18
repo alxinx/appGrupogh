@@ -11,7 +11,8 @@ export default {
         productList : '/src/js/productList.js',
         paginador : '/src/js/paginador.js',
         helpers : '/src/js/helpers.js',
-        dataStore : '/src/js/dataStore.js'
+        dataStore : '/src/js/dataStore.js',
+        dataSupplier : '/src/js/dataSupplier.js'
     },
     output : {
         filename : '[name].js',

@@ -14,7 +14,7 @@ const Provedores = db.define('PROVEDORES', {
         allowNull: false,
         validate: { notEmpty: { msg: "La razón social es obligatoria." } }
     },
-    nit: {
+    taxIdSupplier: {
         type: DataTypes.STRING(20),
         allowNull: false,
         unique: { msg: "Este NIT ya está registrado." }

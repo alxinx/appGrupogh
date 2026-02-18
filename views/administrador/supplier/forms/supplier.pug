@@ -10,121 +10,116 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
         
         //- Nombre del Producto
         //- SEPARADOR 100% (ATRIBUTOS)
-        div(class="col-span-12 -mx-6 mt-4")
+        div(class="col-span-12 -mx-6    mt-4")
             
             h1.h1(class="text-left pl-11 flex items-center text-gray-700")
                 i.fi-rr-features.pr-2
                 | Datos Básicos
 
 
-        div(class="col-span-12")
+        div(class="col-span-12 md:col-span-6")
             label.label Razón social (nombre del provedor)
-                input(class="field-text" type="text" name="razonSocial" id="razonSocial" placeholder="Cómo se llama el producto?" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
+                input(class="field-text" type="text" name="razonSocial" id="razonSocial" placeholder="Cómo se llama el provedor?" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
                 #divError
 
-        //- Categoría
-        //- Columna de Categorías
-        div(class="col-span-12 md:col-span-5")
-            label.label Categoría
-            div(class="flex flex-wrap gap-2 mt-2")
-                
-        //- Columna de SubCategorías
-        div(class="col-span-12 md:col-span-7")
-            
+        div(class="col-span-12 md:col-span-6")
+            label.label NIT O IDENTIFICACIÓN
+                input(class="field-text" type="text" name="nit" id="nit" placeholder="Nro de  NIT o Cédula" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
+                #divError
+        //-Departamento
+        div(class="col-span-12 md:col-span-3")
+            label.label Departamento
+                select(name="departamentoSelect" id="departamentoSelect" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
+                            option(value="") Selecciona El Departamento 
+                                each departamento in departamentos
+                                    option(value= departamento.id 
+                                        selected=(dato && dato.departamento == departamento.id) ? true : false 
+                                    )=departamento.nombre
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+                if errores && errores.departamento
+                    p(class="label-error pl-2.5")=errores.departamento
+                        i.fi-rr-light-emergency-on
 
-        //- SKU
-        div(class="col-span-12 md:col-span-3")
-            label.label SKU
-                input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno" value = (producto && producto.sku) ? producto.sku : "")
-                #errorSku
-        
-        //- EAN
-        div(class="col-span-12 md:col-span-3")
-            label.label EAN
-                input(class="field-text" type="text" name="ean" id="ean" placeholder="Código de barras" value = (producto && producto.ean) ? producto.ean : "")
-                #errorEan
 
-        //- PRECIOS PARA MAYORISTA
+
+
+
+
+
+
+
+        //- Ciudad
         div(class="col-span-12 md:col-span-3")
-            label.label PRECIO MAYORISTA
+            label.label Ciudad
+                div(class="select-wrapper")
+                    select(name="ciudadSelect" id="ciudadSelect" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text")
+                        if ciudades
+                            option(value="") -- Seleccione Ciudad --
+                            each ciudad in ciudades
+                                option(
+                                    value=ciudad.id
+                                    selected=(dato && dato.ciudad == ciudad.id) ? true : false
+                                )= ciudad.nombre                        
+                        else 
+                            option(value="") -- Seleccione Depto primero --
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
+                    if errores && errores.ciudad
+                        p(class="label-error pl-2.5")=errores.ciudad
+                            i.fi-rr-light-emergency-on
+                    span.select-icon
+                        i.fi-rr-chevron-double-down
+
+        //- Dirección Principal
+        div(class="col-span-12 md:col-span-3")
+            label.label Dirección Principal
                 input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000" value = (producto && producto.precioVentaMayorista) ? producto.precioVentaMayorista : "")
 
-        //- PRECIOS PARA MINORISTA!
+        //- EMAIL PROVEDOR
         div(class="col-span-12 md:col-span-3")
-            label.label PRECIO PÚBLICO FINAL
-                input(class="field-text" type="text" id="precioVentaPublicoFinal" name="precioVentaPublicoFinal" placeholder="Ej : $80.000" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
+            label.label Email
+                input(class="field-text" type="email" id="emailProvedor" name="emailProvedor" placeholder="ventas@provedor.com" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
         
-        
+        //- Categoría Provedor
+        div(class="col-span-12")
+            label.label Cuáles categorias nos vende este provedor?
+                div(class="flex flex-wrap gap-2 mt-2")
+                    each categoria in categoriasProvedores
+                        label(class="subItems")
+                            input(type="checkbox" name="categorias" value=categoria.idCategoria  
+                            class="categoria-checkbox checkbox")
+                            span(class="text-xs font-bold text-gray-700 uppercase")= categoria.nombre
+          
 
 
 
 
 
-        //- SEPARADOR 100% (ATRIBUTOS)
+        //- SEPARADOR 100% DATOS DE CONTACTO S
         div(class="col-span-12 -mx-6 mt-4")
             div(class="border-b border-gray-200 w-full")
-                h1.h1(class="text-left pl-11 py-4 flex items-center text-gray-700")
-                    i.fi-rr-features.pr-2
-                    | Atributos
-
-        
-        div(class="col-span-12")
-        //- SECCIÓN DE TALLAS
-        div.col-span-12
-            h3.text-lg.font-bold.text-gray-700.mb-4 Tallas Disponibles
-            div(class="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-2xl")
-               
-                           
-
-        
-        
+                h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                    i.fi-rr-customer-service.mr-2
+                    | DATOS DE CONTACTO     
 
 
+        div(class="col-span-12 md:col-span-6")
+            label.label Nombre del Contacto
+                input(class="field-text" type="text" id="nombreContacto" name="nombreContacto" placeholder="JUAN PEREZ" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
 
-                            
+        div(class="col-span-12 md:col-span-6")
+            label.label Teléfono
+                input(class="field-text" type="text" id="telefonoContacto" name="telefonoContacto" placeholder="444-44-44" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
+           
     //- COLUMNA DERECHA
     div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")
-        div(class="p-6")
-            h1.h1
-                i.fi-rr-eyes.pr-2
-                |Visibilidad del producto
-            //- Contenedor Flex para ponerlos uno al lado del otro
-            div(class="flex flex-row flex-wrap gap-2")
-                label(class="subItems")
-                    div(class="checkbox-group mr-2")
-                       // input.checkbox(type="checkbox"  id="activo" name ="activo" checked=producto.activo === true )
 
-                    span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Producto Activo
-
-                label(class="subItems")
-                   
-                    div(class="checkbox-group mr-2")
-                        //input.checkbox(type="checkbox" id="disponible_web" name="web" checked )
-                        //input.checkbox(type="checkbox"  id="disponible_web" name ="web" checked=producto.web === true )
-                        
-                    span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Disponible en web
-
-        //- Dentro del div de Visibilidad, después de los labels
-        div#seccion-web-seo(class="hidden mt-6 pt-4 border-t border-dashed border-gray-100 animate-fade-in")
-            div(class="grid grid-cols-1 gap-4")
-                div
-                    h1.h1
-                        i.fi-rr-site-browser.pr-2.mt-5
-                        | Datos Para Seo Y Web
-                div
-                    label(class="label uppercase") Slug (URL Amigable)
-                    //input#slug(type="text" name="slug" class="field-text field-text-disabled" value = (producto && producto.slug) ? producto.slug : ""  readonly )
-                div
-                    label(class="label uppercase") Etiquetas / Tags
-                    //input#tags(type="text" name="tags" class="field-text w-full" placeholder="ej: seda, nuevo, oferta" value = (producto && producto.tags) ? producto.tags : "")
-                div
-                    label(class="label uppercase") Meta Descripción
-                    //textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-20 resize-none field-text" placeholder="Breve descripción para buscadores...")=(producto && producto.descripcion) ? producto.descripcion : ""
-
+                
         
-        div(class="min-h-[150px]")
+        div(class="min-h-[150px] p-4")
             h1.h1
-                i.fi-rr-picture.pr-2
+                i.fi-rr-features.pr-2
                 | Documentos del provedor
             //- Card de Carga de Imágenes
             div(class="shadow-sm")
@@ -139,8 +134,8 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
                                 path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z")
                                 circle(cx="12" cy="13" r="3")
                         
-                        span(class="text-sm font-bold text-gray-600") Sube o arrastra tu imagen
-                        span(class="text-xs text-gray-400 mt-1") PNG, JPG hasta 5MB
+                        span(class="text-sm font-bold text-gray-600") Sube o arrastra Pdfs i imágenes.
+                        span(class="text-xs text-gray-400 mt-1") PDF, IMAGENES  hasta 5MB
 
                 div(class="mt-6 flex flex-wrap gap-3 m-2 p-5" id="preview-container")
 
