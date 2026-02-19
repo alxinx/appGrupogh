@@ -396,6 +396,20 @@ const dosificar = async (req, res) => {
     })
 }
 
+ 
+
+// -> Guardo las facturas/ ordenes de compra y las pongo en el inventario global. 
+const batchBuyOrder = async (req, res) => {
+    return res.status(201).render('./administrador/inventarios/batch', {
+        pagina: "Ingreso de Productos a Inventario General",
+        subPagina: "Ingreso de Productos a Inventario General",
+        csrfToken: req.csrfToken(),
+        currentPath: '/inventario',
+        subPath: 'batch',
+        btnName : 'Guardar Factura'
+    })
+}
+
 
 
 //************[TIENDAS]*******************//
@@ -510,11 +524,15 @@ const dashboardSettings = async (req, res) => {
 //PROVEDORES
 
 const dashboardSupplier = async (req, res) => {
+
+    const categorias = await CategoriasDeProvedores.findAll();
+
     return res.status(201).render('./administrador/supplier/homeSupplier', {
         pagina: "Provedores",
         subPagina: "Gestión Provedores",
         csrfToken: req.csrfToken(),
-        currentPath: req.path
+        currentPath: req.path,
+        categorias
     })
 
 }
@@ -1284,6 +1302,7 @@ const saveSupplier = async (req, res) => {
     }
 
     const t = await db.transaction();
+    const uploadedFiles = []; // Track uploaded files for rollback
 
     try {
         // 2. Crear Provedor
@@ -1293,26 +1312,28 @@ const saveSupplier = async (req, res) => {
             nombreContacto,
             telefonoContacto,
             emailProvedor,
-            direccionProvedor, // Nuevo campo
+            direccionProvedor,
             departamento: departamentoSelect,
             ciudad: ciudadSelect,
-            // telefonoProvedor, estado... (defaults or nullable)
+            estado: true
         }, { transaction: t });
 
         const idProveedor = nuevoProvedor.idProveedor;
 
         // 3. Asociar Categorías
-        // Sequelize belongsToMany
         if (categoriasArray.length > 0) {
             await nuevoProvedor.addCategorias(categoriasArray, { transaction: t });
         }
 
-
         // 4. Procesar Documentos (Upload to R2)
         if (req.files && req.files.length > 0) {
-            const documentPromises = req.files.map(async (file, index) => {
+            // Usamos un loop para subir secuencialmente y poder hacer track o map async
+            // Preferimos map async para velocidad, pero hay que capturar r2Key
 
-                // Determinamos tipo y nombre
+            const docsData = [];
+
+            // Procesamos subidas
+            await Promise.all(req.files.map(async (file, index) => {
                 const isImage = file.mimetype.startsWith('image/');
                 const ext = file.originalname.split('.').pop();
                 const nombreArchivo = `doc-${nit}-${Date.now()}-${index}.${isImage ? 'webp' : ext}`;
@@ -1321,7 +1342,6 @@ const saveSupplier = async (req, res) => {
                 let bufferToUpload = file.buffer;
                 let contentType = file.mimetype;
 
-                // Si es imagen, optimizar a WebP
                 if (isImage) {
                     bufferToUpload = await sharp(file.buffer)
                         .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
@@ -1330,35 +1350,32 @@ const saveSupplier = async (req, res) => {
                     contentType = 'image/webp';
                 }
 
-                // Subir a R2
-                const uploadParams = {
-                    Bucket: process.env.R2_BUCKET_NAME,
-                    Key: r2Key,
-                    Body: bufferToUpload,
-                    ContentType: contentType,
-                };
-
                 const upload = new Upload({
                     client: s3Client,
-                    params: uploadParams
+                    params: {
+                        Bucket: process.env.R2_BUCKET_NAME,
+                        Key: r2Key,
+                        Body: bufferToUpload,
+                        ContentType: contentType,
+                    }
                 });
 
                 await upload.done();
+                uploadedFiles.push(r2Key); // Add to rollback list
 
-                // Crear registro en DOCUMENTACION
-                return {
+                docsData.push({
                     idPropietario: idProveedor,
-                    nombreDocumento: file.originalname, // Nombre original para mostrar
-                    keyName: r2Key, // Ruta en R2
+                    nombreDocumento: file.originalname,
+                    keyName: r2Key,
                     formato: isImage ? 'WEBP' : ext.toUpperCase(),
                     pertenece: 'provedor'
-                };
-            });
+                });
+            }));
 
-            // Esperar subidas
-            const docsData = await Promise.all(documentPromises);
-            // Guardar en DB
-            await Documentacion.bulkCreate(docsData, { transaction: t });
+            // Guardar metadata en DB
+            if (docsData.length > 0) {
+                await Documentacion.bulkCreate(docsData, { transaction: t });
+            }
         }
 
         await t.commit();
@@ -1368,15 +1385,86 @@ const saveSupplier = async (req, res) => {
         await t.rollback();
         console.error("Error en saveSupplier:", error);
 
-        // Manejo de error unique
+        // ROLLBACK R2: Eliminar archivos subidos si falla la transacción
+        if (uploadedFiles.length > 0) {
+            console.log(`Realizando rollback de ${uploadedFiles.length} archivos en R2...`);
+            try {
+                // DeleteObjectCommand requiere client.send
+                await Promise.all(uploadedFiles.map(key =>
+                    s3Client.send(new DeleteObjectCommand({
+                        Bucket: process.env.R2_BUCKET_NAME,
+                        Key: key
+                    }))
+                ));
+                console.log("Rollback R2 completado.");
+            } catch (r2Error) {
+                console.error("Error crítico: Falló el rollback de R2", r2Error);
+            }
+        }
+
         if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(400).json({ success: false, mensaje: 'El NIT ya existe en la base de datos.' });
         }
-
         res.status(500).json({ success: false, mensaje: 'Error interno del servidor al guardar proveedor' });
     }
-};
+}; 
 
+
+const filterSupplierListJson = async (req, res) => {
+    try {
+        const { busqueda, categoria, pagina = 1 } = req.query;
+        //const limit = 10;
+        const limit = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+        const offset = (pagina - 1) * limit;
+
+        const whereCondition = {};
+
+        // Filtro por búsqueda (Nombre, NIT, Contacto)
+        if (busqueda) {
+            whereCondition[Sequelize.Op.or] = [
+                { razonSocial: { [Sequelize.Op.like]: `%${busqueda}%` } },
+                { taxIdSupplier: { [Sequelize.Op.like]: `%${busqueda}%` } },
+                { nombreContacto: { [Sequelize.Op.like]: `%${busqueda}%` } }
+            ];
+        }
+
+        // Configuración de filtro por categoría (requiere include)
+        const includeOptions = [
+            {
+                model: CategoriasDeProvedores,
+                as: 'categorias',
+                attributes: ['idCategoria', 'nombre'],
+                through: { attributes: [] } // No traer atributos de la tabla intermedia
+            }
+        ];
+
+        // Si hay filtro de categoría, lo aplicamos en el include
+        if (categoria) {
+            includeOptions[0].where = { idCategoria: categoria };
+        }
+
+        const { count, rows } = await Provedores.findAndCountAll({
+            where: whereCondition,
+            include: includeOptions,
+            limit,
+            offset,
+            order: [['createdAt', 'DESC']],
+            distinct: true // Importante para contar correctamente con includes
+        });
+
+        res.json({
+            success: true,
+            provedores: rows,
+            totalPaginas: Math.ceil(count / limit),
+            paginaActual: parseInt(pagina),
+            totalRegistros: count
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener proveedores' });
+    }
+};
 
 export {
     dashboard,
@@ -1393,6 +1481,7 @@ export {
     storeEmployers,
     storeDocuments,
     saveProduct, editarProducto, listaProductos, verProducto, newProduct,
+    batchBuyOrder,
     dosificar,
     dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier,
     dashboardCustomers,
@@ -1406,5 +1495,6 @@ export {
     filterProductListJson,
     jsonImageProduct,
     jsonUnicidad,
-    baseFrondend
+    baseFrondend,
+    filterSupplierListJson
 }

@@ -1,0 +1,54 @@
+form(action="", method="post" id="formularioProducto" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+
+
+    //- COLUMNA IZQUIERDA
+    input(type="hidden", name="_csrf" value = csrfToken)
+    input(type="hidden", name="idProducto" value=producto ? producto.idProducto : '')
+    
+
+    div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
+        
+        //- Nombre del Producto
+        //- SEPARADOR 100% (ATRIBUTOS)
+        div(class="col-span-12 -mx-6 mt-4")
+            
+            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                i.fi-rr-features.pr-2
+                | Datos Básicos
+
+        div(class="col-span-12")
+            
+
+
+
+
+
+       
+
+
+
+
+
+
+                            
+    //- COLUMNA DERECHA
+    div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")
+        div(class="p-6")
+            h1.h1
+                i.fi-rr-features.pr-2
+                |Documentos de la factura.
+            //- Contenedor Flex para ponerlos uno al lado del otro
+            
+
+    div(class="col-span-12")
+        div(class="flex  justify-center")
+            button(class="btn btn-primary w-full"  type="submit" id="guardar" )
+                i.fi-rr-disk
+                | #{btnName}
+
+script.
+    // Inyectamos el array de IDs de categorías y subcategorías que procesamos en el controlador
+    const categoriasSeleccionadas = !{JSON.stringify(categoriasSeleccionadas)};
+
+
+script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           

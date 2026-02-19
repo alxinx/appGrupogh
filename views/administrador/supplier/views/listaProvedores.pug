@@ -1,0 +1,45 @@
+div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4")
+    //- Header / Título
+    div(class="col-span-12 flex justify-between items-center mb-2")
+        h3.h3
+            i.fi-rr-users-alt.mr-2
+            | Listado de Provedores
+
+    //- Filtros
+    div(class="col-span-12 md:col-span-6")
+        div.input-group
+            i.fi-rr-search.input-icon.input-icon-left
+            input.input.input-has-icon-left(
+                type="text" 
+                id="busquedaProvedor" 
+                placeholder="Buscar por Nombre, NIT o Contacto..."
+            )
+    
+    div(class="col-span-12 md:col-span-6")
+         div.select-wrapper
+            select(id="filtroCategoriaProvedor" class="field-select")
+                option(value="") -- Todas las Categorías --
+                if categorias
+                    each cat in categorias
+                        option(value=cat.idCategoria)= cat.nombre
+            span.select-icon
+                i.fi-rr-chevron-double-down
+
+    //- Tabla
+    div(class="col-span-12 overflow-x-auto mt-4")
+        table(class="w-full text-left border-collapse")
+            thead(class="bg-gray-50 border-b border-gray-200")
+                tr
+                    th(class="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider") Provedor
+                    th(class="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider") Contacto
+                    th(class="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider") Teléfono
+                    th(class="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider") NIT
+                    th(class="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider") Categorías
+                    th(class="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right") Acciones
+            
+            tbody(id="contenedor-provedores" class="divide-y divide-gray-100")
+                //- Contenido dinámico via JS
+
+    //- Paginación
+    div(class="col-span-12 mt-4")
+        #paginacionProvedores

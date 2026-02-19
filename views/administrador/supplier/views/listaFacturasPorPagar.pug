@@ -1,0 +1,47 @@
+div(class=" border-slate-100  overflow-hidden")
+        h2.h2.text-gh-primaryHover
+            i.fi-rr-light-emergency-on.mr-2
+            | Facturas Por Pagar
+        p(class="text-sm text-slate-400") Facturas que estan por entrar en mora
+
+        div(class="overflow-x-auto pt-4 ")
+          table(class="w-full text-left text-2xs border-collapse ")
+            thead
+              tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                th(class="px-8 py-4    text-center text-gray-600") Provedor
+                th(class="px-2  text-center text-gray-600") Monto
+                th(class="px-2   text-center text-gray-600") Vence
+        
+
+            tbody(class="divide-y divide-slate-100 ")
+              //- Row 1
+              a(href="http://")  
+                tr(class="border-b border-gray-100 text-xs hover:bg-gray-100 transition-colors cursor-pointer")
+                  
+                  td(class="px-3 py-5")
+                    div(class="flex items-center space-x-3")
+                     
+                      div
+                        p(class="font-bold text-slate-800 ")  Calzado Perez
+    
+                  td(class="px-3 py-5")
+                    span(class=" text-red-600 font-bold ")
+                      | $350.000
+    
+                  td(class="px-3 py-5 text-right")
+                    p 35 Dias
+
+                
+
+
+        div(class="px-8 py-4 bg-slate-50/30  border-t border-slate-100  flex items-center justify-between")
+            p(class="text-xs text-slate-400")
+                | Mostrando 
+                span(class="font-bold text-slate-600 ") 4
+                |  de 
+                span(class="font-bold text-slate-600 ") 12
+                |  cuentas por pagar 
+
+              
+              
+

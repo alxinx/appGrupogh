@@ -26,15 +26,18 @@ block contenedor
 
                             div(class="col-span-12 grid grid-cols-12 items-start")    
                                 //Columna 1
-                                div(class="col-span-12 md:col-span-8 grid grid-cols-1 gap-4 cards cardsWhite p-6")
-                                   // include ./views/listaTiendas.pug
+                                div(class="col-span-12 md:col-span-9 grid grid-cols-1 gap-4 cards cardsWhite p-6")
+                                   include ./views/listaProvedores.pug
                                 
                                 //Columna 2
-                                div(class="col-span-12 md:col-span-4 grid grid-cols-1 gap-4 cards cardsWhite p-6")                       
+                                div(class="col-span-12 md:col-span-3 grid grid-cols-1 gap-4 cards cardsWhite p-6")                       
                                     //include ./stats/carteraPendiente.pug
-                                    //include ./views/listaCarteraVencida.pug
+                                    include ./views/listaFacturasPorPagar.pug
 
 
  
-                script(src="/js/dropdownBtn.js")  
+                script(src="/js/dropdownBtn.js") 
+                script(src="/js/paginador.js") 
+                script(src="/js/helpers.js")
+                script(src="/js/supplierList.js")  
 

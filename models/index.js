@@ -10,11 +10,14 @@ import Productos from './Productos.js'
 import Imagenes from './Imagenes.js'; import Documentacion from './Documentacion.js'
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
 
+import Cajas from './Cajas.js'
+import FacturaProveedores from './FacturaProvedores.js'
+import AbonosProveedores from './abonoProvedores.js'
 
 
 
 //ASOCIACIONES
-  
+
 
 Productos.hasMany(Imagenes, {
   as: 'imagenes',
@@ -27,17 +30,19 @@ Imagenes.belongsTo(Productos, {
 });
 
 
-Provedores.belongsToMany(CategoriasDeProvedores, { 
-    through: 'PROVEDOR_CATEGORIAS', 
-    foreignKey: 'idProveedor',
-    otherKey: 'idCategoria',
-    as: 'categorias' // Alias útil para consultas (include)
+Provedores.belongsToMany(CategoriasDeProvedores, {
+  through: 'PROVEDOR_CATEGORIAS',
+  foreignKey: 'idProveedor',
+  otherKey: 'idCategoria',
+  as: 'categorias', // Alias útil para consultas (include)
+  onDelete: 'CASCADE'
 });
 
-CategoriasDeProvedores.belongsToMany(Provedores, { 
-    through: 'PROVEDOR_CATEGORIAS', 
-    foreignKey: 'idCategoria',
-    otherKey: 'idProveedor'
+CategoriasDeProvedores.belongsToMany(Provedores, {
+  through: 'PROVEDOR_CATEGORIAS',
+  foreignKey: 'idCategoria',
+  otherKey: 'idProveedor',
+  onDelete: 'CASCADE'
 });
 
 
@@ -46,12 +51,12 @@ CategoriasDeProvedores.belongsToMany(Provedores, {
 
 
 export {
-    Usuarios,
-    Departamentos,
-    Municipios,
-    PuntosDeVenta,
-    RegimenFacturacion,
-    Categorias, Atributos, VariacionesProducto,
-    Productos, Provedores, CategoriasDeProvedores,
-    Imagenes, Documentacion
+  Usuarios,
+  Departamentos,
+  Municipios,
+  PuntosDeVenta,
+  RegimenFacturacion, Cajas,FacturaProveedores, AbonosProveedores, 
+  Categorias, Atributos, VariacionesProducto,
+  Productos, Provedores, CategoriasDeProvedores,
+  Imagenes, Documentacion
 }

@@ -2,7 +2,7 @@ import express from "express";
 import csrf from 'csurf';
 const router = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, newProduct, saveProduct, listaProductos, verProducto, editarProducto, dosificar, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend } from "../controller/adminControllers.js"
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, newProduct, saveProduct, listaProductos, verProducto, editarProducto, dosificar,batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson } from "../controller/adminControllers.js"
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
@@ -34,7 +34,8 @@ routes.get('/inventario/ingreso', csrfProtection, dashboardInventorys);
 routes.get('/inventario/listado', listaProductos);
 routes.get('/inventario/ver/:idProducto', verProducto)
 routes.get('/inventario/editar/:idProducto', editarProducto)
-routes.get('/inventario/dosificar/', dosificar)
+routes.get('/inventario/dosificar/', dosificar);
+routes.get('/inventario/batch/', batchBuyOrder)
 
 
 
@@ -71,8 +72,7 @@ routes.post('/provedores/new',
     saveSupplier
 );
 
-// API CHECKS
-routes.get('/api/check-nit/:nit', checkNitSupplier);
+
 
 
 
@@ -92,6 +92,10 @@ routes.get('/json/ean/:checkEan', eanJson);
 routes.get('/json/productos/', filterProductListJson)
 routes.get('/json/imageProduct/:idProducto', jsonImageProduct)
 routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
+routes.get('/json/provedores/', filterSupplierListJson);
+
+// API CHECKS
+routes.get('/api/check-nit/:nit', checkNitSupplier);
 
 
 
