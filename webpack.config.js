@@ -13,7 +13,9 @@ export default {
         helpers: '/src/js/helpers.js',
         dataStore: '/src/js/dataStore.js',
         dataSupplier: '/src/js/dataSupplier.js',
-        supplierList: '/src/js/supplierList.js'
+        supplierList: '/src/js/supplierList.js',
+        dataDose : '/src/js/dataDose.js',
+        utils : '/src/js/utils.js'
     },
     output: {
         filename: '[name].js',

@@ -392,7 +392,8 @@ const dosificar = async (req, res) => {
         subPagina: "Dosificar Productos",
         csrfToken: req.csrfToken(),
         currentPath: '/inventario',
-        subPath: 'dosificar'
+        subPath: 'dosificar',
+        btnName : "Pre-Calcular"
     })
 }
 
