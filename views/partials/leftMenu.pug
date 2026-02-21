@@ -36,7 +36,19 @@ aside(
         a(href="/admin/inventario/listado" class="submenu-item") Listado de producto
         a(href="/admin/inventario/batch" class="submenu-item") Agregar Productos Al inventario
 
-        a(href="/admin/inventario/dosificar" class="submenu-item") Dosificar producto
+        
+
+    // Dosificador y traslados (submenu)
+    details(class="group")
+      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr-warehouse-alt")
+          span Dosificación y Repartos
+        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+
+      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+        a(href="/admin/dosificaciones/" class="submenu-item") Ver Paquetes Dosificados
+        a(href="/admin/dosificaciones/new" class="submenu-item") Dosificar productos
 
     a(href="/admin/provedores" class=`menu-item ${currentPath === '/provedores' ? 'active' : ''}`)
       i(class="fi fi-rr-supplier-alt text-lg")

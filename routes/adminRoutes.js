@@ -4,6 +4,10 @@ const router = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, newProduct, saveProduct, listaProductos, verProducto, editarProducto, dosificar,batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson } from "../controller/adminControllers.js"
 
+//CONTROLADOR DOSIFICACIOONES:
+import {guardarDosificacion,homeDose, newDose} from '../controller/dosificacionController.js'
+
+
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
@@ -34,10 +38,8 @@ routes.get('/inventario/ingreso', csrfProtection, dashboardInventorys);
 routes.get('/inventario/listado', listaProductos);
 routes.get('/inventario/ver/:idProducto', verProducto)
 routes.get('/inventario/editar/:idProducto', editarProducto)
-routes.get('/inventario/dosificar/', dosificar);
 routes.get('/inventario/batch/', batchBuyOrder)
-
-
+ 
 
 //PROVEDORES
 routes.get('/provedores/', dashboardSupplier);
@@ -73,6 +75,14 @@ routes.post('/provedores/new',
 );
 
 
+//Ruta para la dosificacion
+
+routes.get('/dosificaciones/', homeDose); //DASHBOARD
+routes.get('/dosificaciones/new/', newDose);//Load paginna guardar
+routes.post('/dosificaciones/guardar', guardarDosificacion)
+
+
+
 
 
 
@@ -84,6 +94,8 @@ routes.post('/inventario/editar/:idProducto',
 
 
 /************************[JSON]******************************/
+
+
 
 routes.get('/json/municipios/:departamentoId', municipiosJson)
 routes.get('/json/categorias/:idCategoria', categoriasJson);

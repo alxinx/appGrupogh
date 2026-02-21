@@ -15,7 +15,8 @@ export default {
         dataSupplier: '/src/js/dataSupplier.js',
         supplierList: '/src/js/supplierList.js',
         dataDose : '/src/js/dataDose.js',
-        utils : '/src/js/utils.js'
+        utils : '/src/js/utils.js',
+        dosificador : '/src/js/dosificador.js'
     },
     output: {
         filename: '[name].js',

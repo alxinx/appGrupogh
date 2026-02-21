@@ -14,7 +14,9 @@ import Cajas from './Cajas.js'
 import FacturaProveedores from './FacturaProvedores.js'
 import AbonosProveedores from './abonoProvedores.js'
 
-
+import Dosificaciones from './Dosificaciones.js';
+import Pack from './Packs.js';
+import DetallesPack from './DetallesPack.js'
 
 //ASOCIACIONES
 
@@ -46,6 +48,20 @@ CategoriasDeProvedores.belongsToMany(Provedores, {
 });
 
 
+// 1. Relación Dosificación -> Packs
+Dosificaciones.hasMany(Pack, { foreignKey: 'idDosificacion' });
+Pack.belongsTo(Dosificaciones, { foreignKey: 'idDosificacion' });
+
+// 2. Relación Pack -> DetallesPack
+Pack.hasMany(DetallesPack, { foreignKey: 'idPack' });
+DetallesPack.belongsTo(Pack, { foreignKey: 'idPack' });
+
+// 3. Relación DetallesPack -> Producto (Relación doble vía)
+DetallesPack.belongsTo(Productos, { as: 'producto', foreignKey: 'idProducto', targetKey: 'idProducto' });
+Productos.hasMany(DetallesPack, { foreignKey: 'idProducto' });
+
+
+
 //Provedores.hasMany(OrdenDeCompra, { foreignKey: 'idProveedor' });
 //OrdenDeCompra.belongsTo(Provedores, { foreignKey: 'idProveedor' });
 
@@ -58,5 +74,6 @@ export {
   RegimenFacturacion, Cajas,FacturaProveedores, AbonosProveedores, 
   Categorias, Atributos, VariacionesProducto,
   Productos, Provedores, CategoriasDeProvedores,
+  Dosificaciones,Pack,DetallesPack,
   Imagenes, Documentacion
 }

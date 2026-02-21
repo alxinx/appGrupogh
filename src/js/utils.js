@@ -14,5 +14,8 @@ export const formatMoney = (n, decimals = 0) => {
  * Útil para cálculos antes de enviar al servidor
  */
 export const cleanMoney = (str) => {
-    return Number(str.replace(/[^0-9.-]+/g, ""));
+    if (!str) return "0";
+    // Eliminamos el símbolo de peso, los espacios y TODOS los puntos
+    return str.replace(/[$\s.]/g, ''); 
 };
+

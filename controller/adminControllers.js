@@ -386,8 +386,11 @@ const editarProducto = async (req, res) => {
     }
 }
 
+
+
+//DASHBOARD DOSIDI
 const dosificar = async (req, res) => {
-    return res.status(201).render('./administrador/inventarios/dose', {
+    return res.status(201).render('./administrador/dose/new', {
         pagina: "Dosificacion de productos",
         subPagina: "Dosificar Productos",
         csrfToken: req.csrfToken(),
@@ -398,6 +401,13 @@ const dosificar = async (req, res) => {
 }
 
  
+
+
+
+
+
+
+
 
 // -> Guardo las facturas/ ordenes de compra y las pongo en el inventario global. 
 const batchBuyOrder = async (req, res) => {
@@ -1115,13 +1125,23 @@ const categoriasJson = async (req, res) => {
 
 
 const skuJson = async (req, res) => {
-    const { checkSku } = req.params;
-    const sku = await Productos.findOne({
-        where: { sku: checkSku },
-        attributes: ['idProducto', 'nombreProducto', 'sku', 'ean',],
-        raw: true
-    })
-    return res.json(sku)
+    try {
+        const { checkSku } = req.params;
+        const sku = await Productos.findOne({
+            where: { sku: checkSku },
+            attributes: ['idProducto', 'nombreProducto', 'sku', 'ean'],
+            raw: true
+        });
+
+        if (!sku) {
+            return res.status(404).json({ msg: 'Producto no encontrado' });
+        }
+
+        return res.json(sku);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ msg: 'Error en el servidor' });
+    }
 }
 
 

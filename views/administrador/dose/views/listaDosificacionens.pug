@@ -1,0 +1,80 @@
+div(class="bg-gray-50  rounded-t-2xl  p-3 shadow-sm border border-slate-100  overflow-hidden")
+
+        div(class="flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+
+            div
+                h2(class="h2 text-gh-primaryHover")
+                    i(class="fi-rr-list mr-3")
+                    | Listado Completo de las dosificaciones.
+                p(class="text-sm text-slate-400")
+                    | Lista completa de todas las dosificaciones hechas
+
+            form(class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3")
+
+                div(class="relative")
+                    input( type="text" name="search" placeholder="Buscar código o fecha..." class="input input-has-icon-left"
+                    )
+                    i(class="fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
+
+
+                div(class="col-span-9 select-wrapper")
+                    select( name="estado" class="field-select" )
+                        option(value="") Todos los estados
+                        option(value="completado") Completado
+                        option(value="pendiente") Pendiente
+                        option(value="anulado") Anulado
+                    span.select-icon.fi-rr-chevron-double-down
+
+               
+        div(class="overflow-x-auto pt-4 ")
+          table(class="w-full text-left text-2xs border-collapse ")
+            thead
+              tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                th(class="w-1/8 px-2 py-4 text-center text-gray-600") Fecha Creada
+                th(class="w-1/12 px-3  text-center text-gray-600") Código
+                th(class="w-1/6 px-2  text-center text-gray-600") Nro Paquetes
+                th(class="w-1/3 px-2  text-center text-gray-600") Productos
+                th(class="w-1/8 px-2  text-center text-gray-600") 
+
+            tbody(class="divide-y divide-slate-100 ")
+                  //- Row 1
+                  tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+                    td(class="w-1/8  px-2 py-5")
+                      div(class="flex items-center space-x-3")
+                        i.fi-rr-daily-calendar.mr-3
+                        span.h3 10 enero 2027
+                    
+                    td(class="w-1/12  px-2 py-5 text-center")
+                        span.status-chip.status-active
+                            span.status-dot
+                            | D508F
+
+                    td(class="w-1/6 px-2  text-center") 
+                      p(class="font-bold text-slate-800 ") 34
+
+
+                    td(class="w-1/3 px-2 text-center")
+                      div(class="flex flex-wrap gap-2 justify-center")
+                        span.status-chip.status-pending.ml-1.mr-1
+                            h4.h4.text-xm.text-black Camiseta Pulso Para Hombre
+                            
+                        
+                        
+                        
+                    td(class="px-2 py-5 text-center")
+                      a(href=`/admin/dosificaciones/ver/` class="btn btn-secondary text-xs") 
+                        i.fi-rr-eye.text-xs
+                        |Ver Mas
+
+
+        div(class="px-8 py-4 bg-slate-50/30  border-t border-slate-100  flex items-center justify-between")
+            p(class="text-xs text-slate-400")
+                | Mostrando 
+                span(class="font-bold text-slate-600 ") 4
+                |  de 
+                span(class="font-bold text-slate-600 ") 12
+                |  Dosificaciones
+
+              
+              
+
