@@ -14,7 +14,7 @@ window.generarPaginacion = (contenedorId, totalPaginas, paginaActual, callback) 
         const clasesInactivo = "paginadorInactivo";
         const clasesDisabled = "paginadorDeshabilidado";
 
-        boton.className = `${clasesBase} ${deshabilitado ? clasesDisabled : (activo ? clasesActivo : clasesInactivo)}`;
+        boton.className = `${clasesBase} ${deshabilitado ? clasesDisabled : (activo ? clasesActivo : clasesInactivo)} cursor-pointer`;
         
         if (!deshabilitado) {
             boton.onclick = (e) => {
@@ -27,12 +27,18 @@ window.generarPaginacion = (contenedorId, totalPaginas, paginaActual, callback) 
         return boton;
     };
 
+    const maxBotones = 5;
+    let inicio = Math.floor((paginaActual - 1) / maxBotones) * maxBotones + 1;
+    let fin = Math.min(inicio + maxBotones - 1, totalPaginas);
+
+    // Atras
     contenedor.appendChild(crearBoton('«', paginaActual - 1, false, paginaActual === 1));
 
-    for (let i = 1; i <= totalPaginas; i++) {
+    // Rangos de numeracin
+    for (let i = inicio; i <= fin; i++) {
         contenedor.appendChild(crearBoton(i, i, i === paginaActual));
     }
 
+    // Siguiente
     contenedor.appendChild(crearBoton('»', paginaActual + 1, false, paginaActual === totalPaginas));
-    
 };

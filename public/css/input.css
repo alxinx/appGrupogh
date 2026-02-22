@@ -15,8 +15,51 @@
   --radius-gh: 12px;
 }
 
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+} 
+
+.tarjeta-lote .content-lote {
+    display: none;
+}
+
+.tarjeta-lote.is-open .content-lote {
+    display: block;
+    animation: fadeInDown 0.3s ease-out;
+}
+
+/* Rotación de la flecha cuando está abierto */
+.tarjeta-lote.is-open .icon-arrow {
+    transform: rotate(180deg);
+}
+
+.icon-flecha {
+    transform: rotate(0deg);
+}
+
+/* Cuando quitamos el 'is-collapsed', la flecha rota */
+.group:not(.is-collapsed) .icon-flecha {
+    transform: rotate(180deg);
+}
+
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 @layer components {
 
+
+  /* Rotación de la flecha al colapsar */
+.is-collapsed .fi-rr-angle-small-down {
+    transform: rotate(-180deg);
+}
+
+/* Opcional: Si prefieres una transición suave de altura en lugar de 'hidden' */
+.group:not(.is-collapsed) .collapsible-content {
+    max-height: 1000px;
+    opacity: 1;
+}
   /*BODYS*/
   .mainDashboard {
     @apply min-h-[200px]  grid grid-cols-12 gap-3 items-start
@@ -94,6 +137,10 @@
     @apply text-xs uppercase tracking-wide text-gray-500;
   }
 
+
+  .bgforCode {
+    @apply flex items-center justify-center p-2  bg-black shadow-2xs shadow-gray-200 text-green-700
+  }
   .helper-text {
     @apply mt-1 text-xs text-gray-500;
   }

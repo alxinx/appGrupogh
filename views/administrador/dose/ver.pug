@@ -19,21 +19,35 @@ block contenedor
                             
                             //STATS
 
-                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-5 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
                                 //- Card 1
-                                include ./stats/numberPacks.pug
-                                include ./stats/numberDose.pug 
-                                include ./stats/numberProducts.pug 
-                                include ./stats/numberForCustomer.pug
+                                
+                                include ./stats/dataCreateDose.pug
+                                include ./stats/allPackages.pug
+                                include ./stats/unitsPerPackage.pug
+                                include ./stats/unitsPackagSurpluse.pug
+                                include ./stats/allProducts.pug
+                                
 
                             //Listado
                             div(class="col-span-12 grid grid-cols-12 items-start")    
                                 //Columna 1
-                                div(class="col-span-12 md:col-span-12 grid grid-cols-1 gap-4 cards cardsWhite p-6")
-                                    include ./views/listaDosificacionens.pug
+                                include ./views/columBatchByDose.pug 
+
+
+                                    
+                                    
+                                    
+                                    
+
+    
+
+                                //Columna 2
+                                
 
 
 
 
-                include ./views/modalProducts.pug
+                //include ./views/modalProducts.pug
+                script(src="/js/doseView.js")  
                 script(src="/js/dropdownBtn.js")  

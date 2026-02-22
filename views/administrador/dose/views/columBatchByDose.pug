@@ -1,0 +1,61 @@
+//Lista de lotes
+div(class="col-span-12 md:col-span-3 grid grid-cols-1 gap-4 cards cardsWhite p-6 group is-collapsed")
+    //- HEADER: Al hacer clic, quita o pone la clase 'is-collapsed'
+    div(class="flex items-center justify-between mb-2 cursor-pointer select-none" onclick="this.parentElement.classList.toggle('is-collapsed')")
+        div(class="flex items-center gap-3")
+            div(class="w-10 h-10 rounded-xl bg-[#dcbdfe] text-slate-900 flex items-center justify-center")
+                i.fi-rr-inventory-alt
+            h2(class="font-bold text-[#8a40d8]") Lote 1  
+        
+        div(class="flex items-center gap-2")
+            span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide") 4 tipos
+             span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide w-fit") 3 Lotes
+        i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
+
+    //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
+    div(class="grid gap-4 overflow-hidden transition-all duration-300 group-[.is-collapsed]:hidden")
+
+        //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
+        a(class="bgforCode cursor-pointer") 
+            i.fi-rr-barcode-read.greenFont.mr-3.text-xl
+            h3.mb-1.uppercase codigoEtiqueta
+
+        ul(class="grid gap-2")
+            //- Aquí iría tu 'each' de prendas
+            li(class="flex items-center justify-between p-2 rounded-xl bg-gh-grayText/5 shadow-2xs shadow-gray-200")
+                div(class="flex items-center gap-3")
+                    i.fi-rr-tshirt.text-gh-primaryHover
+                    span(class="text-gh-primaryHover") prueba de nombre prenda
+                span(class="font-black text-2xs text-gh-grayText") 3       
+
+//Lista de lotes de residuo
+div(class="col-span-12 md:col-span-3 grid grid-cols-1 gap-4 cards bg-gh-primaryHover p-6 group is-collapsed")
+    //- HEADER: Al hacer clic, quita o pone la clase 'is-collapsed'
+    div(class="flex items-center justify-between mb-2 cursor-pointer select-none" onclick="this.parentElement.classList.toggle('is-collapsed')")
+        div(class="flex items-center gap-3")
+            div(class="w-10 h-10 rounded-xl bg-gh-grayBorder text-slate-900 flex items-center justify-center")
+                i.fi-rr-file-minus
+            h2(class="font-bold text-gh-grayBorder") Lote de residuo
+        
+        div(class="flex items-center gap-2")
+            span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide") 4 tipos
+
+        i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
+
+    //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
+    div(class="grid gap-4 overflow-hidden transition-all duration-300 group-[.is-collapsed]:hidden")
+
+        //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
+        a(class="bgforCode cursor-pointer") 
+            i.fi-rr-barcode-read.greenFont.mr-3.text-xl
+            h3.mb-1.uppercase codigoEtiqueta
+
+        ul(class="grid gap-2")
+            //- Aquí iría tu 'each' de prendas
+            li(class="flex items-center justify-between p-2 rounded-xl bg-gh-grayBorder shadow-2xs shadow-gray-200")
+                div(class="flex items-center gap-3")
+                    i.fi-rr-tshirt.text-gh-primaryHover
+                    span(class="text-gh-primaryHover") prueba de nombre prenda
+                span(class="font-black text-2xs text-gh-grayText") 3 
+
+                               

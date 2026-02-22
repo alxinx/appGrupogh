@@ -1,0 +1,10 @@
+div#modal-productos(class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 items-center justify-center p-4")
+    div(class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100")
+        div(class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50")
+            h3(class="text-lg font-bold text-slate-800 flex items-center")
+                i.fi-rr-box-open.mr-2.text-gh-primaryHover
+                | Contenido de la Dosificación
+            button(onclick="document.getElementById('modal-productos').classList.add('hidden'); document.getElementById('modal-productos').classList.remove('flex')" class="text-slate-400 hover:text-gh-primaryHover cursor-pointer     transition-colors")
+                i.fi-rr-cross-small.text-2xl
+        div#modal-body-productos(class="p-8 flex flex-wrap justify-center gap-2 max-h-[60vh] overflow-y-auto")
+            //- Aquí se inyectan los productos asincrónicamente

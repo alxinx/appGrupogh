@@ -1,0 +1,49 @@
+/*
+ * ATTENTION: The "eval" devtool has been used (maybe by default in mode: "development").
+ * This devtool is neither made for production nor for readable output files.
+ * It uses "eval()" calls to create a separate source file in the browser devtools.
+ * If you are trying to read the output file, select a different devtool (https://webpack.js.org/configuration/devtool/)
+ * or disable the default devtool with "devtool: false".
+ * If you are looking for production-ready output files, see mode: "production" (https://webpack.js.org/configuration/mode/).
+ */
+/******/ (() => { // webpackBootstrap
+/******/ 	"use strict";
+/******/ 	var __webpack_modules__ = ({
+
+/***/ "./src/js/listadoDose.js"
+/*!*******************************!*\
+  !*** ./src/js/listadoDose.js ***!
+  \*******************************/
+(__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) {
+
+eval("{__webpack_require__.r(__webpack_exports__);\n(function() {\n    function debounce(func, wait) {\n        let timeout;\n        return function(...args) {\n            clearTimeout(timeout);\n            timeout = setTimeout(() => func.apply(this, args), wait);\n        };\n    }\n\n    const tbody = document.querySelector('tbody');\n    const inputSearch = document.querySelector('input[name=\"search\"]');\n    const selectEstado = document.querySelector('select[name=\"estado\"]');\n    const countActual = document.querySelector('#count-actual');\n    const countTotal = document.querySelector('#count-total');\n    const paginacionContainer = document.querySelector('#paginacion-container');\n\n    let paginaActual = 1;\n\n    // 1. CARGA DE WIDGETS GLOBALES (Corregido)\n    const cargarWidgetsGlobales = async () => {\n    try {\n        // Apuntamos a la nueva ruta única\n        const res = await fetch('/admin/api/dosificaciones/stats-global'); \n        const data = await res.json();\n        \n        console.log(\"Ahora sí, datos globales:\", data);\n\n        const elDose = document.querySelector('#widget-total-dose');\n        const elPacks = document.querySelector('#widget-total-packs');\n\n        if (elDose) elDose.innerText = data.totalDosificaciones;\n        if (elPacks) elPacks.innerText = data.totalPacks;\n    } catch (error) {\n        console.error(\"Error:\", error);\n    }\n};\n\n    const cargarDosificaciones = async () => {\n        const valorBusqueda = inputSearch.value.trim() || 'all';\n        const estado = selectEstado ? selectEstado.value : '';\n        const url = `/admin/api/dosificaciones/${valorBusqueda}?pagina=${paginaActual}&estado=${estado}`;\n\n        try {\n            const res = await fetch(url);\n            const data = await res.json();\n            console.log(\"Datos del buscador:\", data); // Verifica que 'data.dosificaciones' exista\n            renderizarTabla(data.dosificaciones);\n            actualizarPaginacion(data); \n            // Widget de filtrados (Resultados actuales)\n            if (document.querySelector('#widget-filtrados')) \n                document.querySelector('#widget-filtrados').innerText = data.total;\n        } catch (error) {\n            console.error(\"Error cargando datos:\", error);\n        }\n    };\n\n    function renderizarTabla(lista) {\n        if (!lista || lista.length === 0) {\n            tbody.innerHTML = `<tr><td colspan=\"5\" class=\"text-center py-10 text-slate-400\">🫠 No se encontraron dosificaciones</td></tr>`;\n            return;\n        }\n\n        tbody.innerHTML = lista.map(d => `\n            <tr class=\"border-b border-gray-100 hover:bg-gray-100 transition-colors\">\n                <td class=\"px-2 py-5 text-center\">\n                    <div class=\"flex items-center justify-center space-x-3\">\n                        <i class=\"fi-rr-daily-calendar mr-2\"></i>\n                        <span class=\"h3\">${d.fecha}</span>\n                    </div>\n                </td>\n                <td class=\"px-2 py-5 text-center\">\n                    <span class=\"status-chip status-active\">\n                        <span class=\"status-dot\"></span>${d.codigo}\n                    </span>\n                </td>\n                <td class=\"px-2 text-center\">\n                    <p class=\"font-bold text-slate-800\">${d.nroPaquetes}</p>\n                </td>\n                <td class=\"px-2 text-center\">\n                    <button class=\"btn-ver-productos text-gh-primaryHover font-bold underline text-xs cursor-pointer\" data-id=\"${d.id}\">\n                        <i class=\"fi-rr-box-open mr-1\"></i> Ver productos\n                    </button>\n                </td>\n                <td class=\"px-2 py-5 text-center\">\n                    <a href=\"/admin/dosificaciones/ver/${d.id}\" class=\"btn btn-secondary text-xs\">\n                        <i class=\"fi-rr-eye text-xs\"></i> Ver Dosificación\n                    </a>\n                </td>\n            </tr>\n        `).join('');\n    }\n\n    function actualizarPaginacion(data) {\n        if (countActual) countActual.innerText = data.dosificaciones ? data.dosificaciones.length : 0;\n        if (countTotal) countTotal.innerText = data.total || 0;\n        if (!paginacionContainer) return;\n\n        // Usamos la lógica de rango de 5 que definimos\n        const totalPaginas = data.paginas;\n        const maxBotones = 5;\n        let inicio = Math.floor((paginaActual - 1) / maxBotones) * maxBotones + 1;\n        let fin = Math.min(inicio + maxBotones - 1, totalPaginas);\n\n        let htmlPaginacion = '';\n        // Botón Atrás\n        htmlPaginacion += `<button class=\"paginador ${paginaActual === 1 ? 'paginadorDeshabilidado' : 'paginadorInactivo'}\" data-pagina=\"${paginaActual - 1}\" ${paginaActual === 1 ? 'disabled' : ''}>«</button>`;\n        \n        for (let i = inicio; i <= fin; i++) {\n            htmlPaginacion += `<button class=\"paginador ${i === paginaActual ? 'paginadorActivo' : 'paginadorInactivo'}\" data-pagina=\"${i}\">${i}</button>`;\n        }\n\n        // Botón Siguiente\n        htmlPaginacion += `<button class=\"paginador ${paginaActual === totalPaginas || totalPaginas === 0 ? 'paginadorDeshabilidado' : 'paginadorInactivo'}\" data-pagina=\"${paginaActual + 1}\" ${paginaActual === totalPaginas || totalPaginas === 0 ? 'disabled' : ''}>»</button>`;\n        \n        paginacionContainer.innerHTML = htmlPaginacion;\n    }\n\n    // --- DELEGACIÓN DE EVENTOS ---\n    document.addEventListener('click', async (e) => {\n        // Clic en Paginación\n        if (e.target.matches('#paginacion-container button')) {\n            paginaActual = parseInt(e.target.dataset.pagina);\n            cargarDosificaciones();\n            window.scrollTo({ top: 0, behavior: 'smooth' });\n        }\n\n        // Clic en Ver Productos (Modal)\n        if (e.target.closest('.btn-ver-productos')) {\n            const id = e.target.closest('.btn-ver-productos').dataset.id;\n\n            //ABRO el modal\n    document.addEventListener('click', async (e) => {\n    // 1. Manejo del Modal (usando closest para capturar el botón aunque toquen el icono)\n    const btnProductos = e.target.closest('.btn-ver-productos');\n    \n    if (btnProductos) {\n        const id = btnProductos.dataset.id;\n        const modal = document.querySelector('#modal-productos');\n        const modalBody = document.querySelector('#modal-body-productos');\n\n        // Reset y mostrar modal\n        if (modal) {\n            modal.classList.remove('hidden');\n            modal.classList.add('flex');\n            modalBody.innerHTML = '<p class=\"text-center w-full\">Cargando...</p>';\n        }\n\n        try {\n            const res = await fetch(`/admin/api/dosificaciones/productos/${id}`);\n            const data = await res.json();\n            \n            // Renderizar productos\n            modalBody.innerHTML = data.productos.map(p => `\n                <span class=\"subItems\">\n                    ${p}\n                </span>\n            `).join('') || ' 🫠 No hay productos';\n            \n        } catch (error) {\n            modalBody.innerHTML = '<p class=\"text-red-500\">Error al cargar productos</p>';\n        }\n    }\n\n  \n});\n            \n        }\n    });\n\n    if (inputSearch) inputSearch.addEventListener('input', debounce(() => { paginaActual = 1; cargarDosificaciones(); }, 300));\n    if (selectEstado) selectEstado.addEventListener('change', () => { paginaActual = 1; cargarDosificaciones(); });\n\n    // Ejecución inicial\n    cargarWidgetsGlobales();\n    cargarDosificaciones();\n\n\n\n    \n\n\n})();\n\n\n\n\n//# sourceURL=webpack://GRUPO_GH/./src/js/listadoDose.js?\n}");
+
+/***/ }
+
+/******/ 	});
+/************************************************************************/
+/******/ 	// The require scope
+/******/ 	var __webpack_require__ = {};
+/******/ 	
+/************************************************************************/
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	(() => {
+/******/ 		// define __esModule on exports
+/******/ 		__webpack_require__.r = (exports) => {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	})();
+/******/ 	
+/************************************************************************/
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module can't be inlined because the eval devtool is used.
+/******/ 	var __webpack_exports__ = {};
+/******/ 	__webpack_modules__["./src/js/listadoDose.js"](0,__webpack_exports__,__webpack_require__);
+/******/ 	
+/******/ })()
+;

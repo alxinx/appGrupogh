@@ -1,14 +1,11 @@
 div(class="tarjetaBase")
     div(class="relative")
-      p(class="text-2xl font-medium  text-center text-slate-500 dark:text-slate-400 mb-1 ")
-          
-          | Dosificaciones
-      div(class="flex items-end space-x-2 justify-center ")
-      
-        h1.h1.text-4xl.text-center.text-gh-primaryHover 
-            //i.material-symbols-outlined repartition
-            i.fi-rr-warehouse-alt
-            | 4 
-    h5.h5.text-center  Grupos de paquetes
+        p(class="text-2xl font-medium text-center text-slate-500 dark:text-slate-400 mb-1")
+            | Dosificaciones
         
-    
+        //- Contenedor flex para alinear icono y número horizontalmente
+        div(class="flex items-center justify-center space-x-3 text-gh-primaryHover")
+            i.fi-rr-warehouse-alt.text-4xl
+            h1#widget-total-dose.text-4xl.font-bold.text-gh-primaryHover 0
+            
+    h5(class="h5 text-center mt-2") Grupos de paquetes  

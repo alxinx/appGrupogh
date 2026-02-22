@@ -22,3 +22,15 @@ export const limpiarPrecio = (precio) => {
     const numeroLimpio = precio.toString().replace(/[^0-9]/g, '');
     return parseInt(numeroLimpio, 10);
 };
+
+
+export const formatearFecha = (fechaRaw) => {
+    if (!fechaRaw) return "Sin fecha";
+    
+    const fecha = new Date(fechaRaw);
+    return new Intl.DateTimeFormat('es-ES', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    }).format(fecha); 
+};

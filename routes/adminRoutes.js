@@ -2,10 +2,10 @@ import express from "express";
 import csrf from 'csurf';
 const router = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, postNuevaTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, newProduct, saveProduct, listaProductos, verProducto, editarProducto, dosificar,batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson } from "../controller/adminControllers.js"
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto,batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson } from "../controller/adminControllers.js"
 
 //CONTROLADOR DOSIFICACIOONES:
-import {guardarDosificacion,homeDose, newDose} from '../controller/dosificacionController.js'
+import {guardarDosificacion,homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales} from '../controller/dosificacionController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
@@ -80,6 +80,9 @@ routes.post('/provedores/new',
 routes.get('/dosificaciones/', homeDose); //DASHBOARD
 routes.get('/dosificaciones/new/', newDose);//Load paginna guardar
 routes.post('/dosificaciones/guardar', guardarDosificacion)
+routes.get('/dosificaciones/ver/:idDosificacion' , verDosificacion)
+
+
 
 
 
@@ -108,6 +111,18 @@ routes.get('/json/provedores/', filterSupplierListJson);
 
 // API CHECKS
 routes.get('/api/check-nit/:nit', checkNitSupplier);
+
+
+routes.get('/api/dosificaciones/stats-global', widgetGlobales);
+
+routes.get('/api/dosificaciones/productos/:id', obtenerProductosPorDose);
+routes.get('/api/dosificaciones/metadata/:id', obtenerMetadataDose);
+routes.get('/api/dosificaciones/:query',obtenerDosificacionesPaginadas)
+
+
+
+
+
 
 
 
