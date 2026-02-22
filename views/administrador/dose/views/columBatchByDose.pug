@@ -15,9 +15,9 @@ each lote in lotes
                 h2(class=`font-bold ${textClass}`)= lote.esResiduo ? 'Lote de residuo' : `Lote ${lote.numLote}`
             
             div(class="flex items-center gap-2")
-                span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide")= `${lote.numTipos} tipos`
+                span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide")= `${lote.numTipos} Productos`
                 if !lote.esResiduo
-                    span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide w-fit")= `${lote.cantidadBultos} Lotes`
+                    span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide w-fit")= `${lote.cantidadBultos} Paquetes`
             i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
 
         //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'

@@ -357,16 +357,14 @@ const obtenerMetadataDose = async (req, res) => {
             }]
         });
 
+        if (!dose) return res.status(404).json({ error: 'No encontrada' });
+
         const gruposLotes = dose.PACKs.reduce((acc, pack) => {
             const lote = pack.numLote;
             if (!acc[lote]) acc[lote] = [];
             acc[lote].push(pack);
             return acc;
         }, {});
-        const totalColumnas = Object.keys(gruposLotes).length;
-        const colSpan = totalColumnas > 0 ? Math.floor(12 / Math.min(totalColumnas, 4)) : 12;
-
-        if (!dose) return res.status(404).json({ error: 'No encontrada' });
 
         // DEBUG: Verifica si aquí los valores vienen en 0 o con datos
 
