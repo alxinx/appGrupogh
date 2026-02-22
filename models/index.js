@@ -10,6 +10,8 @@ import Productos from './Productos.js'
 import Imagenes from './Imagenes.js'; import Documentacion from './Documentacion.js'
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
 
+import Stock from './Stock.js'
+
 import Cajas from './Cajas.js'
 import FacturaProveedores from './FacturaProvedores.js'
 import AbonosProveedores from './abonoProvedores.js'
@@ -62,6 +64,22 @@ Productos.hasMany(DetallesPack, { foreignKey: 'idProducto' });
 
 
 
+Stock.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
+Productos.hasMany(Stock, { foreignKey: 'idProducto', as: 'existencias' });
+
+Stock.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoVenta', as: 'ubicacion' });
+PuntosDeVenta.hasMany(Stock, { foreignKey: 'idPuntoVenta', as: 'inventario' });
+
+Stock.belongsTo(Pack, { foreignKey: 'idPack', as: 'packOrigen' });
+Pack.hasMany(Stock, { foreignKey: 'idPack', as: 'stocksGenerados' });
+
+Stock.belongsTo(FacturaProveedores, { foreignKey: 'idFacturaPro', as: 'factura' });
+FacturaProveedores.hasMany(Stock, { foreignKey: 'idFacturaPro', as: 'ingresos' });
+
+
+FacturaProveedores.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoVentaDestino', as: 'destino' });
+
+
 //Provedores.hasMany(OrdenDeCompra, { foreignKey: 'idProveedor' });
 //OrdenDeCompra.belongsTo(Provedores, { foreignKey: 'idProveedor' });
 
@@ -74,6 +92,6 @@ export {
   RegimenFacturacion, Cajas,FacturaProveedores, AbonosProveedores, 
   Categorias, Atributos, VariacionesProducto,
   Productos, Provedores, CategoriasDeProvedores,
-  Dosificaciones,Pack,DetallesPack,
+  Dosificaciones,Pack,DetallesPack, Stock,
   Imagenes, Documentacion
 }
