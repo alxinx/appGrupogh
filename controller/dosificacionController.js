@@ -29,7 +29,7 @@ const newDose = async (req, res) => {
         csrfToken: req.csrfToken(),
         currentPath: '/dosificaciones',
         subPath: 'dosificar',
-        btnName : "Guardar Dosificación"
+        btnName: "Guardar Dosificación"
     })
 }
 
@@ -69,17 +69,17 @@ const guardarDosificacion = async (req, res) => {
 
         const mapaPrecios = {};
         productos.forEach(p => {
-                mapaPrecios[p.idProducto] = p.valorUnidad;
-            });
-        
-        
+            mapaPrecios[p.idProducto] = p.valorUnidad;
+        });
+
+
         for (const [index, grupo] of resultadoKitting.packs.entries()) {
-            
+
             // El contador debe moverse dentro del map para que cada pack sea único
             const packsData = Array.from({ length: grupo.cantidad }).map(() => {
                 const correlativo = String(contadorGlobalPacks).padStart(3, '0');
                 const codigo = `D${prefijoDose}-P${correlativo}`;
-                
+
                 contadorGlobalPacks++; // Incrementamos para el siguiente bulto
 
                 return {
@@ -89,15 +89,15 @@ const guardarDosificacion = async (req, res) => {
                     tipo: 'ESTANDAR',
                     estado: 'EMPACADO'
                 };
-            });''
+            }); ''
 
-            const packsCreados = await Pack.bulkCreate(packsData, { 
-                transaction: t, 
-                returning: true 
+            const packsCreados = await Pack.bulkCreate(packsData, {
+                transaction: t,
+                returning: true
             });
 
 
-            
+
 
             // Preparar los detalles para este grupo de bultos
             const detallesBulk = [];
@@ -112,7 +112,7 @@ const guardarDosificacion = async (req, res) => {
                 });
             });
             await DetallesPack.bulkCreate(detallesBulk, { transaction: t });
-                }
+        }
 
         // 5. Manejar el Pack de Residuo (Saldo) si existe
         if (Object.keys(resultadoKitting.residuo).length > 0) {
@@ -201,7 +201,7 @@ function ejecutarAlgoritmoKittingBackend(productosArray, capacidad) {
 const obtenerDosificacionesPaginadas = async (req, res) => {
     try {
         const { query } = req.params;
-        
+
         const { pagina = 1, estado = '' } = req.query;
         const limite = parseInt(process.env.LIMIT_PER_PAGE)
         const offset = (pagina - 1) * limite;
@@ -212,18 +212,18 @@ const obtenerDosificacionesPaginadas = async (req, res) => {
         //     whereCondition.idDosificacion = { [Op.like]: `${busquedaLimpia}%` };
         // }
         if (query !== 'all') {
-            whereCondition.codigo = { [Op.like]: `%${query}%` }; 
+            whereCondition.codigo = { [Op.like]: `%${query}%` };
         }
-       // if (estado) whereCondition.estado = estado.toUpperCase();
-       if (estado !== '') {
+        // if (estado) whereCondition.estado = estado.toUpperCase();
+        if (estado !== '') {
             whereCondition.estado = estado;
         }
-        
+
         // Solo traemos Dosificación y contamos los Packs (mucho más rápido)
         const { count, rows } = await Dosificaciones.findAndCountAll({
             where: whereCondition,
-            include: [{ 
-                model: Pack, 
+            include: [{
+                model: Pack,
                 attributes: ['idPack'] // Solo traemos el ID para contar, nada más
             }],
             limit: limite,
@@ -251,18 +251,66 @@ const obtenerDosificacionesPaginadas = async (req, res) => {
 
 
 //VISUAL DE LA DOSIFICACION
-const verDosificacion = async(req, res)=>{
-    const { idDosificacion, codigo } = req.params;
-    
-    return res.status(201).render('./administrador/dose/ver', {
-        pagina: "Dosificacion de productos",
-        subPagina: `Ver dosificacion de ${codigo}`,
-        idDosificacion,
-        codigoDose: codigo, // Lo pasamos específicamente para el widget
-        csrfToken: req.csrfToken(),
-        currentPath: '/dosificaciones',
-        subPath: 'dosificaciones',
-    })
+const verDosificacion = async (req, res) => {
+    try {
+        const { idDosificacion, codigo } = req.params;
+
+        const dose = await Dosificaciones.findByPk(idDosificacion, {
+            include: [{
+                model: Pack,
+                as: 'PACKs',
+                include: [{
+                    model: DetallesPack,
+                    as: 'DETALLES_PACKs',
+                    include: [{ model: Productos, as: 'producto' }]
+                }]
+            }]
+        });
+
+        if (!dose) {
+            return res.redirect('/dosificaciones');
+        }
+
+        // Agrupar por numLote
+        const gruposLotes = dose.PACKs.reduce((acc, pack) => {
+            const lote = pack.numLote;
+            if (!acc[lote]) acc[lote] = [];
+            acc[lote].push(pack);
+            return acc;
+        }, {});
+
+        const lotesOrdenados = Object.keys(gruposLotes).sort((a, b) => a - b).map(numLote => {
+            const bultos = gruposLotes[numLote];
+            const primerPack = bultos[0];
+            return {
+                numLote,
+                esResiduo: primerPack.tipo === 'RESIDUO',
+                cantidadBultos: bultos.length,
+                detalles: primerPack.DETALLES_PACKs,
+                codigoEtiqueta: primerPack.codigoEtiqueta,
+                numTipos: primerPack.DETALLES_PACKs.length
+            };
+        });
+
+        const totalColumnas = lotesOrdenados.length;
+        // Si son 3 columnas -> span 4, si 4 -> span 3. Maximo 4 columnas por fila (span 3)
+        const colSpan = totalColumnas > 0 ? Math.floor(12 / Math.min(totalColumnas, 4)) : 12;
+
+        return res.status(201).render('./administrador/dose/ver', {
+            pagina: "Dosificacion de productos",
+            subPagina: `Ver dosificacion de ${codigo}`,
+            idDosificacion,
+            codigoDose: codigo,
+            csrfToken: req.csrfToken(),
+            currentPath: '/dosificaciones',
+            subPath: 'dosificaciones',
+            lotes: lotesOrdenados,
+            colSpan
+        });
+    } catch (error) {
+        console.error("Error al ver dosificación:", error);
+        res.status(500).send('Error interno del servidor');
+    }
 }
 
 
@@ -271,20 +319,20 @@ const verDosificacionDetalle = async (req, res) => {
     try {
         const { idDosificacion } = req.params;
         const dose = await Dosificacion.findByPk(idDosificacion, {
-        include: [{
-            model: Pack,
-            as: 'PACKs',
             include: [{
-                model: DetallesPack,
-                as: 'DETALLES_PACKs',
-                include: [{ model: Producto, as: 'producto' }]
+                model: Pack,
+                as: 'PACKs',
+                include: [{
+                    model: DetallesPack,
+                    as: 'DETALLES_PACKs',
+                    include: [{ model: Producto, as: 'producto' }]
+                }]
             }]
-        }]
-    });
+        });
 
 
 
-       
+
     } catch (error) {
         res.status(500).send('Error');
     }
@@ -293,16 +341,16 @@ const verDosificacionDetalle = async (req, res) => {
 
 //formatearFecha
 
-    const obtenerMetadataDose = async (req, res) => {
+const obtenerMetadataDose = async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         const dose = await Dosificaciones.findByPk(id, {
-            include: [{ 
-                model: Pack, 
+            include: [{
+                model: Pack,
                 as: 'PACKs',
-                include: [{ 
-                    model: DetallesPack, 
+                include: [{
+                    model: DetallesPack,
                     as: 'DETALLES_PACKs',
                     include: [{ model: Productos, as: 'producto' }]
                 }]
@@ -310,11 +358,11 @@ const verDosificacionDetalle = async (req, res) => {
         });
 
         const gruposLotes = dose.PACKs.reduce((acc, pack) => {
-        const lote = pack.numLote;
-        if (!acc[lote]) acc[lote] = [];
-                acc[lote].push(pack);
-                return acc;
-            }, {});
+            const lote = pack.numLote;
+            if (!acc[lote]) acc[lote] = [];
+            acc[lote].push(pack);
+            return acc;
+        }, {});
         const totalColumnas = Object.keys(gruposLotes).length;
         const colSpan = totalColumnas > 0 ? Math.floor(12 / Math.min(totalColumnas, 4)) : 12;
 
@@ -331,7 +379,7 @@ const verDosificacionDetalle = async (req, res) => {
             return accPack + sumaDetalles;
         }, 0);
 
-                const calculoSobrantes = dose.capacidadBolsa > 0 ? (totalPrendas % dose.capacidadBolsa) : 0;
+        const calculoSobrantes = dose.capacidadBolsa > 0 ? (totalPrendas % dose.capacidadBolsa) : 0;
 
 
         res.json({
@@ -340,7 +388,7 @@ const verDosificacionDetalle = async (req, res) => {
             unidadesPorPaquete: Number(dose.capacidadBolsa) || 0,
             sobrantes: Number(calculoSobrantes) || 0,
             totalUnidades: totalPrendas,
-            totalBultos: totalBultos 
+            totalBultos: totalBultos
         });
 
     } catch (error) {
@@ -360,10 +408,10 @@ const obtenerProductosPorDose = async (req, res) => {
                 // Quitamos el limit para ver todos los bultos
                 include: [{
                     model: DetallesPack,
-                    include: [{ 
-                        model: Productos, 
-                        as: 'producto', 
-                        attributes: ['nombreProducto'] 
+                    include: [{
+                        model: Productos,
+                        as: 'producto',
+                        attributes: ['nombreProducto']
                     }]
                 }]
             }]
@@ -372,7 +420,7 @@ const obtenerProductosPorDose = async (req, res) => {
         if (!dose) return res.status(404).json({ error: 'Dosificación no encontrada' });
 
         const packs = dose.PACKs || dose.Packs || [];
-        
+
         // Recorremos todos los bultos y todos sus detalles
         const todosLosProductos = packs.flatMap(p => {
             const detalles = p.DETALLES_PACKs || p.DetallesPacks || [];
@@ -386,7 +434,7 @@ const obtenerProductosPorDose = async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener productos' });
     }
-}; 
+};
 
 
 
@@ -409,16 +457,18 @@ const widgetGlobales = async (req, res) => {
 
 
 
-const nroPacks = async (req, res)=>{
+const nroPacks = async (req, res) => {
     try {
-        const total =  await  Dosificaciones.count();
-        res.json({total})
+        const total = await Dosificaciones.count();
+        res.json({ total })
 
     } catch (error) {
-        res.status(500).json({error: 'Error Al Contar'})
+        res.status(500).json({ error: 'Error Al Contar' })
     }
 }
 
 
-export { guardarDosificacion,homeDose, verDosificacionDetalle,obtenerMetadataDose,
-newDose, obtenerDosificacionesPaginadas,nroPacks,verDosificacion, widgetGlobales, obtenerProductosPorDose };
+export {
+    guardarDosificacion, homeDose, verDosificacionDetalle, obtenerMetadataDose,
+    newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales, obtenerProductosPorDose
+};

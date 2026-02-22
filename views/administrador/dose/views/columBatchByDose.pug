@@ -1,61 +1,37 @@
-//Lista de lotes
-div(class="col-span-12 md:col-span-3 grid grid-cols-1 gap-4 cards cardsWhite p-6 group is-collapsed")
-    //- HEADER: Al hacer clic, quita o pone la clase 'is-collapsed'
-    div(class="flex items-center justify-between mb-2 cursor-pointer select-none" onclick="this.parentElement.classList.toggle('is-collapsed')")
-        div(class="flex items-center gap-3")
-            div(class="w-10 h-10 rounded-xl bg-[#dcbdfe] text-slate-900 flex items-center justify-center")
-                i.fi-rr-inventory-alt
-            h2(class="font-bold text-[#8a40d8]") Lote 1  
-        
-        div(class="flex items-center gap-2")
-            span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide") 4 tipos
-             span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide w-fit") 3 Lotes
-        i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
+each lote in lotes
+    //- Definición de variables de estilo según tipo de lote
+    - const cardClass = lote.esResiduo ? 'bg-gh-primaryHover' : 'cardsWhite'
+    - const textClass = lote.esResiduo ? 'text-gh-grayBorder' : 'text-[#8a40d8]'
+    - const iconBg = lote.esResiduo ? 'bg-gh-grayBorder' : 'bg-[#dcbdfe]'
+    - const iconClass = lote.esResiduo ? 'fi-rr-file-minus' : 'fi-rr-inventory-alt'
+    - const listItemBg = lote.esResiduo ? 'bg-gh-grayBorder' : 'bg-gh-grayText/5'
 
-    //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
-    div(class="grid gap-4 overflow-hidden transition-all duration-300 group-[.is-collapsed]:hidden")
+    div(class=`col-span-12 md:col-span-${colSpan} grid grid-cols-1 gap-4 cards ${cardClass} p-6 group is-collapsed`)
+        //- HEADER: Al hacer clic, quita o pone la clase 'is-collapsed'
+        div(class="flex items-center justify-between mb-2 cursor-pointer select-none" onclick="this.parentElement.classList.toggle('is-collapsed')")
+            div(class="flex items-center gap-3")
+                div(class=`w-10 h-10 rounded-xl ${iconBg} text-slate-900 flex items-center justify-center`)
+                    i(class=iconClass)
+                h2(class=`font-bold ${textClass}`)= lote.esResiduo ? 'Lote de residuo' : `Lote ${lote.numLote}`
+            
+            div(class="flex items-center gap-2")
+                span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide")= `${lote.numTipos} tipos`
+                if !lote.esResiduo
+                    span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide w-fit")= `${lote.cantidadBultos} Lotes`
+            i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
 
-        //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
-        a(class="bgforCode cursor-pointer") 
-            i.fi-rr-barcode-read.greenFont.mr-3.text-xl
-            h3.mb-1.uppercase codigoEtiqueta
+        //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
+        div(class="grid gap-4 overflow-hidden transition-all duration-300 group-[.is-collapsed]:hidden")
 
-        ul(class="grid gap-2")
-            //- Aquí iría tu 'each' de prendas
-            li(class="flex items-center justify-between p-2 rounded-xl bg-gh-grayText/5 shadow-2xs shadow-gray-200")
-                div(class="flex items-center gap-3")
-                    i.fi-rr-tshirt.text-gh-primaryHover
-                    span(class="text-gh-primaryHover") prueba de nombre prenda
-                span(class="font-black text-2xs text-gh-grayText") 3       
+            //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
+            a(class="bgforCode cursor-pointer") 
+                i.fi-rr-barcode-read.greenFont.mr-3.text-xl
+                h3.mb-1.uppercase= lote.codigoEtiqueta
 
-//Lista de lotes de residuo
-div(class="col-span-12 md:col-span-3 grid grid-cols-1 gap-4 cards bg-gh-primaryHover p-6 group is-collapsed")
-    //- HEADER: Al hacer clic, quita o pone la clase 'is-collapsed'
-    div(class="flex items-center justify-between mb-2 cursor-pointer select-none" onclick="this.parentElement.classList.toggle('is-collapsed')")
-        div(class="flex items-center gap-3")
-            div(class="w-10 h-10 rounded-xl bg-gh-grayBorder text-slate-900 flex items-center justify-center")
-                i.fi-rr-file-minus
-            h2(class="font-bold text-gh-grayBorder") Lote de residuo
-        
-        div(class="flex items-center gap-2")
-            span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide") 4 tipos
-
-        i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
-
-    //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
-    div(class="grid gap-4 overflow-hidden transition-all duration-300 group-[.is-collapsed]:hidden")
-
-        //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
-        a(class="bgforCode cursor-pointer") 
-            i.fi-rr-barcode-read.greenFont.mr-3.text-xl
-            h3.mb-1.uppercase codigoEtiqueta
-
-        ul(class="grid gap-2")
-            //- Aquí iría tu 'each' de prendas
-            li(class="flex items-center justify-between p-2 rounded-xl bg-gh-grayBorder shadow-2xs shadow-gray-200")
-                div(class="flex items-center gap-3")
-                    i.fi-rr-tshirt.text-gh-primaryHover
-                    span(class="text-gh-primaryHover") prueba de nombre prenda
-                span(class="font-black text-2xs text-gh-grayText") 3 
-
-                               
+            ul(class="grid gap-2")
+                each det in lote.detalles
+                    li(class=`flex items-center justify-between p-2 rounded-xl ${listItemBg} shadow-2xs shadow-gray-200`)
+                        div(class="flex items-center gap-3")
+                            i.fi-rr-tshirt.text-gh-primaryHover
+                            span(class="text-gh-primaryHover")= det.producto.nombreProducto
+                        span(class="font-black text-2xs text-gh-grayText")= `${det.cantidad} por bolsa`
