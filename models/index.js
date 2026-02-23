@@ -9,6 +9,7 @@ import VariacionesProducto from './VariacionesProducto.js'
 import Productos from './Productos.js'
 import Imagenes from './Imagenes.js'; import Documentacion from './Documentacion.js'
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
+import Traslados from './Traslados.js'; import DetalleTraslados from './DetalleTraslados.js'
 
 import Stock from './Stock.js'
 
@@ -79,6 +80,18 @@ FacturaProveedores.hasMany(Stock, { foreignKey: 'idFacturaPro', as: 'ingresos' }
 
 FacturaProveedores.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoVentaDestino', as: 'destino' });
 
+// Un Traslado tiene muchos detalles
+Traslados.hasMany(DetalleTraslados, { foreignKey: 'idTraslado', as: 'items' });
+DetalleTraslados.belongsTo(Traslados, { foreignKey: 'idTraslado' });
+
+// Relaciones de Origen y Destino (Puntos de Venta)
+Traslados.belongsTo(PuntosDeVenta, { foreignKey: 'idOrigen', as: 'origen' });
+Traslados.belongsTo(PuntosDeVenta, { foreignKey: 'idDestino', as: 'destino' });
+
+// Relaciones del Detalle
+DetalleTraslados.belongsTo(Pack, { foreignKey: 'idPack', as: 'pack' });
+DetalleTraslados.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
+
 
 //Provedores.hasMany(OrdenDeCompra, { foreignKey: 'idProveedor' });
 //OrdenDeCompra.belongsTo(Provedores, { foreignKey: 'idProveedor' });
@@ -93,5 +106,6 @@ export {
   Categorias, Atributos, VariacionesProducto,
   Productos, Provedores, CategoriasDeProvedores,
   Dosificaciones,Pack,DetallesPack, Stock,
+  Traslados, DetalleTraslados,
   Imagenes, Documentacion
 }

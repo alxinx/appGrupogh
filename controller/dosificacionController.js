@@ -1,4 +1,5 @@
-import { Dosificaciones, Pack, DetallesPack, Productos } from '../models/index.js';
+import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados   } from '../models/index.js';
+import jwt from "jsonwebtoken"
 import { formatearFecha } from '../helpers/helpers.js';
 import db from '../config/bd.js';
 import { v4 as uuidv4 } from 'uuid'; // Para generar los códigos de etiqueta únicos
@@ -305,6 +306,7 @@ const verDosificacion = async (req, res) => {
             currentPath: '/dosificaciones',
             subPath: 'dosificaciones',
             lotes: lotesOrdenados,
+            packs: dose.PACKs, // Lista plana para la tabla de abajo
             colSpan
         });
     } catch (error) {
@@ -466,7 +468,102 @@ const nroPacks = async (req, res) => {
 }
 
 
+
+const trasladarPacks = async (req, res) => {
+    const { packs, idDestino } = req.body;
+    const token = req.cookies?._token;
+    if (!token) return res.status(401).json({ success: false, mensaje: 'Sesión expirada' });
+
+    let usuarioId;
+    try {
+        const decoded = jwt.verify(token, process.env.APP_PRIVATEKEY);
+        // Ajustamos según la estructura que mostraste: decoded.id.id o decoded.id
+        usuarioId = decoded.id?.id || decoded.id; 
+    } catch (error) {
+        return res.status(401).json({ success: false, mensaje: 'Token inválido' });
+    }
+    const t = await db.transaction();
+    
+
+    try {
+        // 1. Obtener los packs con sus detalles
+        const recordsPacks = await Pack.findAll({
+            where: { idPack: packs },
+            include: [{
+                model: DetallesPack,
+                as: 'DETALLES_PACKs',
+                include: [{ model: Productos, as: 'producto' }]
+            }],
+            transaction: t
+        });
+
+        // 2. Generar Código de Traslado Único
+        const ultimoTraslado = await Traslados.findOne({
+            order: [['createdAt', 'DESC']],
+            transaction: t
+        });
+        const nroSiguiente = ultimoTraslado ? parseInt(ultimoTraslado.codigoTraslado.split('-')[1]) + 1 : 1000;
+        const nuevoCodigo = `TR-${nroSiguiente}`;
+
+        // 3. Crear el Registro del Traslado (Encabezado)
+        // Usamos req.usuario que ya viene inyectado por tu middleware de autenticación
+
+    
+        const traslado = await Traslados.create({
+            codigoTraslado: nuevoCodigo,
+            idOrigen: 'BODEGA-VIRTUAL', // Tu identificador de bodega virtual
+            idDestino: idDestino, // Bodega Norte, El Tesoro, etc.
+            idUsuarioDespacha: usuarioId,
+            estado: 'EN_TRANSITO' // Cambiamos a EN_TRANSITO para que el destino lo vea
+        }, { transaction: t });
+
+        // 4. Procesar cada Pack seleccionado en la tabla
+        for (const pack of recordsPacks) {
+            
+            // Calculamos el valor del bulto sumando sus detalles
+            const valorTotalBulto = pack.DETALLES_PACKs.reduce((acc, det) => {
+                const precio = det.producto ? det.producto.precioVentaPublicoFinal : 0;
+                return acc + (precio * det.cantidad);
+            }, 0);
+
+            // Determinar producto de referencia (el primero que encuentre en el pack)
+            //const idProductoRef = pack.DETALLES_PACKs.length > 0 ? pack.DETALLES_PACKs[0].idProducto : null;
+
+            // CREAR REGISTRO EN STOCK (Escenario: El pack entra al inventario del destino)
+            // Nota: cantidadExistente es 1 porque es el pack cerrado
+            await Stock.create({
+                idPuntoVenta: idDestino,
+                idPack: pack.idPack,
+                idProducto: 0,
+                cantidadExistente: 1, 
+                cantidadOriginal: 1,
+                valorUnidad: valorTotalBulto,
+                estadoInterno: 'CERRADO'
+            }, { transaction: t });
+
+            // Crear el detalle del documento de traslado
+            await DetalleTraslados.create({
+                idTraslado: traslado.idTraslado,
+                idPack: pack.idPack,
+                cantidad: 1
+            }, { transaction: t });
+
+            // Actualizar estado del Pack a TRASLADADO
+            await pack.update({ estado: 'TRASLADADO' }, { transaction: t });
+        }
+
+        await t.commit();
+        res.json({ success: true, mensaje: 'Traslado exitoso', codigo: nuevoCodigo }); //
+
+    } catch (error) {
+        await t.rollback();
+        console.error("Error en traslado:", error);
+        res.status(500).json({ success: false, mensaje: 'Error interno' });
+    }
+};
+
 export {
     guardarDosificacion, homeDose, verDosificacionDetalle, obtenerMetadataDose,
-    newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales, obtenerProductosPorDose
+    newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales,
+    obtenerProductosPorDose, trasladarPacks
 };

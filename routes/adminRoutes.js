@@ -1,17 +1,17 @@
 import express from "express";
 import csrf from 'csurf';
-const router = express.Router(); // 2. Definir router antes de usarlo
+const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto,batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson } from "../controller/adminControllers.js"
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson } from "../controller/adminControllers.js"
+import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
-import {guardarDosificacion,homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales} from '../controller/dosificacionController.js'
+import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks } from '../controller/dosificacionController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
-const routes = express.Router();
 
 
 
@@ -39,7 +39,7 @@ routes.get('/inventario/listado', listaProductos);
 routes.get('/inventario/ver/:idProducto', verProducto)
 routes.get('/inventario/editar/:idProducto', editarProducto)
 routes.get('/inventario/batch/', batchBuyOrder)
- 
+
 
 //PROVEDORES
 routes.get('/provedores/', dashboardSupplier);
@@ -80,7 +80,8 @@ routes.post('/provedores/new',
 routes.get('/dosificaciones/', homeDose); //DASHBOARD
 routes.get('/dosificaciones/new/', newDose);//Load paginna guardar
 routes.post('/dosificaciones/guardar', guardarDosificacion)
-routes.get('/dosificaciones/ver/:idDosificacion' , verDosificacion)
+routes.get('/dosificaciones/ver/:idDosificacion', verDosificacion)
+routes.post('/dosificaciones/trasladar', csrfProtection, trasladarPacks)
 
 
 
@@ -108,6 +109,10 @@ routes.get('/json/productos/', filterProductListJson)
 routes.get('/json/imageProduct/:idProducto', jsonImageProduct)
 routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
 routes.get('/json/provedores/', filterSupplierListJson);
+routes.get('/json/tiendas/', async (req, res) => {
+    const tiendas = await PuntosDeVenta.findAll({ attributes: ['idPuntoDeVenta', 'nombreComercial'] });
+    res.json(tiendas);
+});
 
 // API CHECKS
 routes.get('/api/check-nit/:nit', checkNitSupplier);
@@ -117,7 +122,7 @@ routes.get('/api/dosificaciones/stats-global', widgetGlobales);
 
 routes.get('/api/dosificaciones/productos/:id', obtenerProductosPorDose);
 routes.get('/api/dosificaciones/metadata/:id', obtenerMetadataDose);
-routes.get('/api/dosificaciones/:query',obtenerDosificacionesPaginadas)
+routes.get('/api/dosificaciones/:query', obtenerDosificacionesPaginadas)
 
 
 

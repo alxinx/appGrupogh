@@ -1,0 +1,43 @@
+div(class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6")
+    div(class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6")
+        h2(class="text-xl font-bold text-slate-800") Listado de Paquetes
+        
+        div(class="flex items-center gap-3")
+            button(type="button" id="btnTrasladarPacks" class="hidden flex items-center gap-2 px-6 py-2.5 bg-gh-primaryHover text-white rounded-xl font-bold hover:scale-105 transition-all shadow-md")
+                span(class="fi-rr-interchange")
+                span Trasladar Seleccionados
+            
+            div(class="relative")
+                input(type="text" id="busquedaPack" placeholder="Buscar etiqueta o lote..." class="pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20 w-64")
+                span(class="fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs")
+
+    div(class="overflow-x-auto")
+        table(class="w-full text-left border-separate border-spacing-y-2")
+            thead
+                tr(class="text-slate-400 text-xs uppercase tracking-wider")
+                    th(class="px-4 py-3 text-center")
+                        input(type="checkbox" id="selectAllPacks" class="w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover")
+                    th(class="px-4 py-3") Código Etiqueta
+                    th(class="px-4 py-3") Num Lote
+                    th(class="px-4 py-3") Tipo
+                    th(class="px-4 py-3") Estado
+                    th(class="px-4 py-3 text-right") Acciones
+            
+            tbody(id="tbodyPacks")
+                //- Se renderiza dinámicamente desde JS
+
+    div(class="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-50")
+        p(class="text-xs text-slate-400")
+            | Mostrando 
+            span(id="packsCountStart" class="font-bold text-slate-600") 0
+            |  a 
+            span(id="packsCountEnd" class="font-bold text-slate-600") 0
+            |  de 
+            span(id="packsCountTotal" class="font-bold text-slate-600") 0
+            |  resultados
+        
+        div(id="paginacionPacks" class="flex gap-2")
+            //- Se rellena desde JS
+
+script.
+    window.initialPacks = !{JSON.stringify(packs || [])};
