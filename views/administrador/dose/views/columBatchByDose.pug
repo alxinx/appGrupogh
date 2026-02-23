@@ -8,7 +8,7 @@ each lote in lotes
 
     div(class=`col-span-12 md:col-span-${colSpan} grid grid-cols-1 gap-4 cards ${cardClass} p-6 group is-collapsed`)
         //- HEADER: Al hacer clic, quita o pone la clase 'is-collapsed'
-        div(class="flex items-center justify-between mb-2 cursor-pointer select-none" onclick="this.parentElement.classList.toggle('is-collapsed')")
+        div(class="flex items-center justify-between mb-2 cursor-pointer select-none" )
             div(class="flex items-center gap-3")
                 div(class=`w-10 h-10 rounded-xl ${iconBg} text-slate-900 flex items-center justify-center`)
                     i(class=iconClass)
@@ -18,15 +18,24 @@ each lote in lotes
                 span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide")= `${lote.numTipos} Productos`
                 if !lote.esResiduo
                     span(class="px-3 py-1 bg-[#dcbdfe] rounded-full text-xs font-bold text-slate-900 uppercase tracking-wide w-fit")= `${lote.cantidadBultos} Paquetes`
-            i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
+            
+            
 
-        //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
+            //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
+
+        //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
+        a(class="bgforCode cursor-pointer") 
+            i.fi-rr-barcode-read.text-white.mr-3.text-xl
+            //h3.mb-1.uppercase= lote.codigoEtiqueta
+            h3.mb-1.text-white Imprimir Etiquetas
+        div(class=`cursor-pointer text-center select-none ${textClass}` onclick="this.parentElement.classList.toggle('is-collapsed')")
+
+            
+                h3(class=`mb-1  ${textClass}`) Despliega Elementos
+                i.fi-rr-angle-small-down.transition-transform.duration-300.icon-flecha
         div(class="grid gap-4 overflow-hidden transition-all duration-300 group-[.is-collapsed]:hidden")
 
-            //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
-            a(class="bgforCode cursor-pointer") 
-                i.fi-rr-barcode-read.greenFont.mr-3.text-xl
-                h3.mb-1.uppercase= lote.codigoEtiqueta
+            
 
             ul(class="grid gap-2")
                 each det in lote.detalles

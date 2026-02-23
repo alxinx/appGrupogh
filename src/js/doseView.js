@@ -88,7 +88,10 @@
 
                 // Generar Paginación
                 if (window.generarPaginacion) {
-                    window.generarPaginacion(paginacionContenedor, Math.ceil(total / itemsPerPage), page, renderTable);
+                    const totalPaginas = Math.ceil(total / itemsPerPage);
+                    window.generarPaginacion(paginacionContenedor, totalPaginas, page, (nuevaPagina) => {
+                        renderTable(nuevaPagina);
+                    });
                 }
 
                 // Re-bind events to new checkboxes
