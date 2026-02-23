@@ -1,5 +1,7 @@
-import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados   } from '../models/index.js';
-import jwt from "jsonwebtoken"
+import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados } from '../models/index.js';
+import jwt from "jsonwebtoken";
+import PDFDocument from 'pdfkit';
+import bwipjs from 'bwip-js';
 import { formatearFecha } from '../helpers/helpers.js';
 import db from '../config/bd.js';
 import { v4 as uuidv4 } from 'uuid'; // Para generar los códigos de etiqueta únicos
@@ -478,12 +480,12 @@ const trasladarPacks = async (req, res) => {
     try {
         const decoded = jwt.verify(token, process.env.APP_PRIVATEKEY);
         // Ajustamos según la estructura que mostraste: decoded.id.id o decoded.id
-        usuarioId = decoded.id?.id || decoded.id; 
+        usuarioId = decoded.id?.id || decoded.id;
     } catch (error) {
         return res.status(401).json({ success: false, mensaje: 'Token inválido' });
     }
     const t = await db.transaction();
-    
+
 
     try {
         // 1. Obtener los packs con sus detalles
@@ -508,7 +510,7 @@ const trasladarPacks = async (req, res) => {
         // 3. Crear el Registro del Traslado (Encabezado)
         // Usamos req.usuario que ya viene inyectado por tu middleware de autenticación
 
-    
+
         const traslado = await Traslados.create({
             codigoTraslado: nuevoCodigo,
             idOrigen: 'BODEGA-VIRTUAL', // Tu identificador de bodega virtual
@@ -519,7 +521,7 @@ const trasladarPacks = async (req, res) => {
 
         // 4. Procesar cada Pack seleccionado en la tabla
         for (const pack of recordsPacks) {
-            
+
             // Calculamos el valor del bulto sumando sus detalles
             const valorTotalBulto = pack.DETALLES_PACKs.reduce((acc, det) => {
                 const precio = det.producto ? det.producto.precioVentaPublicoFinal : 0;
@@ -535,7 +537,7 @@ const trasladarPacks = async (req, res) => {
                 idPuntoVenta: idDestino,
                 idPack: pack.idPack,
                 idProducto: 0,
-                cantidadExistente: 1, 
+                cantidadExistente: 1,
                 cantidadOriginal: 1,
                 valorUnidad: valorTotalBulto,
                 estadoInterno: 'CERRADO'
@@ -562,8 +564,133 @@ const trasladarPacks = async (req, res) => {
     }
 };
 
+const imprimirEtiquetasLote = async (req, res) => {
+    try {
+        const { idDosificacion, numLote } = req.params;
+
+        const packs = await Pack.findAll({
+            where: {
+                idDosificacion,
+                numLote
+            },
+            order: [['codigoEtiqueta', 'ASC']]
+        });
+
+        if (!packs || packs.length === 0) {
+            return res.status(404).send('No se encontraron paquetes para este lote');
+        }
+
+        // Crear PDF - Tamaño 10x5 cm (aprox 283x142 puntos)
+        const doc = new PDFDocument({
+            size: [283.46, 141.73],
+            margins: { top: 10, bottom: 10, left: 10, right: 10 }
+        });
+
+        // Configurar pipe a la respuesta
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=etiquetas_lote_${numLote}.pdf`);
+        doc.pipe(res);
+
+        for (let i = 0; i < packs.length; i++) {
+            const pack = packs[i];
+
+            if (i > 0) doc.addPage();
+
+            // Título/Info superior
+            doc.fontSize(10).font('Helvetica-Bold').text(`LOTE: ${numLote}`, 10, 15);
+            //doc.fontSize(8).font('Helvetica').text(`ID: ${pack.codigoEtiqueta}`, 10, 28);
+
+            try {
+                // Generar Código de Barras
+                const buffer = await bwipjs.toBuffer({
+                    bcid: 'code128',       // Tipo de código
+                    text: pack.codigoEtiqueta,    // Texto
+                    scale: 3,               // Escala
+                    height: 15,              // Altura en mm
+                    includetext: true,      // Incluir texto debajo
+                    textxalign: 'center',   // Alinear texto al centro
+                });
+
+                // Insertar imagen del código de barras
+                doc.image(buffer, 10, 45, { width: 263 });
+            } catch (err) {
+                console.error('Error generando barcode:', err);
+                doc.text('Error al generar código de barras', 10, 60);
+            }
+        }
+
+        doc.end();
+
+    } catch (error) {
+        console.error('Error generando PDF etiquetas:', error);
+        res.status(500).send('Error interno al generar etiquetas');
+    }
+};
+
+
+
+
+
+const imprimirEtiquetasPorPack = async (req, res) => {
+    try {
+        const { idPack } = req.params;
+        
+        // 1. Buscamos el pack específico
+        const pack = await Pack.findOne({
+            where: { idPack },
+            attributes: ['codigoEtiqueta', 'numLote']
+        });
+
+        if (!pack) {
+            return res.status(404).send('No se encontró el paquete solicitado');
+        }
+
+        // 2. Configuración del PDF (10x5 cm)
+        const doc = new PDFDocument({
+            size: [283.46, 141.73], // 10cm x 5cm en puntos postscript
+            margins: { top: 5, bottom: 5, left: 10, right: 10 }
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=etiqueta_${pack.codigoEtiqueta}.pdf`);
+        doc.pipe(res);
+
+        // 3. Diseño de la Etiqueta
+        doc.fontSize(10).font('Helvetica-Bold').text(`GRUPO GH - LOTE ${pack.numLote}`, 10, 15, { align: 'center' });
+        
+        try {
+            // Generar Código de Barras dinámico
+            const buffer = await bwipjs.toBuffer({
+                bcid: 'code128',
+                text: pack.codigoEtiqueta,
+                scale: 3,
+                height: 12, // Altura ajustada para el formato 10x5
+                includetext: true,
+                textxalign: 'center',
+                textsize: 10
+            });
+
+            // Insertar Barcode centrado
+            doc.image(buffer, 10, 40, { width: 263 });
+            
+            // Texto adicional de seguridad
+            doc.fontSize(7).font('Helvetica').text('Verifique el sello de seguridad antes de recibir.', 10, 115, { align: 'center' });
+
+        } catch (err) {
+            console.error('Error generando barcode:', err);
+            doc.fontSize(10).text('ERROR BARCODE', 10, 60, { align: 'center' });
+        }
+
+        doc.end();
+
+    } catch (error) {
+        console.error('Error generando PDF etiquetas:', error);
+        res.status(500).send('Error interno al generar etiquetas');
+    }
+};
+
 export {
     guardarDosificacion, homeDose, verDosificacionDetalle, obtenerMetadataDose,
     newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales,
-    obtenerProductosPorDose, trasladarPacks
+    obtenerProductosPorDose, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack
 };

@@ -23,10 +23,9 @@ each lote in lotes
 
             //- CONTENEDOR COLAPSABLE: Se oculta automáticamente si el padre tiene 'is-collapsed'
 
-        //Si le hago clic me abre un pdf externo con la etiqueta para imprimir
-        a(class="bgforCode cursor-pointer") 
+        //Si le hago clic me abre un pdf externo con la lista de las etiquetas.
+        a(href=`/admin/dosificaciones/etiquetas/${idDosificacion}/${lote.numLote}` target="_blank" class="bgforCode cursor-pointer") 
             i.fi-rr-barcode-read.text-white.mr-3.text-xl
-            //h3.mb-1.uppercase= lote.codigoEtiqueta
             h3.mb-1.text-white Imprimir Etiquetas
         div(class=`cursor-pointer text-center select-none ${textClass}` onclick="this.parentElement.classList.toggle('is-collapsed')")
 

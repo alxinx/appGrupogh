@@ -6,7 +6,7 @@ import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editar
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
-import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks } from '../controller/dosificacionController.js'
+import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack } from '../controller/dosificacionController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
@@ -122,6 +122,9 @@ routes.get('/api/dosificaciones/stats-global', widgetGlobales);
 
 routes.get('/api/dosificaciones/productos/:id', obtenerProductosPorDose);
 routes.get('/api/dosificaciones/metadata/:id', obtenerMetadataDose);
+routes.get('/dosificaciones/etiquetas/unica/:idPack/', imprimirEtiquetasPorPack);
+
+routes.get('/dosificaciones/etiquetas/:idDosificacion/:numLote', imprimirEtiquetasLote);
 routes.get('/api/dosificaciones/:query', obtenerDosificacionesPaginadas)
 
 

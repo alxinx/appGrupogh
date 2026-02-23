@@ -47,30 +47,61 @@
                 const paginatedPacks = filteredPacks.slice(start, end);
 
                 tbody.innerHTML = paginatedPacks.map(pack => {
-                    let tipoClass = pack.tipo === 'RESIDUO' ? 'bg-[#ffebf0] text-[#ff4d7d]' : 'bg-[#e7f0ff] text-[#4d86ff]';
+                    let tipoClass = pack.tipo === 'RESIDUO' ? 'bg-[#ffebf0] text-[#ff4d7d]' : 'status-active';
                     let estadoClass = 'bg-slate-100 text-slate-500';
+                    let displayStyle;
+                    let ocultarElemento;
                     switch (pack.estado) {
-                        case 'EMPACADO': estadoClass = 'bg-[#e6fff2] text-[#00cc66]'; break;
-                        case 'SEPARADO': estadoClass = 'bg-[#fff4e6] text-[#ff9900]'; break;
-                        case 'DESPACHADO': estadoClass = 'bg-[#eef2ff] text-[#4f46e5]'; break;
-                        case 'TRASLADADO': estadoClass = 'bg-[#f5f3ff] text-[#7c3aed]'; break;
-                        case 'ANULADO': estadoClass = 'bg-[#fef2f2] text-[#ef4444]'; break;
+                        case 'EMPACADO': 
+                            estadoClass = 'status-active'; // Verde esmeralda
+                            break;
+                        case 'SEPARADO': 
+                            estadoClass = 'status-pending'; // Ámbar/Naranja
+                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
+
+                            break;
+                        case 'TRASLADADO': 
+                            estadoClass = 'bg-gh-primarySoft text-gh-primaryHover border-gh-primary'; // Fucsia/Morado
+                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
+
+                            break;
+                        case 'DESPACHADO': 
+                            estadoClass = 'bg-blue-50 text-blue-700 border-blue-200'; 
+                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
+                            break;
+                        case 'ANULADO': 
+                            estadoClass = 'status-low'; // Rojo/Pink
+                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
+
+                            break;
+                        default:
+                            estadoClass = 'bg-gray-100 text-gray-600';
                     }
+
+                    const esTrasladable = pack.estado === 'EMPACADO';
+                    const checkboxHTML = esTrasladable 
+                        ? `<input type="checkbox" name="selectedPack" value="${pack.idPack}" class="checkbox-pack w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover">`
+                        : `<span class="fi-rr-lock text-slate-300" title="No disponible para traslado"></span>`;
 
                     return `
                         <tr class="bg-white hover:bg-slate-50 transition-colors group border border-transparent hover:border-slate-100">
                             <td class="px-4 py-4 text-center rounded-l-2xl">
-                                <input type="checkbox" name="selectedPack" value="${pack.idPack}" class="checkbox-pack w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover">
+
+                               ${checkboxHTML}
                             </td>
                             <td class="px-4 py-4">
                                 <div class="flex items-center gap-3">
                                     <span class="fi-rr-barcode-read text-slate-400 text-lg"></span>
-                                    <span class="font-mono font-bold text-slate-700">${pack.codigoEtiqueta}</span>
+                                    <span class="font-mono font-bold h3">
+                                        <a href = "../etiquetas/unica/${pack.idPack}" target = "_blank" >
+                                            ${pack.codigoEtiqueta}
+                                        </a>
+                                    </span>
                                 </div>
                             </td>
                             <td class="px-4 py-4"><span class="text-slate-500 font-medium">LT-${pack.numLote}</span></td>
-                            <td class="px-4 py-4"><span class="px-3 py-1 rounded-full text-2xs font-bold uppercase tracking-wide ${tipoClass}">${pack.tipo}</span></td>
-                            <td class="px-4 py-4"><span class="px-3 py-1 rounded-full text-2xs font-bold uppercase tracking-wide ${estadoClass}">${pack.estado}</span></td>
+                            <td class="px-4 py-4"><span class="status-chip  ${tipoClass}">${pack.tipo}</span></td>
+                            <td class="px-4 py-4"><span class="status-chip  ${estadoClass}">${pack.estado}</span></td>
                             <td class="px-4 py-4 text-right rounded-r-2xl">
                                 <div class="flex items-center justify-end gap-2">
                                     <button type="button" class="p-2 text-slate-400 hover:text-gh-primaryHover hover:bg-gh-primaryHover/5 rounded-lg transition-colors" title="Ver Detalle"><span class="fi-rr-eye"></span></button>
@@ -117,8 +148,9 @@
             };
 
             selectAll.addEventListener('change', () => {
-                const checkboxes = document.querySelectorAll('.checkbox-pack');
-                checkboxes.forEach(cb => cb.checked = selectAll.checked);
+
+                const checkboxesVisibles = document.querySelectorAll('.checkbox-pack:not([style*="display: none"])');
+                checkboxesVisibles.forEach(cb => cb.checked = selectAll.checked);
                 updateBtnVisibility();
             });
 
@@ -164,7 +196,12 @@
             confirmBtn.addEventListener('click', async () => {
                 const idDestino = selectDestino.value;
                 if (!idDestino) {
-                    alert('Por favor seleccione un destino');
+                    Swal.fire({
+                            icon: 'error',
+                            title: 'Seleccionna un destino',
+                            text: 'No puedes trasladar esto a ninguna parte 🙄',
+                            confirmButtonColor: '#7e22ce'
+                        });
                     return;
                 }
 
@@ -187,11 +224,22 @@
                     if (result.success) {
                         window.location.reload();
                     } else {
-                        alert('Error: ' + result.mensaje);
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Límite excedido',
+                            text: 'Error: ' + result.mensaje,
+                            confirmButtonColor: '#7e22ce'
+                        });
+                      
                     }
                 } catch (error) {
                     console.error('Error en traslado', error);
-                    alert('Error en la comunicación con el servidor');
+                    Swal.fire({
+                            icon: 'error',
+                            title: 'Server Erroor',
+                            text: 'Error con la comunicación en el servidor.',
+                            confirmButtonColor: '#7e22ce'
+                        });
                 } finally {
                     confirmBtn.disabled = false;
                     confirmBtn.innerText = 'Confirmar Traslado';

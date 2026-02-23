@@ -8,15 +8,15 @@ div(id="modalTraslado" class="fixed inset-0 z-50 hidden")
             //- Header
             div(class="flex items-center justify-between p-8 border-b border-slate-50")
                 div(class="flex items-center gap-3")
-                    div(class="w-10 h-10 rounded-xl bg-gh-primaryHover/10 flex items-center justify-center text-gh-primaryHover")
-                        span(class="fi-rr-interchange text-xl")
-                    h3(class="text-xl font-bold text-slate-800") Confirmar Destino de Traslado
-                button(type="button" id="closeModalTraslado" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors")
+                    div(class="w-10 h-10 pt-2 rounded-xl bg-gh-primaryHover/10 flex items-center justify-center text-gh-primaryHover")
+                        i.fi-rr-convert-shapes 
+                    h3(class="text-xl font-bold text-slate-800") Selecciona el destino de traslado
+                button(type="button" id="closeModalTraslado" class="cursor-pointer hover:text-gh-primaryHover transition-all")
                     span(class="fi-rr-cross-small text-xl")
 
-            div(class="p-8 space-y-8")
+            div(class="p-4 space-y-4")
                 //- Info Alert
-                div(class="flex items-center gap-4 p-5 bg-pink-50 rounded-2xl border border-pink-100")
+                div(class="flex items-center alert alert-error")
                     div(class="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-500 flex-shrink-0")
                         span(class="fi-rr-info")
                     p(class="text-sm text-pink-600 font-medium")
@@ -26,16 +26,16 @@ div(id="modalTraslado" class="fixed inset-0 z-50 hidden")
 
                 //- Selection
                 div(class="space-y-3")
-                    label(class="text-xs font-bold text-slate-400 uppercase tracking-wider block ml-1") Seleccionar Destino
+                    label(class="text-xs font-bold text-slate-400 uppercase tracking-wider block ml-1") Selecciona para donde lo enviarás
                     div(class="relative")
                         select(id="idDestinoTraslado" class="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20 appearance-none transition-all")
-                            option(value="") Elija una bodega o almacén...
-                        span(class="fi-rr-bank absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg")
+                            option(value="") Elije una bodega o almacén...
+                        span(class="fi-rr-box absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg")
                         span(class="fi-rr-angle-small-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg pointer-events-none")
 
             //- Footer
             div(class="p-8 bg-slate-50/50 flex gap-4")
-                button(type="button" id="cancelTraslado" class="flex-1 px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition-all")
+                button(type="button" id="cancelTraslado" class="flex-1 px-6 py-4 btn btn-secondary  transition-all")
                     | Cancelar
-                button(type="button" id="confirmTraslado" class="flex-1 px-6 py-4 bg-pink-500 text-white rounded-2xl font-bold hover:bg-pink-600 hover:scale-[1.02] transition-all shadow-lg shadow-pink-500/20")
+                button(type="button" id="confirmTraslado" class="flex-1 px-6 py-4 btn btn-primary")
                     | Confirmar
