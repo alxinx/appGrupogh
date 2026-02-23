@@ -5,11 +5,11 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack } from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
-import { limpiarPrecio, sanitizarHTML } from '../helpers/helpers.js'
+import { limpiarPrecio, sanitizarHTML, getAvailability } from '../helpers/helpers.js'
 import { Sequelize, Op, where } from "sequelize";
 
 dotenv.config();
@@ -238,12 +238,10 @@ const billingToday = async (req, res) => {
 
 const storeInventory = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
-    res.send(`
-        <div class="p-8 text-center">
-            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: INNVENTARIOO TIENDA</h2>
-            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
-        </div>
-    `);
+    return res.render('./administrador/stores/partials/inventoryList', {
+        idPuntoDeVenta,
+        csrfToken: req.csrfToken()
+    });
 }
 
 const storeEmployers = async (req, res) => {
@@ -396,11 +394,11 @@ const dosificar = async (req, res) => {
         csrfToken: req.csrfToken(),
         currentPath: '/inventario',
         subPath: 'dosificar',
-        btnName : "Pre-Calcular"
+        btnName: "Pre-Calcular"
     })
 }
 
- 
+
 
 
 
@@ -417,7 +415,7 @@ const batchBuyOrder = async (req, res) => {
         csrfToken: req.csrfToken(),
         currentPath: '/inventario',
         subPath: 'batch',
-        btnName : 'Guardar Factura'
+        btnName: 'Guardar Factura'
     })
 }
 
@@ -1428,7 +1426,7 @@ const saveSupplier = async (req, res) => {
         }
         res.status(500).json({ success: false, mensaje: 'Error interno del servidor al guardar proveedor' });
     }
-}; 
+};
 
 
 const filterSupplierListJson = async (req, res) => {
@@ -1487,6 +1485,128 @@ const filterSupplierListJson = async (req, res) => {
     }
 };
 
+const filterStoreInventoryJson = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    const { busqueda, pagina } = req.query;
+    const limit = parseInt(process.env.LIMIT_PER_PAGE) || 5;
+    const offset = (parseInt(pagina) - 1) * limit;
+
+    try {
+        const searchPattern = `%${busqueda || ''}%`;
+
+        // 1. Get total count for pagination (using UNION)
+        const countQuery = `
+            SELECT COUNT(*) as total FROM (
+                SELECT s.idStock
+                FROM STOCKS s
+                LEFT JOIN PRODUCTOS p ON s.idProducto = p.idProducto
+                LEFT JOIN PACKS pk ON s.idPack = pk.idPack
+                WHERE s.idPuntoVenta = :idPuntoDeVenta 
+                AND s.idPack IS NOT NULL
+                AND (p.nombreProducto LIKE :search OR p.sku LIKE :search OR pk.codigoEtiqueta LIKE :search)
+                
+                UNION ALL
+                
+                SELECT s.idProducto
+                FROM STOCKS s
+                LEFT JOIN PRODUCTOS p ON s.idProducto = p.idProducto
+                WHERE s.idPuntoVenta = :idPuntoDeVenta 
+                AND s.idPack IS NULL
+                AND (p.nombreProducto LIKE :search OR p.sku LIKE :search)
+                GROUP BY s.idProducto
+            ) as combined`;
+
+        const [countResult] = await db.query(countQuery, {
+            replacements: { idPuntoDeVenta, search: searchPattern },
+            type: Sequelize.QueryTypes.SELECT
+        });
+
+        const totalItems = countResult.total;
+        const totalPaginas = Math.ceil(totalItems / limit);
+
+        // 2. Get the paginated data
+        const dataQuery = `
+            SELECT 
+                s.idStock, 
+                s.idPack, 
+                s.idProducto, 
+                s.cantidadExistente as cantidad,
+                p.nombreProducto,
+                p.sku,
+                pk.codigoEtiqueta,
+                'pack' as tipoRecord
+            FROM STOCKS s
+            LEFT JOIN PRODUCTOS p ON s.idProducto = p.idProducto
+            LEFT JOIN PACKS pk ON s.idPack = pk.idPack
+            WHERE s.idPuntoVenta = :idPuntoDeVenta 
+            AND s.idPack IS NOT NULL
+            AND (p.nombreProducto LIKE :search OR p.sku LIKE :search OR pk.codigoEtiqueta LIKE :search)
+            
+            UNION ALL
+            
+            SELECT 
+                NULL as idStock,
+                NULL as idPack,
+                s.idProducto,
+                SUM(s.cantidadExistente) as cantidad,
+                p.nombreProducto,
+                p.sku,
+                NULL as codigoEtiqueta,
+                'loose' as tipoRecord
+            FROM STOCKS s
+            LEFT JOIN PRODUCTOS p ON s.idProducto = p.idProducto
+            WHERE s.idPuntoVenta = :idPuntoDeVenta 
+            AND s.idPack IS NULL
+            AND (p.nombreProducto LIKE :search OR p.sku LIKE :search)
+            GROUP BY s.idProducto
+
+            ORDER BY nombreProducto ASC
+            LIMIT :limit OFFSET :offset`;
+
+        const inventory = await db.query(dataQuery, {
+            replacements: { idPuntoDeVenta, search: searchPattern, limit, offset },
+            type: Sequelize.QueryTypes.SELECT
+        });
+
+        // 3. Get images and availability for each item
+        const processedInventory = await Promise.all(inventory.map(async (item) => {
+            let imagenUrl = '/img/avatars/bag.webp';
+            let displayProducto = item.codigoEtiqueta || item.nombreProducto;
+            let displaySku = item.codigoEtiqueta ? '' : item.sku;
+
+            if (item.tipoRecord === 'loose' || !item.idPack) {
+                const img = await Imagenes.findOne({
+                    where: { idProducto: item.idProducto, tipo: 'principal' }
+                });
+                imagenUrl = img ? `${process.env.R2_PUBLIC_URL}/productos/${img.nombreImagen}` : '/img/image-default.webp';
+                displayProducto = item.nombreProducto;
+                displaySku = item.sku;
+            }
+
+            const availability = getAvailability(item.cantidad);
+
+            return {
+                ...item,
+                imagenUrl,
+                displayProducto,
+                displaySku,
+                availability
+            };
+        }));
+
+        res.json({
+            success: true,
+            inventory: processedInventory,
+            totalPaginas,
+            paginaActual: parseInt(pagina) || 1
+        });
+
+    } catch (error) {
+        console.error("ERROR EN filterStoreInventoryJson:", error);
+        res.status(500).json({ success: false, mensaje: 'Error al cargar el inventario' });
+    }
+}
+
 export {
     dashboard,
     dashboardStores,
@@ -1495,7 +1615,6 @@ export {
     verTienda,
     editarTienda,
     postNuevaTienda,
-    //postEditStore,
     dashboardInventorys,
     billingToday,
     storeInventory,
@@ -1517,5 +1636,6 @@ export {
     jsonImageProduct,
     jsonUnicidad,
     baseFrondend,
-    filterSupplierListJson
+    filterSupplierListJson,
+    filterStoreInventoryJson
 }

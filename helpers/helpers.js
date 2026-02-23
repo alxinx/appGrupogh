@@ -26,11 +26,18 @@ export const limpiarPrecio = (precio) => {
 
 export const formatearFecha = (fechaRaw) => {
     if (!fechaRaw) return "Sin fecha";
-    
+
     const fecha = new Date(fechaRaw);
     return new Intl.DateTimeFormat('es-ES', {
         day: 'numeric',
         month: 'long',
         year: 'numeric'
-    }).format(fecha); 
+    }).format(fecha);
+};
+
+
+export const getAvailability = (cantidad) => {
+    if (cantidad <= 0) return { text: 'Agotado', class: 'bg-red-100 text-red-700' };
+    if (cantidad <= 5) return { text: 'Stock Bajo', class: 'bg-orange-100 text-orange-700' };
+    return { text: 'Disponible', class: 'bg-green-100 text-green-700' };
 };

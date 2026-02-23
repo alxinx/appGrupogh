@@ -2,7 +2,7 @@ import express from "express";
 import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson } from "../controller/adminControllers.js"
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson } from "../controller/adminControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
@@ -109,6 +109,7 @@ routes.get('/json/productos/', filterProductListJson)
 routes.get('/json/imageProduct/:idProducto', jsonImageProduct)
 routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
 routes.get('/json/provedores/', filterSupplierListJson);
+routes.get('/json/inventario-tienda/:idPuntoDeVenta', filterStoreInventoryJson);
 routes.get('/json/tiendas/', async (req, res) => {
     const tiendas = await PuntosDeVenta.findAll({ attributes: ['idPuntoDeVenta', 'nombreComercial'] });
     res.json(tiendas);

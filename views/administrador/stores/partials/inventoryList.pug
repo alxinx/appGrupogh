@@ -1,0 +1,26 @@
+
+div(id="filtroListadoInventario" class="card cardSearch")
+    div(class="col-span-12 grid grid-cols-2 md:grid-cols-4 cards cardSearch")
+        h3.h3.col-span-12
+            i.fi-rr-filter-list.mr-2
+            |Filtra el inventario        
+        div(class="col-span-12 p-2 md:col-span-4")
+            div.input-group
+                i.fi-rr-search.input-icon.input-icon-left
+                input.input.input-has-icon-left( type="text" name="busquedaInventario" id="busquedaInventario" placeholder="Busca por nombre de producto o SKU"
+                )
+div
+    table(class="w-full text-left border-collapse cardGray")
+        thead(class=" border-b border-gh-primaryHover")
+            tr
+                th(class="p-4 text-sm font-semibold text-gray-600") Imagen
+                th(class="p-4 text-sm font-semibold text-gray-600") Producto / Código
+                th(class="p-4 text-sm font-semibold text-gray-600") Cantidad
+                th(class="p-4 text-sm font-semibold text-gray-600") Disponibilidad
+        tbody(id="contenedor-inventario")
+div.mt-4
+    #paginacion-inventario
+div(class="mt-8 flex justify-center")
+    button(id="btn-modo-inventario" class="btn btn-primary") Activar modo inventario
+
+input(type="hidden" id="idPuntoDeVenta" value=idPuntoDeVenta)

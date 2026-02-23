@@ -287,6 +287,10 @@
   @apply bg-gray-200 shadow-none border-gray-200
 }
 
+
+.cardGray {
+  @apply  bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden
+}
 .cardEmty {
   @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-transparent border-4 border-dotted border-gray-300 shadow-md rounded-gh p-3 m-5 
 }
