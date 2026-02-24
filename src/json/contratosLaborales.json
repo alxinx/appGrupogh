@@ -1,0 +1,26 @@
+[
+  {
+    "codigo": "1",
+    "descripcion": "Término Fijo "
+  },
+  {
+    "codigo": "2",
+    "descripcion": "Término Indefinido"
+  },
+  {
+    "codigo": "3",
+    "descripcion": "Obra o Labor"
+  },
+  {
+    "codigo": "4",
+    "descripcion": "Aprendizaje"
+  },
+  {
+    "codigo": "5",
+    "descripcion": "Prácticas o Pasantías"
+  },
+  {
+    "codigo": "6",
+    "descripcion": "Ocasional, Accidental o Transitorio"
+  }
+]
