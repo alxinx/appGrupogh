@@ -3,10 +3,569 @@ block contenedor
     body(class="bg-gray-100 min-h-screen")
         main(class="flex-1 overflow-y-auto")
             div(class="flex min-h-screen")
-                include ./partials/sidebar
+                include ../partials/leftMenu
 
-                div(class="flex-1 flex flex-col w-full")
+                div(class="flex-1 flex flex-col")
                     include ../partials/header
-                
+                    main(class="flex-1 overflow-y-auto md:p-2")
+                        div(class="mainDashboard")
+                            //******************[CUERPO PANELES]*********************//
+                            div(class="col-span-1 bg-amber-100") col-span-1
+                            div(class="col-span-2 bg-amber-100") col-span-2
+                            div(class="col-span-3 bg-amber-100") col-span-3
+                            div(class="col-span-4 bg-amber-100") col-span-4
+                            div(class="col-span-2 bg-amber-100") col-span-2
+                            div(class="col-span-5 bg-amber-100") col-span-5
+                            div(class="col-span-6 bg-amber-100") col-span-6
+                            div(class="col-span-1 bg-amber-100") col-span-1
+                            div(class="col-span-7 bg-amber-100") col-span-7
+                            div(class="col-span-5 bg-amber-100") col-span-5
+                            div(class="col-span-8 bg-amber-100") col-span-8
+                            div(class="col-span-4 bg-amber-100") col-span-4
+                            div(class="col-span-9 bg-amber-100") col-span-9
+                            div(class="col-span-3 bg-amber-100") col-span-3
+                            div(class="col-span-10 bg-amber-100") col-span-10
+                            div(class="col-span-2 bg-amber-100") col-span-2
+                            div(class="col-span-11 bg-amber-100") col-span-11
+                            div(class="col-span-1 bg-amber-100") col-span-1 
+                            div(class="col-span-12 bg-amber-100") col-span-12
+                            
+                    
+                        //*********[H]*************//
+                        div(class="mainDashboard")
+                            div(class="col-span-1 border-2 border-gray-400")
+                                h1(class="h1 text-pink-400") Títulos H
+                                div.col-span-3
+                                    h1.h1 | h1 
+                                div.col-span-3
+                                    h2.h2 |h2
+                                div.col-span-3
+                                    h3.h3 |h3
+                                    h4.h4 |h4
+                                    h5.h5 |h5
+                                    h6.h6 |h6
+                            
 
-        //script(src="/js/menu.js") 
+                            //*********[LABELS]*************//
+                            div(class="col-span-3 border-2 border-gray-400  ")
+                                h1(class="h1 text-pink-400") LABEL 
+                                div.col-span-12.grid.grid-cols-7.gap-3
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class Principal
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | label 
+
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class Complemento
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | label-required::after | label-muted | label-error
+
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Label
+                                    
+                                    div.col-span-3.flex.pt-3
+                                        label.label Nombre de campo
+
+                                    div.col-span-4.flex.pt-3
+                                        h3.h3 label-required 
+                                    
+                                    div.col-span-3.flex.pt-3
+                                        label.label-required Nombre
+
+                                    div.col-span-4.flex.pt-3
+                                        h3.h3 label.label-muted 
+                                    
+                                    div.col-span-3.flex.pt-3
+                                        label.label-muted Estado 
+
+                                    div.col-span-4.flex.pt-3
+                                        h3.h3 label.label-error
+                                    
+                                    div.col-span-3.flex.pt-3
+                                        label.label-error Email
+
+
+
+
+                            //*********[CAMPOS DE TEXTO]*************//
+                            div(class="col-span-4 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") FIELDTEXT
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                    div.col-span-1.flex.pt-3
+                                        h3.h3 Class:
+                                    div.col-span-6.bg-black.text-green-500.text-center.p-3
+                                        | field-text | field-text-disabled | field-text-error | input-icon input-icon-left
+                         
+                                    
+                                div.col-span-6
+                                    label.label Campo De Texto
+                                        input(class="field-text" type="text", name="" value="field-text")
+
+                                div.col-span-6
+                                    label(class="label-required") Nombre
+                                        input(class="field-text field-text-error" type="text", name="" value="field-text-error" )
+                                    span.label-error Campo obligatorio
+                                
+                                div.col-span-12
+                                    label.label Campo De Texto Disabled
+                                        input(class="field-text field-text-disabled" type="text", name="" value="field-text-disabled" disabled)
+
+                                .col-span-12 
+                                    label.label input  con icono
+                                    div.input-group
+                                        i.fi-rr-search.input-icon.input-icon-left
+                                        input.input.input-has-icon-left(
+                                        type="text"
+                                        placeholder="Buscar producto"
+                                        value = "input-group input-icon.input-icon-left"
+                                    )
+
+
+                                
+                                
+
+                            //*******************[SELECTS]******************//
+                            div(class="col-span-4 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") SELECTS
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                   div.col-span-1.flex.pt-3
+                                       h3.h3 Class:
+                                   div.col-span-6.bg-black.text-green-500.text-center.pt-2
+                                       | field-select  | field-select-error
+                                    
+                                   div.col-span-2.flex.pt-3
+                                       h3.h3 Class Ayuda:
+                                   div.col-span-5.bg-black.text-green-500.text-center.pt-2
+                                       | .select-icon | .select-wrapper | fi-rr-chevron-double-down
+
+                                //*********[SELECTS]*************//
+
+
+                                //SELECT NORMAL
+                                div.col-span-12.grid.grid-cols-12.gap-3
+                                    div.col-span-3
+                                        label.label Seleccione Opción
+                                    div.col-span-9.select-wrapper
+                                        select(name="" class="field-select") 
+                                            option(value="") Opcion 1 
+                                            option(value="") Opcion 2 
+                                            option(value="") Opcion 3 
+                                            option(value="") Opcion 4 
+                                        span.select-icon
+                                           i.fi-rr-chevron-double-down
+
+                                //SELECT WITH ERROR
+                                div.col-span-12.grid.grid-cols-12.gap-3
+                                    div.col-span-3
+                                        label.label Opción con Error
+                                    div.col-span-9.select-wrapper
+                                        select(name="" class="field-select field-select-error") 
+                                            option(value="") field-select-error
+                                            option(value="") Opcion 2 
+                                            option(value="") Opcion 3 
+                                            option(value="") Opcion 4 
+                                        span.select-icon
+                                           i.fi-rr-chevron-double-down
+                                                        
+                                //SELECT DISABLED
+                                div.col-span-12.grid.grid-cols-12.gap-3
+                                    div.col-span-3
+                                        label.label Selecct disabled
+                                    div.col-span-9.select-wrapper
+                                        select(name="" class="field-select field-select-disabled" disabled) 
+                                            option(value="") Opcion 1 
+                                            option(value="") Opcion 2 
+                                            option(value="") Opcion 3 
+                                            option(value="") Opcion 4 
+                                        span.select-icon
+                                           i.fi-rr-circle-quarters-alt
+
+
+
+                            //************[CHECKBOX & SWICH]************//
+
+
+                            div(class="col-span-4 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") CHECKBOX Y SWITCH
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 Class:
+                                   div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                       | checkbox
+
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 Class Complemento:
+                                   div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                       | checkbox-label | checkbox-group
+
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 checkbox-group
+                                   div.col-span-4
+                                    div(class="checkbox-group pt-3")
+                                        input.checkbox(type="checkbox" class="checkbox-custom"  id="activo")
+                                        label.checkbox-label(for="activo") Tienda activa
+                                    
+
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 checkbox-error
+                                   div.col-span-4
+                                    div(class="checkbox-error pt-3")
+                                        input.checkbox(type="checkbox" class="checkbox-error bg-fuchsia-600"  id="error")
+                                        label.checkbox-label(for="error") Tienda activa
+                                
+                                   div.col-span-4
+                                    
+                                    
+                                   div.col-span-3.flex.pt-3
+                                    
+                                   div.col-span-4
+                                    
+
+                            
+                            //********************[SWITCH]***************************
+                            div(class="col-span-4 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") SWITCH
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 Class:
+                                   div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                       | switch
+                                   
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 Class Complemento:
+                                   div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                       | switch-thumb | input:checked + .switch  input:checked + .switch .switch-thumb
+                                   div.col-span-4
+                                    h3.h3 Switch con descripción secundaria
+                                  
+                                   div.col-span-3
+                                    label.flex.items-center.cursor-pointer
+                                        input(type="checkbox" class="sr-only")
+                                        span.switch
+                                            span.switch-thumb
+                                        span.ml-3.text-sm.text-gray-700 Permitir ventas electrónicas
+                                   
+                                   div.col-span-3
+                                    h3.h3   Subtitulo
+                                   div.col-span-4
+                                    label.flex.items-start.cursor-pointer
+                                        input(type="checkbox" class="sr-only")
+                                        span.switch.mt-1
+                                            span.switch-thumb
+                                        div.ml-4
+                                            p.text-sm.text-gray-700 Notificaciones
+                                            p.text-xs.text-gray-500 Recibir alertas de inventario bajo
+
+                            //********************[RADIO BUTTONS]********************
+                            div(class="col-span-4 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") 🔘 RADIO BUTTONS
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 Class:
+                                   div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                       | radio
+
+                                   div.col-span-3.flex.pt-3
+                                       h3.h3 Class Complemento:
+                                   div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                       | radio-label | radio-group | radio-stack | radio-error | radio-disabled
+                                   div.col-span-3.flex.pt-3
+                                    h3.h3 radio-group radio
+                                   div.col-span-4
+                                    div(class=" radio-group")
+                                        input.radio(type="radio" name="metodo" id="efectivo")
+                                        label.radio-label(for="efectivo") Efectivo
+                                    div.radio-group
+                                        input.radio(type="radio" name="metodo" id="tarjeta")
+                                        label.radio-label(for="tarjeta") Tarjeta
+
+
+
+                                   div.col-span-3
+                                    h3.h3 radio-stack
+                                   div.col-span-3
+                                    div.radio-group
+                                        input.radio(type="radio" name="estado" id="active")
+                                        label.radio-label(for="active") Activo
+                                    div.radio-group
+                                        input.radio(type="radio" name="estado" id="inactivo")
+                                        label.radio-label(for="inactivo") Inactivo
+
+                                   div.col-span-3
+                                    h3.h3 radio-error 
+                                   div.col-span-3
+                                    div.radio-group
+                                        input.radio.radio-error(type="radio")
+
+                                   div.col-span-3
+                                    h3.h3 radio-disabled
+                                   div.col-span-3
+                                    div.radio-group
+                                        input.radio.radio-disabled(type="radio" disabled)
+
+
+
+
+                            div(class="col-span-6 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") ALERTAS
+                                div(class="col-span-6 grid grid-cols-12 gap-1")
+                                    div.col-span-12.grid.grid-cols-7.gap-3 
+                                        div.col-span-3.flex.pt-3
+                                            h3.h3 Class:
+                                        div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                            | alert    
+                                        div.col-span-3.flex.pt-3
+                                            h3.h3 Class Complento:
+                                        div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                            | alert-info | .alert-success |  alert-warning | alert-error    
+                                div(class="col-span-6 grid grid-cols-12 gap-1")   
+                                    div.col-span-3
+                                        h3.h3 INFORMATIVO
+                                    div.col-span-9
+                                        div.alert.alert-info
+                                            div.alert-icon i
+                                            div
+                                                p.alert-title Info
+                                                p.alert-text Esta es una alerta de información.
+                                
+
+                                //ALERTA 
+                                div(class="col-span-12 grid grid-cols-12 gap-1")   
+                                    div.col-span-3
+                                        h3.h3 ATENCIÓN
+                                    div.col-span-9
+                                        div.alert.alert-warning
+                                            div.alert-icon
+                                                i.fi-rr-light-emergency-on
+                                            div
+                                                p.alert-title Atención!
+                                                p.alert-text Esta es una alerta de Alerta.
+                                
+                                //EXITO 
+                                div(class="col-span-12 grid grid-cols-12 gap-1")   
+                                    div.col-span-3
+                                        h3.h3 ÉXITO
+                                    div.col-span-9
+                                        div.alert.alert-success
+                                            div.alert-icon
+                                                i.fi-rr-social-network
+                                            div
+                                                p.alert-title Exito!
+                                                p.alert-text Esta es una alerta de Éxito.
+                                
+                                //EXITO 
+                                div(class="col-span-12 grid grid-cols-12 gap-1")   
+                                    div.col-span-3
+                                        h3.h3 ERROR
+                                    div.col-span-9
+                                        div.alert.alert-error
+                                            div.alert-icon
+                                                i.fi-rr-octagon-xmark
+                                            div
+                                                p.alert-title Error!
+                                                p.alert-text Esta es una alerta de ERROR.
+                            
+                            
+                            //***********[STATUS CHIP]
+                            div(class="col-span-3 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") STATUS CHIP
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                        div.col-span-3.flex.pt-3
+                                            h3.h3 Class:
+                                        div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                            | status-chip | status-dot  
+                                        div.col-span-3.flex.pt-3
+                                            h3.h3 Class Complento:
+                                        div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                            | status-active | status-pending | status-low
+                                        
+                                        div.col-span-3
+                                            h3.h3 status-active 
+                                        div.col-span-4  
+                                            span.status-chip.status-active
+                                                span.status-dot
+                                                |Activa
+                                        
+                                        div.col-span-3
+                                            h3.h3 status-pending 
+                                        div.col-span-4  
+                                            span.status-chip.status-pending
+                                                span.status-dot
+                                                |Pendiente
+
+                                        div.col-span-3
+                                            h3.h3 status-low 
+                                        div.col-span-4  
+                                            span.status-chip.status-low
+                                                span.status-dot
+                                                |Bajo
+
+                            div(class="col-span-3 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") BADGLE DENTRO DE TABLAS
+                                div.col-span-12.grid.grid-cols-7.gap-3
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                            | table-badge | table-badge-dot  
+                                    
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class Complemento:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                            | table-badge-active | table-badge-pending | table-badge-low 
+
+                                    div.col-span-5.flex.pt-3
+                                        h3.h3 table-badge-active:
+                                    div.col-span-2
+                                        td.px-4.py-2
+                                            span.table-badge.table-badge-active 
+                                                span.table-badge-dot 
+                                                |   Activo
+                                    
+                                    div.col-span-5.flex.pt-3
+                                        h3.h3 table-badge-active:
+                                    div.col-span-2
+                                        td.px-4.py-2
+                                            span.table-badge.table-badge-pending 
+                                                span.table-badge-dot 
+                                                |   Pendiente
+
+                                    div.col-span-5.flex.pt-3
+                                        h3.h3 table-badge-low:
+                                    div.col-span-2
+                                        td.px-4.py-2
+                                            span.table-badge.table-badge-low 
+                                                span.table-badge-dot 
+                                                |   Bajo
+
+                            //*********[TARJETAS]*************//
+                            div(class="col-span-12 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") TARJETAS
+                           
+                            div(class="col-span-12 grid grid-cols-2 border-l-1 border-b-2 border-t-2 mt-3 mb-3 p-4 border-gray-200")
+
+                                div(class="col-span-1 grid  grid-cols-2 bg-gh-primaryHover shadow-2xl rounded-2xl ml-1 mr-1   p-4" )
+                                    div(class="col-span-12 pb-3")
+                                        label.label-muted.col-span-12.text-gray-200
+                                            |Ventas del dia
+                                    div(class="col-span-8")
+                                        h3(class="text-3xl  text-white font-extrabold")
+                                           i.fi-rr-money-bill-wave $12.340.000
+                                        span En Todos los puntos de venta
+
+                                    div(class="col-span-4 text-7xl text-green-300")
+                                        i.fi-rr-point-of-sale-bill
+                                
+                                
+                                div(class="col-span-1 grid  ml-1 mr-1  grid-cols-2 bg-gh-primaryHover shadow-2xl rounded-2xl   p-4" )
+                                    div(class="col-span-12 pb-3")
+                                        label.label-muted.col-span-12.text-gray-200
+                                            |Ventas del dia
+                                    div(class="col-span-8")
+                                        h3(class="text-3xl  text-white font-extrabold")
+                                           i.fi-rr-money-bill-wave $12.340.000
+                                        span En Todos los puntos de venta
+
+                                    div(class="col-span-4 text-7xl text-green-300")
+                                        i.fi-rr-point-of-sale-bill
+                                
+                            //***********[BOTONES]***************//
+
+
+                            div(class="col-span-4 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") BOTONES
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | btn |  
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class Complento:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | btn-primary    | btn-secondary | btn-ghost | btn-danger | btn-icon | btn-sm  |btn-lg
+                                    div.col-span-3
+                                        h3.h3 btn-primary 
+                                    div.col-span-4  
+                                        button.btn.btn-primary
+                                            i.fi-rr-disk
+                                            | Guardar
+                                    
+                                    
+                                    div.col-span-3
+                                        h3.h3 status-secondary 
+                                    div.col-span-4  
+                                        button.btn.btn-secondary
+                                            i.fi-rr-cross-circle
+                                            | Cancelar
+
+                                    div.col-span-3
+                                        h3.h3 btn-ghost 
+                                    div.col-span-4  
+                                        button.btn.btn-ghost
+                                            i.fi-rr-eye
+                                            | Ver Detalles
+
+
+                                    div.col-span-3
+                                        h3.h3 status-danger 
+                                    div.col-span-4  
+                                        button.btn.btn-danger
+                                            i.fi-rr-trash
+                                            | Eliminar
+                            
+
+
+                            //***************[BOTONES EN FORMULARIOS]***************//
+                            div(class="col-span-5 border-2 border-gray-400 grid grid-cols-12 gap-3")
+                                h1(class="h1 text-pink-400 col-span-12 ") Botoneras de Formularios (Form Actions)
+                                div.col-span-12.grid.grid-cols-7.gap-3 
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | form-actions |  
+                                    div.col-span-3.flex.pt-3
+                                        h3.h3 Class Complento:
+                                    div.col-span-4.bg-black.text-green-500.text-center.pt-2
+                                        | form-actions-sticky
+
+                                    div.col-span-3
+                                        h3.h3 form-actions
+                                    div.col-span-4  
+                                        div.form-actions.justify-between
+                                            button.btn.btn-danger Eliminar
+                                            div.flex.gap-3
+                                                button.btn.btn-secondary Cancelar
+                                                button.btn.btn-primary Guardar cambios
+                                    
+                                    div.col-span-3
+                                        h3.h3 form-actions-sticky
+                                    div.col-span-4  
+                                        div.form-actions-sticky
+                                            div.form-actions
+                                                button.btn.btn-secondary Cancelar
+                                                button.btn.btn-primary Guardar
+                                    
+                                    div.col-span-3
+                                        h3.h3 btn btn-sm btn-secondary
+                                    div.col-span-4  
+                                        div.flex.justify-end.gap-2.mt-6
+                                            button.btn.btn-sm.btn-secondary Cancelar
+                                            button.btn.btn-sm.btn-primary Confirmar
+                                    
+                                    div.col-span-3
+                                        h3.h3 btn.btn-primary.btn-loading | btn.btn-secondary
+                                    div.col-span-4  
+                                        div.form-actions
+                                            button.btn.btn-secondary(disabled) Cancelar
+                                            button.btn.btn-primary.btn-loading(disabled)
+                                                i.fi-rr-refresh.animate-spin
+                                                | Guardando
+
+                                    div.col-span-3
+                                        h3.h3 btn.btn-primary.w-full | btn.btn-secondary.w-full
+                                    div.col-span-4  
+                                        div.form-actions
+                                            button.btn.btn-primary.w-full Guardar
+                                            button.btn.btn-secondary.w-full Cancelar
+                                
+                                
+                                    
