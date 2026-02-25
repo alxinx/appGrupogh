@@ -29,7 +29,7 @@ const Documentacion = db.define('DOCUMENTACION', {
         allowNull: false
     },
     pertenece: {
-        type: DataTypes.ENUM('cliente', 'punto_venta', 'provedor', 'general', 'orden_compra'),
+        type: DataTypes.ENUM('cliente', 'punto_venta', 'provedor', 'general', 'orden_compra','empleado'),
         defaultValue: 'general'
     },
 

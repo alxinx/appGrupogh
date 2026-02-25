@@ -1,0 +1,18 @@
+div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6")
+    div(class="flex justify-center  md:items-center gap-4")
+         div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+            
+            if currentPath  === '/' && subPath !== 'personal' && subPath !== 'personal'
+                img(src="/img/avatars/pareja.png" alt="Nuevo Producto" class="w-14 h-14 object-contain")
+            else if subPath === 'newEmployer'
+                img(src="/img/avatars/nobinario.webp" alt="Nuevo Empleado" class="w-15 h-15 object-contain")
+            else if subPath === 'dashboard'
+                img(src="/img/avatars/pareja.webp" alt="Personal" class="w-17 h-17 object-contain")
+
+
+
+
+    div(class="flex flex-col gap-1")
+       
+        h1.h1 #{subPagina} 
+        

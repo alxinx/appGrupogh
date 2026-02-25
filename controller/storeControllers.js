@@ -7,7 +7,9 @@ import { redireccion } from "../helpers/redireccion.js";
 
 const dashboardStores = async (req, res)=>{
 
+    console.log('HOLAS')
     return res.status(201).render('./tienda/layout', {
+        
         pagina: `Panel principal de ${req.usuario.nombreUsuario}`,
         csrfToken : req.csrfToken(),
         currentPath: req.path

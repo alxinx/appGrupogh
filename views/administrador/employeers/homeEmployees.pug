@@ -1,0 +1,41 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+                            //******************[CUERPO PANELES]*********************//
+                            
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                include  ./headers/headerEmployeers.pug
+                                include  ./headers/actionBtns.pug
+
+                            
+                            //STATS
+
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+                                //- Card 1
+                                //include ./stats/numberPacks.pug
+                                //include ./stats/numberDose.pug 
+                                //include ./stats/numberProducts.pug 
+                                //include ./stats/numberForCustomer.pug
+            
+                            //Listado
+                            div(class="col-span-12 grid grid-cols-12 items-start")    
+                                //Columna 1
+                                div(class="col-span-12 md:col-span-8 grid grid-cols-1 gap-4 cards cardsWhite p-6")
+                                    //include ./views/listaDosificacionens.pug
+                                
+                                div(class="col-span-12 md:col-span-4 grid grid-cols-1 gap-4 cards cardsWhite p-6")
+                                    //include ./views/listaDosificacionens.pug
+
+
+
+
+                script(src="/js/dropdownBtn.js")  

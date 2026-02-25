@@ -1,0 +1,266 @@
+form(action="", method="post" id="formularioProvedor" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+
+
+    //- COLUMNA IZQUIERDA
+    input(type="hidden", name="_csrf" value = csrfToken)
+    input(type="hidden", name="idEmpleado" value=empleado ? empleado.idProveedor : '')
+    
+
+    div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
+        
+        //- Nombre del Producto
+        //- SEPARADOR 100% (ATRIBUTOS)
+        div(class="col-span-12 -mx-6    mt-4")
+            
+            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                div(class="border-b border-gray-200 w-full")
+                    i.fi-rr-features.pr-2
+                    | Datos Básicos
+
+
+        div(class="col-span-12 md:col-span-3")
+            label.label Primer Nombre
+                input(class="field-text" type="text" name="PrimerNombre" id="PrimerNombre" placeholder="Juan" value = (empleado && empleado.PrimerNombre) ? empleado.PrimerNombre : "")
+                #divError
+
+        div(class="col-span-12 md:col-span-3")
+            label.label Otros nombres
+                input(class="field-text" type="text" name="OtrosNombres" id="OtrosNombres" placeholder="Diego" value = (empleado && empleado.OtrosNombres) ? empleado.OtrosNombres : "")
+                #divError
+        
+        div(class="col-span-12 md:col-span-3")
+            label.label Primer Apellido
+                input(class="field-text" type="text" name="PrimerApellido" id="PrimerApellido" placeholder="Pérez" value = (empleado && empleado.PrimerApellido) ? empleado.PrimerApellido : "")
+                #divError
+        
+        div(class="col-span-12 md:col-span-3")
+            label.label Segundo Apellido
+                input(class="field-text" type="text" name="SegundoApellido" id="SegundoApellido" placeholder="Pérez" value = (empleado && empleado.SegundoApellido) ? empleado.SegundoApellido : "")
+                #divError
+        
+
+        div(class="col-span-12 md:col-span-4")
+            label.label Tipo de Identificación
+               select(name="TipoDocumento" id="TipoDocumento" class = (errores && errores.TipoDocumento) ? "field-text field-text-error" : "field-text")
+                span.select-icon
+                 i.fi-rr-chevron-double-down
+               if errores && errores.departamento
+                   p(class="label-error pl-2.5")=errores.departamento
+                       i.fi-rr-light-emergency-on
+
+
+
+        div(class="col-span-12 md:col-span-4")
+            label.label Número de identificación
+                input(class="field-text" type="text" name="NumeroDocumento" id="NumeroDocumento" placeholder="Nro de  NIT o Cédula" value = (empleado && empleado.NumeroDocumento) ? empleado.NumeroDocumento : "")
+                #divError
+
+        
+        div(class="col-span-12 md:col-span-4")
+            label.label Fecha de Nacimiento
+                input(class="field-text" type="date" name="fechaNacimiento" id="fechaNacimiento" placeholder="Cuándo nació?" value = (empleado && empleado.fechaNacimiento) ? empleado.fechaNacimiento : "")
+                #divError
+        
+        
+        div(class="col-span-12 -mx-6    mt-4")
+            
+            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                div(class="border-b border-gray-200 w-full")
+
+                    i.fi-rr-map-marker.pr-2
+                    | Datos de ubicación y contácto
+
+        
+        div(class="col-span-12 md:col-span-7")
+            label.label Dirección de Residencia
+                input(class="field-text" type="text" name="direccionResidecia" id="direccionResidecia" placeholder="Calle 10 nro 10-10" value = (empleado && empleado.direccionResidecia) ? empleado.direccionResidecia : "")
+                #divError
+        
+        //-Departamento vivienda empleado
+        div(class="col-span-12 md:col-span-3")
+            label.label Departamento
+               select(name="departamentoSelect" id="departamentoSelect" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
+                           option(value="") Selecciona El Departamento 
+                               each departamento in departamentos
+                                   option(value= departamento.id 
+                                       selected=(dato && dato.departamento == departamento.id) ? true : false 
+                                   )=departamento.nombre
+               span.select-icon
+                   i.fi-rr-chevron-double-down
+               if errores && errores.departamento
+                   p(class="label-error pl-2.5")=errores.departamento
+                       i.fi-rr-light-emergency-on
+
+        //- ciudad vivienda empleado
+        div(class="col-span-12 md:col-span-2")
+            label.label Ciudad
+                div(class="select-wrapper")
+                    select(name="ciudadSelect" id="ciudadSelect" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text")
+                        if ciudades
+                            option(value="") Selecciona Ciudad
+                            each ciudad in ciudades
+                                option(
+                                    value=ciudad.id
+                                    selected=(dato && dato.ciudad == ciudad.id) ? true : false
+                                )= ciudad.nombre                        
+                        else 
+                            option(value="") -- Seleccione Depto primero --
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
+                    if errores && errores.ciudad
+                        p(class="label-error pl-2.5")=errores.ciudad
+                            i.fi-rr-light-emergency-on
+                    span.select-icon
+                        i.fi-rr-chevron-double-down
+
+     
+        //- EMAIL EMPLEADO
+        div(class="col-span-12 md:col-span-3")
+            label.label Email
+                input(class="field-text" type="email" id="emailEmpleado" name="emailEmpleado" placeholder="correo@empleado.com" value = (empleado && empleado.emailEmpleado) ? empleado.emailEmpleado : "" )
+        
+
+
+        div(class="col-span-12 md:col-span-3")
+            label.label Celular (whatsapp)
+                input(class="field-text" type="tel" id="telefonoContacto" name="telefonoContacto" placeholder="57 316 222 33 22" value = (empleado && empleado.telefonoContacto) ? empleado.telefonoContacto : "" )
+        
+        div(class="col-span-12 md:col-span-3")
+            label.label Contacto de emergencia
+                input(class="field-text" type="text" id="contactoEmergencia" name="contactoEmergencia" placeholder="Diana perez" value = (empleado && empleado.telefonoContacto) ? empleado.telefonoContacto : "" )
+        
+        div(class="col-span-12 md:col-span-3")
+            label.label Teléfono Contacto
+                input(class="field-text" type="text" id="telefonoEmergencia" name="telefonoEmergencia" placeholder="57 313 000 00 00" value = (empleado && empleado.telefonoContacto) ? empleado.telefonoContacto : "" )
+        
+        
+
+
+
+
+        //- SEPARADOR 100% DATOS DE CONTACTO S
+        div(class="col-span-12 -mx-6 mt-4")
+            div(class="border-b border-gray-200 w-full")
+                h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                    i.fi-rr-store-buyer.mr-2
+                    | Datos Laborales 
+            
+        div(class="col-span-12 md:col-span-4")
+            label.label Cuándo inició labores?
+                input(class="field-text" type="date" name="fechaIngreso" id="fechaIngreso"  value = (empleado && empleado.fechaIngreso) ? empleado.fechaIngreso : "")
+                #divError
+
+        
+
+        div(class="col-span-12 md:col-span-4")
+            label.label Tipo de Contrato
+                select(name="tipoContrato" id="tipoContrato" class = (errores && errores.tipoContrato) ? "field-text field-text-error" : "field-text")
+                            option(value="") Selecciona El Contrato
+                              
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+                if errores && errores.tipoContrato
+                    p(class="label-error pl-2.5")=errores.tipoContrato
+                        i.fi-rr-light-emergency-on
+
+
+        div(class="col-span-12 md:col-span-4")
+            label.label Área de desempeño
+                select(name="departamentoSelect" id="departamentoSelect" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
+                            option(value="") --Selecciona el área--
+                            option(value="vendedor") Vendedor
+                            option(value="bodega") En Bodega 
+                            option(value="administrativo") Administrativo
+                            option(value="operario") Operativo 
+                            option(value="otro") Otra Área
+                              
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+                if errores && errores.departamento
+                    p(class="label-error pl-2.5")=errores.departamento
+                        i.fi-rr-light-emergency-on
+
+        div(class="col-span-12 md:col-span-6")
+            label.label Salario Base
+                input(class="field-text" type="text" id="salarioBase" name="salarioBase" placeholder="$ 1.700.000" value = (empleado && empleado.salarioBase) ? empleado.salarioBase : "" )
+        
+
+        div(class="col-span-12 md:col-span-6 pt-8")
+            label.flex.items-center.cursor-pointer
+                input(type="checkbox" class="sr-only" id="comisiones" name="comisiones")
+                span.switch
+                    span.switch-thumb
+                span.ml-3.text-sm.text-gray-700 Activar Comisiones
+                
+
+       
+    //- COLUMNA DERECHA
+    div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")
+
+                
+        
+        div(class="min-h-[150px] p-4")
+            h1.h1
+                i.fi-rr-camera.pr-2
+                | Fotografía del empleado
+            //- Card de Carga de Imágenes
+            div(class="shadow-sm")
+                //- IMAGEN DEL EMPLEADO
+                div(class="relative group")
+                    input(
+                        type="file" 
+                         
+                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                        name="fotoEmpleado" 
+                        id="upload-foto"
+                        accept=".jpg, .jpeg, .png, .webp"
+                    )
+
+                    div(class="inputUpload_mini")
+                        //- Icono de Archivos 
+                        div(class="w-16 h-16 bg-white shadow-sm rounded-full flex items-center justify-center mb-4 text-purple-500")
+                            i.fi-rr-mode-portrait.text-3xl
+                        
+                        span(class="text-sm font-bold text-gray-600") Sube o arrastra la foto del empleado 
+                        span(class="text-xs text-gray-400 mt-1") Máx 1 archivo, hasta 5MB
+
+                //- Área de Drag & Drop
+
+                h1.h1
+                    i.fi-rr-features.pr-2
+                    | Documentos del Empleado
+                div(class="relative group")
+                    input(
+                        type="file" 
+                        multiple 
+                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                        name="documentos" 
+                        id="upload-images"
+                        accept=".jpg, .jpeg, .png, .webp, .pdf, .doc, .docx, .xls, .xlsx"
+                    )
+
+                    div(class="inputUpload")
+                        //- Icono de Archivos 
+                        div(class="w-16 h-16 bg-white shadow-sm rounded-full flex items-center justify-center mb-4 text-purple-500")
+                            i.fi-rr-file-add.text-3xl
+                        
+                        span(class="text-sm font-bold text-gray-600") Sube o arrastra PDF, Word, Excel o Imágenes.
+                        span(class="text-xs text-gray-400 mt-1") Máx 10 archivos, hasta 5MB c/u
+
+                div(class="mt-6 flex flex-wrap gap-3 m-2 p-5" id="preview-container")
+
+                    //- Precarga de las imagenes que ya estan en server.
+                  
+                    //- Slot vacío para invitar a subir más
+                    div(class="w-20 h-20 rounded-xl border-2 border-dotted border-gray-200 flex items-center justify-center text-gray-300")
+                        svg(class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24")
+                            path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4")
+
+    div(class="col-span-12")
+        div(class="flex  justify-center")
+            button(class="btn btn-primary w-full"  type="submit" id="guardar" )
+                i.fi-rr-disk
+                | #{btnName}
+
+
+script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           

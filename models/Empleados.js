@@ -9,11 +9,11 @@ const Empleados = db.define('EMPLEADOS', {
     },
     idPuntoDeVenta: {
         type: DataTypes.UUID,
-        allowNull: false // Todo empleado debe pertenecer a una sede
+        allowNull: false 
     },
     idUsuario: {
         type: DataTypes.UUID,
-        allowNull: true, // Tu lógica: Solo si tiene acceso al sistema
+        allowNull: true, // Solo si es administrativo o vendedor
         defaultValue: null
     },
     TipoDocumento: {
@@ -56,6 +56,33 @@ const Empleados = db.define('EMPLEADOS', {
         type: DataTypes.DATEONLY,
         allowNull: false
     },
+    fechaNacimiento: {
+        type: DataTypes.DATEONLY,
+        allowNull: false
+    },
+   departamento: {
+        type: DataTypes.STRING(5),
+        allowNull: false,
+        references: {
+            model: 'DEPARTAMENTOS', // Asegúrate que el nombre de la tabla sea exacto
+            key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT' // Corregido: antes tenías doble onUpdate
+    },
+    ciudad: {
+        type: DataTypes.STRING(5),
+        allowNull: false,
+        references: {
+            model: 'MUNICIPIOS', // Asegúrate que el nombre de la tabla sea exacto
+            key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
+    },   
+    direccionResidecia : DataTypes.STRING(100),
+    contactoEmergencia : DataTypes.STRING(100),
+    telefonoEmergencia : DataTypes.STRING(100),
     tipoContrato: {
         type: DataTypes.ENUM('1', '2', '3', '4', '5', '6'),
         defaultValue: '1'
@@ -75,6 +102,10 @@ const Empleados = db.define('EMPLEADOS', {
     codigoEmpleado: {
         type: DataTypes.STRING(4), // String(4) para conservar ceros a la izquierda como "0045"
         allowNull: false
+    },
+    imagen : {
+        type : DataTypes.STRING(100),
+        allowNull : true
     },
     estado: {
         type: DataTypes.ENUM('activo', 'suspendido', 'despedido', 'vacaciones', 'enfermedad', 'licencia', 'otro'),

@@ -454,6 +454,10 @@
     @apply border-2 border-dashed border-pink-200 bg-pink-50/30 rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all group-hover:bg-pink-50 group-hover:border-pink-300
   }
 
+  .inputUpload_mini {
+    @apply border-2 border-dashed border-pink-200 bg-gh-primary/5 rounded-2xl mb-8 flex flex-col items-center justify-center text-center transition-all group-hover:bg-pink-50 group-hover:border-pink-300
+  }
+ 
   /*RADIO BUTTONS*/
   .radio {
     @apply h-4 w-4

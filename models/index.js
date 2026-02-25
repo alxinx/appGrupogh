@@ -21,6 +21,7 @@ import Dosificaciones from './Dosificaciones.js';
 import Pack from './Packs.js';
 import DetallesPack from './DetallesPack.js'
 
+import Empleados from './Empleados.js'
 //ASOCIACIONES
 
 
@@ -92,6 +93,16 @@ Traslados.belongsTo(PuntosDeVenta, { foreignKey: 'idDestino', as: 'destino' });
 DetalleTraslados.belongsTo(Pack, { foreignKey: 'idPack', as: 'pack' });
 DetalleTraslados.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
 
+
+
+// 1. Relación con Acceso al Sistema
+// El idUsuario en Empleados es opcional (null para operativos)
+Usuarios.hasOne(Empleados, { foreignKey: 'idUsuario', as: 'perfil' });
+Empleados.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'cuenta' });
+
+// 2. Relación con Sedes (Fábrica, Tiendas, Bodegas)
+PuntosDeVenta.hasMany(Empleados, { foreignKey: 'idPuntoDeVenta', as: 'personal' });
+Empleados.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'sede' });
 
 //Provedores.hasMany(OrdenDeCompra, { foreignKey: 'idProveedor' });
 //OrdenDeCompra.belongsTo(Provedores, { foreignKey: 'idProveedor' });

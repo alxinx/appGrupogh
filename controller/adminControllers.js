@@ -506,13 +506,53 @@ const dashboardCustomers = async (req, res) => {
     })
 }
 
+
+
+//***************************[EMPLEADOS]*************************************/
+
+//HOME
 const dashboardEmployees = async (req, res) => {
-    return res.status(201).render('./administrador/employees', {
+    return res.status(201).render('./administrador/employeers/homeEmployees', {
         pagina: "Empleados",
+        subPagina : 'Dashboard Empleados',
+        subPath : 'dashboard',
         csrfToken: req.csrfToken(),
-        currentPath: req.path
+        currentPath: req.path,
+       
     })
 }
+
+
+const newEmployer = async (req, res) => {
+
+    const obtenerDatosSelectores = async (idDepartamento) => {
+        const [departamentos, ciudades] = await Promise.all([
+            Departamentos.findAll({ raw: true }),
+            idDepartamento
+                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
+                : Promise.resolve([])
+        ]);
+        return { departamentos, ciudades };
+    };
+    const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+
+    return res.status(201).render('./administrador/employeers/new', {
+        pagina: "Empleados",
+        subPagina : 'Nuevo Empleado',
+        subPath : 'newEmployer',
+        csrfToken: req.csrfToken(),
+        currentPath: req.path,
+        departamentos: departamentos,
+        ciudades: ciudades,
+        btnName : 'Guardar Empleado'
+    })
+}
+
+
+
+
+
+
 
 const dashboardOrders = async (req, res) => {
 
@@ -1625,7 +1665,8 @@ export {
     dosificar,
     dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier,
     dashboardCustomers,
-    dashboardEmployees,
+    dashboardEmployees, newEmployer,
+    
     dashboardOrders,
     dashboardSettings,
     municipiosJson,
