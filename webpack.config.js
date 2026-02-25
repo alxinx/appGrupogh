@@ -18,7 +18,8 @@ export default {
         utils : '/src/js/utils.js',
         dosificador : '/src/js/dosificador.js',
         listadoDose : '/src/js/listadoDose.js',
-        doseView : '/src/js/doseView.js'
+        doseView : '/src/js/doseView.js',
+        dataEmployee : '/src/js/dataEmployee.js'
     },
     output: {
         filename: '[name].js',

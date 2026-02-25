@@ -8,13 +8,8 @@ const Documentacion = db.define('DOCUMENTACION', {
         autoIncrement: true
     },
     idPropietario: {
-        type: DataTypes.UUID, // ME INDICA A QUE TIENDA, CLIENTE O PROVEDOR PERTENECE 
+        type: DataTypes.UUID, // ME INDICA A QUE TIENDA, CLIENTE, PROVEDOR O EMPLEADO PERTENECE 
         allowNull: true,
-        onDelete: 'CASCADE',
-        references: {
-            model: 'PROVEDORES', // Nombre de la tabla
-            key: 'idProveedor'
-        }
     },
     nombreDocumento: {
         type: DataTypes.STRING(100),
@@ -29,7 +24,7 @@ const Documentacion = db.define('DOCUMENTACION', {
         allowNull: false
     },
     pertenece: {
-        type: DataTypes.ENUM('cliente', 'punto_venta', 'provedor', 'general', 'orden_compra','empleado'),
+        type: DataTypes.ENUM('cliente', 'punto_venta', 'provedor', 'general', 'orden_compra', 'empleado'),
         defaultValue: 'general'
     },
 

@@ -9,7 +9,7 @@ const Empleados = db.define('EMPLEADOS', {
     },
     idPuntoDeVenta: {
         type: DataTypes.UUID,
-        allowNull: false 
+        allowNull: false
     },
     idUsuario: {
         type: DataTypes.UUID,
@@ -60,7 +60,7 @@ const Empleados = db.define('EMPLEADOS', {
         type: DataTypes.DATEONLY,
         allowNull: false
     },
-   departamento: {
+    departamento: {
         type: DataTypes.STRING(5),
         allowNull: false,
         references: {
@@ -79,10 +79,10 @@ const Empleados = db.define('EMPLEADOS', {
         },
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
-    },   
-    direccionResidecia : DataTypes.STRING(100),
-    contactoEmergencia : DataTypes.STRING(100),
-    telefonoEmergencia : DataTypes.STRING(100),
+    },
+    direccionResidencia: DataTypes.STRING(100),
+    contactoEmergencia: DataTypes.STRING(100),
+    telefonoEmergencia: DataTypes.STRING(100),
     tipoContrato: {
         type: DataTypes.ENUM('1', '2', '3', '4', '5', '6'),
         defaultValue: '1'
@@ -100,12 +100,13 @@ const Empleados = db.define('EMPLEADOS', {
         defaultValue: false,
     },
     codigoEmpleado: {
-        type: DataTypes.STRING(4), // String(4) para conservar ceros a la izquierda como "0045"
-        allowNull: false
+        type: DataTypes.STRING(5), // String(5) para conservar ceros a la izquierda como "00045"
+        allowNull: false,
+        unique : true,
     },
-    imagen : {
-        type : DataTypes.STRING(100),
-        allowNull : true
+    imagen: {
+        type: DataTypes.STRING(100),
+        allowNull: true
     },
     estado: {
         type: DataTypes.ENUM('activo', 'suspendido', 'despedido', 'vacaciones', 'enfermedad', 'licencia', 'otro'),

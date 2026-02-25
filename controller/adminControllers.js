@@ -5,12 +5,16 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios } from "../models/index.js";
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
+import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
+import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
 import { limpiarPrecio, sanitizarHTML, getAvailability } from '../helpers/helpers.js'
+import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where } from "sequelize";
+
 
 dotenv.config();
 
@@ -514,11 +518,11 @@ const dashboardCustomers = async (req, res) => {
 const dashboardEmployees = async (req, res) => {
     return res.status(201).render('./administrador/employeers/homeEmployees', {
         pagina: "Empleados",
-        subPagina : 'Dashboard Empleados',
-        subPath : 'dashboard',
+        subPagina: 'Dashboard Empleados',
+        subPath: 'dashboard',
         csrfToken: req.csrfToken(),
         currentPath: req.path,
-       
+
     })
 }
 
@@ -536,23 +540,28 @@ const newEmployer = async (req, res) => {
     };
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
 
+    // Obtener puntos de venta y bodegas para el select condicional
+    const puntosDeVenta = await PuntosDeVenta.findAll({
+        where: {
+            tipo: { [Op.in]: ['Punto de venta', 'Bodega'] }
+        },
+        raw: true
+    });
+
     return res.status(201).render('./administrador/employeers/new', {
         pagina: "Empleados",
-        subPagina : 'Nuevo Empleado',
-        subPath : 'newEmployer',
+        subPagina: 'Nuevo Empleado',
+        subPath: 'newEmployer',
         csrfToken: req.csrfToken(),
         currentPath: req.path,
         departamentos: departamentos,
         ciudades: ciudades,
-        btnName : 'Guardar Empleado'
+        tipoIdentificacion,
+        contratosLaborales,
+        puntosDeVenta,
+        btnName: 'Guardar Empleado'
     })
 }
-
-
-
-
-
-
 
 const dashboardOrders = async (req, res) => {
 
@@ -621,6 +630,187 @@ const newSupplier = async (req, res) => {
 
     })
 
+}
+
+const checkDocumentoPersonal = async (req, res) => {
+    const { tipo, numero } = req.params;
+    try {
+        const empleado = await Empleados.findOne({
+            where: {
+                TipoDocumento: tipo,
+                NumeroDocumento: numero
+            }
+        });
+        return res.json({ exists: !!empleado });
+    } catch (error) {
+        console.error("Error en checkDocumentoPersonal:", error);
+        return res.status(500).json({ success: false });
+    }
+}
+
+const checkEmailPersonal = async (req, res) => {
+    const { email } = req.params;
+    try {
+        const empleado = await Empleados.findOne({ where: { emailEmpleado: email } });
+        return res.json({ exists: !!empleado });
+    } catch (error) {
+        console.error("Error en checkEmailPersonal:", error);
+        return res.status(500).json({ success: false });
+    }
+}
+
+const saveEmployee = async (req, res) => {
+    const {
+        PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
+        TipoDocumento, NumeroDocumento, fechaNacimiento, direccionResidencia,
+        departamentoSelect, ciudadSelect, emailEmpleado, telefonoContacto,
+        contactoEmergencia, telefonoEmergencia, fechaIngreso, tipoContrato,
+        cargo, salarioBase, comisiones, idPuntoDeVenta
+    } = req.body;
+
+    const t = await db.transaction();
+    const uploadedFiles = [];
+
+    try {
+        // 1. Generar código de empleado aleatorio de 5 dígitos
+        let codigoUnico = false;
+        let codigoEmpleado;
+        while (!codigoUnico) {
+            codigoEmpleado = Math.floor(10000 + Math.random() * 90000).toString();
+            const exists = await Empleados.findOne({ where: { codigoEmpleado } });
+            if (!exists) codigoUnico = true;
+        }
+
+        // 2. Determinar idPuntoDeVenta final
+        const administrativeId = '00000000-0000-0000-0000-000000000000';
+        const finalIdPuntoDeVenta = (cargo === 'vendedor' || cargo === 'bodega') ? (idPuntoDeVenta || administrativeId) : administrativeId;
+
+        // 3. Crear registro de empleado
+        const empleado = await Empleados.create({
+            idPuntoDeVenta: finalIdPuntoDeVenta,
+            TipoDocumento,
+            NumeroDocumento,
+            PrimerNombre,
+            OtrosNombres,
+            PrimerApellido,
+            SegundoApellido,
+            telefonoContacto,
+            emailEmpleado,
+            fechaIngreso,
+            fechaNacimiento,
+            departamento: departamentoSelect,
+            ciudad: ciudadSelect,
+            direccionResidencia,
+            contactoEmergencia,
+            telefonoEmergencia,
+            tipoContrato,
+            cargo,
+            salarioBase: limpiarPrecio(salarioBase),
+            comisiones: comisiones === 'on',
+            codigoEmpleado,
+            estado: 'activo'
+        }, { transaction: t });
+
+        // 3. Crear Usuario si aplica
+        let usuarioCreado = null;
+        const rolesConUsuario = {
+            'vendedor': 'STORE',
+            'bodega': 'EMPLOYER',
+            'administrativo': 'ADMIN'
+        };
+
+        if (rolesConUsuario[cargo]) {
+            usuarioCreado = await Usuarios.create({
+                nombreUsuario: PrimerNombre,
+                apellidoUsuario: PrimerApellido,
+                emailUsuario: emailEmpleado,
+                password: NumeroDocumento,
+                permisos: rolesConUsuario[cargo]
+            }, { transaction: t });
+
+            await empleado.update({ idUsuario: usuarioCreado.idUsuario }, { transaction: t });
+            
+            // 4. Enviar Email (Nodemailer)
+                mailWelcomeEmployer({ emailEmpleado, PrimerNombre, codigoEmpleado });
+        }
+
+        // 5. Procesar Foto (perfil/)
+        if (req.files && req.files.fotoEmpleado) {
+            const file = req.files.fotoEmpleado[0];
+            const namePhoto = `perfil-${NumeroDocumento}-${Date.now()}.webp`;
+            const keyPhoto = `documentacion/empleados/perfil/${namePhoto}`;
+
+            const buffer = await sharp(file.buffer)
+                .resize(500, 500, { fit: 'cover' })
+                .webp({ quality: 80 })
+                .toBuffer();
+
+            const upload = new Upload({
+                client: s3Client,
+                params: {
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: keyPhoto,
+                    Body: buffer,
+                    ContentType: 'image/webp'
+                }
+            });
+
+            await upload.done();
+            uploadedFiles.push(keyPhoto);
+            await empleado.update({ imagen: keyPhoto }, { transaction: t });
+        }
+
+        // 6. Procesar Documentos (empleados/)
+        if (req.files && req.files.documentos) {
+            const docsData = await Promise.all(req.files.documentos.map(async (file, idx) => {
+                const ext = file.originalname.split('.').pop();
+                const nameDoc = `doc-${NumeroDocumento}-${Date.now()}-${idx}.${ext}`;
+                const keyDoc = `documentacion/empleados/${nameDoc}`;
+
+                const upload = new Upload({
+                    client: s3Client,
+                    params: {
+                        Bucket: process.env.R2_BUCKET_NAME,
+                        Key: keyDoc,
+                        Body: file.buffer,
+                        ContentType: file.mimetype
+                    }
+                });
+
+                await upload.done();
+                uploadedFiles.push(keyDoc);
+
+                return {
+                    idPropietario: empleado.idEmpleado,
+                    nombreDocumento: file.originalname,
+                    keyName: keyDoc,
+                    formato: ext.toUpperCase(),
+                    pertenece: 'empleado'
+                };
+            }));
+
+            await Documentacion.bulkCreate(docsData, { transaction: t });
+        }
+
+        await t.commit();
+        res.json({ success: true, mensaje: 'Empleado registrado con éxito. Código: ' + codigoEmpleado });
+
+    } catch (error) {
+        await t.rollback();
+        console.error("ERROR SAVE_EMPLOYEE:", error);
+
+        // Rollback R2
+        if (uploadedFiles.length > 0) {
+            await Promise.all(uploadedFiles.map(key =>
+                s3Client.send(new DeleteObjectCommand({
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: key
+                }))
+            )).catch(err => console.error("Error rollback R2:", err));
+        }
+
+        res.status(500).json({ success: false, mensaje: 'Error al registrar el empleado: ' + error.message });
+    }
 }
 
 
@@ -1663,10 +1853,12 @@ export {
     saveProduct, editarProducto, listaProductos, verProducto, newProduct,
     batchBuyOrder,
     dosificar,
-    dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier,
+    dashboardSupplier,
+    newSupplier,
+    saveSupplier, checkNitSupplier,
     dashboardCustomers,
-    dashboardEmployees, newEmployer,
-    
+    dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal,
+
     dashboardOrders,
     dashboardSettings,
     municipiosJson,

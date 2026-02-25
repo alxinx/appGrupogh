@@ -1,4 +1,4 @@
-form(action="", method="post" id="formularioProvedor" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+form(action="", method="post" id="formularioEmpleado" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
 
 
     //- COLUMNA IZQUIERDA
@@ -42,11 +42,11 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
         div(class="col-span-12 md:col-span-4")
             label.label Tipo de Identificación
                select(name="TipoDocumento" id="TipoDocumento" class = (errores && errores.TipoDocumento) ? "field-text field-text-error" : "field-text")
+                option(value="") Selecciona Tipo
+                each tipo in tipoIdentificacion
+                    option(value=tipo.codigo selected=(empleado && empleado.TipoDocumento == tipo.codigo))= tipo.descripcion
                 span.select-icon
                  i.fi-rr-chevron-double-down
-               if errores && errores.departamento
-                   p(class="label-error pl-2.5")=errores.departamento
-                       i.fi-rr-light-emergency-on
 
 
 
@@ -73,7 +73,7 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
         
         div(class="col-span-12 md:col-span-7")
             label.label Dirección de Residencia
-                input(class="field-text" type="text" name="direccionResidecia" id="direccionResidecia" placeholder="Calle 10 nro 10-10" value = (empleado && empleado.direccionResidecia) ? empleado.direccionResidecia : "")
+                input(class="field-text" type="text" name="direccionResidencia" id="direccionResidencia" placeholder="Calle 10 nro 10-10" value = (empleado && empleado.direccionResidecia) ? empleado.direccionResidecia : "")
                 #divError
         
         //-Departamento vivienda empleado
@@ -145,40 +145,45 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
                     i.fi-rr-store-buyer.mr-2
                     | Datos Laborales 
             
-        div(class="col-span-12 md:col-span-4")
+        div(class="col-span-12 md:col-span-3")
             label.label Cuándo inició labores?
                 input(class="field-text" type="date" name="fechaIngreso" id="fechaIngreso"  value = (empleado && empleado.fechaIngreso) ? empleado.fechaIngreso : "")
                 #divError
 
         
 
-        div(class="col-span-12 md:col-span-4")
+        div(class="col-span-12 md:col-span-3")
             label.label Tipo de Contrato
                 select(name="tipoContrato" id="tipoContrato" class = (errores && errores.tipoContrato) ? "field-text field-text-error" : "field-text")
                             option(value="") Selecciona El Contrato
-                              
+                            each contrato in contratosLaborales
+                                option(value=contrato.codigo selected=(empleado && empleado.tipoContrato == contrato.codigo))= contrato.descripcion
                 span.select-icon
                     i.fi-rr-chevron-double-down
-                if errores && errores.tipoContrato
-                    p(class="label-error pl-2.5")=errores.tipoContrato
-                        i.fi-rr-light-emergency-on
 
 
-        div(class="col-span-12 md:col-span-4")
+        div(class="col-span-12 md:col-span-3")
             label.label Área de desempeño
-                select(name="departamentoSelect" id="departamentoSelect" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
+                select(name="cargo" id="cargo" class = (errores && errores.cargo) ? "field-text field-text-error" : "field-text")
                             option(value="") --Selecciona el área--
-                            option(value="vendedor") Vendedor
-                            option(value="bodega") En Bodega 
-                            option(value="administrativo") Administrativo
-                            option(value="operario") Operativo 
-                            option(value="otro") Otra Área
+                            option(value="vendedor" selected=(empleado && empleado.cargo == 'vendedor')) Vendedor
+                            option(value="bodega" selected=(empleado && empleado.cargo == 'bodega')) En Bodega 
+                            option(value="administrativo" selected=(empleado && empleado.cargo == 'administrativo')) Administrativo
+                            option(value="operario" selected=(empleado && empleado.cargo == 'operario')) Operativo 
+                            option(value="otro" selected=(empleado && empleado.cargo == 'otro')) Otra Área
                               
                 span.select-icon
                     i.fi-rr-chevron-double-down
-                if errores && errores.departamento
-                    p(class="label-error pl-2.5")=errores.departamento
-                        i.fi-rr-light-emergency-on
+
+        div(class="col-span-12 md:col-span-3")
+            label.label Asignar Sede
+                select(name="idPuntoDeVenta" id="idPuntoDeVenta" class = (errores && errores.idPuntoDeVenta) ? "field-text field-text-error" : "field-text" disabled)
+                            option(value="") --Selecciona Sede--
+                            each punto in puntosDeVenta
+                                option(value=punto.idPuntoDeVenta selected=(empleado && empleado.idPuntoDeVenta == punto.idPuntoDeVenta))= punto.nombreComercial
+                              
+                span.select-icon
+                    i.fi-rr-chevron-double-down
 
         div(class="col-span-12 md:col-span-6")
             label.label Salario Base
@@ -264,3 +269,4 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
 
 
 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           
+script(src="/js/dataEmployee.js")

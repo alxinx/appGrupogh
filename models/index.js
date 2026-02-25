@@ -113,10 +113,10 @@ export {
   Departamentos,
   Municipios,
   PuntosDeVenta,
-  RegimenFacturacion, Cajas,FacturaProveedores, AbonosProveedores, 
+  RegimenFacturacion, Cajas, FacturaProveedores, AbonosProveedores,
   Categorias, Atributos, VariacionesProducto,
   Productos, Provedores, CategoriasDeProvedores,
-  Dosificaciones,Pack,DetallesPack, Stock,
+  Dosificaciones, Pack, DetallesPack, Stock,
   Traslados, DetalleTraslados,
-  Imagenes, Documentacion
+  Imagenes, Documentacion, Empleados
 }
