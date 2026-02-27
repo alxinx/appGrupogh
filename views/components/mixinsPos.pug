@@ -27,13 +27,14 @@ mixin tarjetaRecomendacion(titulo, tiempo, imagen, esVentaOnline = false)
 
 
 //TARJETA DE PRODUCTO POS PRINCIPAL
-mixin tarjetaProducto(id, name, stock, codigo, precioM, precioD, imagen)
+mixin tarjetaProducto(id, name, stock, codigo, precioM, precioD, imagen, modalId)
   //- Contenedor principal con ID dinámico para manipular la tarjeta completa si es necesario
   div(
     id=`product-${id}`
     class="product-card product-card-individual group cursor-pointer"
     data-name=name
     data-codigo=codigo
+    data-modal-target=modalId
   )
     //- Contenedor de Imagen
     div(class="relative aspect-[4/5] rounded-[1rem] overflow-hidden mb-4 bg-gray-50 shadow-sm")
@@ -79,7 +80,7 @@ mixin tarjetaProducto(id, name, stock, codigo, precioM, precioD, imagen)
 mixin tarjetaClienteFidelizado(idCliente, nombre, documento, imagen)
   //- Contenedor con Glassmorphism para que resalte sobre el fondo fucsia
   div(
-    class="card cardLogin bg-white/40 backdrop-blur-xl border border-white/30 rounded-2xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.1)] transition-all hover:bg-white/50"
+    class="card cardLogin  bg-white/40 backdrop-blur-xl border border-white/30 rounded-2xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.1)] transition-all hover:bg-white/50"
     id=`cliente-card-${idCliente}`
   )
     div(class="grid grid-cols-12 items-center gap-4")

@@ -8,10 +8,19 @@ block contenedor
         div(class="flex-1 flex flex-col")
             include ../partials/header
             include ../components/mixinsPos
+            include ../components/modals
 
             main(class="flex-1 overflow-y-auto p-4")
                 //- Definimos el Grid Principal de 12 columnas
                 include ./views/pos 
 
-    
+    +modalDetalleProducto(
+        'PJ-001', 
+        'PIJAMA CONJUNTO', 
+        'Experimenta el máximo confort con nuestro conjunto premium...', 
+        { mayor: '55.000', detal: '90.000' }, 
+        ['S', 'M', 'L', 'XL'], 
+        ['#F472B6', '#FBCFE8', '#C4B5FD', '#E879F9'],
+        ['https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856977-0.webp ', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856994-1.webp', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856994-2.webp', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856995-4.webp']
+)
     script(src="js/pos.js") 

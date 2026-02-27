@@ -4,15 +4,11 @@ div(class="grid grid-cols-12 gap-6")
         
         //- Buscador Gigante
         div(class="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-sm border border-white")
-            input(
-                type="text" 
-                placeholder="Ingresa el SKU, nombre o serial..." 
-                autofocus 
-                class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none"
+            input(id="codigo" name="codigo" type="text"  placeholder="Ingresa el SKU, nombre o serial..."  autofocus  class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none"
             )
-        //- Catálogo de Productos
+        //- Catálogo de Pro s
         div(class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6")
-            +tarjetaProducto('1', 'Vestido Satinado Rosa', '23', 'CD-32D-233', '89.000', '120.000', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/PJ-001-1771853499104-0.webp')
+            +tarjetaProducto('1', 'Vestido Satinado Rosa', '23', 'CD-32D-233', '89.000', '120.000', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/PJ-001-1771853499104-0.webp', 'modal-producto-PJ-001')
             +tarjetaProducto('4f2c4dd8-1e30-4fbd-81e2-2986bbfef862', 'Top Boreal', '15', 'TOP-BOR-007', '55.000', '90.000', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/TOP-BOR-007-1769460139461-0.webp')
             +tarjetaProducto('3', 'Blusa Argentina', '89', 'ARG001', '10.900', '21.800', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856977-0.webp')
         //- SECCIÓN DE RECOMENDACIONES (Estilo Ticket)

@@ -15,6 +15,18 @@ const dashboardStores = async (req, res)=>{
 
     })}
 
+
+const getTraslados = async (req, res)=>{
+
+    return res.status(201).render('./tienda/traslados/getTraslados', {
+        
+        pagina: `Recibir Traslados`,
+        csrfToken : req.csrfToken(),
+        currentPath: req.path
+
+    })}
+
 export {
-    dashboardStores
+    dashboardStores,getTraslados
+
 }

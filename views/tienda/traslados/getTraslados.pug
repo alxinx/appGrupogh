@@ -1,0 +1,17 @@
+extends ../../layout/index
+
+block contenedor
+    div(class="flex min-h-screen bg-gray-50 bgbody")
+        include ../partials/leftMenu
+
+        div(class="flex-1 flex flex-col")
+            include ../../partials/header
+            include ../../components/mixinsPos
+            include ../../components/modals
+
+            main(class="flex-1 overflow-y-auto p-4")
+                //- Definimos el Grid Principal de 12 columnas
+                include ../views/pos 
+
+    
+    script(src="js/pos.js") 

@@ -47,9 +47,16 @@ aside(
         i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
  
       div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/store/traslados/get" class="submenu-item") Recibir Traslados
-        a(href="/store/traslados/new" class="submenu-item") Realizar Traslados
-        a(href="/store/traslados/history" class="submenu-item") Historial de Traslados
+        a(href="/store/traslados/get" class="submenu-item")
+          i(class="fi fi-rr-inbox-in text-sm mr-2")
+         
+          | Recibir Traslados
+        a(href="/store/traslados/new" class="submenu-item") 
+          i(class="fi fi-rr-inbox-out text-sm mr-2")
+          |Realizar Traslados
+        a(href="/store/traslados/history" class="submenu-item")
+          i(class="fi fi-rr-book-bookmark text-sm mr-2") 
+          |Historial de Traslados
  
 
     a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
