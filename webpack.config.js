@@ -19,7 +19,8 @@ export default {
         dosificador : '/src/js/dosificador.js',
         listadoDose : '/src/js/listadoDose.js',
         doseView : '/src/js/doseView.js',
-        dataEmployee : '/src/js/dataEmployee.js'
+        dataEmployee : '/src/js/dataEmployee.js',
+        pos : '/src/js/pos.js'
     },
     output: {
         filename: '[name].js',
