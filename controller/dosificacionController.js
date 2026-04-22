@@ -133,7 +133,8 @@ const guardarDosificacion = async (req, res) => {
             const detallesResiduo = Object.entries(resultadoKitting.residuo).map(([idProducto, cant]) => ({
                 idPack: packResiduo.idPack,
                 idProducto: idProducto,
-                cantidad: cant
+                cantidad: cant,
+                valorUnidad: mapaPrecios[idProducto] ?? 0
             }));
             await DetallesPack.bulkCreate(detallesResiduo, { transaction: t });
         }

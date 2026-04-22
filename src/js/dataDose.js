@@ -380,22 +380,14 @@ if (btnGuardar) {
             const resultado = await respuesta.json();
 
             if (resultado.mensaje === 'ok') {
-                // El SweetAlert que planeamos para decidir qué hacer después
-                Swal.fire({
+                await Swal.fire({
                     title: '¡Dosificación Exitosa!',
-                    text: "¿Qué deseas hacer ahora?",
+                    text: 'Los bultos fueron generados correctamente.',
                     icon: 'success',
-                    showCancelButton: true,
-                    confirmButtonText: 'Ver Dashboard',
-                    cancelButtonText: 'Nueva Carga',
+                    confirmButtonText: 'Aceptar',
                     allowOutsideClick: false
-                }).then((res) => {
-                    if (res.isConfirmed) {
-                        window.location.href = '/dosificaciones/dashboard';
-                    } else {
-                        window.location.reload(); 
-                    }
                 });
+                window.location.href = '/admin/dosificaciones/';
             } else {
                 throw new Error();
             }
