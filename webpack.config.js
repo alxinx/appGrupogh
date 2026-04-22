@@ -20,6 +20,7 @@ export default {
         listadoDose : '/src/js/listadoDose.js',
         doseView : '/src/js/doseView.js',
         dataEmployee : '/src/js/dataEmployee.js',
+        employeeList : '/src/js/employeeList.js',
         pos : '/src/js/pos.js'
     },
     output: {

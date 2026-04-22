@@ -1,0 +1,37 @@
+div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+    h2.h2.text-gh-primaryHover
+        i.fi-rr-users-alt
+        |  Personal Registrado
+    p(class="text-sm text-slate-400") Lista completa del personal vinculado a la empresa
+
+    //- Buscador
+    div(class="pt-4 pb-2")
+        div.input-group
+            i.fi-rr-search.input-icon.input-icon-left
+            input.input.input-has-icon-left(
+                type="text"
+                id="busquedaEmpleado"
+                placeholder="Buscar por nombre, documento, código o email..."
+            )
+
+    div(class="overflow-x-auto pt-2")
+        table(class="w-full text-left text-2xs border-collapse")
+            thead
+                tr(class="border-b border-gh-primaryHover text-sm transition-colors")
+                    th(class="px-6 py-4 text-gray-600") Empleado
+                    th(class="px-4 py-4 text-center text-gray-600") Documento
+                    th(class="px-4 py-4 text-center text-gray-600") Teléfono
+                    th(class="px-4 py-4 text-center text-gray-600") Código
+                    th(class="px-4 py-4 text-center text-gray-600") Sede Asignada
+                    th(class="px-6 py-4 text-center text-gray-600")
+
+            tbody#contenedor-empleados(class="divide-y divide-slate-100")
+                tr
+                    td(colspan="6" class="px-6 py-8 text-center text-gray-400 text-sm")
+                        i.fi-rr-spinner.animate-spin.mr-2
+                        | Cargando personal...
+
+    //- Footer / Paginación
+    div(class="px-4 py-4 bg-slate-50/30 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-2")
+        p#resumenEmpleados(class="text-xs text-slate-400") Cargando...
+        div#paginacionEmpleados

@@ -27,15 +27,15 @@ block contenedor
                                 //include ./stats/numberForCustomer.pug
             
                             //Listado
-                            div(class="col-span-12 grid grid-cols-12 items-start")    
+                            div(class="col-span-12 grid grid-cols-12 items-start")
                                 //Columna 1
                                 div(class="col-span-12 md:col-span-8 grid grid-cols-1 gap-4 cards cardsWhite p-6")
-                                    //include ./views/listaDosificacionens.pug
-                                
+                                    include ./views/listaEmpleados.pug
+
+                                //Columna 2
                                 div(class="col-span-12 md:col-span-4 grid grid-cols-1 gap-4 cards cardsWhite p-6")
-                                    //include ./views/listaDosificacionens.pug
 
 
-
-
-                script(src="/js/dropdownBtn.js")  
+                script(src="/js/dropdownBtn.js")
+                script(src="/js/paginador.js")
+                script(src="/js/employeeList.js")
