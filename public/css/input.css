@@ -81,6 +81,16 @@
 
   
 
+@layer base {
+  a,
+  button,
+  [role="button"],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+}
+
 @layer components {
 
   .recommendation-card {

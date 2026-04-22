@@ -163,15 +163,55 @@
                 renderTable(1);
             });
 
-            // Lógica del Modal (se mantiene similar pero ajustada)
+            // Lógica del Modal
             const modal = document.querySelector('#modalTraslado');
             const selectDestino = document.querySelector('#idDestinoTraslado');
             const confirmBtn = document.querySelector('#confirmTraslado');
             const countSpan = document.querySelector('#countPacksSelected');
+            const inputCodigo = document.querySelector('#codigoEmpleadoDespacha');
+            const feedbackEmpleado = document.querySelector('#feedbackEmpleadoDespacha');
+            const textareaNotas = document.querySelector('#notasTraslado');
+
+            let idEmpleadoDespacha = null;
+            let busquedaTimer = null;
+
+            const resetEmpleado = () => {
+                idEmpleadoDespacha = null;
+                feedbackEmpleado.textContent = '';
+                feedbackEmpleado.className = 'text-xs ml-2 h-4';
+            };
+
+            const buscarEmpleado = async (codigo) => {
+                if (!codigo || codigo.length < 3) { resetEmpleado(); return; }
+                try {
+                    const res = await fetch(`/admin/json/personal/codigo/${codigo.trim().toUpperCase()}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        idEmpleadoDespacha = data.idEmpleado;
+                        feedbackEmpleado.textContent = `✓ ${data.nombre}`;
+                        feedbackEmpleado.className = 'text-xs ml-2 h-4 text-emerald-600 font-semibold';
+                    } else {
+                        idEmpleadoDespacha = null;
+                        feedbackEmpleado.textContent = '✗ Código no encontrado';
+                        feedbackEmpleado.className = 'text-xs ml-2 h-4 text-red-500 font-semibold';
+                    }
+                } catch (_) {
+                    resetEmpleado();
+                }
+            };
+
+            inputCodigo.addEventListener('input', () => {
+                clearTimeout(busquedaTimer);
+                resetEmpleado();
+                busquedaTimer = setTimeout(() => buscarEmpleado(inputCodigo.value), 400);
+            });
 
             btnTrasladar.addEventListener('click', async () => {
                 const selected = document.querySelectorAll('.checkbox-pack:checked');
                 countSpan.innerText = selected.length;
+                inputCodigo.value = '';
+                textareaNotas.value = '';
+                resetEmpleado();
                 modal.classList.remove('hidden');
 
                 if (selectDestino.options.length <= 1) {
@@ -193,19 +233,22 @@
             document.querySelector('#closeModalTraslado').onclick = () => modal.classList.add('hidden');
             document.querySelector('#cancelTraslado').onclick = () => modal.classList.add('hidden');
 
+            const alerta = (opts) => window.Swal?.fire({ confirmButtonColor: '#7e22ce', ...opts });
+
             confirmBtn.addEventListener('click', async () => {
                 const idDestino = selectDestino.value;
                 if (!idDestino) {
-                    Swal.fire({
-                            icon: 'error',
-                            title: 'Seleccionna un destino',
-                            text: 'No puedes trasladar esto a ninguna parte 🙄',
-                            confirmButtonColor: '#7e22ce'
-                        });
+                    alerta({ icon: 'error', title: 'Selecciona un destino', text: 'Debes elegir una bodega o almacén.' });
+                    return;
+                }
+                if (!idEmpleadoDespacha) {
+                    alerta({ icon: 'error', title: 'Código requerido', text: 'Ingresa el código del empleado responsable.' });
+                    inputCodigo.focus();
                     return;
                 }
 
                 const selectedPacks = Array.from(document.querySelectorAll('.checkbox-pack:checked')).map(cb => cb.value);
+                const notas = textareaNotas?.value?.trim() || '';
 
                 confirmBtn.disabled = true;
                 confirmBtn.innerText = 'Procesando...';
@@ -217,29 +260,19 @@
                             'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
                         },
-                        body: JSON.stringify({ packs: selectedPacks, idDestino })
+                        body: JSON.stringify({ packs: selectedPacks, idDestino, idEmpleadoDespacha, notas })
                     });
 
                     const result = await res.json();
                     if (result.success) {
+                        window.open(`/admin/dosificaciones/comprobante/${result.idTraslado}`, '_blank');
                         window.location.reload();
                     } else {
-                        Swal.fire({
-                            icon: 'warning',
-                            title: 'Límite excedido',
-                            text: 'Error: ' + result.mensaje,
-                            confirmButtonColor: '#7e22ce'
-                        });
-                      
+                        alerta({ icon: 'warning', title: 'Error', text: result.mensaje });
                     }
                 } catch (error) {
                     console.error('Error en traslado', error);
-                    Swal.fire({
-                            icon: 'error',
-                            title: 'Server Erroor',
-                            text: 'Error con la comunicación en el servidor.',
-                            confirmButtonColor: '#7e22ce'
-                        });
+                    alerta({ icon: 'error', title: 'Error de servidor', text: 'Error al comunicarse con el servidor.' });
                 } finally {
                     confirmBtn.disabled = false;
                     confirmBtn.innerText = 'Confirmar Traslado';

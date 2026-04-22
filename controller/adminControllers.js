@@ -699,6 +699,25 @@ const filterEmployeeListJson = async (req, res) => {
     }
 }
 
+const buscarEmpleadoPorCodigo = async (req, res) => {
+    const { codigo } = req.params;
+    try {
+        const empleado = await Empleados.findOne({
+            where: { codigoEmpleado: codigo.trim().toUpperCase() },
+            attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido', 'codigoEmpleado']
+        });
+        if (!empleado) return res.json({ success: false });
+        return res.json({
+            success: true,
+            idEmpleado: empleado.idEmpleado,
+            nombre: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`
+        });
+    } catch (error) {
+        console.error('Error en buscarEmpleadoPorCodigo:', error);
+        return res.status(500).json({ success: false });
+    }
+};
+
 const saveEmployee = async (req, res) => {
     const {
         PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
@@ -1906,7 +1925,7 @@ export {
     newSupplier,
     saveSupplier, checkNitSupplier,
     dashboardCustomers,
-    dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson,
+    dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
 
     dashboardOrders,
     dashboardSettings,

@@ -3,11 +3,11 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson } from "../controller/adminControllers.js"
+checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson } from "../controller/adminControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
-import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack } from '../controller/dosificacionController.js'
+import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado } from '../controller/dosificacionController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
@@ -122,6 +122,7 @@ routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
 routes.get('/json/personal/documento/:tipo/:numero', checkDocumentoPersonal);
 routes.get('/json/personal/email/:email', checkEmailPersonal);
 routes.get('/json/personal/lista', filterEmployeeListJson);
+routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
 routes.get('/json/provedores/', filterSupplierListJson);
 routes.get('/json/inventario-tienda/:idPuntoDeVenta', filterStoreInventoryJson);
 routes.get('/json/tiendas/', async (req, res) => {
@@ -138,6 +139,7 @@ routes.get('/api/dosificaciones/stats-global', widgetGlobales);
 routes.get('/api/dosificaciones/productos/:id', obtenerProductosPorDose);
 routes.get('/api/dosificaciones/metadata/:id', obtenerMetadataDose);
 routes.get('/dosificaciones/etiquetas/unica/:idPack/', imprimirEtiquetasPorPack);
+routes.get('/dosificaciones/comprobante/:idTraslado', imprimirComprobanteTraslado);
 
 routes.get('/dosificaciones/etiquetas/:idDosificacion/:numLote', imprimirEtiquetasLote);
 routes.get('/api/dosificaciones/:query', obtenerDosificacionesPaginadas)

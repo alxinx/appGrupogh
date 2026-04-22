@@ -1,4 +1,4 @@
-import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados } from '../models/index.js';
+import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados, Empleados, PuntosDeVenta } from '../models/index.js';
 import jwt from "jsonwebtoken";
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
@@ -7,6 +7,9 @@ import db from '../config/bd.js';
 import { v4 as uuidv4 } from 'uuid'; // Para generar los códigos de etiqueta únicos
 import { Op } from 'sequelize';
 import dotenv from "dotenv"
+import path from 'path';
+import { fileURLToPath } from 'url';
+import QRCode from 'qrcode';
 
 dotenv.config()
 
@@ -472,17 +475,10 @@ const nroPacks = async (req, res) => {
 
 
 const trasladarPacks = async (req, res) => {
-    const { packs, idDestino } = req.body;
-    const token = req.cookies?._token;
-    if (!token) return res.status(401).json({ success: false, mensaje: 'Sesión expirada' });
+    const { packs, idDestino, idEmpleadoDespacha, notas } = req.body;
 
-    let usuarioId;
-    try {
-        const decoded = jwt.verify(token, process.env.APP_PRIVATEKEY);
-        // Ajustamos según la estructura que mostraste: decoded.id.id o decoded.id
-        usuarioId = decoded.id?.id || decoded.id;
-    } catch (error) {
-        return res.status(401).json({ success: false, mensaje: 'Token inválido' });
+    if (!idEmpleadoDespacha) {
+        return res.status(400).json({ success: false, mensaje: 'El código del empleado responsable es obligatorio.' });
     }
     const t = await db.transaction();
 
@@ -513,10 +509,11 @@ const trasladarPacks = async (req, res) => {
 
         const traslado = await Traslados.create({
             codigoTraslado: nuevoCodigo,
-            idOrigen: 'BODEGA-VIRTUAL', // Tu identificador de bodega virtual
-            idDestino: idDestino, // Bodega Norte, El Tesoro, etc.
-            idUsuarioDespacha: usuarioId,
-            estado: 'EN_TRANSITO' // Cambiamos a EN_TRANSITO para que el destino lo vea
+            idOrigen: 'PRODUCCION',
+            idDestino: idDestino,
+            idUsuarioDespacha: idEmpleadoDespacha,
+            notas: notas || null,
+            estado: 'EN_TRANSITO'
         }, { transaction: t });
 
         // 4. Procesar cada Pack seleccionado en la tabla
@@ -555,7 +552,7 @@ const trasladarPacks = async (req, res) => {
         }
 
         await t.commit();
-        res.json({ success: true, mensaje: 'Traslado exitoso', codigo: nuevoCodigo }); //
+        res.json({ success: true, mensaje: 'Traslado exitoso', codigo: nuevoCodigo, idTraslado: traslado.idTraslado });
 
     } catch (error) {
         await t.rollback();
@@ -689,8 +686,191 @@ const imprimirEtiquetasPorPack = async (req, res) => {
     }
 };
 
+const imprimirComprobanteTraslado = async (req, res) => {
+    try {
+        const { idTraslado } = req.params;
+        const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+        const traslado = await Traslados.findOne({
+            where: { idTraslado },
+            include: [
+                {
+                    model: PuntosDeVenta,
+                    as: 'destino',
+                    attributes: ['nombreComercial', 'razonSocial']
+                },
+                {
+                    model: DetalleTraslados,
+                    as: 'items',
+                    include: [
+                        { model: Pack, as: 'pack', attributes: ['codigoEtiqueta', 'estado'] },
+                        { model: Productos, as: 'producto', attributes: ['nombreProducto', 'sku'] }
+                    ]
+                }
+            ]
+        });
+
+        if (!traslado) return res.status(404).send('Traslado no encontrado');
+
+        const empleadoDespacha = await Empleados.findOne({
+            where: { idEmpleado: traslado.idUsuarioDespacha },
+            attributes: ['PrimerNombre', 'PrimerApellido']
+        });
+
+        const nombreDespachador = empleadoDespacha
+            ? `${empleadoDespacha.PrimerNombre} ${empleadoDespacha.PrimerApellido}`
+            : 'N/A';
+
+        const destinoNombre = traslado.destino?.nombreComercial || traslado.destino?.razonSocial || 'N/A';
+
+        // URL pública del comprobante (usada para el QR)
+        const baseUrl = `${process.env.APP_URL}:${process.env.APP_PORT}`;
+        const comprobanteUrl = `${baseUrl}/admin/dosificaciones/comprobante/${idTraslado}`;
+        const qrBuffer = await QRCode.toBuffer(comprobanteUrl, { type: 'png', width: 200, margin: 1 });
+
+        // Dimensiones: 80mm = 226.77pt
+        const PAGE_W = 226.77;
+        const MARGIN = 10;
+        const CW = PAGE_W - MARGIN * 2; // 206.77
+        const numItems = traslado.items.length;
+        const PAGE_H = Math.max(500, 210 + numItems * 12 + 200); // +200 para QR + footer
+
+        const doc = new PDFDocument({
+            size: [PAGE_W, PAGE_H],
+            margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
+            autoFirstPage: true
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=comprobante_${traslado.codigoTraslado}.pdf`);
+        doc.pipe(res);
+
+        let y = MARGIN;
+
+        // --- LOGO ---
+        const logoPath = path.join(__dirname, '../public/img/logo.png');
+        try {
+            const logoW = 45;
+            doc.image(logoPath, (PAGE_W - logoW) / 2, y, { width: logoW });
+            y += 52;
+        } catch (_) {
+            y += 5;
+        }
+
+        // --- TÍTULO ---
+        doc.fontSize(9).font('Helvetica-Bold')
+            .text('COMPROBANTE DE TRASLADO', MARGIN, y, { width: CW, align: 'center' });
+        y += 14;
+
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).stroke();
+        y += 7;
+
+        // --- DATOS DEL TRASLADO ---
+        const campo = (label, valor) => {
+            doc.fontSize(7).font('Helvetica-Bold').text(label, MARGIN, y, { width: 55, lineBreak: false });
+            doc.font('Helvetica').text(String(valor), MARGIN + 55, y, { width: CW - 55, lineBreak: false, ellipsis: true });
+            y += 11;
+        };
+
+        campo('Código:', traslado.codigoTraslado);
+        campo('Fecha:', formatearFecha(traslado.fechaEnvio));
+        campo('Origen:', 'PRODUCCION');
+        campo('Destino:', destinoNombre);
+        campo('Estado:', traslado.estado);
+        campo('Despachado por:', nombreDespachador);
+
+        y += 4;
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).stroke();
+        y += 7;
+
+        // --- TABLA DE ITEMS ---
+        // Columnas: NOMBRE(80) | SKU(42) | CANT(18) | ESTADO(66.77)
+        const C = {
+            nombre: { x: MARGIN,      w: 80 },
+            sku:    { x: MARGIN + 80,  w: 42 },
+            cant:   { x: MARGIN + 122, w: 18 },
+            estado: { x: MARGIN + 140, w: CW - 130 }
+        };
+
+        doc.fontSize(6.5).font('Helvetica-Bold');
+        doc.text('PRODUCTO',  C.nombre.x, y, { width: C.nombre.w, lineBreak: false });
+        doc.text('SKU',       C.sku.x,    y, { width: C.sku.w,    lineBreak: false });
+        doc.text('CANT',      C.cant.x,   y, { width: C.cant.w,   lineBreak: false });
+        doc.text('ESTADO',    C.estado.x, y, { width: C.estado.w, lineBreak: false });
+        y += 10;
+
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.3).strokeColor('#aaaaaa').stroke().strokeColor('black');
+        y += 4;
+
+        doc.fontSize(6.5).font('Helvetica');
+        for (const item of traslado.items) {
+            let nombre, sku, estado;
+
+            if (!item.idProducto && item.pack) {
+                nombre = item.pack.codigoEtiqueta;
+                sku    = '';
+                estado = item.pack.estado;
+            } else if (item.producto) {
+                nombre = item.producto.nombreProducto;
+                sku    = item.producto.sku;
+                estado = '';
+            } else {
+                nombre = 'N/A';
+                sku    = '';
+                estado = '';
+            }
+
+            doc.text(nombre, C.nombre.x, y, { width: C.nombre.w, lineBreak: false, ellipsis: true });
+            doc.text(sku,    C.sku.x,    y, { width: C.sku.w,    lineBreak: false, ellipsis: true });
+            doc.text(String(item.cantidad), C.cant.x, y, { width: C.cant.w, lineBreak: false });
+            doc.text(estado, C.estado.x, y, { width: C.estado.w, lineBreak: false, ellipsis: true });
+            y += 11;
+        }
+
+        y += 4;
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).strokeColor('black').stroke();
+        y += 7;
+
+        // --- NOTAS ---
+        if (traslado.notas) {
+            doc.fontSize(7).font('Helvetica-Bold').text('Notas:', MARGIN, y, { width: CW, lineBreak: false });
+            y += 11;
+            doc.fontSize(6.5).font('Helvetica').text(traslado.notas, MARGIN, y, { width: CW });
+            y = doc.y + 6;
+        }
+
+        y += 4;
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).stroke();
+        y += 8;
+
+        // --- QR DE VERIFICACIÓN ---
+        const QR_SIZE = 70;
+        const qrX = (PAGE_W - QR_SIZE) / 2;
+        doc.image(qrBuffer, qrX, y, { width: QR_SIZE });
+        y += QR_SIZE + 5;
+
+        doc.fontSize(5.5).font('Helvetica-Oblique')
+            .text('Para más seguridad escanea el código y verifica el traslado', MARGIN, y, { width: CW, align: 'center' });
+        y += 14;
+
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).stroke();
+        y += 7;
+
+        // --- PIE DE PÁGINA ---
+        const footer = 'EL TRASLADO DEBE SER ACEPTADO ANTES DE 72 HORAS, EN CASO QUE NO HAYAN CAMBIOS, LOS PRODUCTOS SE CARGARÁN DE NUEVO AL DESTINATARIO Y SE ENVIARÁ LA INSIDENCIA AL ADMINISTRADOR';
+        doc.fontSize(5.5).font('Helvetica').text(footer, MARGIN, y, { width: CW, align: 'center' });
+
+        doc.end();
+
+    } catch (error) {
+        console.error('Error generando comprobante de traslado:', error);
+        res.status(500).send('Error interno al generar el comprobante');
+    }
+};
+
 export {
     guardarDosificacion, homeDose, verDosificacionDetalle, obtenerMetadataDose,
     newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales,
-    obtenerProductosPorDose, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack
+    obtenerProductosPorDose, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack,
+    imprimirComprobanteTraslado
 };

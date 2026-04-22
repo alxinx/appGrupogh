@@ -9,7 +9,9 @@
     "js": "webpack",
     "db:importar": "node ./seed/seeder.js -i",
     "db:ver-productos": "node ./seed/limpiarProductos.js",
-    "db:limpiar-productos": "node ./seed/limpiarProductos.js --borrar"
+    "db:limpiar-productos": "node ./seed/limpiarProductos.js --borrar",
+    "db:ver-traslados": "node ./seed/limpiarTraslados.js",
+    "db:limpiar-traslados": "node ./seed/limpiarTraslados.js --borrar"
   },
   "keywords": [
     "contable"
@@ -39,6 +41,7 @@
     "path": "^0.12.7",
     "pdfkit": "^0.17.2",
     "pug": "^3.0.3",
+    "qrcode": "^1.5.4",
     "sanitize-html": "^2.17.0",
     "sequelize": "^6.37.7",
     "sharp": "^0.34.5",

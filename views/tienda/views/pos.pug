@@ -5,7 +5,7 @@ div(class="grid grid-cols-12 gap-6")
         //- Buscador Gigante
         div(class="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-sm border border-white")
             input(id="codigo" name="codigo" type="text"  placeholder="Ingresa el SKU, nombre o serial..."  autofocus  class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none"
-            )
+            )   
         //- Catálogo de Pro s
         div(class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6")
             +tarjetaProducto('1', 'Vestido Satinado Rosa', '23', 'CD-32D-233', '89.000', '120.000', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/PJ-001-1771853499104-0.webp', 'modal-producto-PJ-001')
@@ -17,6 +17,8 @@ div(class="grid grid-cols-12 gap-6")
             div(class="grid grid-cols-1 md:grid-cols-2 gap-4")
                 +tarjetaRecomendacion('Onitsuka Tiger - Pijama Conjunto', '21d 12h 23m', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/BDTR001-1771852413584-2.webp', true)
                 +tarjetaRecomendacion('Pijama Soft Dream', '12h 45m', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/BDTR001-1771852413584-2.webp', false)
+    
+    
     //- SECCIÓN DERECHA: ESTADO DE COMPRA (4 Columnas)
     aside(class="col-span-12 lg:col-span-4 flex flex-col gap-4")
         div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/60 shadow-xl flex flex-col h-[calc(100vh-120px)]")
@@ -25,7 +27,7 @@ div(class="grid grid-cols-12 gap-6")
             div(class="flex items-center justify-between mb-6")
                 div
                     h2(class="font-display text-2xl text-gray-900") Tu Orden
-                    p(class="text-[10px] text-gray-400 font-bold uppercase") 5 Items seleccionados
+                    p(class="text-[10px] text-gray-400 font-bold uppercase") {nro items} items seleccionnados
                 button(id="btn-clear-cart" class="p-2 text-gh-primary hover:bg-gh-primary/10 rounded-xl transition-colors") 
                     i(class="fi-rr-trash text-xl")
             //- Lista Scrolleable (Items del Carrito)
