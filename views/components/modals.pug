@@ -1,0 +1,53 @@
+mixin modalDetalleProducto(id, nombre, descripcion, precios, tallas, colores, imagenes)
+  div(id=`modal-producto-${id}` class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md" data-images=JSON.stringify(imagenes))
+    div(class="bg-white rounded-[2.5rem] shadow-2xl max-w-5xl w-full overflow-hidden flex flex-col md:flex-row")
+      
+      //- Lado Izquierdo: Galería de Imágenes
+      div(class="md:w-1/2 relative bg-gh-soft/20")
+        div(class="h-[500px] w-full")
+          img(src=imagenes[1] class="w-full h-full object-contain" id="main-image")
+        //- Controles de Carrusel
+        button(class="btn-prev-image absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full shadow-md cursor-pointer hover:bg-white")
+          i.fi-rr-angle-small-left
+        button(class="btn-next-image absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full shadow-md cursor-pointer hover:bg-white")
+          i.fi-rr-angle-small-right
+
+      //- Lado Derecho: Configuración de Compra
+      div(class="md:w-1/2 p-10 flex flex-col justify-between")
+        div
+          div(class="flex justify-between items-start mb-6")
+            div
+              span(class="text-[10px] font-bold text-gh-primary uppercase tracking-widest") Nueva Colección
+              h2(class="font-display text-4xl text-gh-primary mt-1")= nombre
+            button(class="btn-close-modal text-slate-400 hover:text-gh-primary transition-colors")
+              i.fi-rr-cross-small.text-2xl
+
+          p(class="text-slate-500 text-sm leading-relaxed mb-8")= descripcion
+
+          //- Selectores de Variantes
+          div(class="space-y-6")
+            div
+              h4(class="text-[10px] font-bold text-slate-400 uppercase mb-3") Colores
+              div(class="flex gap-3")
+                each color in colores
+                  div(class=`w-8 h-8 rounded-full border-2 border-white shadow-sm cursor-pointer hover:scale-110 transition-transform` style=`background-color: ${color}`)
+            
+            div
+              h4(class="text-[10px] font-bold text-slate-400 uppercase mb-3") Tallas
+              div(class="flex gap-2")
+                each talla in tallas
+                  button(class="px-5 py-2 border border-slate-100 rounded-xl text-xs font-bold cursor-pointer hover:border-gh-primary hover:text-gh-primary transition-all")= talla
+
+        //- Precios y Acción Final
+        div(class="mt-10 border-t border-slate-50 pt-8")
+          div(class="flex items-center justify-between mb-8")
+            div
+              p(class="text-[10px] font-bold text-slate-400 uppercase") Al por mayor
+              span(class="text-2xl font-bold text-slate-800") $#{precios.mayor}
+            div(class="text-right")
+              p(class="text-[10px] font-bold text-gh-primary uppercase") Al detal
+              span(class="text-2xl font-bold text-gh-primary") $#{precios.detal}
+
+          button(class="w-full btn btn-primary transition-all active:scale-95")
+            i.fi-rr-shopping-bag-add
+            span AGREGAR AL PEDIDO

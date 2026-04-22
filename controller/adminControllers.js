@@ -659,6 +659,46 @@ const checkEmailPersonal = async (req, res) => {
     }
 }
 
+const filterEmployeeListJson = async (req, res) => {
+    try {
+        const { busqueda, pagina = 1 } = req.query;
+        const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+        const offset = (parseInt(pagina) - 1) * limite;
+
+        let condiciones = {};
+        if (busqueda && busqueda.trim() !== '') {
+            const term = `%${busqueda.trim()}%`;
+            condiciones[Op.or] = [
+                { PrimerNombre: { [Op.like]: term } },
+                { PrimerApellido: { [Op.like]: term } },
+                { NumeroDocumento: { [Op.like]: term } },
+                { emailEmpleado: { [Op.like]: term } },
+                { codigoEmpleado: { [Op.like]: term } },
+            ];
+        }
+
+        const { count, rows: empleados } = await Empleados.findAndCountAll({
+            where: condiciones,
+            include: [{ model: PuntosDeVenta, as: 'sede', attributes: ['idPuntoDeVenta', 'nombreComercial'] }],
+            order: [['createdAt', 'DESC']],
+            limit: limite,
+            offset,
+            distinct: true,
+        });
+
+        return res.json({
+            success: true,
+            empleados,
+            totalPaginas: Math.ceil(count / limite),
+            paginaActual: parseInt(pagina),
+            totalRegistros: count,
+        });
+    } catch (error) {
+        console.error('Error en filterEmployeeListJson:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error al cargar empleados' });
+    }
+}
+
 const saveEmployee = async (req, res) => {
     const {
         PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
@@ -1104,10 +1144,15 @@ const saveProduct = async (req, res, next) => {
         const descripcionLimpia = sanitizarHTML(req.body.descripcion); // Usamos el name="descripcion" del pug
         const activo = req.body.activo === 'on' || req.body.activo === true;
         const web = req.body.web === 'on' || req.body.web === true;
+        const slug = req.body.slug?.trim() ||
+            req.body.nombreProducto.toString().toLowerCase().trim()
+                .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
 
         let producto;
         const datosParaDB = {
             nombreProducto: req.body.nombreProducto,
+            slug,
             sku: req.body.sku,
             ean: req.body.ean,
             idCategoria: idCategoriaParaDB,
@@ -1116,7 +1161,7 @@ const saveProduct = async (req, res, next) => {
             descripcion: descripcionLimpia,
             activo,
             web,
-            tags: req.body.tags // Si tu modelo tiene tags, inclúyelo aquí
+            tags: req.body.tags
         };
 
         // 2. Upsert
@@ -1172,6 +1217,10 @@ const saveProduct = async (req, res, next) => {
 
         // 5. Subida de Nuevas Imágenes (Bloque Independiente)
         if (req.files && req.files.length > 0) {
+            const tienePrincipal = await Imagenes.findOne({
+                where: { idProducto: idReal, tipo: 'principal' }
+            });
+
             const uploadPromises = req.files.map(async (file, index) => {
                 const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`;
                 const bufferOptimizado = await sharp(file.buffer)
@@ -1193,7 +1242,7 @@ const saveProduct = async (req, res, next) => {
                 return {
                     idProducto: idReal,
                     nombreImagen: nombreArchivo,
-                    tipo: 'galeria'
+                    tipo: (!tienePrincipal && index === 0) ? 'principal' : 'galeria'
                 };
             });
             const imagenesData = await Promise.all(uploadPromises);
@@ -1857,7 +1906,7 @@ export {
     newSupplier,
     saveSupplier, checkNitSupplier,
     dashboardCustomers,
-    dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal,
+    dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson,
 
     dashboardOrders,
     dashboardSettings,

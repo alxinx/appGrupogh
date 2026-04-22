@@ -3,7 +3,7 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson } from "../controller/adminControllers.js"
+checkEmailPersonal, filterEmployeeListJson, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson } from "../controller/adminControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
@@ -121,6 +121,7 @@ routes.get('/json/imageProduct/:idProducto', jsonImageProduct)
 routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
 routes.get('/json/personal/documento/:tipo/:numero', checkDocumentoPersonal);
 routes.get('/json/personal/email/:email', checkEmailPersonal);
+routes.get('/json/personal/lista', filterEmployeeListJson);
 routes.get('/json/provedores/', filterSupplierListJson);
 routes.get('/json/inventario-tienda/:idPuntoDeVenta', filterStoreInventoryJson);
 routes.get('/json/tiendas/', async (req, res) => {

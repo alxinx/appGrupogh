@@ -8,11 +8,15 @@
   --color-gh-primaryHover: #E24C95;
   --color-gh-primarySoft: #FDE7F2;
   --color-gh-grayText: #4B5563;
+  --color-gh-lila: #bc8be0;
   --color-gh-grayBorder: #E5E7EB;
   --color-card-light: #FFFFFF;
   --color-card-dark: #1A1926;
+  
 
   --radius-gh: 12px;
+  --shadow-dot-glow: 0 0 8px rgba(34, 197, 94, 0.6);
+  --shadow-dot-off: 0 0 8px rgba(239, 68, 68, 0.6);
 }
 
 @keyframes fadeInDown {
@@ -27,9 +31,14 @@
   }
 }
 
+
+.bgbody  {
+  @apply bg-gradient-to-b from-rose-100 from-25% to-purple-100 to-100% 
+}
 .tarjeta-lote .content-lote {
   display: none;
 }
+
 
 .tarjeta-lote.is-open .content-lote {
   display: block;
@@ -62,8 +71,25 @@
   }
 }
 
+ .product-card {
+            background: #FFFFFF;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.02);
+            border: 1px solid rgba(255, 255, 255, 1);
+            opacity: 1;
+        }
+  
+
+  
+
 @layer components {
 
+  .recommendation-card {
+    @apply bg-black/20 backdrop-blur-xl border border-white  rounded-xl shadow-lg p-6 sm:p-8
+
+  }  
+    .product-card-individual {
+      @apply p-4 rounded-[1.5rem]  hover:-translate-y-1 transition-all duration-300
+    }
 
   /* Rotación de la flecha al colapsar */
   .is-collapsed .fi-rr-angle-small-down {
@@ -274,14 +300,28 @@
 
 
 
+  .recommendation-card {
+            background: #FFFFFF;
+            box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(255, 255, 255, 1);
+        }
+
 
   /***************[CARDS]******************/
+
+  .cardLogin {
+    @apply w-full max-w-md bg-white/20 backdrop-blur-xl border border-white  rounded-xl shadow-lg p-6 sm:p-8
+  }
   .cards {
     @apply min-h-[100px] grid grid-cols-2 bg-white border-1 border-gray-300 rounded-gh p-3 m-2
   }
+  
+  .estadoDeCompra   {
+    @apply col-span-12 md:col-span-5 grid grid-cols-1  w-96 bg-white/50 backdrop-blur-xl border border-white shadow-xl
+  }
 
   .cardWhite {
-    @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-1 border-gray-300 shadow-md rounded-gh p-3 m-5
+    @apply min-h-[100px] col-span-1 grid grid-cols-2 bg-white border-1 shadow-md rounded-gh p-3 m-5 backdrop-blur-xl  border-white/30 
   }
 
   .cardWhite:hover {
@@ -544,6 +584,8 @@
     @apply text-red-700;
   }
 
+
+  
   /*STATUS CHIPS*/
   .status-chip {
     @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border backdrop-blur bg-white/50;
@@ -592,11 +634,15 @@
 
 
   .onDot {
-    @apply bg-green-500 shadow-[0_0_8px_rgba(34, 197, 94, 0.6)]
-  }
+  /* Usando la utilidad de color de la v4 y sombra con opacidad nativa */
+  @apply bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)];
+}
 
   .offDot {
-    @apply bg-red-500 shadow-[0_0_8px_rgba(239, 68, 68, 0.6)]
+    @apply bg-red-500 shadow-dot-off rounded-full;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
   }
 
   /************[STATS]*******************/
@@ -633,9 +679,13 @@
 
 
 
+  .headerNav {
+    @apply h-16 w-full  bg-pink-500/10 backdrop-blur-xl  border-b border-pink-200/30  shadow-sm  sticky top-0 z-30  flex items-center justify-between   px-4 md:px-6
+  }
 
+  
   .tarjetaBase {
-    @apply bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden
+    @apply bg-white p-6 rounded-2xl shadow-sm border border-slate-100 bg-white/50 backdrop-blur-xl border border-white shadow-xl rounded-2xl p-6 rounded-xl shadow-lg relative overflow-hidden
   }
 
   .tarjetaBase h3 {

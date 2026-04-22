@@ -1,0 +1,307 @@
+//- Mixin para reutilizar la tarjeta de recomendación
+mixin tarjetaRecomendacion(titulo, tiempo, imagen, esVentaOnline = false)
+  div(class="relative flex w-full max-w-[450px] h-[150px] bg-gh-lila/40 rounded-xl backdrop-blur  overflow-hidden border border-white/30 shadow-2x transition-all hover:scale-[1.02] cursor-pointer group")
+    
+    div(class="flex-1 bg-gradient-to-br from-white/40 via-gh-primary/60 to-gh-deep/80 backdrop-blur-xl p-6 flex flex-col justify-between")
+      div
+        h2(class="text-slate-900 font-bold text-xl leading-tight mb-1")= titulo
+           if esVentaOnline
+             span(class="text-[10px] font-bold bg-white/40 text-gh-deep px-2 py-0.5 rounded-full uppercase") Ventas Online
+      
+           
+
+    //- Contenedor de Imagen Flotante
+    div(class="relative w-44 flex items-center justify-center")
+      //- El producto con drop-shadow para realismo 3D
+      img(src=imagen, class="w-full h-full object-contain scale-125 translate-x-[1%] filter drop-shadow-[0_25px_25px_rgba(0,0,0,0.4)] transition-transform group-hover:rotate-3")
+      
+      //- Línea punteada de corte de ticket
+      div(class="absolute left-0 top-0 h-full border-l-2 border-dashed border-white/40")
+
+      //- Botón Lateral de Acción (Join/Añadir)
+      div(class="w-16 h-full bg-white/20 flex items-center justify-center hover:bg-gh-primary transition-colors")
+        span(class="text-white font-black text-2xs uppercase [writing-mode:vertical-lr] rotate-180 tracking-tighter") Recomendación
+
+//- //- Implementación en tu vista de POS
+
+
+
+//TARJETA DE PRODUCTO POS PRINCIPAL
+mixin tarjetaProducto(id, name, stock, codigo, precioM, precioD, imagen, modalId)
+  //- Contenedor principal con ID dinámico para manipular la tarjeta completa si es necesario
+  div(
+    id=`product-${id}`
+    class="product-card product-card-individual group cursor-pointer"
+    data-name=name
+    data-codigo=codigo
+    data-modal-target=modalId
+  )
+    //- Contenedor de Imagen
+    div(class="relative aspect-[4/5] rounded-[1rem] overflow-hidden mb-4 bg-gray-50 shadow-sm")
+      img(
+        src=imagen, 
+        alt=name, 
+        class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+        loading="lazy"
+      )
+      span(class="absolute bottom-4 left-3 px-3 py-1.5 bg-white/80 backdrop-blur-sm text-[10px] font-bold text-gh-primaryHover uppercase rounded-xl shadow-sm border border-white/20") 
+        | #{stock} en stock
+    
+    //- Información del Producto
+    h3(class="font-bold text-gray-900 truncate px-2 text-sm md:text-base")= name
+    
+    p(class="text-xs text-gray-500 mb-4 px-2 flex items-center")
+      i(class="fi-rr-rectangle-barcode pr-2 text-slate-400")
+      span(class="font-mono")= codigo
+                                                 
+    //- Precios
+    div(class="flex items-center justify-between px-2 mb-4")
+      div(class="flex flex-col")
+        span(class="text-[10px] text-slate-400 font-bold uppercase") X Mayor
+        span(class="font-bold text-lg text-gray-900") $#{precioM}
+      div(class="flex flex-col text-right")
+        span(class="text-[10px] text-slate-400 font-bold uppercase") Al Detal
+        span(class="font-bold text-lg text-gh-primary") $#{precioD}
+
+    //- Botón con ID y Name para eventos JS
+    button(
+      id=`btn-add-${id}`
+      name=name
+      data-id=id
+      data-precio=precioD
+      class="btn-agregar-pedido w-full h-11 bg-gh-primary/10 text-gh-primary rounded-2xl cursor-pointer flex items-center justify-center gap-2 hover:bg-gh-primary hover:text-white transition-all active:scale-95 shadow-sm"
+    )
+      i(class="fi-rr-add-document")     
+      span(class="font-bold text-sm") Agregar al pedido
+
+
+
+//PEFIL DE COMPRADOR, 
+mixin tarjetaClienteFidelizado(idCliente, nombre, documento, imagen)
+  //- Contenedor con Glassmorphism para que resalte sobre el fondo fucsia
+  div(
+    class="card cardLogin  bg-white/40 backdrop-blur-xl border border-white/30 rounded-2xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.1)] transition-all hover:bg-white/50"
+    id=`cliente-card-${idCliente}`
+  )
+    div(class="grid grid-cols-12 items-center gap-4")
+      //- Foto de Perfil
+      div(class="col-span-2 flex justify-center")
+        div(class="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-white")
+          img(
+            src=imagen || "/img/default-user.webp" 
+            alt=`Perfil de ${nombre}`
+            class="w-full h-full object-cover"
+          )
+
+      //- Información Detallada del Cliente
+      div(class="col-span-7 pl-2")
+        h2(class="text-[10px] font-bold text-gh-primary uppercase tracking-widest mb-1") Datos del Cliente
+        h4(class="text-lg font-bold text-slate-800 leading-tight truncate")= nombre
+        p(class="text-xs font-semibold text-slate-500 uppercase tracking-tighter") 
+          | CC: #{documento}
+
+      //- Botón para abrir el Modal de Edición
+      div(class="col-span-3 flex justify-end")
+        button(
+          type="button"
+          class="btn-editar-cliente bg-gh-primary/10 text-gh-primary hover:bg-gh-primary hover:text-white transition-all px-4 py-4 rounded-2xl shadow-sm cursor-pointer group flex items-center justify-center"
+          data-id=idCliente
+          data-nombre=nombre
+          data-documento=documento
+          title="Editar datos del cliente"
+        )
+          i(class="fi-rr-user-pen text-2xl group-hover:scale-110 transition-transform")
+
+
+mixin resumenFactura(subtotal, impuestos, descuento)
+
+  - const total = subtotal + impuestos - descuento
+
+  div(class="space-y-3 text-sm")
+
+    div(class="flex justify-between")
+      span(class="text-gray-600 font-medium") Subtotal
+      span(class="font-semibold text-gray-900") $#{subtotal.toFixed(2)}
+
+    div(class="flex justify-between")
+      span(class="text-gray-600 font-medium") Impuestos
+      span(class="font-semibold text-gray-900") $#{impuestos.toFixed(2)}
+
+    div(class="flex justify-between")
+      span(class="text-gray-600 font-medium") Descuento a mayorista
+      span(class="font-semibold text-green-600") -$#{descuento.toFixed(2)}
+
+    hr(class="border-gray-200 my-2")
+
+    div(class="flex justify-between text-base")
+      span(class="font-bold text-gray-900") Total
+      span(class="font-bold text-3xl text-pink-600") $#{total.toFixed(0)}
+
+  
+mixin itemCarrito(id, nombre, imagen, talla, color, cantidad, precioUnitario, precioTotal)
+  //- Contenedor del Item con ID único para manipulación en el DOM
+  div(
+    class="flex gap-4 p-2 bg-white rounded-[0.5rem] group border border-white/60 transition-all shadow-sm hover:shadow-md"
+    id=`cart-item-${id}`
+    data-id=id
+  )
+    //- Imagen del Producto
+    img(
+      src=imagen 
+      alt=nombre 
+      class="w-20 h-20 rounded-2xl object-cover shadow-sm"
+    )
+    
+    div(class="flex-1")
+      div(class="flex justify-between items-start")
+        div
+          h4(class="text-sm font-bold text-gray-900 leading-tight")= nombre
+          p(class="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-wider") 
+            | Talla: #{talla} | #{color}
+        
+        //- Botón Eliminar Item
+        button(
+          class="btn-remove-item text-gray-400 cursor-pointer hover:text-red-500 transition-colors p-1"
+          data-id=id
+          title="Eliminar item"
+        )
+          i.fi-rr-trash-xmark.text-lg
+      
+      div(class="flex items-center justify-between mt-4")
+        //- Selector de Cantidad Dinámico
+        div(class="flex items-center gap-3 bg-gray-100/50 rounded-xl px-2.5 py-1.5 border border-gray-100")
+          button(
+            class="btn-qty-minus text-gray-400 hover:text-gh-primary flex items-center transition-transform active:scale-90"
+            data-id=id
+          )
+            i.fi-rr-minus-small
+          
+          span(class="text-xs font-black w-5 text-center qty-display text-gh-grayText")= cantidad
+          
+          button(
+            class="btn-qty-plus text-gray-400 hover:text-gh-primary flex items-center transition-transform active:scale-90"
+          )
+            i.fi-rr-plus-small
+        
+        //- Precios: Unitario y Total
+        div(class="text-right")
+          p(class="text-[10px] text-gray-400 font-medium leading-none mb-1") 
+            | Unid: $#{precioUnitario}
+          p(class="font-bold text-base text-gh-grayText leading-none") 
+            | $#{precioTotal}
+
+
+
+mixin itemCarritoLista(id, nombre, talla, color, cantidad, precioUnitario, precioTotal)
+  div(
+    class="cart-item-row group flex items-center justify-between p-3 mb-2 bg-white/70 backdrop-blur-md border border-white/40 rounded-xl transition-all hover:bg-white hover:shadow-md"
+    id=`item-${id}`
+    data-id=id
+    data-nombre=nombre
+  )
+    //- Información del Producto (Izquierda)
+    div(class="flex flex-col min-w-0 flex-1")
+      div(class="flex items-center gap-2")
+        span(class="w-2 h-2 rounded-full bg-gh-primary shadow-[0_0_8px_rgba(255,94,170,0.5)]")
+        h4(class="text-[11px] font-black text-slate-800 uppercase truncate")= nombre
+      
+      div(class="flex items-center gap-2 mt-0.5 pl-4")
+        span(class="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded")= talla
+        span(class="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded")= color
+
+    //- Controles de Cantidad (Centro)
+    div(class="flex items-center bg-slate-100 rounded-lg p-1 mx-4 shadow-inner")
+      button(
+        class="btn-qty-minus w-6 h-6 flex items-center justify-center text-slate-400 hover:text-gh-primary transition-colors"
+        data-id=id
+      )
+        i(class="fi fi-rr-minus-small text-xs")
+      
+      span(class="qty-display w-6 text-center text-[11px] font-black text-slate-700")= cantidad
+      
+      button(
+        class="btn-qty-plus w-6 h-6 flex items-center justify-center text-slate-400 hover:text-gh-primary transition-colors"
+        data-id=id
+      )
+        i(class="fi fi-rr-plus-small text-xs")
+
+    //- Precio y Eliminación (Derecha)
+    div(class="flex items-center gap-4")
+      div(class="text-right min-w-[80px]")
+        //- Valor Unitario sutil
+        p(class="text-[8px] font-bold text-slate-400 leading-none mb-0.5") U: $#{precioUnitario}
+        //- Valor Total resaltado
+        p(class="text-[11px] font-black text-slate-900 leading-none") $#{precioTotal}
+      
+      button(
+        class="btn-remove-item w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+        data-id=id
+        title="Quitar de la lista"
+      )
+        i(class="fi fi-rr-trash-xmark text-sm")
+
+
+mixin metodosPago()
+    div(class="flex items-center gap-3 mb-6")
+      div(class="w-10 h-10 bg-gh-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-gh-primary/30")
+        i.fi-rr-settings-sliders
+      h3(class="font-display text-xl text-gray-900") Métodos de Pago
+    
+    div(class="grid grid-cols-1 gap-4")
+      //- 1: EFECTIVO
+      div(class="payment-method-card group relative overflow-hidden bg-white p-4 rounded-2xl border border-gray-100 transition-all hover:border-gh-primary/30")
+        div(class="flex items-center justify-between")
+          div(class="flex items-center gap-3")
+            div(class="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600")
+              i.fi-rr-money-bill-wave.text-xl
+            div
+              p(class="text-xs font-black text-gray-900 uppercase") Efectivo
+              p(class="text-[10px] text-gray-400 font-medium") Pago físico
+          div(class="relative")
+            span(class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm") $
+            input(type="number" name="pago_efectivo" placeholder="0" class="pl-7 w-32 h-10 bg-gray-50 border-none rounded-xl text-right font-black text-gh-grayText focus:ring-2 focus:ring-green-500/20 focus:outline-none transition-all")
+
+      //- 2: TRANSFERENCIA BANCARIA
+      div(class="payment-method-card group bg-white p-4 rounded-2xl border border-gray-100 transition-all hover:border-gh-primary/30")
+        div(class="flex items-center justify-between")
+          div(class="flex items-center gap-3")
+            div(class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600")
+              i.fi-rr-bank.text-xl
+            div
+              p(class="text-xs font-black text-gray-900 uppercase") Transferencia
+              p(class="text-[10px] text-gray-400 font-medium") Bancos locales
+          div(class="relative")
+            span(class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm") $
+            input(type="number" name="pago_transferencia" placeholder="0" class="pl-7 w-32 h-10 bg-gray-50 border-none rounded-xl text-right font-black text-gh-grayText focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all")
+
+      //- 3: BILLETERAS VIRTUALES
+      div(class="payment-method-card group bg-white p-4 rounded-2xl border border-gray-100 transition-all hover:border-gh-primary/30")
+        div(class="flex items-center justify-between")
+          div(class="flex items-center gap-3")
+            div(class="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600")
+              i.fi-rr-smartphone.text-xl
+            div
+              p(class="text-xs font-black text-gray-900 uppercase") Billeteras
+              p(class="text-[10px] text-gray-400 font-medium") Nequi, Daviplata, etc
+          div(class="relative")
+            span(class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm") $
+            input(type="number" name="pago_billetera" placeholder="0" class="pl-7 w-32 h-10 bg-gray-50 border-none rounded-xl text-right font-black text-gh-grayText focus:ring-2 focus:ring-purple-500/20 focus:outline-none transition-all")
+
+      //- 4: CRÉDITO
+      div(class="payment-method-card group bg-white p-4 rounded-2xl border border-gray-100 transition-all hover:border-gh-primary/30")
+        div(class="flex items-center justify-between")
+          div(class="flex items-center gap-3")
+            div(class="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600")
+              i.fi-rr-credit-card.text-xl
+            div
+              p(class="text-xs font-black text-gray-900 uppercase") Crédito
+              p(class="text-[10px] text-gray-400 font-medium") Sistecrédito / Interno
+          div(class="relative")
+            span(class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm") $
+            input(type="number" name="pago_credito" placeholder="0" class="pl-7 w-32 h-10 bg-gray-50 border-none rounded-xl text-right font-black text-gh-grayText focus:ring-2 focus:ring-orange-500/20 focus:outline-none transition-all")
+
+    //- TOTAL ASIGNADO (Resumen dinámico)
+    div(class="mt-6 pt-6 border-t border-dashed border-gray-200")
+      div(class="flex justify-between items-center")
+        p(class="text-sm font-bold text-gray-500") Total Asignado:
+        p(class="text-xl font-black text-gh-primary" id="total-asignado") $0
