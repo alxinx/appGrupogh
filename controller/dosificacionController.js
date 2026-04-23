@@ -1,4 +1,4 @@
-import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados, Empleados, PuntosDeVenta } from '../models/index.js';
+import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados, Empleados, PuntosDeVenta, InsidenciaTraslado } from '../models/index.js';
 import jwt from "jsonwebtoken";
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
@@ -10,6 +10,7 @@ import dotenv from "dotenv"
 import path from 'path';
 import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
+import { broadcast } from '../helpers/sseManager.js';
 
 dotenv.config()
 
@@ -520,28 +521,6 @@ const trasladarPacks = async (req, res) => {
         // 4. Procesar cada Pack seleccionado en la tabla
         for (const pack of recordsPacks) {
 
-            // Calculamos el valor del bulto sumando sus detalles
-            const valorTotalBulto = pack.DETALLES_PACKs.reduce((acc, det) => {
-                const precio = det.producto ? det.producto.precioVentaPublicoFinal : 0;
-                return acc + (precio * det.cantidad);
-            }, 0);
-
-            // Determinar producto de referencia (el primero que encuentre en el pack)
-            //const idProductoRef = pack.DETALLES_PACKs.length > 0 ? pack.DETALLES_PACKs[0].idProducto : null;
-
-            // CREAR REGISTRO EN STOCK (Escenario: El pack entra al inventario del destino)
-            // Nota: cantidadExistente es 1 porque es el pack cerrado
-            await Stock.create({
-                idPuntoVenta: idDestino,
-                idPack: pack.idPack,
-                idProducto: 0,
-                cantidadExistente: 1,
-                cantidadOriginal: 1,
-                valorUnidad: valorTotalBulto,
-                estadoInterno: 'CERRADO'
-            }, { transaction: t });
-
-            // Crear el detalle del documento de traslado
             await DetalleTraslados.create({
                 idTraslado: traslado.idTraslado,
                 idPack: pack.idPack,
@@ -553,6 +532,17 @@ const trasladarPacks = async (req, res) => {
         }
 
         await t.commit();
+
+        // Notificar en tiempo real al punto de venta destino
+        const pendientes = await Traslados.count({
+            where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
+        });
+        broadcast(idDestino, 'new_traslado', {
+            codigo: nuevoCodigo,
+            idTraslado: traslado.idTraslado,
+            pendientes
+        });
+
         res.json({ success: true, mensaje: 'Traslado exitoso', codigo: nuevoCodigo, idTraslado: traslado.idTraslado });
 
     } catch (error) {
@@ -692,6 +682,15 @@ const imprimirComprobanteTraslado = async (req, res) => {
         const { idTraslado } = req.params;
         const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+        const fmtFechaHora = (raw) => {
+            if (!raw) return '________________________________';
+            return new Intl.DateTimeFormat('es-CO', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            }).format(new Date(raw));
+        };
+
         const traslado = await Traslados.findOne({
             where: { idTraslado },
             include: [
@@ -722,7 +721,33 @@ const imprimirComprobanteTraslado = async (req, res) => {
             ? `${empleadoDespacha.PrimerNombre} ${empleadoDespacha.PrimerApellido}`
             : 'N/A';
 
+        let nombreReceptor = null;
+        if (traslado.idUsuarioRecibe) {
+            const empleadoRecibe = await Empleados.findOne({
+                where: { idEmpleado: traslado.idUsuarioRecibe },
+                attributes: ['PrimerNombre', 'PrimerApellido']
+            });
+            if (empleadoRecibe) {
+                nombreReceptor = `${empleadoRecibe.PrimerNombre} ${empleadoRecibe.PrimerApellido}`;
+            }
+        }
+
         const destinoNombre = traslado.destino?.nombreComercial || traslado.destino?.razonSocial || 'N/A';
+
+        // Incidencias del traslado
+        const insidencias = await InsidenciaTraslado.findAll({
+            where: { idTraslado },
+            include: [
+                { model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'] },
+                {
+                    model: DetalleTraslados, as: 'detalle',
+                    include: [
+                        { model: Pack,     as: 'pack',     attributes: ['codigoEtiqueta'] },
+                        { model: Productos, as: 'producto', attributes: ['nombreProducto'] }
+                    ]
+                }
+            ]
+        });
 
         // URL pública del comprobante (usada para el QR)
         const baseUrl = `${process.env.APP_URL}:${process.env.APP_PORT}`;
@@ -733,8 +758,9 @@ const imprimirComprobanteTraslado = async (req, res) => {
         const PAGE_W = 226.77;
         const MARGIN = 10;
         const CW = PAGE_W - MARGIN * 2; // 206.77
-        const numItems = traslado.items.length;
-        const PAGE_H = Math.max(500, 210 + numItems * 12 + 200); // +200 para QR + footer
+        const numItems      = traslado.items.length;
+        const numInsidencias = insidencias.length;
+        const PAGE_H = Math.max(500, 210 + numItems * 12 + 200 + (numInsidencias > 0 ? 30 + numInsidencias * 156 : 0));
 
         const doc = new PDFDocument({
             size: [PAGE_W, PAGE_H],
@@ -774,11 +800,13 @@ const imprimirComprobanteTraslado = async (req, res) => {
         };
 
         campo('Código:', traslado.codigoTraslado);
-        campo('Fecha:', formatearFecha(traslado.fechaEnvio));
+        campo('Fecha envío:', fmtFechaHora(traslado.fechaEnvio));
+        campo('Fecha recibido:', fmtFechaHora(traslado.fechaRecepcion));
         campo('Origen:', 'PRODUCCION');
         campo('Destino:', destinoNombre);
         campo('Estado:', traslado.estado);
         campo('Despachado por:', nombreDespachador);
+        if (nombreReceptor) campo('Recibido por:', nombreReceptor);
 
         y += 4;
         doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).stroke();
@@ -810,7 +838,7 @@ const imprimirComprobanteTraslado = async (req, res) => {
             if (!item.idProducto && item.pack) {
                 nombre = item.pack.codigoEtiqueta;
                 sku    = '';
-                estado = item.pack.estado;
+                estado = item.estado;
             } else if (item.producto) {
                 nombre = item.producto.nombreProducto;
                 sku    = item.producto.sku;
@@ -838,6 +866,65 @@ const imprimirComprobanteTraslado = async (req, res) => {
             y += 11;
             doc.fontSize(6.5).font('Helvetica').text(traslado.notas, MARGIN, y, { width: CW });
             y = doc.y + 6;
+        }
+
+        // --- INCIDENCIAS REPORTADAS ---
+        if (insidencias.length > 0) {
+            y += 6;
+            doc.fontSize(8).font('Helvetica-Bold')
+                .text('INCIDENCIAS REPORTADAS', MARGIN, y, { width: CW, align: 'center' });
+            y += 14;
+
+            const ROW_H  = 14;
+            const COL_L  = 110;
+            const COL_R  = CW - COL_L;
+
+            const fillaCompleta = (texto, bgHex, negrita = false) => {
+                if (bgHex) {
+                    doc.rect(MARGIN, y, CW, ROW_H).fillAndStroke(bgHex, '#bbbbbb');
+                } else {
+                    doc.rect(MARGIN, y, CW, ROW_H).stroke('#bbbbbb');
+                }
+                doc.fillColor('black')
+                    .fontSize(6.5)
+                    .font(negrita ? 'Helvetica-Bold' : 'Helvetica')
+                    .text(texto, MARGIN + 3, y + 3.5, { width: CW - 6, lineBreak: false, ellipsis: true });
+                y += ROW_H;
+            };
+
+            const fillaDosCols = (izq, der) => {
+                doc.rect(MARGIN,        y, COL_L, ROW_H).stroke('#bbbbbb');
+                doc.rect(MARGIN + COL_L, y, COL_R, ROW_H).stroke('#bbbbbb');
+                doc.fillColor('black').fontSize(6.5).font('Helvetica')
+                    .text(izq, MARGIN + 3,         y + 3.5, { width: COL_L - 6, lineBreak: false, ellipsis: true })
+                    .text(der, MARGIN + COL_L + 3, y + 3.5, { width: COL_R - 6, lineBreak: false, ellipsis: true });
+                y += ROW_H;
+            };
+
+            for (const ins of insidencias) {
+                let itemLabel = `Ítem #${ins.idDetalleTraslado}`;
+                if (ins.detalle?.pack?.codigoEtiqueta)      itemLabel = ins.detalle.pack.codigoEtiqueta;
+                else if (ins.detalle?.producto?.nombreProducto) itemLabel = ins.detalle.producto.nombreProducto;
+
+                const empNombre = ins.empleado
+                    ? `${ins.empleado.PrimerNombre} ${ins.empleado.PrimerApellido}`
+                    : 'N/A';
+
+                const diferencia = ins.cantidadOriginal - ins.cantidadAceptada;
+
+                fillaCompleta('FECHA',                    '#e0e0e0', true);
+                fillaCompleta(fmtFechaHora(ins.fechaInsidencia), null,      false);
+                fillaCompleta('REPORTADO POR:',           '#e0e0e0', true);
+                fillaCompleta(empNombre,                  null,      false);
+                fillaCompleta('RAZÓN DE LA INSIDENCIA',  '#e0e0e0', true);
+                fillaCompleta(ins.razonInsidencia || 'Sin descripción', '#fffde7', false);
+                fillaDosCols('Producto:',        itemLabel);
+                fillaDosCols('Cant. original',   String(ins.cantidadOriginal));
+                fillaDosCols('Cant. aceptada',   String(ins.cantidadAceptada));
+                fillaDosCols('Diferencia',       String(diferencia));
+
+                y += 8;
+            }
         }
 
         y += 4;

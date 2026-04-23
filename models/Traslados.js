@@ -37,7 +37,7 @@ const Traslados = db.define('TRASLADOS', {
         allowNull: true
     },
     estado: {
-        type: DataTypes.ENUM('PENDIENTE', 'EN_TRANSITO', 'RECIBIDO', 'ANULADO'),
+        type: DataTypes.ENUM('PENDIENTE', 'EN_TRANSITO', 'RECIBIDO', 'ANULADO', 'EN_CONTROVERSIA'),
         defaultValue: 'PENDIENTE'
     },
     notas: DataTypes.TEXT

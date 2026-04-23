@@ -1,6 +1,6 @@
-div(class="grid grid-cols-12 gap-6")
+div(class="h-full p-4 grid grid-cols-12 gap-6")
     //- SECCIÓN IZQUIERDA: BUSCADOR Y PRODUCTOS (8 Columnas)
-    div(class="col-span-12 lg:col-span-8 flex flex-col gap-6")
+    div(class="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-y-auto")
         
         //- Buscador Gigante
         div(class="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-sm border border-white")
@@ -20,8 +20,8 @@ div(class="grid grid-cols-12 gap-6")
     
     
     //- SECCIÓN DERECHA: ESTADO DE COMPRA (4 Columnas)
-    aside(class="col-span-12 lg:col-span-4 flex flex-col gap-4")
-        div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/60 shadow-xl flex flex-col h-[calc(100vh-120px)]")
+    aside(class="col-span-12 lg:col-span-4 flex flex-col")
+        div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/60 shadow-xl flex flex-col h-full")
             
             //- Header de la Orden
             div(class="flex items-center justify-between mb-6")

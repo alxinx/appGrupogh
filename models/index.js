@@ -10,6 +10,7 @@ import Productos from './Productos.js'
 import Imagenes from './Imagenes.js'; import Documentacion from './Documentacion.js'
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
 import Traslados from './Traslados.js'; import DetalleTraslados from './DetalleTraslados.js'
+import InsidenciaTraslado from './InsidenciasTraslados.js'
 
 import Stock from './Stock.js'
 
@@ -93,6 +94,12 @@ Traslados.belongsTo(PuntosDeVenta, { foreignKey: 'idDestino', as: 'destino' });
 DetalleTraslados.belongsTo(Pack, { foreignKey: 'idPack', as: 'pack' });
 DetalleTraslados.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
 
+// Insidencias
+Traslados.hasMany(InsidenciaTraslado, { foreignKey: 'idTraslado', as: 'insidencias' });
+InsidenciaTraslado.belongsTo(Traslados, { foreignKey: 'idTraslado' });
+InsidenciaTraslado.belongsTo(DetalleTraslados, { foreignKey: 'idDetalleTraslado', as: 'detalle' });
+InsidenciaTraslado.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
+
 
 
 // 1. Relación con Acceso al Sistema
@@ -117,6 +124,6 @@ export {
   Categorias, Atributos, VariacionesProducto,
   Productos, Provedores, CategoriasDeProvedores,
   Dosificaciones, Pack, DetallesPack, Stock,
-  Traslados, DetalleTraslados,
+  Traslados, DetalleTraslados, InsidenciaTraslado,
   Imagenes, Documentacion, Empleados
 }
