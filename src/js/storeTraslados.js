@@ -212,7 +212,9 @@
 
     // ─── RENDER LIGHTBOX ──────────────────────────────────────────────────────
     const renderLightbox = (traslado) => {
-        const esPendiente = ['PENDIENTE', 'EN_TRANSITO'].includes(traslado.estado);
+        const esPendiente    = ['PENDIENTE', 'EN_TRANSITO'].includes(traslado.estado);
+        const esControvTras  = traslado.estado === 'EN_CONTROVERSIA';
+        const esInteractivo  = esPendiente || esControvTras;
 
         lbTitulo.textContent    = `Traslado ${traslado.codigoTraslado}`;
         lbSubtitulo.textContent = fmtFecha(traslado.fechaEnvio);
@@ -239,14 +241,27 @@
             lbItems.innerHTML = items.map((item, i) => {
                 const { nombre, detalle } = buildItemLabel(item);
 
-                const yaRecibido      = item.estado === 'RECIBIDO';
-                const esControversia  = item.estado === 'CONTROVERSIA';
-                const deshabilitado   = !esPendiente ? 'disabled' : '';
-                const checkDefault    = (esPendiente || yaRecibido) ? 'checked' : '';
+                const yaRecibido     = item.estado === 'RECIBIDO';
+                const esControversia = item.estado === 'CONTROVERSIA';
+                const deshabilitado  = !esPendiente ? 'disabled' : '';
+                const checkDefault   = (esPendiente || yaRecibido) ? 'checked' : '';
 
-                const iconHtml = (yaRecibido || esPendiente)
-                    ? `<i class="fi fi-rr-check text-emerald-500 text-sm"></i>`
-                    : `<i class="fi fi-rr-cross-circle text-red-400 text-sm"></i>`;
+                let iconHtml;
+                if (esControvTras && esControversia) {
+                    // Select para resolver controversia
+                    iconHtml = `<select class="item-resolucion select select-xs w-28 text-xs"
+                        data-index="${i}"
+                        data-id="${item.idDetalleTraslado}"
+                        data-pack="${item.idPack || ''}">
+                        <option value="">Resolver...</option>
+                        <option value="RECIBIDO">RECIBIDO</option>
+                        <option value="ANULADO">ANULADO</option>
+                    </select>`;
+                } else if (yaRecibido || esPendiente) {
+                    iconHtml = `<i class="fi fi-rr-check text-emerald-500 text-sm"></i>`;
+                } else {
+                    iconHtml = `<i class="fi fi-rr-cross-circle text-red-400 text-sm"></i>`;
+                }
 
                 return `
                 <tr id="item-row-${i}" class="item-row"
@@ -294,14 +309,21 @@
         // Footer según estado
         const footerArea = document.getElementById('lb-footer-form');
         if (footerArea) {
-            footerArea.classList.toggle('hidden', !esPendiente);
+            footerArea.classList.toggle('hidden', !esInteractivo);
         }
         if (btnCancelar) {
-            btnCancelar.textContent = esPendiente ? 'Cancelar' : 'Cerrar';
+            btnCancelar.textContent = esInteractivo ? 'Cancelar' : 'Cerrar';
         }
         if (btnAceptar) {
-            btnAceptar.disabled = !esPendiente;
-            btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Aceptar Traslado';
+            btnAceptar.disabled = false;
+            if (esControvTras) {
+                btnAceptar.dataset.modo = 'resolver';
+                btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+            } else {
+                btnAceptar.dataset.modo = 'aceptar';
+                btnAceptar.disabled = !esPendiente;
+                btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Aceptar Traslado';
+            }
         }
     };
 
@@ -380,15 +402,20 @@
                 <p class="text-xs font-bold text-red-600 uppercase tracking-wider mb-2">
                     <i class="fi fi-rr-triangle-warning mr-1"></i>Incidencias registradas
                 </p>
-                ${insidencias.map(ins => `
+                ${insidencias.map(ins => {
+                    const codigo = ins.detalle?.pack?.codigoEtiqueta
+                        || ins.detalle?.producto?.sku
+                        || `#${ins.idDetalleTraslado}`;
+                    return `
                     <div class="text-xs text-slate-700 border-b border-red-100 last:border-0 pb-1.5 mb-1.5 last:mb-0">
-                        <span class="font-semibold">Ítem #${ins.idDetalleTraslado}:</span>
+                        <span class="font-semibold">Ítem ${codigo}:</span>
                         Recibido <strong>${ins.cantidadAceptada}</strong>/${ins.cantidadOriginal} —
                         <span class="italic text-slate-500">${ins.razonInsidencia}</span>
                         ${ins.resuelta === 'si'
                             ? `<span class="ml-1 badge badge-success badge-xs">Resuelta</span>`
                             : `<span class="ml-1 badge badge-error badge-xs">Pendiente</span>`}
-                    </div>`).join('')}
+                    </div>`;
+                }).join('')}
             </div>`;
     };
 
@@ -442,6 +469,14 @@
     btnAceptar?.addEventListener('click', async () => {
         if (!trasladoActivo) return;
 
+        if (btnAceptar.dataset.modo === 'resolver') {
+            await submitResolver();
+        } else {
+            await submitAceptar();
+        }
+    });
+
+    const submitAceptar = async () => {
         if (!empleadoValidado) {
             window.showToast?.('Ingresa un código de empleado válido.', 'warning');
             lbCodEmp?.focus();
@@ -451,17 +486,17 @@
         // Recopilar items desde el DOM
         const items = [];
         document.querySelectorAll('.item-row').forEach(row => {
-            const idx             = row.dataset.index;
+            const idx               = row.dataset.index;
             const idDetalleTraslado = parseInt(row.dataset.id);
-            const idPack          = row.dataset.pack || null;
-            const cantidadOriginal = parseInt(row.dataset.cantidad);
-            const chk             = row.querySelector('.item-check');
-            const qty             = row.querySelector('.item-qty');
-            const razonEl         = document.querySelector(`.item-razon[data-index="${idx}"]`);
+            const idPack            = row.dataset.pack || null;
+            const cantidadOriginal  = parseInt(row.dataset.cantidad);
+            const chk               = row.querySelector('.item-check');
+            const qty               = row.querySelector('.item-qty');
+            const razonEl           = document.querySelector(`.item-razon[data-index="${idx}"]`);
 
-            const aceptado        = chk?.checked ?? true;
-            const cantidadAceptada = parseInt(qty?.value ?? cantidadOriginal);
-            const razon           = razonEl?.value?.trim() || '';
+            const aceptado          = chk?.checked ?? true;
+            const cantidadAceptada  = parseInt(qty?.value ?? cantidadOriginal);
+            const razon             = razonEl?.value?.trim() || '';
 
             items.push({ idDetalleTraslado, idPack, cantidadOriginal, cantidadAceptada, aceptado, razon });
         });
@@ -481,10 +516,7 @@
         try {
             const r = await fetch('/store/traslados/aceptar', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken
-                },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                 body: JSON.stringify({
                     idTraslado: trasladoActivo.idTraslado,
                     codigoEmpleado: lbCodEmp.value.trim().toUpperCase(),
@@ -514,7 +546,64 @@
             btnAceptar.disabled = false;
             btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Aceptar Traslado';
         }
-    });
+    };
+
+    // ─── SUBMIT RESOLVER CONTROVERSIA ───────────────────────────────────────
+    const submitResolver = async () => {
+        if (!empleadoValidado) {
+            window.showToast?.('Ingresa un código de empleado válido.', 'warning');
+            lbCodEmp?.focus();
+            return;
+        }
+
+        // Recopilar resoluciones de los selects de controversia
+        const resoluciones = [];
+        document.querySelectorAll('.item-resolucion').forEach(sel => {
+            resoluciones.push({
+                idDetalleTraslado: parseInt(sel.dataset.id),
+                idPack:            sel.dataset.pack || null,
+                resolucion:        sel.value
+            });
+        });
+
+        // Validar que todos los items en controversia tengan una resolución seleccionada
+        const sinResolver = resoluciones.filter(r => !r.resolucion);
+        if (sinResolver.length) {
+            window.showToast?.(`Debes seleccionar una resolución para todos los ítems en controversia.`, 'warning');
+            return;
+        }
+
+        btnAceptar.disabled = true;
+        btnAceptar.innerHTML = '<i class="fi fi-rr-spinner animate-spin mr-2"></i>Procesando...';
+
+        try {
+            const r = await fetch('/store/traslados/resolver', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({
+                    idTraslado:     trasladoActivo.idTraslado,
+                    codigoEmpleado: lbCodEmp.value.trim().toUpperCase(),
+                    resoluciones
+                })
+            });
+            const data = await r.json();
+
+            if (data.success) {
+                window.showToast?.('Controversia resuelta correctamente.', 'success');
+                cerrarLightbox();
+                await loadPendientes();
+                await loadHistorial();
+            } else {
+                window.showToast?.(data.mensaje || 'Error al resolver.', 'error');
+                btnAceptar.disabled = false;
+                btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+            }
+        } catch {
+            window.showToast?.('Error de conexión.', 'error');
+            btnAceptar.disabled = false;
+            btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+        }
+    };
 
     // ─── INIT ─────────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => {

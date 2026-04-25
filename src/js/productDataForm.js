@@ -412,6 +412,9 @@ actualizarEstadoWeb();
                     text: 'Revisa los campos del formulario.'
                 });
             } else {
+                if (resultado.idProducto) {
+                    window.open(`/admin/inventario/etiqueta-sku/${resultado.idProducto}`, '_blank');
+                }
                 Swal.fire({
                     icon: 'success',
                     title: '¡Producto Guardado!',
@@ -419,7 +422,7 @@ actualizarEstadoWeb();
                     timer: 2000,
                     showConfirmButton: false
                 }).then(() => {
-                    window.location.href = '/admin/inventario/listado'; 
+                    window.location.href = '/admin/inventario/listado';
                 });
             }
 

@@ -1,4 +1,6 @@
 import { validationResult } from "express-validator";
+import PDFDocument from 'pdfkit';
+import bwipjs from 'bwip-js';
 import sharp from 'sharp';
 import { Upload } from "@aws-sdk/lib-storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -1388,7 +1390,7 @@ const newProduct = async (req, res, next) => {
 
 
 
-        res.json({ success: true, mensaje: 'Producto guardado con éxito' });
+        res.json({ success: true, mensaje: 'Producto guardado con éxito', idProducto: nuevoProducto.idProducto });
     } catch (error) {
         console.log(error);
         res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -1905,6 +1907,51 @@ const filterStoreInventoryJson = async (req, res) => {
     }
 }
 
+// ─── ETIQUETA SKU (PDF 5.5×2.5 cm landscape) ────────────────────────────────
+const imprimirEtiquetaSKU = async (req, res) => {
+    const { idProducto } = req.params;
+
+    const producto = await Productos.findOne({
+        where: { idProducto },
+        attributes: ['sku']
+    });
+    if (!producto?.sku) return res.status(404).send('Producto no encontrado.');
+
+    const sku = producto.sku;
+
+    // 5.5 cm = 155.91 pt (ancho) | 2.5 cm = 70.87 pt (alto)
+    const W  = 155.91;
+    const H  = 70.87;
+    const mx = 4;
+
+    try {
+        const doc = new PDFDocument({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=sku_${sku}.pdf`);
+        doc.pipe(res);
+
+        // Barcode (sin texto incluido, sin título)
+        const buffer = await bwipjs.toBuffer({
+            bcid:        'code128',
+            text:        sku,
+            scale:       2,
+            height:      9,
+            includetext: false,
+        });
+        doc.image(buffer, mx, mx, { width: W - mx * 2 });
+
+        // SKU centrado bajo el barcode
+        doc.fontSize(13).font('Helvetica-Bold')
+           .text(sku, mx, 50, { width: W - mx * 3, align: 'center' });
+
+        doc.end();
+    } catch (e) {
+        console.error('imprimirEtiquetaSKU:', e);
+        res.status(500).send('Error al generar la etiqueta.');
+    }
+};
+
 export {
     dashboard,
     dashboardStores,
@@ -1938,5 +1985,6 @@ export {
     jsonUnicidad,
     baseFrondend,
     filterSupplierListJson,
-    filterStoreInventoryJson
+    filterStoreInventoryJson,
+    imprimirEtiquetaSKU
 }
