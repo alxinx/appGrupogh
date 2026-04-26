@@ -104,7 +104,7 @@
                             <td class="px-4 py-4"><span class="status-chip  ${estadoClass}">${pack.estado}</span></td>
                             <td class="px-4 py-4 text-right rounded-r-2xl">
                                 <div class="flex items-center justify-end gap-2">
-                                    <button type="button" class="p-2 text-slate-400 hover:text-gh-primaryHover hover:bg-gh-primaryHover/5 rounded-lg transition-colors" title="Ver Detalle"><span class="fi-rr-eye"></span></button>
+                                    <button type="button" class="btn-ver-historial p-2 text-slate-400 hover:text-gh-primaryHover hover:bg-gh-primaryHover/5 rounded-lg transition-colors" title="Ver Detalle" data-id="${pack.idPack}" data-codigo="${pack.codigoEtiqueta}"><span class="fi-rr-eye"></span></button>
                                 </div>
                             </td>
                         </tr>
@@ -129,6 +129,13 @@
                 bindCheckboxes();
                 updateBtnVisibility();
                 selectAll.checked = false;
+
+                // Bind botones de historial
+                document.querySelectorAll('.btn-ver-historial').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        window.abrirHistorialPack(btn.dataset.id, btn.dataset.codigo);
+                    });
+                });
             };
 
             const bindCheckboxes = () => {
@@ -280,6 +287,98 @@
             });
 
             renderTable(1);
+        };
+
+        // ─── HISTORIAL DE PACK ───────────────────────────────────────────────────
+        const modalHistorial   = document.querySelector('#modalHistorialPack');
+        const historialBody    = document.querySelector('#historial-body');
+        const historialCodigo  = document.querySelector('#historial-codigo');
+        const cerrarHistorial  = document.querySelector('#cerrarModalHistorial');
+
+        if (cerrarHistorial) cerrarHistorial.onclick = () => modalHistorial.classList.add('hidden');
+        if (modalHistorial)  modalHistorial.addEventListener('click', (e) => {
+            if (e.target === modalHistorial) modalHistorial.classList.add('hidden');
+        });
+
+        const estadoChip = (estado) => {
+            const mapa = {
+                EMPACADO:    'bg-emerald-100 text-emerald-700',
+                SEPARADO:    'bg-amber-100 text-amber-700',
+                DESPACHADO:  'bg-blue-100 text-blue-700',
+                TRASLADADO:  'bg-purple-100 text-purple-700',
+                DESEMPACADO: 'bg-orange-100 text-orange-700',
+                RECIBIDO:    'bg-teal-100 text-teal-700',
+                ANULADO:     'bg-red-100 text-red-600',
+                EN_TRANSITO: 'bg-sky-100 text-sky-700',
+                PENDIENTE:   'bg-yellow-100 text-yellow-700',
+            };
+            return `<span class="px-2 py-0.5 rounded-full text-xs font-bold ${mapa[estado] || 'bg-gray-100 text-gray-600'}">${estado}</span>`;
+        };
+
+        const fmtFecha = (f) => f ? new Date(f).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+
+        window.abrirHistorialPack = async (idPack, codigo) => {
+            if (!modalHistorial) return;
+            historialCodigo.textContent = codigo;
+            historialBody.innerHTML = '<p class="text-center text-slate-400 py-8 animate-pulse">Cargando historial...</p>';
+            modalHistorial.classList.remove('hidden');
+
+            try {
+                const res  = await fetch(`/admin/api/pack/${idPack}/historial`);
+                const data = await res.json();
+
+                let html = '';
+
+                // Estado actual del pack
+                html += `
+                <div class="rounded-2xl border border-slate-100 p-4 bg-slate-50">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Estado actual del paquete</p>
+                    <div class="flex flex-wrap gap-3 text-sm">
+                        <span>Estado: ${estadoChip(data.pack.estado)}</span>
+                        <span class="text-slate-500">Tipo: <strong>${data.pack.tipo}</strong></span>
+                        <span class="text-slate-500">Lote: <strong>LT-${data.pack.numLote}</strong></span>
+                        <span class="text-slate-500">Reimpresiones: <strong>${data.pack.contadorReimpresiones ?? 0}</strong></span>
+                        ${data.desempacado ? '<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700">Fue desempacado</span>' : ''}
+                    </div>
+                </div>`;
+
+                // Traslados
+                if (data.traslados.length === 0) {
+                    html += `<div class="text-center text-slate-400 py-4 text-sm">Sin traslados registrados.</div>`;
+                } else {
+                    html += `<p class="text-xs font-bold text-slate-400 uppercase tracking-wider mt-2">Traslados (${data.traslados.length})</p>`;
+                    data.traslados.forEach((t, i) => {
+                        const tieneControversia = t.controversias.length > 0;
+                        html += `
+                        <div class="rounded-2xl border ${tieneControversia ? 'border-red-200 bg-red-50' : 'border-slate-100 bg-white'} p-4">
+                            <div class="flex items-start justify-between gap-2 mb-2">
+                                <div>
+                                    <p class="text-xs text-slate-400">${fmtFecha(t.fecha)}</p>
+                                    <p class="text-sm font-semibold text-slate-700 mt-0.5">
+                                        <span class="fi-rr-arrow-right text-xs mr-1"></span>
+                                        ${t.origen} → ${t.destino}
+                                    </p>
+                                </div>
+                                ${estadoChip(t.estado)}
+                            </div>
+                            ${tieneControversia ? `
+                                <div class="mt-2 space-y-1">
+                                    <p class="text-xs font-bold text-red-500 uppercase">⚠ Controversias (${t.controversias.length})</p>
+                                    ${t.controversias.map(c => `
+                                        <div class="bg-red-100 rounded-xl px-3 py-2 text-xs text-red-700 space-y-0.5">
+                                            <p class="font-bold">${c.razon || 'Sin descripción'}</p>
+                                            <p>Cant. original: <strong>${c.cantidadOriginal}</strong> — Aceptada: <strong>${c.cantidadAceptada}</strong></p>
+                                            <p>Resuelta: <strong>${c.resuelta === 'si' ? '✅ Sí' : '❌ No'}</strong> · ${fmtFecha(c.fecha)}</p>
+                                        </div>`).join('')}
+                                </div>` : ''}
+                        </div>`;
+                    });
+                }
+
+                historialBody.innerHTML = html;
+            } catch (e) {
+                historialBody.innerHTML = '<p class="text-center text-red-400 py-8">Error al cargar el historial.</p>';
+            }
         };
 
         cargarMetadata();

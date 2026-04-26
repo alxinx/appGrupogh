@@ -26,5 +26,15 @@ block contenedor
                             div(class="col-span-12 grid grid-cols-12 items-start")
                                 include ./view/product.pug
 
-                script(src="/js/dropdownBtn.js")  
+                script(src="/js/dropdownBtn.js")
+                script.
+                    fetch(`/admin/api/inventario/#{producto.idProducto}/stock-total`)
+                        .then(r => r.json())
+                        .then(({ stockTotal }) => {
+                            document.getElementById('stockTotalGlobal').textContent =
+                                stockTotal.toLocaleString('es-CO');
+                        })
+                        .catch(() => {
+                            document.getElementById('stockTotalGlobal').textContent = '—';
+                        });
                  

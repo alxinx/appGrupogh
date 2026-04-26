@@ -37,3 +37,16 @@ block contenedor
 
     script(src="/js/pos.js")
     script(src="/js/storeGlobal.js")
+
+    if trasladosPendientes && trasladosPendientes > 0
+        - const plural = trasladosPendientes > 1 ? 's' : ''
+        script.
+            Swal.fire({
+                icon: 'warning',
+                title: '📦 Traslado pendiente',
+                html: 'Tienes <strong>!{trasladosPendientes}</strong> traslado!{plural} por recibir.<br><br><a href="/store/traslados/get" style="color:#EC5FA3;font-weight:bold;text-decoration:underline;">Ver traslados →</a>',
+                timer: 5000,
+                timerProgressBar: true,
+                showConfirmButton: false,
+                position: 'center'
+            });

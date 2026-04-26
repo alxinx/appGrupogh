@@ -453,7 +453,7 @@ const obtenerProductosPorDose = async (req, res) => {
 const widgetGlobales = async (req, res) => {
     const [totalDose, totalP] = await Promise.all([
         Dosificaciones.count(),
-        Pack.count()
+        Pack.count({ where: { estado: { [Op.notIn]: ['DESEMPACADO', 'ANULADO'] } } })
     ]);
     // Respuesta plana y directa
     res.json({
@@ -691,8 +691,12 @@ const imprimirComprobanteTraslado = async (req, res) => {
             }).format(new Date(raw));
         };
 
+        const idPdv = req.idPuntoDeVenta;
         const traslado = await Traslados.findOne({
-            where: { idTraslado },
+            where: {
+                idTraslado,
+                ...(idPdv && { [Op.or]: [{ idOrigen: idPdv }, { idDestino: idPdv }] })
+            },
             include: [
                 {
                     model: PuntosDeVenta,
@@ -956,9 +960,61 @@ const imprimirComprobanteTraslado = async (req, res) => {
     }
 };
 
+const historialPack = async (req, res) => {
+    try {
+        const { idPack } = req.params;
+
+        const pack = await Pack.findByPk(idPack, {
+            attributes: ['idPack', 'codigoEtiqueta', 'numLote', 'tipo', 'estado', 'contadorReimpresiones', 'createdAt'],
+        });
+        if (!pack) return res.status(404).json({ error: 'Pack no encontrado' });
+
+        // Traslados en los que participó este pack
+        const detalles = await DetalleTraslados.findAll({
+            where: { idPack },
+            include: [{
+                model: Traslados,
+                include: [
+                    { model: PuntosDeVenta, as: 'origen', attributes: ['nombreComercial'] },
+                    { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] },
+                    { model: InsidenciaTraslado, as: 'insidencias', attributes: ['idInsidencia', 'razonInsidencia', 'cantidadOriginal', 'cantidadAceptada', 'resuelta', 'fechaInsidencia'] },
+                ]
+            }]
+        });
+
+        const traslados = detalles.map(d => {
+            const t = d.TRASLADO || d.Traslado || d.traslado || {};
+            return {
+                idTraslado:    t.idTraslado,
+                estado:        t.estado,
+                origen:        t.origen?.nombreComercial || '—',
+                destino:       t.destino?.nombreComercial || '—',
+                fecha:         t.createdAt,
+                controversias: (t.insidencias || []).map(i => ({
+                    razon:             i.razonInsidencia,
+                    cantidadOriginal:  i.cantidadOriginal,
+                    cantidadAceptada:  i.cantidadAceptada,
+                    resuelta:          i.resuelta,
+                    fecha:             i.fechaInsidencia,
+                })),
+            };
+        });
+
+        res.json({
+            pack: pack.toJSON(),
+            traslados,
+            desempacado: pack.estado === 'DESEMPACADO',
+            tieneControversias: traslados.some(t => t.controversias.length > 0),
+        });
+    } catch (e) {
+        console.error('historialPack:', e);
+        res.status(500).json({ error: 'Error interno' });
+    }
+};
+
 export {
     guardarDosificacion, homeDose, verDosificacionDetalle, obtenerMetadataDose,
     newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales,
     obtenerProductosPorDose, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack,
-    imprimirComprobanteTraslado
+    imprimirComprobanteTraslado, historialPack
 };

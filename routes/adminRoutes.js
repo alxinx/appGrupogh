@@ -2,17 +2,18 @@ import express from "express";
 import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU } from "../controller/adminControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
-import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado } from '../controller/dosificacionController.js'
+import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado, historialPack } from '../controller/dosificacionController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
+import apiRateLimit from '../middlewares/apiRateLimit.js';
 
 
 
@@ -111,7 +112,8 @@ routes.post('/inventario/editar/:idProducto',
 
 /************************[JSON]******************************/
 
-
+routes.use('/json', apiRateLimit);
+routes.use('/api', apiRateLimit);
 
 routes.get('/json/municipios/:departamentoId', municipiosJson)
 routes.get('/json/categorias/:idCategoria', categoriasJson);
@@ -133,9 +135,11 @@ routes.get('/json/tiendas/', async (req, res) => {
 
 // API CHECKS
 routes.get('/api/check-nit/:nit', checkNitSupplier);
+routes.get('/api/inventario/:idProducto/stock-total', stockTotalProducto);
 
 
 routes.get('/api/dosificaciones/stats-global', widgetGlobales);
+routes.get('/api/pack/:idPack/historial', historialPack);
 
 routes.get('/api/dosificaciones/productos/:id', obtenerProductosPorDose);
 routes.get('/api/dosificaciones/metadata/:id', obtenerMetadataDose);

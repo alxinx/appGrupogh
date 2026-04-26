@@ -19,6 +19,7 @@ import {
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
 import { cargarPuntoDeVenta } from '../middlewares/storeMiddleware.js';
+import apiRateLimit from '../middlewares/apiRateLimit.js';
 
 const routes = express.Router();
 const csrfProtection = csrf({ cookie: true });
@@ -36,6 +37,12 @@ routes.get('/inventario/perfilProducto/:idProducto', csrfProtection, getPerfilPr
 routes.get('/sse', sseConnect);
 
 // JSON helpers
+routes.use('/json', apiRateLimit);
+routes.use('/inventario/json', apiRateLimit);
+routes.use('/traslados/pendientes', apiRateLimit);
+routes.use('/traslados/historial', apiRateLimit);
+routes.use('/traslados/detalle', apiRateLimit);
+
 routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
 routes.get('/json/destinos', getDestinosJSON);
 

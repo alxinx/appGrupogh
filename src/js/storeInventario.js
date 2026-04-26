@@ -156,6 +156,17 @@
             const menu = dd.querySelector('.accion-menu');
             let closeTimer = null;
 
+            // Mover el menú al body para escapar del overflow del contenedor
+            document.body.appendChild(menu);
+            menu.style.position = 'fixed';
+            menu.style.zIndex   = '9999';
+
+            const posicionarMenu = () => {
+                const rect = btn.getBoundingClientRect();
+                menu.style.top  = `${rect.bottom + 4}px`;
+                menu.style.left = `${rect.right - menu.offsetWidth}px`;
+            };
+
             const cancelClose = () => clearTimeout(closeTimer);
             const scheduleClose = () => { closeTimer = setTimeout(() => menu.classList.add('hidden'), 120); };
 
@@ -163,7 +174,10 @@
                 e.stopPropagation();
                 const abierto = !menu.classList.contains('hidden');
                 cerrarTodosMenus();
-                if (!abierto) menu.classList.remove('hidden');
+                if (!abierto) {
+                    menu.classList.remove('hidden');
+                    posicionarMenu();
+                }
             });
 
             btn.addEventListener('mouseleave', scheduleClose);

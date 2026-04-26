@@ -32,7 +32,7 @@
                          ${formatMoney(producto.precioVentaPublicoFinal, 0) ?? 0}
                         <div class="text-xs text-gray-400 font-normal">Mayorista:  ${formatMoney(producto.precioVentaMayorista, 0)}</div>
                     </td>
-                    <td class="p-4 text-sm">${producto.stock ?? 0}</td>
+                    <td class="p-4 text-sm">${(producto.stockGlobal ?? 0).toLocaleString('es-CO')}</td>
                     <td class="p-4">
                         <span class="px-2 py-1 rounded-full text-xs ${producto.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
                             ${producto.activo ? 'Activo' : 'Inactivo'}

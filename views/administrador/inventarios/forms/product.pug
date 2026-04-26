@@ -114,8 +114,12 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                     button#cerrarModal(type="button" class="text-gray-400 cursor-pointer hover:text-red-500") 
                         i.fi-rr-cross-circle.text-2xl
 
+                //- Buscador de colores
+                div(class="mb-4")
+                    input#buscadorColor(type="text" placeholder="Buscar color..." class="input input-bordered w-full rounded-xl text-sm")
+
                 //- Contenedor donde se cargarán los colores
-                div(class="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-2")
+                div(class="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-2" id="gridColores")
                     each atributo in atributos
                         if atributo.tipo === 'COLOR'
                             label(class="flex items-center gap-3 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gray-50")
@@ -150,7 +154,7 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
             div(class="flex flex-row flex-wrap gap-2")
                 label(class="subItems")
                     div(class="checkbox-group mr-2")
-                        input.checkbox(type="checkbox"  id="activo" name ="activo" checked=producto.activo === true )
+                        input.checkbox(type="checkbox"  id="activo" name ="activo" checked=(producto.activo !== false) )
 
                     span(class="text-[10px] font-bold text-gray-700 uppercase whitespace-nowrap") Producto Activo
 

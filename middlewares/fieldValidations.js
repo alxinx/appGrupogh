@@ -1,4 +1,4 @@
-import { check } from "express-validator";
+import { check, body } from "express-validator";
 
 const registerValidation = [
     check('nombreUsuario')
@@ -55,12 +55,25 @@ const storeBasicTaxDataValidation = [
 const productBasicValidation = [
     check("nombreProducto").trim().isLength({min : 2}).withMessage('🚨 Necesito saber como llamarás al producto '),
     check('sku')
-    .trim()
-    .isLength({min: 2})
-    .customSanitizer(value => {
-        return value.toUpperCase().replace(/[^A-Z0-9-_]/g, '');
-    }).withMessage('🚨 El Sku debe ser válido o mayor a 2 caracteres. ')
-
+        .trim()
+        .isLength({min: 2})
+        .customSanitizer(value => value.toUpperCase().replace(/[^A-Z0-9-_]/g, ''))
+        .withMessage('🚨 El Sku debe ser válido o mayor a 2 caracteres. '),
+    check('precioVentaMayorista')
+        .customSanitizer(value => parseInt(String(value).replace(/\D/g, '')) || 0)
+        .custom(value => value > 0)
+        .withMessage('🚨 El precio mayorista debe ser mayor a $0.'),
+    check('precioVentaPublicoFinal')
+        .customSanitizer(value => parseInt(String(value).replace(/\D/g, '')) || 0)
+        .custom(value => value > 0)
+        .withMessage('🚨 El precio al público debe ser mayor a $0.'),
+    body('precioVentaMayorista')
+        .custom((value, { req }) => {
+            const mayorista = parseInt(String(value).replace(/\D/g, '')) || 0;
+            const publico   = parseInt(String(req.body.precioVentaPublicoFinal).replace(/\D/g, '')) || 0;
+            if (mayorista >= publico) throw new Error('🚨 El precio mayorista debe ser menor que el precio al público final.');
+            return true;
+        }),
 ]   
 
 

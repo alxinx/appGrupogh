@@ -15,7 +15,7 @@ import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' wit
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
 import { limpiarPrecio, sanitizarHTML, getAvailability } from '../helpers/helpers.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
-import { Sequelize, Op, where } from "sequelize";
+import { Sequelize, Op, where, fn, col } from "sequelize";
 
 
 dotenv.config();
@@ -322,6 +322,17 @@ const verProducto = async (req, res) => {
         //res.redirect('/admin/inventario');
     }
 
+}
+
+const stockTotalProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    try {
+        const total = await Stock.sum('cantidadExistente', { where: { idProducto } });
+        return res.json({ stockTotal: total || 0 });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ stockTotal: 0 });
+    }
 }
 
 
@@ -1170,9 +1181,14 @@ const saveProduct = async (req, res, next) => {
                 .normalize('NFD').replace(/[̀-ͯ]/g, '')
                 .replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
 
+        const nombreProducto = req.body.nombreProducto
+            .trim()
+            .toLowerCase()
+            .replace(/\b\w/g, c => c.toUpperCase());
+
         let producto;
         const datosParaDB = {
-            nombreProducto: req.body.nombreProducto,
+            nombreProducto,
             slug,
             sku: req.body.sku,
             ean: req.body.ean,
@@ -1506,11 +1522,24 @@ const filterProductListJson = async (req, res) => {
 
         const totalPaginas = Math.ceil(count / limite);
 
+        const ids = productosInstancias.map(p => p.idProducto);
+        const stockRows = await Stock.findAll({
+            where: { idProducto: { [Op.in]: ids } },
+            attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stockGlobal']],
+            group: ['idProducto'],
+            raw: true
+        });
+        const mapStock = Object.fromEntries(stockRows.map(r => [r.idProducto, parseInt(r.stockGlobal) || 0]));
+
+        const productos = productosInstancias.map(p => ({
+            ...p.toJSON(),
+            stockGlobal: mapStock[p.idProducto] || 0
+        }));
 
         // 5. Respuesta JSON
         res.json({
             success: true,
-            productos: productosInstancias,
+            productos,
             totalPaginas,
             paginaActual: numPagina,
             totalRegistros: count
@@ -1913,11 +1942,12 @@ const imprimirEtiquetaSKU = async (req, res) => {
 
     const producto = await Productos.findOne({
         where: { idProducto },
-        attributes: ['sku']
+        attributes: ['sku', 'nombreProducto']
     });
     if (!producto?.sku) return res.status(404).send('Producto no encontrado.');
 
     const sku = producto.sku;
+    const nombre = producto.nombreProducto;
 
     // 5.5 cm = 155.91 pt (ancho) | 2.5 cm = 70.87 pt (alto)
     const W  = 155.91;
@@ -1941,9 +1971,9 @@ const imprimirEtiquetaSKU = async (req, res) => {
         });
         doc.image(buffer, mx, mx, { width: W - mx * 2 });
 
-        // SKU centrado bajo el barcode
-        doc.fontSize(13).font('Helvetica-Bold')
-           .text(sku, mx, 50, { width: W - mx * 3, align: 'center' });
+        // Nombre del producto centrado bajo el barcode
+        doc.fontSize(10).font('Helvetica-Bold')
+           .text(nombre, mx, 50, { width: W - mx * 3, align: 'center' });
 
         doc.end();
     } catch (e) {
@@ -1965,7 +1995,7 @@ export {
     storeInventory,
     storeEmployers,
     storeDocuments,
-    saveProduct, editarProducto, listaProductos, verProducto, newProduct,
+    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, newProduct,
     batchBuyOrder,
     dosificar,
     dashboardSupplier,

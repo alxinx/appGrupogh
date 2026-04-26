@@ -4,6 +4,12 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
             i(class="fi fi-rr-arrow-left")
             | Volver
 
+    if subPagina === 'Listado De Productos'
+        a(href="/admin/inventario/ingreso")
+            button(class="btn btn btn-danger flex items-center gap-2")
+                i(class="fi fi-rr-box-open-full")
+                | Crear Nuevo Producto
+
     if subPagina === 'Producto'
         a(href=`/admin/inventario/etiqueta-sku/${producto.idProducto}` target="_blank")
             button(class="btn btn-outline flex items-center gap-2")

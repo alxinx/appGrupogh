@@ -10,10 +10,17 @@ import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseMan
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
 
 const dashboardStores = async (req, res) => {
+    const idPuntoDeVenta = req.idPuntoDeVenta;
+
+    const trasladosPendientes = idPuntoDeVenta
+        ? await Traslados.count({ where: { idDestino: idPuntoDeVenta, estado: 'EN_TRANSITO' } })
+        : 0;
+
     return res.render('./tienda/layout', {
         pagina: `Panel principal de ${req.usuario.nombreUsuario}`,
         csrfToken: req.csrfToken(),
-        currentPath: req.path
+        currentPath: req.path,
+        trasladosPendientes
     });
 };
 
@@ -138,9 +145,13 @@ const getHistorialJSON = async (req, res) => {
 
 const getDetalleTrasladoJSON = async (req, res) => {
     const { idTraslado } = req.params;
+    const idPdv = req.idPuntoDeVenta;
     try {
         const traslado = await Traslados.findOne({
-            where: { idTraslado },
+            where: {
+                idTraslado,
+                [Op.or]: [{ idOrigen: idPdv }, { idDestino: idPdv }]
+            },
             include: [
                 { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] },
                 {
@@ -304,28 +315,21 @@ const getInventarioJSON = async (req, res) => {
             include: [packInclude]
         });
 
-        // ── PRODUCTOS: stock agregado por producto ────────────────────
-        const stockTiendaRows = await Stock.findAll({
+        // ── PRODUCTOS con stock en esta tienda (paginados) ────────────
+        // 1. IDs de productos que tienen stock en la tienda actual
+        const rowsTienda = await Stock.findAll({
             where: { idPuntoVenta: idPdv, idProducto: { [Op.ne]: null } },
             attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stockTienda']],
             group: ['idProducto'],
             raw: true
         });
 
-        const productIdsTienda = stockTiendaRows.map(r => r.idProducto).filter(Boolean);
-        const mapTienda = Object.fromEntries(stockTiendaRows.map(r => [r.idProducto, parseInt(r.stockTienda) || 0]));
+        const productIdsTienda = rowsTienda.map(r => r.idProducto).filter(Boolean);
+        const mapTienda = Object.fromEntries(rowsTienda.map(r => [r.idProducto, parseInt(r.stockTienda) || 0]));
 
         let count = 0, productos = [];
 
         if (productIdsTienda.length) {
-            const stockGlobalRows = await Stock.findAll({
-                where: { idProducto: { [Op.in]: productIdsTienda } },
-                attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stockGlobal']],
-                group: ['idProducto'],
-                raw: true
-            });
-            const mapGlobal = Object.fromEntries(stockGlobalRows.map(r => [r.idProducto, parseInt(r.stockGlobal) || 0]));
-
             const whereProd = {
                 activo: 1,
                 idProducto: { [Op.in]: productIdsTienda },
@@ -346,6 +350,18 @@ const getInventarioJSON = async (req, res) => {
                 offset,
                 distinct: true
             });
+
+            // 2. IDs de la página actual para el batch de stock global
+            const idsEnPagina = result.rows.map(p => p.idProducto);
+
+            // 3. Stock global: suma cantidadExistente SIN filtro de tienda
+            const rowsGlobal = await Stock.findAll({
+                where: { idProducto: { [Op.in]: idsEnPagina } },
+                attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stockGlobal']],
+                group: ['idProducto'],
+                raw: true
+            });
+            const mapGlobal = Object.fromEntries(rowsGlobal.map(r => [r.idProducto, parseInt(r.stockGlobal) || 0]));
 
             count = result.count;
             productos = result.rows.map(p => ({
