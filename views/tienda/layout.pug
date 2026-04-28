@@ -13,7 +13,7 @@ block contenedor
     div(class="fixed inset-0 flex" style="background:#F4E8FF")
         include ./partials/leftMenu
 
-        div(class="flex-1 flex flex-col min-w-0")
+        div(class="flex-1 flex flex-col min-w-0 relative")
             include ../partials/header
             include ../components/mixinsPos
             include ../components/modals
@@ -22,19 +22,16 @@ block contenedor
                 block contenidoTienda
                     include ./views/pos
 
-    +modalDetalleProducto(
-        'PJ-001',
-        'PIJAMA CONJUNTO',
-        'Experimenta el máximo confort con nuestro conjunto premium...',
-        { mayor: '55.000', detal: '90.000' },
-        ['S', 'M', 'L', 'XL'],
-        ['#F472B6', '#FBCFE8', '#C4B5FD', '#E879F9'],
-        ['https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856977-0.webp ', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856994-1.webp', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856994-2.webp', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856995-4.webp']
-    )
+            +modalCliente(departamentos || [])
+
+    +modalDetalleProductoTemplate()
+    +modalFinalizarVenta()
 
     //- Contenedor de toasts globales
     div#toast-container(class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none")
 
+    script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+    script(src="/js/helpers.js")
     script(src="/js/pos.js")
     script(src="/js/storeGlobal.js")
 

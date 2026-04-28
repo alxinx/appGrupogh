@@ -23,6 +23,14 @@ import Pack from './Packs.js';
 import DetallesPack from './DetallesPack.js'
 
 import Empleados from './Empleados.js'
+import Clientes from './Clientes.js'
+import ClientesTributario from './ClientesTributario.js'
+import ClientesUbicacion from './ClientesUbicacion.js'
+import CajaTienda from './CajaTienda.js'
+import Entidades from './Entidades.js'
+import FacturaClientes from './FacturaClientes.js'
+import DetallesFactura from './DetallesFactura.js'
+import DetallesImpuestosFacturaCliente from './DetallesImpuestosFacturaCliente.js'
 //ASOCIACIONES
 
 
@@ -100,6 +108,45 @@ InsidenciaTraslado.belongsTo(Traslados, { foreignKey: 'idTraslado' });
 InsidenciaTraslado.belongsTo(DetalleTraslados, { foreignKey: 'idDetalleTraslado', as: 'detalle' });
 InsidenciaTraslado.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 
+// Clientes
+Clientes.hasMany(ClientesTributario, { foreignKey: 'idCliente', as: 'tributario' });
+ClientesTributario.belongsTo(Clientes, { foreignKey: 'idCliente' });
+
+Clientes.hasMany(ClientesUbicacion, { foreignKey: 'idCliente', as: 'ubicaciones' });
+ClientesUbicacion.belongsTo(Clientes, { foreignKey: 'idCliente' });
+
+// Caja tienda
+Empleados.hasMany(CajaTienda, { foreignKey: 'idEmpleado', as: 'cajas' });
+CajaTienda.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
+
+PuntosDeVenta.hasMany(CajaTienda, { foreignKey: 'idPuntoDeVenta', as: 'cajas' });
+CajaTienda.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'puntoDeVenta' });
+
+// Facturación clientes
+Clientes.hasMany(FacturaClientes, { foreignKey: 'idCliente', as: 'facturas' });
+FacturaClientes.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
+
+RegimenFacturacion.hasMany(FacturaClientes, { foreignKey: 'idRegimenFacturacion', as: 'facturas' });
+FacturaClientes.belongsTo(RegimenFacturacion, { foreignKey: 'idRegimenFacturacion', as: 'regimen' });
+
+PuntosDeVenta.hasMany(FacturaClientes, { foreignKey: 'idPuntoDeVenta', as: 'facturas' });
+FacturaClientes.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'puntoDeVenta' });
+
+Empleados.hasMany(FacturaClientes, { foreignKey: 'idEmpleado', as: 'facturas' });
+FacturaClientes.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'vendedor' });
+
+FacturaClientes.hasMany(DetallesFactura, { foreignKey: 'idFacturaCliente', as: 'detalles' });
+DetallesFactura.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente', as: 'factura' });
+
+DetallesFactura.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
+Productos.hasMany(DetallesFactura, { foreignKey: 'idProducto', as: 'lineasFactura' });
+
+FacturaClientes.hasMany(DetallesImpuestosFacturaCliente, { foreignKey: 'idFacturaCliente', as: 'impuestos' });
+DetallesImpuestosFacturaCliente.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente', as: 'factura' });
+
+DetallesFactura.hasMany(DetallesImpuestosFacturaCliente, { foreignKey: 'idDetallesFactura', as: 'impuestos' });
+DetallesImpuestosFacturaCliente.belongsTo(DetallesFactura, { foreignKey: 'idDetallesFactura', as: 'lineaFactura' });
+
 
 
 // 1. Relación con Acceso al Sistema
@@ -125,5 +172,8 @@ export {
   Productos, Provedores, CategoriasDeProvedores,
   Dosificaciones, Pack, DetallesPack, Stock,
   Traslados, DetalleTraslados, InsidenciaTraslado,
-  Imagenes, Documentacion, Empleados
+  Imagenes, Documentacion, Empleados,
+  Clientes, ClientesTributario, ClientesUbicacion,
+  CajaTienda, Entidades,
+  FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente
 }

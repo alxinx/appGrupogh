@@ -14,12 +14,19 @@ import {
     getDestinosJSON,
     desempacarPackAPI,
     trasladarDesdeStoreAPI,
-    getPerfilProducto
+    getPerfilProducto,
+    buscarPosProducto,
+    getPosProductoJSON,
+    buscarClientePorDoc,
+    getMunicipiosStoreJSON,
+    guardarCliente,
+    getEntidadesJSON
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
 import { cargarPuntoDeVenta } from '../middlewares/storeMiddleware.js';
 import apiRateLimit from '../middlewares/apiRateLimit.js';
+import uploadMixed from '../middlewares/uploadMixed.js';
 
 const routes = express.Router();
 const csrfProtection = csrf({ cookie: true });
@@ -45,6 +52,11 @@ routes.use('/traslados/detalle', apiRateLimit);
 
 routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
 routes.get('/json/destinos', getDestinosJSON);
+routes.get('/json/pos/buscar', buscarPosProducto);
+routes.get('/json/pos/producto/:idProducto', getPosProductoJSON);
+routes.get('/json/clientes/buscar', buscarClientePorDoc);
+routes.get('/json/municipios/:deptoId', getMunicipiosStoreJSON);
+routes.get('/json/entidades', getEntidadesJSON);
 
 // APIs JSON — traslados
 routes.get('/traslados/pendientes', getPendientesJSON);
@@ -62,5 +74,8 @@ routes.post('/traslados/resolver', csrfProtection, resolverControversiaAPI);
 // Acciones — inventario
 routes.post('/inventario/desempacar', csrfProtection, desempacarPackAPI);
 routes.post('/inventario/trasladar',  csrfProtection, trasladarDesdeStoreAPI);
+
+// Clientes
+routes.post('/clientes/guardar', csrfProtection, uploadMixed.single('rut'), guardarCliente);
 
 export default routes;

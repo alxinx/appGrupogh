@@ -911,6 +911,19 @@
   animation: fadeIn 0.3s ease-out forwards;
 }
 
+@keyframes sadSigh {
+  0%   { transform: translateY(0)   scale(1);    }
+  8%   { transform: translateY(-7px) scale(1.04); }
+  18%  { transform: translateY(3px)  scale(0.96); }
+  28%  { transform: translateY(0)   scale(1);    }
+  100% { transform: translateY(0)   scale(1);    }
+}
+
+.sad-bag-sigh {
+  animation: sadSigh 6s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
 .menu summary::marker {
   display: none;
 }

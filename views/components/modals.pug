@@ -1,6 +1,6 @@
 mixin modalDetalleProducto(id, nombre, descripcion, precios, tallas, colores, imagenes)
   div(id=`modal-producto-${id}` class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md" data-images=JSON.stringify(imagenes))
-    div(class="bg-white rounded-[2.5rem] shadow-2xl max-w-5xl w-full overflow-hidden flex flex-col md:flex-row")
+    div(class="bg-white rounded-[1.5rem] shadow-2xl max-w-5xl w-full overflow-hidden flex flex-col md:flex-row")
       
       //- Lado Izquierdo: Galería de Imágenes
       div(class="md:w-1/2 relative bg-gh-soft/20")
@@ -51,3 +51,232 @@ mixin modalDetalleProducto(id, nombre, descripcion, precios, tallas, colores, im
           button(class="w-full btn btn-primary transition-all active:scale-95")
             i.fi-rr-shopping-bag-add
             span AGREGAR AL PEDIDO
+
+mixin modalDetalleProductoTemplate()
+  //- Overlay con padding generoso para que la tarjeta no llegue a los bordes
+  div(id="modal-detalle-producto" class="fixed inset-0 z-50 hidden items-center justify-center p-8 bg-slate-900/50 backdrop-blur-md")
+
+    //- Tarjeta con altura fija → galería y panel info tienen dimensiones concretas
+    div(class="bg-white rounded-[1.5rem] shadow-2xl w-full max-w-[900px] h-[82vh] max-h-[660px] overflow-hidden flex flex-row")
+
+      //- ── Galería (izquierda, llena toda la altura del card) ─────────────────
+      div(class="w-[40%] flex-shrink-0 relative h-full")
+        img(id="mdp-main-image" src="" alt="" class="w-full h-full object-cover transition-opacity duration-200")
+        button(class="btn-prev-image absolute left-3 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full shadow-md cursor-pointer hover:bg-white z-10")
+          i.fi-rr-angle-small-left
+        button(class="btn-next-image absolute right-3 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full shadow-md cursor-pointer hover:bg-white z-10")
+          i.fi-rr-angle-small-right
+
+      //- ── Info (derecha, scrollable dentro del card) ──────────────────────────
+      div(class="w-[60%] h-full flex flex-col overflow-y-auto custom-scrollbar")
+
+        //- Header + descripción
+        div(class="px-8 pt-8 pb-4 flex-shrink-0")
+          div(class="flex justify-between items-start mb-3")
+            div
+              span(class="text-[10px] font-bold text-gh-primary uppercase tracking-widest") Nueva Colección
+              h2(id="mdp-nombre" class="font-display text-3xl text-gh-primary mt-1 leading-tight")
+            button(class="btn-close-modal flex-shrink-0 w-9 h-9 flex items-center justify-center text-slate-400 hover:text-gh-primary hover:bg-gray-100 rounded-xl transition-colors cursor-pointer ml-3")
+              i.fi-rr-cross-small.text-2xl
+          p(id="mdp-descripcion" class="text-slate-500 text-sm leading-relaxed mt-2")
+
+        //- Variantes
+        div(class="px-8 pb-4 flex-shrink-0 space-y-3")
+          div
+            h4(class="text-[10px] font-bold text-slate-400 uppercase mb-2") Colores
+            div(id="mdp-colores" class="flex gap-2 flex-wrap")
+          div
+            h4(class="text-[10px] font-bold text-slate-400 uppercase mb-2") Tallas
+            div(id="mdp-tallas" class="flex gap-2 flex-wrap")
+
+        //- Precios + stock + qty + botones
+        div(class="px-8 py-4 border-t border-slate-100 flex-shrink-0")
+          div(class="flex items-center justify-between mb-3")
+            div
+              p(class="text-[10px] font-bold text-slate-400 uppercase") Al por mayor
+              span(id="mdp-precio-mayor" class="text-2xl font-bold text-slate-800")
+            div(class="text-right")
+              p(class="text-[10px] font-bold text-gh-primary uppercase") Al detal
+              span(id="mdp-precio-detal" class="text-2xl font-bold text-gh-primary")
+
+          div(id="mdp-stock-badge" class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold mb-3")
+            i(id="mdp-stock-icon" class="text-base")
+            span(id="mdp-stock-texto")
+
+          div(class="flex items-center gap-3 mb-3")
+            span(class="text-xs font-bold text-slate-400 uppercase whitespace-nowrap") Cantidad
+            div(class="flex items-center bg-slate-100 rounded-xl overflow-hidden")
+              button(id="mdp-qty-minus" class="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-gh-primary hover:bg-slate-200 transition-colors cursor-pointer")
+                i.fi-rr-minus-small
+              input(id="mdp-qty" type="number" min="1" value="1" class="w-12 h-9 text-center text-sm font-black text-slate-800 bg-transparent border-none focus:outline-none focus:ring-0")
+              button(id="mdp-qty-plus" class="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-gh-primary hover:bg-slate-200 transition-colors cursor-pointer")
+                i.fi-rr-plus-small
+
+          div(class="flex gap-3")
+            button(id="mdp-btn-trasladar" class="btn btn-secondary flex-1 cursor-pointer gap-2 disabled:opacity-40 disabled:cursor-not-allowed")
+              i.fi-rr-arrows-repeat
+              span Trasladar
+            button(id="mdp-btn-agregar" class="btn btn-primary flex-1 cursor-pointer gap-2 disabled:opacity-40 disabled:cursor-not-allowed")
+              i.fi-rr-shopping-bag-add
+              span Agregar al pedido
+
+        //- Lista de tiendas
+        div(class="px-8 py-4 border-t border-slate-100")
+          h4(class="text-[10px] font-bold text-slate-400 uppercase mb-3") Disponible en
+          div(id="mdp-tiendas" class="space-y-2")
+
+mixin modalFinalizarVenta()
+  div(id="modal-finalizar-venta" class="fixed inset-0 z-[70] hidden items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md")
+    div(class="bg-white rounded-3xl shadow-2xl w-full max-w-[1000px] max-h-[92vh] flex flex-col overflow-hidden")
+
+      //- Header
+      div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
+        div(class="flex items-center gap-4")
+          div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
+            i(class="fi-rr-shopping-bag text-white")
+          h2(class="font-display text-xl text-gray-900") Finalizar Venta
+        button(id="btn-cerrar-finalizar-venta" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
+          i(class="fi-rr-cross-small text-xl")
+
+      //- Cuerpo: dos columnas (sin altura fija → se adapta al contenido)
+      div(class="flex overflow-y-auto")
+
+        //- ── Columna Izquierda: cliente + productos ──────────────────────────
+        div(class="w-1/2 border-r border-gray-100 flex flex-col px-8 py-6")
+
+          //- Datos del cliente
+          div(class="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100")
+            div(class="w-12 h-12 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+              span(id="fv-cli-iniciales" class="text-gh-primary font-black text-base") CG
+            div(class="flex-1 min-w-0")
+              p(id="fv-cli-nombre" class="font-bold text-gray-900 truncate") Cliente
+              p(id="fv-cli-doc" class="text-xs text-gray-400 font-medium mt-0.5")
+              p(id="fv-cli-tel" class="text-xs text-gray-400 font-medium")
+            button(id="fv-btn-cambiar-cliente" type="button" class="btn btn-secondary btn-sm cursor-pointer flex-shrink-0 flex items-center gap-1.5 text-xs px-3 py-2")
+              i(class="fi-rr-user-pen")
+              | Cambiar
+
+          //- Lista de productos
+          div
+            p(class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4") Productos en la orden
+            div(id="fv-lista-productos" class="divide-y divide-gray-50")
+
+        //- ── Columna Derecha: métodos de pago ───────────────────────────────
+        div(class="w-1/2 flex flex-col px-8 py-6")
+          p(class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4") Métodos de Pago
+
+          //- EFECTIVO
+          div(id="fv-metodo-efectivo" class="mb-3 bg-gray-50 rounded-[1rem] border-2 border-transparent transition-all")
+            div(id="fv-efectivo-header" class="flex items-center justify-between p-4 cursor-pointer select-none")
+              div(class="flex items-center gap-3")
+                div(class="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center")
+                  i(class="fi-rr-money-bill-wave text-green-600")
+                div
+                  p(class="text-xs font-black text-gray-800 uppercase") Efectivo
+                  p(class="text-[10px] text-gray-400 font-medium") Pago físico
+              i(id="fv-efectivo-chevron" class="fi-rr-angle-small-down text-gray-400 transition-transform duration-200")
+            div(id="fv-efectivo-body" class="hidden px-4 pb-4 space-y-2")
+              div(class="flex items-center gap-2")
+                span(class="text-xs text-gray-500 whitespace-nowrap flex-shrink-0") Recibido
+                div(class="relative flex-1")
+                  span(class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold pointer-events-none") $
+                  input(id="fv-efectivo-monto" type="text" inputmode="numeric" placeholder="0" class="w-full pl-7 pr-3 h-10 bg-white border border-gray-200 rounded-xl text-right font-black text-gray-800 focus:ring-2 focus:ring-green-400/30 focus:border-green-300 focus:outline-none")
+              div(class="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 border border-gray-100")
+                span(class="text-xs font-bold text-gray-500") Cambio
+                span(id="fv-efectivo-cambio" class="font-black text-green-600 text-sm") $0
+
+          //- TRANSFERENCIA
+          div(id="fv-metodo-transferencia" class="hidden mb-3 bg-gray-50 rounded-[1rem] border-2 border-transparent transition-all")
+            div(id="fv-transferencia-header" class="flex items-center justify-between p-4 cursor-pointer select-none")
+              div(class="flex items-center gap-3")
+                div(class="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center")
+                  i(class="fi-rr-bank text-blue-600")
+                div
+                  p(class="text-xs font-black text-gray-800 uppercase") Transferencia
+                  p(class="text-[10px] text-gray-400 font-medium") Bancos
+              i(id="fv-transferencia-chevron" class="fi-rr-angle-small-down text-gray-400 transition-transform duration-200")
+            div(id="fv-transferencia-body" class="hidden px-4 pb-4 space-y-3")
+              div(id="fv-bancos-chips" class="flex flex-wrap gap-2")
+                span(class="text-xs text-gray-400 italic") Cargando...
+              div(id="fv-transferencia-rows" class="space-y-2")
+
+          //- TARJETA
+          div(id="fv-metodo-tarjeta" class="hidden mb-3 bg-gray-50 rounded-[1rem] border-2 border-transparent transition-all")
+            div(id="fv-tarjeta-header" class="flex items-center justify-between p-4 cursor-pointer select-none")
+              div(class="flex items-center gap-3")
+                div(class="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center")
+                  i(class="fi-rr-credit-card text-purple-600")
+                div
+                  p(class="text-xs font-black text-gray-800 uppercase") Tarjeta
+                  p(class="text-[10px] text-gray-400 font-medium") Débito / Crédito
+              i(id="fv-tarjeta-chevron" class="fi-rr-angle-small-down text-gray-400 transition-transform duration-200")
+            div(id="fv-tarjeta-body" class="hidden px-4 pb-4 space-y-3")
+              div(id="fv-tarjeta-chips" class="flex flex-wrap gap-2")
+                span(class="text-xs text-gray-400 italic") Cargando...
+              div(id="fv-tarjeta-rows" class="space-y-2")
+
+          //- ENTIDADES CREDITICIAS
+          div(id="fv-metodo-credito" class="hidden mb-3 bg-gray-50 rounded-[1rem] border-2 border-transparent transition-all")
+            div(id="fv-credito-header" class="flex items-center justify-between p-4 cursor-pointer select-none")
+              div(class="flex items-center gap-3")
+                div(class="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center")
+                  i(class="fi-rr-donate text-orange-600")
+                div
+                  p(class="text-xs font-black text-gray-800 uppercase") Entidades Crediticias
+                  p(class="text-[10px] text-gray-400 font-medium") Crédito / Financiación
+              i(id="fv-credito-chevron" class="fi-rr-angle-small-down text-gray-400 transition-transform duration-200")
+            div(id="fv-credito-body" class="hidden px-4 pb-4 space-y-3")
+              div(id="fv-credito-chips" class="flex flex-wrap gap-2")
+                span(class="text-xs text-gray-400 italic") Cargando...
+              div(id="fv-credito-rows" class="space-y-2")
+
+      //- Footer
+      div(class="border-t border-gray-100 flex-shrink-0")
+
+        //- Fila 1: recuadros resumen de pagos
+        div(class="flex gap-3 px-8 pt-4 pb-3")
+          div(class="flex-1 bg-green-50 border border-green-100 rounded-2xl px-4 py-2.5")
+            p(class="text-[10px] font-bold text-green-600 uppercase tracking-wide") Efectivo
+            p(id="fv-resumen-efectivo-val" class="font-black text-green-700 text-sm mt-0.5") $0
+          div(class="flex-1 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-2.5")
+            p(class="text-[10px] font-bold text-blue-600 uppercase tracking-wide") Transferencia
+            p(id="fv-resumen-transferencia-val" class="font-black text-blue-700 text-sm mt-0.5") $0
+          div(class="flex-1 bg-purple-50 border border-purple-100 rounded-2xl px-4 py-2.5")
+            p(class="text-[10px] font-bold text-purple-600 uppercase tracking-wide") Tarjeta
+            p(id="fv-resumen-tarjeta-val" class="font-black text-purple-700 text-sm mt-0.5") $0
+          div(class="flex-1 bg-orange-50 border border-orange-100 rounded-2xl px-4 py-2.5")
+            p(class="text-[10px] font-bold text-orange-600 uppercase tracking-wide") Crédito
+            p(id="fv-resumen-credito-val" class="font-black text-orange-700 text-sm mt-0.5") $0
+
+        //- Fila 2: totales + vendedor + botón
+        div(class="flex items-center gap-6 px-8 pb-4")
+          div(class="flex items-end gap-6 flex-shrink-0")
+            div
+              p(class="text-[10px] font-bold text-gray-400 uppercase mb-0.5") Subtotal
+              p(id="fv-subtotal" class="font-bold text-gray-700 text-sm") $0
+            div
+              p(class="text-[10px] font-bold text-gray-400 uppercase mb-0.5") Impuestos
+              p(id="fv-impuestos" class="font-bold text-gray-700 text-sm") $0
+            div
+              p(class="text-[10px] font-bold text-gh-primary uppercase mb-0.5") Total
+              p(id="fv-total" class="font-black text-2xl text-gh-primary") $0
+
+          //- Vendedor
+          div(class="flex-1 min-w-0")
+            p(class="text-[10px] font-bold text-gray-400 uppercase mb-1") Vendedor
+            div(class="flex items-center gap-2")
+              input(
+                id="fv-empleado-codigo"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Código del empleado"
+                class="input input-bordered w-full rounded-xl text-sm font-bold uppercase tracking-widest"
+              )
+              div(id="fv-empleado-badge" class="hidden items-center gap-1 flex-shrink-0 max-w-[120px]")
+                i(id="fv-empleado-icon" class="text-sm flex-shrink-0")
+                span(id="fv-empleado-nombre" class="text-xs font-black truncate")
+
+          button(id="btn-procesar-pago" type="button" disabled class="flex-shrink-0 flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed")
+            i(class="fi-rr-check-circle text-lg")
+            | Procesar Pago

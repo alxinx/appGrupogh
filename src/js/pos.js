@@ -1,104 +1,1470 @@
 (function () {
-    document.addEventListener('DOMContentLoaded', () => {
-        // Estado para rastrear la imagen actual por modal (si hay varios)
-        const modalStates = {};
 
-        // 1. Escuchar el clic en cualquier tarjeta de producto o sus elementos
-        document.addEventListener('dblclick', (e) => {
-            // Verificar si el clic fue en el botón de agregar
-            if (e.target.closest('.btn-agregar-pedido')) {
+    // ─── BUSCADOR POS ─────────────────────────────────────────────────────────
+    const inputCodigo    = document.getElementById('codigo');
+    const catalogoPos    = document.getElementById('catalogo-pos');
+    const autoAddToggle  = document.getElementById('auto-add-toggle');
+    let   buscarTimer    = null;
+
+    // Productos actualmente visibles en pantalla (lookup para carrito)
+    const productosEnPantalla = new Map();
+
+    // Anima las tarjetas con stagger al aparecer
+    const animarTarjetas = () => {
+        catalogoPos?.querySelectorAll('.product-card-individual').forEach((card, i) => {
+            card.style.opacity   = '0';
+            card.style.transform = 'translateY(10px)';
+            card.style.transition = 'opacity 0.22s ease, transform 0.22s ease';
+            setTimeout(() => {
+                card.style.opacity   = '1';
+                card.style.transform = 'translateY(0)';
+            }, i * 55);
+        });
+    };
+
+    const renderTarjetaProducto = (p) => {
+        const precioM = parseFloat(p.precioVentaMayorista).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+        const precioD = parseFloat(p.precioVentaPublicoFinal).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+        const modalId = `modal-producto-${p.idProducto}`;
+        const sinStock = !p.stock || p.stock <= 0;
+
+        return `
+        <div
+            id="product-${p.idProducto}"
+            class="product-card product-card-individual group cursor-pointer ${sinStock ? 'opacity-50' : ''}"
+            data-name="${p.nombreProducto}"
+            data-codigo="${p.sku}"
+            data-modal-target="${modalId}"
+            draggable="${sinStock ? 'false' : 'true'}"
+        >
+            <div class="relative aspect-[4/5] rounded-[1rem] overflow-hidden mb-4 bg-gray-50 shadow-sm">
+                <img
+                    src="${p.imagen}"
+                    alt="${p.nombreProducto}"
+                    class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    loading="lazy"
+                    onerror="this.src='/img/image-default.webp'"
+                >
+                <span class="absolute bottom-4 left-3 px-3 py-1.5 ${sinStock ? 'bg-red-100 text-red-500' : 'bg-white/80 text-gh-primaryHover'} backdrop-blur-sm text-[10px] font-bold uppercase rounded-xl shadow-sm border border-white/20">
+                    ${sinStock ? 'Sin stock' : p.stock + ' en stock'}
+                </span>
+            </div>
+            <h3 class="font-bold text-gray-900 truncate px-2 text-sm md:text-base">${p.nombreProducto}</h3>
+            <p class="text-xs text-gray-500 mb-4 px-2 flex items-center">
+                <i class="fi-rr-rectangle-barcode pr-2 text-slate-400"></i>
+                <span class="font-mono">${p.sku}</span>
+            </p>
+            <div class="flex items-center justify-between px-2 mb-4">
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase">X Mayor</span>
+                    <span class="font-bold text-lg text-gray-900">$${precioM}</span>
+                </div>
+                <div class="flex flex-col text-right">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase">Al Detal</span>
+                    <span class="font-bold text-lg text-gh-primary">$${precioD}</span>
+                </div>
+            </div>
+            <button
+                data-id="${p.idProducto}"
+                class="btn-agregar-pedido w-full h-11 ${sinStock ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gh-primary/10 text-gh-primary cursor-pointer hover:bg-gh-primary hover:text-white'} rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm"
+                ${sinStock ? 'disabled' : ''}
+            >
+                <i class="fi-rr-add-document"></i>
+                <span class="font-bold text-sm">${sinStock ? 'Sin stock' : 'Agregar al pedido'}</span>
+            </button>
+        </div>`;
+    };
+
+    const buscarProductos = async (q) => {
+        if (!catalogoPos) return;
+        catalogoPos.innerHTML = `
+            <div class="col-span-3 flex items-center justify-center py-12 text-gray-400">
+                <i class="fi fi-rr-spinner animate-spin text-2xl mr-3"></i>
+                Buscando...
+            </div>`;
+        try {
+            const res  = await fetch(`/store/json/pos/buscar?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            if (!data.success) throw new Error();
+
+            if (!data.productos.length) {
+                productosEnPantalla.clear();
+                catalogoPos.innerHTML = `
+                    <div class="col-span-3 flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
+                        <i class="fi fi-rr-search text-3xl"></i>
+                        <span>Sin resultados para "<strong>${q}</strong>"</span>
+                    </div>`;
                 return;
             }
 
-            const tarjeta = e.target.closest('.product-card-individual');
+            productosEnPantalla.clear();
+            data.productos.forEach(p => productosEnPantalla.set(p.idProducto, p));
 
-            if (tarjeta) {
-                const modalId = tarjeta.dataset.modalTarget;
-                if (modalId) {
-                    abrirModalProducto(modalId);
+            // Auto-add: 1 resultado con stock + toggle activo → agrega y limpia
+            if (data.productos.length === 1 && autoAddToggle?.checked) {
+                const unico = data.productos[0];
+                if (unico.stock > 0) {
+                    addToCart(unico);
+                    inputCodigo.value = '';
+                    limpiarCatalogo();
+                    return;
                 }
             }
+
+            catalogoPos.innerHTML = data.productos.map(renderTarjetaProducto).join('');
+            animarTarjetas();
+            bindDragEnCatalogo();
+        } catch {
+            catalogoPos.innerHTML = `
+                <div class="col-span-3 text-center py-12 text-red-400">Error al buscar productos.</div>`;
+        }
+    };
+
+    const limpiarCatalogo = () => {
+        productosEnPantalla.clear();
+        if (catalogoPos) catalogoPos.innerHTML = '';
+    };
+
+    if (inputCodigo) {
+        // Búsqueda con debounce para escritura manual
+        inputCodigo.addEventListener('input', () => {
+            clearTimeout(buscarTimer);
+            const q = inputCodigo.value.trim();
+            if (!q) { limpiarCatalogo(); return; }
+            buscarTimer = setTimeout(() => buscarProductos(q), 350);
         });
 
-        // Manejo de clics generales (Cierre y Navegación de Galería)
-        document.addEventListener('click', (e) => {
-            const modalAbierto = document.querySelector('div[id^="modal-producto-"]:not(.hidden)');
-            if (!modalAbierto) return;
+        // Enter / lector de barras: dispara inmediatamente sin esperar debounce
+        inputCodigo.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            clearTimeout(buscarTimer);
+            const q = inputCodigo.value.trim();
+            if (q) buscarProductos(q);
+        });
+    }
 
-            // 1. Cerrar modal
-            if (e.target === modalAbierto || e.target.closest('.btn-close-modal')) {
-                cerrarModal(modalAbierto);
+
+    // ─── CARRITO MANAGER ──────────────────────────────────────────────────────
+    // Estado aislado por tab (memoria JS — cada tab tiene su propio contexto)
+    const cart = new Map(); // idProducto → item
+    const WHOLESALE_MIN = parseInt(document.getElementById('drop-zone')?.dataset.wholesaleMin) || 6;
+
+    const cartList  = document.getElementById('cart-list');
+    const cartCount = document.getElementById('cart-count');
+    const cartBadge = document.getElementById('cart-modo-badge');
+    const dropZone  = document.getElementById('drop-zone');
+
+    const fmt = (n) => Math.round(n).toLocaleString('es-CO');
+    const totalQtyEnOrden = () => [...cart.values()].reduce((s, i) => s + i.cantidad, 0);
+    const getModo = () => totalQtyEnOrden() >= WHOLESALE_MIN ? 'mayorista' : 'detal';
+    const getPrecioItem = (item) => getModo() === 'mayorista' ? item.precioMayorista : item.precioDetal;
+
+    // ── Agregar o incrementar ────────────────────────────────────────────────
+    const addToCart = (p, qty = 1) => {
+        if (!p?.idProducto || qty < 1) return;
+
+        if (cart.has(p.idProducto)) {
+            const item = cart.get(p.idProducto);
+            const nueva = Math.min(item.cantidad + qty, item.stock);
+            if (nueva === item.cantidad) {
+                window.showToast?.(`Stock máximo alcanzado para "${item.nombre}"`, 'warning');
                 return;
             }
-
-            // 2. Navegación de Galería
-            const btnPrev = e.target.closest('.btn-prev-image');
-            const btnNext = e.target.closest('.btn-next-image');
-
-            if (btnPrev || btnNext) {
-                const modalId = modalAbierto.id;
-                const images = JSON.parse(modalAbierto.dataset.images || '[]');
-                if (images.length <= 1) return;
-
-                if (!modalStates[modalId]) modalStates[modalId] = { currentIndex: 0 };
-
-                if (btnPrev) {
-                    modalStates[modalId].currentIndex = (modalStates[modalId].currentIndex - 1 + images.length) % images.length;
-                } else {
-                    modalStates[modalId].currentIndex = (modalStates[modalId].currentIndex + 1) % images.length;
-                }
-
-                const mainImg = modalAbierto.querySelector('#main-image');
-                if (mainImg) {
-                    mainImg.src = images[modalStates[modalId].currentIndex];
-                    // Pequeña animación de transición
-                    mainImg.animate([
-                        { opacity: 0.5 },
-                        { opacity: 1 }
-                    ], { duration: 200, easing: 'ease-in-out' });
-                }
+            item.cantidad = nueva;
+        } else {
+            if (!p.stock || p.stock <= 0) {
+                window.showToast?.(`"${p.nombreProducto}" no tiene stock en tienda`, 'warning');
+                return;
             }
-        });
+            cart.set(p.idProducto, {
+                idProducto:      p.idProducto,
+                nombre:          p.nombreProducto,
+                imagen:          p.imagen,
+                sku:             p.sku,
+                stock:           parseInt(p.stock) || 0,
+                precioMayorista: parseFloat(p.precioVentaMayorista)    || 0,
+                precioDetal:     parseFloat(p.precioVentaPublicoFinal) || 0,
+                cantidad:        Math.min(qty, parseInt(p.stock) || 1)
+            });
+        }
+        renderCarrito();
+    };
 
-        // 2. Función para mostrar el modal con animación
-        function abrirModalProducto(modalId) {
-            const modal = document.getElementById(modalId);
+    // ── Actualizar cantidad (+ o -) ──────────────────────────────────────────
+    const updateQty = async (idProducto, delta) => {
+        if (!cart.has(idProducto)) return;
+        const item = cart.get(idProducto);
+        const nueva = item.cantidad + delta;
+
+        if (delta > 0 && nueva > item.stock) {
+            window.showToast?.(`Stock máximo: ${item.stock} unidades`, 'warning');
+            return;
+        }
+
+        if (nueva <= 0) {
+            const { isConfirmed } = await Swal.fire({
+                title: '¿Eliminar producto?',
+                html: `¿Quitar <strong>${item.nombre}</strong> de la orden?`,
+                icon: 'question',
+                showCancelButton:  true,
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText:  'Cancelar',
+                confirmButtonColor: '#EC5FA3'
+            });
+            if (isConfirmed) { cart.delete(idProducto); renderCarrito(); }
+            return;
+        }
+
+        item.cantidad = nueva;
+        renderCarrito();
+    };
+
+    // ── Eliminar directo ─────────────────────────────────────────────────────
+    const removeFromCart = (idProducto) => {
+        cart.delete(idProducto);
+        renderCarrito();
+    };
+
+    // ── HTML de un item del carrito ──────────────────────────────────────────
+    const renderItemCarrito = (item) => {
+        const precio = getPrecioItem(item);
+        const total  = precio * item.cantidad;
+        const atMax  = item.cantidad >= item.stock;
+
+        return `
+        <div class="flex gap-4 p-2 bg-white rounded-[0.5rem] group border border-white/60 transition-all shadow-sm hover:shadow-md"
+             id="cart-item-${item.idProducto}" data-id="${item.idProducto}">
+            <img src="${item.imagen}" alt="${item.nombre}"
+                 class="w-20 h-20 rounded-2xl object-cover shadow-sm flex-shrink-0"
+                 onerror="this.src='/img/image-default.webp'">
+            <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-start gap-1">
+                    <div class="min-w-0">
+                        <h4 class="text-sm font-bold text-gray-900 leading-tight truncate">${item.nombre}</h4>
+                        <p class="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-wider">SKU: ${item.sku}</p>
+                    </div>
+                    <button class="btn-remove-item text-gray-400 cursor-pointer hover:text-red-500 transition-colors p-1 flex-shrink-0"
+                            data-id="${item.idProducto}" title="Eliminar">
+                        <i class="fi-rr-trash-xmark text-lg"></i>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between mt-4">
+                    <div class="flex items-center gap-3 bg-gray-100/50 rounded-xl px-2.5 py-1.5 border border-gray-100">
+                        <button class="btn-qty-minus text-gray-400 hover:text-gh-primary flex items-center transition-transform active:scale-90 cursor-pointer"
+                                data-id="${item.idProducto}">
+                            <i class="fi-rr-minus-small"></i>
+                        </button>
+                        <span class="text-xs font-black w-5 text-center qty-display text-gh-grayText">${item.cantidad}</span>
+                        <button class="btn-qty-plus flex items-center transition-transform active:scale-90 ${atMax ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-gh-primary cursor-pointer'}"
+                                data-id="${item.idProducto}" ${atMax ? 'disabled' : ''}>
+                            <i class="fi-rr-plus-small"></i>
+                        </button>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] text-gray-400 font-medium leading-none mb-1">Unid: $${fmt(precio)}</p>
+                        <p class="font-bold text-base text-gh-grayText leading-none">$${fmt(total)}</p>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    // ── Re-render completo del carrito ───────────────────────────────────────
+    const renderCarrito = () => {
+        const items    = [...cart.values()];
+        const totalQty = totalQtyEnOrden();
+        const modo     = getModo();
+
+        // Header: conteo + badge mayorista
+        if (cartCount) cartCount.textContent = `${totalQty} item${totalQty !== 1 ? 's' : ''} seleccionados`;
+        if (cartBadge) {
+            if (modo === 'mayorista') {
+                cartBadge.textContent = '· Precio mayorista';
+                cartBadge.className = 'text-[9px] font-bold bg-gh-primary text-white px-2 py-0.5 rounded-full uppercase ml-1';
+            } else {
+                cartBadge.className = 'hidden';
+            }
+        }
+
+        if (!cartList) return;
+
+        if (!items.length) {
+            cartList.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full py-10 gap-3">
+                    <img src="/img/avatars/sadBag.webp" alt="Carrito vacío" class="sad-bag-sigh w-24 h-24 object-contain opacity-70">
+                    <p class="text-sm font-medium text-gray-400">La orden está vacía</p>
+                </div>`;
+            renderResumen(0);
+            return;
+        }
+
+        cartList.innerHTML = items.map(renderItemCarrito).join('');
+
+        // Bind eventos (después del render)
+        cartList.querySelectorAll('.btn-qty-minus').forEach(btn =>
+            btn.addEventListener('click', () => updateQty(btn.dataset.id, -1))
+        );
+        cartList.querySelectorAll('.btn-qty-plus').forEach(btn =>
+            btn.addEventListener('click', () => { if (!btn.disabled) updateQty(btn.dataset.id, 1); })
+        );
+        cartList.querySelectorAll('.btn-remove-item').forEach(btn =>
+            btn.addEventListener('click', () => removeFromCart(btn.dataset.id))
+        );
+
+        // Resumen
+        const subtotal = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
+        renderResumen(subtotal);
+    };
+
+    const renderResumen = (subtotal) => {
+        const elSub   = document.getElementById('res-subtotal');
+        const elTotal = document.getElementById('res-total');
+        if (elSub)   elSub.textContent   = `$${fmt(subtotal)}`;
+        if (elTotal) elTotal.textContent = `$${fmt(subtotal)}`;
+    };
+
+    // ── Limpiar orden ────────────────────────────────────────────────────────
+    document.getElementById('btn-clear-cart')?.addEventListener('click', async () => {
+        if (!cart.size) return;
+        const { isConfirmed } = await Swal.fire({
+            title: '¿Limpiar orden?',
+            text: 'Se eliminarán todos los productos de la orden.',
+            icon: 'warning',
+            showCancelButton:  true,
+            confirmButtonText: 'Sí, limpiar',
+            cancelButtonText:  'Cancelar',
+            confirmButtonColor: '#EC5FA3'
+        });
+        if (isConfirmed) { cart.clear(); renderCarrito(); }
+    });
+
+    // ── Agregar desde catálogo (click en botón) ──────────────────────────────
+    catalogoPos?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-agregar-pedido');
+        if (!btn || btn.disabled) return;
+        const p = productosEnPantalla.get(btn.dataset.id);
+        if (p) addToCart(p);
+    });
+
+    // ── Drag & Drop ──────────────────────────────────────────────────────────
+    const bindDragEnCatalogo = () => {
+        catalogoPos?.querySelectorAll('.product-card-individual[draggable="true"]').forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                const idProducto = card.id.replace('product-', '');
+                e.dataTransfer.setData('text/plain', idProducto);
+                e.dataTransfer.effectAllowed = 'copy';
+                card.classList.add('opacity-50', 'scale-95');
+            });
+            card.addEventListener('dragend', () => {
+                card.classList.remove('opacity-50', 'scale-95');
+            });
+        });
+    };
+
+    dropZone?.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        dropZone.classList.add('ring-2', 'ring-gh-primary/40', 'ring-inset');
+    });
+    dropZone?.addEventListener('dragleave', (e) => {
+        if (!dropZone.contains(e.relatedTarget)) {
+            dropZone.classList.remove('ring-2', 'ring-gh-primary/40', 'ring-inset');
+        }
+    });
+    dropZone?.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('ring-2', 'ring-gh-primary/40', 'ring-inset');
+        const idProducto = e.dataTransfer.getData('text/plain');
+        const p = productosEnPantalla.get(idProducto);
+        if (p) addToCart(p);
+    });
+
+    // Render inicial (carrito vacío)
+    renderCarrito();
+
+
+    // ─── MODAL CLIENTE ────────────────────────────────────────────────────────
+    const modalCliente    = document.getElementById('modal-cliente');
+    const inputIdCliente  = document.getElementById('idCliente');
+    const btnAbrirCliente = document.getElementById('btn-abrir-modal-cliente');
+
+    // ── Abrir / cerrar ────────────────────────────────────────────────────────
+    const abrirModalCliente = () => {
+        if (!modalCliente) return;
+        const h = document.getElementById('cli-id-hidden');
+        if (h) h.value = inputIdCliente?.value || '0';
+        modalCliente.classList.remove('hidden');
+        modalCliente.classList.add('flex');
+        modalCliente.querySelector('.bg-white')?.animate([
+            { transform: 'scale(0.96)', opacity: 0 },
+            { transform: 'scale(1)',    opacity: 1 }
+        ], { duration: 180, easing: 'ease-out' });
+    };
+
+    const cerrarModalCliente = () => {
+        modalCliente?.classList.add('hidden');
+        modalCliente?.classList.remove('flex');
+    };
+
+    btnAbrirCliente?.addEventListener('click', abrirModalCliente);
+    modalCliente?.addEventListener('click', (e) => { if (e.target === modalCliente) cerrarModalCliente(); });
+    modalCliente?.querySelectorAll('.btn-cerrar-modal-cliente').forEach(b => b.addEventListener('click', cerrarModalCliente));
+
+    // ── Pestañas ──────────────────────────────────────────────────────────────
+    const TAB_ACTIVE   = ['bg-gh-primary/10', 'text-gh-primary'];
+    const TAB_INACTIVE = ['text-gray-400'];
+
+    let tabActivo = 'natural'; // 'natural' | 'empresa'
+
+    const switchTab = (tab) => {
+        tabActivo = tab;
+        ['natural', 'empresa'].forEach(t => {
+            const btn = document.getElementById(`tab-btn-${t}`);
+            if (!btn) return;
+            const esActivo = t === tab;
+            TAB_ACTIVE.forEach(c  => btn.classList.toggle(c, esActivo));
+            TAB_INACTIVE.forEach(c => btn.classList.toggle(c, !esActivo));
+            modalCliente?.querySelectorAll(`.tab-${t}-content`).forEach(el => {
+                el.classList.toggle('hidden', !esActivo);
+            });
+        });
+        actualizarHeaderModal();
+    };
+
+    document.getElementById('tab-btn-natural')?.addEventListener('click', () => switchTab('natural'));
+    document.getElementById('tab-btn-empresa')?.addEventListener('click', () => switchTab('empresa'));
+
+    // ── Preview en tiempo real del encabezado del modal ───────────────────────
+    const actualizarHeaderModal = () => {
+        const elNombre     = document.getElementById('cli-modal-nombre');
+        const elDocDisplay = document.getElementById('cli-modal-doc-display');
+        if (!elNombre || !elDocDisplay) return;
+
+        const tipoDoc = document.getElementById('cli-tipo-doc')?.value || '';
+        const numDoc  = document.getElementById('cli-numero-doc')?.value?.trim() || '';
+
+        if (tabActivo === 'empresa') {
+            const razon = document.getElementById('cli-razon-social')?.value?.trim();
+            elNombre.textContent = razon || 'Empresa';
+        } else {
+            const pn = document.getElementById('cli-primer-nombre')?.value?.trim()    || '';
+            const pa = document.getElementById('cli-primer-apellido')?.value?.trim()  || '';
+            elNombre.textContent = [pn, pa].filter(Boolean).join(' ') || 'Nuevo cliente';
+        }
+
+        elDocDisplay.textContent = numDoc ? `${tipoDoc} ${numDoc}` : 'Completa el formulario';
+    };
+
+    ['cli-primer-nombre', 'cli-primer-apellido', 'cli-razon-social'].forEach(id =>
+        document.getElementById(id)?.addEventListener('input', actualizarHeaderModal)
+    );
+    document.getElementById('cli-numero-doc')?.addEventListener('input',  actualizarHeaderModal);
+    document.getElementById('cli-tipo-doc')?.addEventListener('change',   actualizarHeaderModal);
+
+    // ── Cascade departamento → municipios ─────────────────────────────────────
+    const cargarMunicipios = async (deptoId, selectedId = '') => {
+        const sel = document.getElementById('cli-municipio');
+        if (!sel || !deptoId) return;
+        sel.innerHTML = '<option>Cargando...</option>';
+        try {
+            const resp = await fetch(`/store/json/municipios/${deptoId}`);
+            const data = await resp.json();
+            sel.innerHTML = '<option value="">Seleccionar...</option>' +
+                data.map(m => `<option value="${m.id}"${m.id === selectedId ? ' selected' : ''}>${m.nombre}</option>`).join('');
+        } catch {
+            sel.innerHTML = '<option value="">Error al cargar</option>';
+        }
+    };
+
+    document.getElementById('cli-departamento')?.addEventListener('change', (e) => {
+        if (e.target.value) cargarMunicipios(e.target.value);
+        else {
+            const sel = document.getElementById('cli-municipio');
+            if (sel) sel.innerHTML = '<option value="">— selecciona un departamento —</option>';
+        }
+    });
+
+    // ── Espacio en primer nombre salta a segundo nombre ──────────────────────
+    document.getElementById('cli-primer-nombre')?.addEventListener('keydown', (e) => {
+        if (e.key !== ' ') return;
+        e.preventDefault();
+        document.getElementById('cli-segundo-nombre')?.focus();
+    });
+
+    // ── Nombre archivo RUT ────────────────────────────────────────────────────
+    document.getElementById('cli-rut-file')?.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        const el   = document.getElementById('cli-rut-nombre');
+        if (!el) return;
+        if (file) { el.textContent = file.name; el.classList.remove('hidden'); }
+        else       { el.classList.add('hidden'); }
+    });
+
+    // ── Llenar formulario cuando se encuentra cliente ─────────────────────────
+    const llenarFormCliente = (cli) => {
+        const fill = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+
+        fill('cli-tipo-doc',   cli.tipo_documento);
+        fill('cli-numero-doc', cli.numero_doc);
+
+        const esEmpresa = cli.tipo_persona === 'J' || cli.tipo_documento === 'NIT';
+        switchTab(esEmpresa ? 'empresa' : 'natural');
+
+        if (esEmpresa) {
+            fill('cli-razon-social', cli.razon_social);
+            fill('cli-digito-verif', cli.digito_verif);
+            fill('cli-email-e',      cli.email);
+            fill('cli-telefono-e',   cli.telefono);
+            const trib = cli.tributario?.[0];
+            if (trib) {
+                fill('cli-regimen',   trib.regimen_fiscal);
+                fill('cli-ciiu',      trib.ciiu);
+                fill('cli-desc-ciiu', trib.descripcion_ciiu);
+                fill('cli-fecha-rut', trib.fecha_rut);
+                ['gran_contribuyente','autorretenedor','agente_retencion','obligado_aduanero'].forEach(n => {
+                    const el = modalCliente?.querySelector(`[name="${n}"]`);
+                    if (el) el.checked = !!trib[n];
+                });
+            }
+        } else {
+            fill('cli-primer-nombre',    cli.primer_nombre);
+            fill('cli-segundo-nombre',   cli.segundo_nombre);
+            fill('cli-primer-apellido',  cli.primer_apellido);
+            fill('cli-segundo-apellido', cli.segundo_apellido);
+            fill('cli-email-n',    cli.email);
+            fill('cli-telefono-n', cli.telefono);
+        }
+
+        const ub = cli.ubicaciones?.[0];
+        if (ub) {
+            const deptoSel = document.getElementById('cli-departamento');
+            if (deptoSel) deptoSel.value = ub.idDepartamento || '';
+            if (ub.idDepartamento) cargarMunicipios(ub.idDepartamento, ub.idMunicipio);
+            fill('cli-direccion', ub.direccion);
+        }
+
+        const h = document.getElementById('cli-id-hidden');
+        if (h) h.value = cli.idCliente;
+
+        actualizarHeaderModal();
+    };
+
+    // ── Búsqueda async por documento ─────────────────────────────────────────
+    let docTimer = null;
+    const inputNumDoc = document.getElementById('cli-numero-doc');
+    const docLoader   = document.getElementById('cli-doc-loader');
+
+    inputNumDoc?.addEventListener('input', () => {
+        clearTimeout(docTimer);
+        const val = inputNumDoc.value.trim();
+        if (val.length < 5) return;
+        docLoader?.classList.remove('hidden');
+        docTimer = setTimeout(async () => {
+            try {
+                const resp = await fetch(`/store/json/clientes/buscar?doc=${encodeURIComponent(val)}`);
+                const data = await resp.json();
+                if (data.success && data.cliente) {
+                    llenarFormCliente(data.cliente);
+                    window.showToast?.('Cliente encontrado — datos cargados', 'success');
+                }
+            } catch { /* silencioso */ }
+            finally { docLoader?.classList.add('hidden'); }
+        }, 500);
+    });
+
+    // ── Guardar cliente ───────────────────────────────────────────────────────
+    document.getElementById('btn-guardar-cliente')?.addEventListener('click', async () => {
+        const csrf         = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const idCliModal   = document.getElementById('cli-id-hidden')?.value || inputIdCliente?.value || '0';
+        const esEmpresa    = tabActivo === 'empresa';
+        const getVal       = (id) => document.getElementById(id)?.value?.trim() || '';
+        const getChk       = (name) => (modalCliente?.querySelector(`[name="${name}"]`)?.checked ? 'true' : 'false');
+
+        const numerDoc = getVal('cli-numero-doc');
+        if (!numerDoc) { window.showToast?.('El número de documento es requerido', 'warning'); return; }
+
+        const fd = new FormData();
+        fd.append('idCliente',      idCliModal);
+        fd.append('tipo_persona',   esEmpresa ? 'J' : 'N');
+        fd.append('tipo_documento', getVal('cli-tipo-doc'));
+        fd.append('numero_doc',     numerDoc);
+
+        if (esEmpresa) {
+            fd.append('razon_social',     getVal('cli-razon-social'));
+            fd.append('digito_verif',     getVal('cli-digito-verif'));
+            fd.append('email',            getVal('cli-email-e'));
+            fd.append('telefono',         getVal('cli-telefono-e'));
+            fd.append('regimen_fiscal',   getVal('cli-regimen'));
+            fd.append('ciiu',             getVal('cli-ciiu'));
+            fd.append('descripcion_ciiu', getVal('cli-desc-ciiu'));
+            fd.append('fecha_rut',        getVal('cli-fecha-rut'));
+            fd.append('gran_contribuyente', getChk('gran_contribuyente'));
+            fd.append('autorretenedor',     getChk('autorretenedor'));
+            fd.append('agente_retencion',   getChk('agente_retencion'));
+            fd.append('obligado_aduanero',  getChk('obligado_aduanero'));
+        } else {
+            fd.append('primer_nombre',    getVal('cli-primer-nombre'));
+            fd.append('segundo_nombre',   getVal('cli-segundo-nombre'));
+            fd.append('primer_apellido',  getVal('cli-primer-apellido'));
+            fd.append('segundo_apellido', getVal('cli-segundo-apellido'));
+            fd.append('email',    getVal('cli-email-n'));
+            fd.append('telefono', getVal('cli-telefono-n'));
+        }
+
+        const deptoSel = document.getElementById('cli-departamento');
+        const munSel   = document.getElementById('cli-municipio');
+        fd.append('idDepartamento',     deptoSel?.value || '');
+        fd.append('nombreDepartamento', deptoSel?.options[deptoSel?.selectedIndex]?.text || '');
+        fd.append('idMunicipio',        munSel?.value  || '');
+        fd.append('nombreMunicipio',    munSel?.options[munSel?.selectedIndex]?.text || '');
+        fd.append('direccion',          getVal('cli-direccion'));
+
+        const rutFile = document.getElementById('cli-rut-file')?.files?.[0];
+        if (rutFile) fd.append('rut', rutFile);
+
+        const btn = document.getElementById('btn-guardar-cliente');
+        btn.disabled = true;
+        const txtOrig = btn.textContent;
+        btn.textContent = 'Guardando...';
+
+        try {
+            const resp = await fetch('/store/clientes/guardar', {
+                method:  'POST',
+                headers: { 'X-CSRF-Token': csrf },
+                body:    fd
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.mensaje || 'Error al guardar');
+
+            if (inputIdCliente) inputIdCliente.value = data.idCliente;
+            const elNombre = document.getElementById('cli-display-nombre');
+            const elDoc    = document.getElementById('cli-display-doc');
+            if (elNombre) elNombre.textContent = data.nombre;
+            if (elDoc)    elDoc.textContent    = data.documento;
+
+            window.showToast?.('Cliente guardado correctamente', 'success');
+            cerrarModalCliente();
+        } catch (err) {
+            window.showToast?.(err.message || 'Error al guardar el cliente', 'error');
+        } finally {
+            btn.disabled    = false;
+            btn.textContent = txtOrig;
+        }
+    });
+
+
+    // ─── MODAL DETALLE PRODUCTO ───────────────────────────────────────────────
+    {
+        const modal         = document.getElementById('modal-detalle-producto');
+        const mainImg       = document.getElementById('mdp-main-image');
+        const elNombre      = document.getElementById('mdp-nombre');
+        const elDesc        = document.getElementById('mdp-descripcion');
+        const elTallas      = document.getElementById('mdp-tallas');
+        const elColores     = document.getElementById('mdp-colores');
+        const elMayor       = document.getElementById('mdp-precio-mayor');
+        const elDetal       = document.getElementById('mdp-precio-detal');
+        const elStockBadge  = document.getElementById('mdp-stock-badge');
+        const elStockIcon   = document.getElementById('mdp-stock-icon');
+        const elStockTexto  = document.getElementById('mdp-stock-texto');
+        const elTiendas     = document.getElementById('mdp-tiendas');
+        const qtyInput      = document.getElementById('mdp-qty');
+        const btnQtyMinus   = document.getElementById('mdp-qty-minus');
+        const btnQtyPlus    = document.getElementById('mdp-qty-plus');
+        const btnAgregar    = document.getElementById('mdp-btn-agregar');
+        const btnTrasladar  = document.getElementById('mdp-btn-trasladar');
+
+        let mdpImagenes       = [];
+        let mdpIdx            = 0;
+        let mdpProductoActual = null;
+        let mdpStockLocal     = 0;
+
+        const tipoIcono = { 'Punto de venta': 'fi-rr-shop', 'Bodega': 'fi-rr-box', 'Transito': 'fi-rr-truck', 'web': 'fi-rr-globe' };
+
+        const setQty = (v) => {
+            const val = Math.max(1, Math.min(v, mdpStockLocal || 1));
+            qtyInput.value = val;
+        };
+
+        const actualizarEstadoStock = (stockLocal) => {
+            mdpStockLocal = stockLocal;
+            const haStock = stockLocal > 0;
+
+            if (haStock) {
+                elStockBadge.className = 'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold mb-4 bg-green-50 text-green-700';
+                elStockIcon.className  = 'fi fi-rr-check-circle text-base';
+                elStockTexto.textContent = `${stockLocal} unidad${stockLocal === 1 ? '' : 'es'} disponible${stockLocal === 1 ? '' : 's'} en esta tienda`;
+            } else {
+                elStockBadge.className = 'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold mb-4 bg-red-50 text-red-500';
+                elStockIcon.className  = 'fi fi-rr-cross-circle text-base';
+                elStockTexto.textContent = 'Sin existencias en esta tienda';
+            }
+
+            qtyInput.max        = stockLocal;
+            qtyInput.disabled   = !haStock;
+            btnQtyMinus.disabled  = !haStock;
+            btnQtyPlus.disabled   = !haStock;
+            btnAgregar.disabled   = !haStock;
+            btnTrasladar.disabled = !haStock;
+            setQty(1);
+        };
+
+        const mostrarImagen = (i) => {
+            mdpIdx = i;
+            mainImg.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 180, easing: 'ease-in-out' });
+            mainImg.src = mdpImagenes[mdpIdx];
+        };
+
+        const cerrar = () => {
+            modal?.classList.add('hidden');
+            modal?.classList.remove('flex');
+            mdpProductoActual = null;
+        };
+
+        const abrir = async (idProducto) => {
             if (!modal) return;
+
+            // Datos básicos inmediatos desde productosEnPantalla
+            const basico = productosEnPantalla.get(idProducto);
+            if (basico) {
+                elNombre.textContent = basico.nombreProducto;
+                elDesc.textContent   = '';
+                elTallas.innerHTML   = '';
+                elColores.innerHTML  = '';
+                elTiendas.innerHTML  = '<p class="text-xs text-slate-400 italic">Cargando...</p>';
+                elMayor.textContent  = `$${parseFloat(basico.precioVentaMayorista).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+                elDetal.textContent  = `$${parseFloat(basico.precioVentaPublicoFinal).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+                mdpImagenes          = [basico.imagen];
+                mdpIdx               = 0;
+                mainImg.src          = basico.imagen;
+                mdpProductoActual    = basico;
+                actualizarEstadoStock(basico.stock || 0);
+            }
 
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+            modal.querySelector('.bg-white')?.animate(
+                [{ transform: 'scale(0.95)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }],
+                { duration: 200, easing: 'ease-out' }
+            );
 
-            // Resetear índice al abrir
-            modalStates[modalId] = { currentIndex: 0 };
-            const images = JSON.parse(modal.dataset.images || '[]');
-            const mainImg = modal.querySelector('#main-image');
-            if (mainImg && images.length > 0) {
-                mainImg.src = images[0];
-            }
+            // Fetch completo de detalles
+            try {
+                const res  = await fetch(`/store/json/pos/producto/${idProducto}`);
+                const data = await res.json();
+                if (!data.success) return;
+                const p = data.producto;
 
-            // Animación de entrada estilo iOS
-            const contenido = modal.querySelector('.bg-white');
-            if (contenido) {
-                contenido.animate([
-                    { transform: 'scale(0.95)', opacity: 0 },
-                    { transform: 'scale(1)', opacity: 1 }
-                ], { duration: 200, easing: 'ease-out' });
-            }
-        }
+                elNombre.textContent = p.nombre;
+                elDesc.textContent   = p.descripcion;
+                elMayor.textContent  = `$${p.precioMayor.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+                elDetal.textContent  = `$${p.precioDetal.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
 
-        // 3. Soporte para tecla ESC
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                const modalAbierto = document.querySelector('div[id^="modal-producto-"]:not(.hidden)');
-                if (modalAbierto) {
-                    cerrarModal(modalAbierto);
+                if (p.imagenes.length) { mdpImagenes = p.imagenes; mostrarImagen(0); }
+
+                elTallas.innerHTML = p.tallas.length
+                    ? p.tallas.map(t => `<button class="px-4 py-1.5 border border-slate-100 rounded-xl text-xs font-bold cursor-default hover:border-gh-primary hover:text-gh-primary transition-all">${t}</button>`).join('')
+                    : '<span class="text-xs text-slate-300 italic">—</span>';
+
+                elColores.innerHTML = p.colores.length
+                    ? p.colores.map(c => `<div class="w-7 h-7 rounded-full border-2 border-white shadow-sm cursor-default" style="background-color:${c.codigo}" title="${c.valor}"></div>`).join('')
+                    : '<span class="text-xs text-slate-300 italic">—</span>';
+
+                actualizarEstadoStock(p.stockLocal);
+
+                // Lista de tiendas con stock
+                if (p.stockPorTienda.length) {
+                    elTiendas.innerHTML = p.stockPorTienda.map(t => {
+                        const icono = tipoIcono[t.tipo] || 'fi-rr-store';
+                        const badge = t.esLocal
+                            ? 'bg-gh-primary/10 text-gh-primary border-gh-primary/20'
+                            : 'bg-slate-50 text-slate-600 border-slate-100';
+                        return `
+                        <div class="flex items-center justify-between px-3 py-2 rounded-xl border ${badge}">
+                            <div class="flex items-center gap-2">
+                                <i class="fi ${icono} text-sm"></i>
+                                <span class="text-xs font-semibold">${t.nombre}${t.esLocal ? ' <span class="text-[9px] font-bold uppercase opacity-60">esta tienda</span>' : ''}</span>
+                            </div>
+                            <span class="text-xs font-black">${t.stock} uds.</span>
+                        </div>`;
+                    }).join('');
+                } else {
+                    elTiendas.innerHTML = '<p class="text-xs text-slate-300 italic">Sin stock en ninguna tienda</p>';
                 }
+            } catch {
+                // datos básicos ya pintados
+            }
+        };
+
+        // ── Qty controls ─────────────────────────────────────────────────────────
+        btnQtyMinus?.addEventListener('click', () => setQty(parseInt(qtyInput.value) - 1));
+        btnQtyPlus?.addEventListener('click',  () => setQty(parseInt(qtyInput.value) + 1));
+        qtyInput?.addEventListener('input', () => setQty(parseInt(qtyInput.value) || 1));
+
+        // ── Agregar al carrito desde el modal ─────────────────────────────────────
+        btnAgregar?.addEventListener('click', () => {
+            if (!mdpProductoActual || !mdpStockLocal) return;
+            const qty = parseInt(qtyInput.value) || 1;
+            addToCart(mdpProductoActual, qty);
+            cerrar();
+        });
+
+        // ── Trasladar → perfil del producto (tiene flujo de traslado) ────────────
+        btnTrasladar?.addEventListener('click', () => {
+            if (!mdpProductoActual) return;
+            window.location.href = `/store/inventario/perfilProducto/${mdpProductoActual.idProducto}`;
+        });
+
+        // ── Doble clic en tarjeta ─────────────────────────────────────────────────
+        document.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.btn-agregar-pedido')) return;
+            const tarjeta = e.target.closest('.product-card-individual');
+            if (!tarjeta) return;
+            const idProducto = tarjeta.id.replace('product-', '');
+            if (idProducto) abrir(idProducto);
+        });
+
+        // ── Clicks generales ─────────────────────────────────────────────────────
+        document.addEventListener('click', (e) => {
+            if (!modal || modal.classList.contains('hidden')) return;
+            if (e.target === modal || e.target.closest('.btn-close-modal')) { cerrar(); return; }
+            if (e.target.closest('.btn-prev-image')) { mostrarImagen((mdpIdx - 1 + mdpImagenes.length) % mdpImagenes.length); return; }
+            if (e.target.closest('.btn-next-image')) { mostrarImagen((mdpIdx + 1) % mdpImagenes.length); return; }
+        });
+
+        // ── Escape ────────────────────────────────────────────────────────────────
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) cerrar();
+        });
+    }
+
+    // ─── FINALIZAR VENTA ──────────────────────────────────────────────────────
+    {
+        const modalFV     = document.getElementById('modal-finalizar-venta');
+        const btnAbrir    = document.getElementById('btn-procesar-factura');
+        const btnCerrar   = document.getElementById('btn-cerrar-finalizar-venta');
+
+        let transferenciasData        = [];
+        let tarjetaData               = [];
+        let creditoData               = [];
+        const entidadesActivas        = new Map(); // transferencia
+        const entidadesActivasTarjeta = new Map(); // tarjeta
+        const entidadesActivasCredito = new Map(); // credito
+
+        let empleadoActual   = null; // { idEmpleado, nombre } o null si no validado
+        let empleadoTimer    = null;
+
+        const calcularSubtotal = () =>
+            [...cart.values()].reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
+
+        // Formato de miles en campo de efectivo
+        window.initMoneyInput?.(document.getElementById('fv-efectivo-monto'));
+
+        // ── Abrir ──────────────────────────────────────────────────────────────
+        const abrirFV = () => {
+            if (!cart.size) {
+                Swal.fire({ icon: 'info', title: 'Orden vacía', text: 'Agrega productos antes de procesar la factura.', confirmButtonColor: '#EC5FA3' });
+                return;
+            }
+            poblarCliente();
+            poblarProductos();
+            actualizarTotalesFV();
+            cargarEntidades();
+            resetearPagos();
+            modalFV.classList.remove('hidden');
+            modalFV.classList.add('flex');
+        };
+
+        const cerrarFV = () => {
+            modalFV.classList.add('hidden');
+            modalFV.classList.remove('flex');
+        };
+
+        // ── Cliente ────────────────────────────────────────────────────────────
+        const poblarCliente = () => {
+            const nombre = document.getElementById('cli-display-nombre')?.textContent?.trim() || 'Cliente';
+            const doc    = document.getElementById('cli-display-doc')?.textContent?.trim() || '';
+            const tel    = document.getElementById('cli-telefono-n')?.value?.trim() || '';
+
+            const iniciales = nombre.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+            const elInic   = document.getElementById('fv-cli-iniciales');
+            const elNombre = document.getElementById('fv-cli-nombre');
+            const elDoc    = document.getElementById('fv-cli-doc');
+            const elTel    = document.getElementById('fv-cli-tel');
+
+            if (elInic)   elInic.textContent   = iniciales || 'CG';
+            if (elNombre) elNombre.textContent  = nombre;
+            if (elDoc)    elDoc.textContent     = doc;
+            if (elTel)    elTel.textContent     = tel ? `Tel: ${tel}` : '';
+        };
+
+        // ── Productos ──────────────────────────────────────────────────────────
+        const poblarProductos = () => {
+            const lista = document.getElementById('fv-lista-productos');
+            if (!lista) return;
+            lista.innerHTML = [...cart.values()].map(item => {
+                const precio = getPrecioItem(item);
+                const total  = precio * item.cantidad;
+                return `
+                <div class="flex items-center gap-3 py-3">
+                    <img src="${item.imagen}" alt="${item.nombre}"
+                         class="w-14 h-14 rounded-xl object-cover flex-shrink-0"
+                         onerror="this.src='/img/image-default.webp'">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold text-gray-800 truncate">${item.nombre}</p>
+                        <p class="text-xs text-gray-400 font-medium mt-0.5">${item.cantidad} × $${fmt(precio)}</p>
+                    </div>
+                    <p class="text-base font-black text-gray-900 flex-shrink-0 ml-2">$${fmt(total)}</p>
+                </div>`;
+            }).join('');
+        };
+
+        // ── Totales ────────────────────────────────────────────────────────────
+        const actualizarTotalesFV = () => {
+            const subtotal  = calcularSubtotal();
+            const impuestos = 0;
+            const total     = subtotal + impuestos;
+            const elSub  = document.getElementById('fv-subtotal');
+            const elImp  = document.getElementById('fv-impuestos');
+            const elTot  = document.getElementById('fv-total');
+            if (elSub)  elSub.textContent  = `$${fmt(subtotal)}`;
+            if (elImp)  elImp.textContent  = `$${fmt(impuestos)}`;
+            if (elTot)  elTot.textContent  = `$${fmt(total)}`;
+        };
+
+        // ── Empleado vendedor ──────────────────────────────────────────────────
+        const mostrarBadgeEmpleado = (ok, nombre) => {
+            const badge  = document.getElementById('fv-empleado-badge');
+            const icon   = document.getElementById('fv-empleado-icon');
+            const span   = document.getElementById('fv-empleado-nombre');
+            if (!badge) return;
+            badge.classList.remove('hidden');
+            badge.classList.add('flex');
+            if (ok) {
+                icon.className  = 'fi-rr-check-circle text-sm text-green-500 flex-shrink-0';
+                span.className  = 'text-xs font-black text-green-600 truncate';
+                span.textContent = nombre;
+            } else {
+                icon.className  = 'fi-rr-cross-circle text-sm text-red-400 flex-shrink-0';
+                span.className  = 'text-xs font-black text-red-400 truncate';
+                span.textContent = 'No encontrado';
+            }
+        };
+
+        const ocultarBadgeEmpleado = () => {
+            const badge = document.getElementById('fv-empleado-badge');
+            if (!badge) return;
+            badge.classList.add('hidden');
+            badge.classList.remove('flex');
+        };
+
+        const validarEmpleado = async (codigo) => {
+            if (!codigo.trim()) {
+                empleadoActual = null;
+                ocultarBadgeEmpleado();
+                actualizarResumenPagos();
+                return;
+            }
+            try {
+                const r    = await fetch(`/store/json/personal/codigo/${encodeURIComponent(codigo.trim())}`);
+                const data = await r.json();
+                if (data.success) {
+                    empleadoActual = { idEmpleado: data.idEmpleado, nombre: data.nombre };
+                    mostrarBadgeEmpleado(true, data.nombre);
+                } else {
+                    empleadoActual = null;
+                    mostrarBadgeEmpleado(false, '');
+                }
+            } catch {
+                empleadoActual = null;
+                ocultarBadgeEmpleado();
+            }
+            actualizarResumenPagos();
+        };
+
+        // Bind con debounce al input de código de empleado
+        document.getElementById('fv-empleado-codigo')?.addEventListener('input', (e) => {
+            clearTimeout(empleadoTimer);
+            const val = e.target.value.toUpperCase();
+            e.target.value = val;
+            empleadoActual  = null;
+            ocultarBadgeEmpleado();
+            actualizarResumenPagos();
+            if (val.trim().length >= 3) {
+                empleadoTimer = setTimeout(() => validarEmpleado(val), 600);
             }
         });
 
-        function cerrarModal(modal) {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
+        document.getElementById('fv-empleado-codigo')?.addEventListener('blur', (e) => {
+            clearTimeout(empleadoTimer);
+            if (e.target.value.trim().length >= 3) validarEmpleado(e.target.value);
+        });
+
+        // ── Entidades ──────────────────────────────────────────────────────────
+        const cargarEntidades = async () => {
+            if (transferenciasData.length || tarjetaData.length || creditoData.length) {
+                renderTransferencias();
+                renderTarjeta();
+                renderCredito();
+                return;
+            }
+            try {
+                const res  = await fetch('/store/json/entidades');
+                const data = await res.json();
+                if (data.success) {
+                    transferenciasData = data.entidades.filter(e => e.tipoEntidad === 'Banco' || e.tipoEntidad === 'Billetera Virtual');
+                    tarjetaData        = data.entidades.filter(e => e.tipoEntidad === 'Tarjeta Credito');
+                    creditoData        = data.entidades.filter(e => e.tipoEntidad === 'Entidad Crediticia');
+                    const cardTransf  = document.getElementById('fv-metodo-transferencia');
+                    const cardTarjeta = document.getElementById('fv-metodo-tarjeta');
+                    const cardCredito = document.getElementById('fv-metodo-credito');
+                    if (transferenciasData.length && cardTransf)  cardTransf.classList.remove('hidden');
+                    if (tarjetaData.length && cardTarjeta)        cardTarjeta.classList.remove('hidden');
+                    if (creditoData.length && cardCredito)        cardCredito.classList.remove('hidden');
+                    renderTransferencias();
+                    renderTarjeta();
+                    renderCredito();
+                }
+            } catch (e) {
+                console.error('cargarEntidades:', e);
+            }
+        };
+
+        const renderTransferencias = () => {
+            const chips = document.getElementById('fv-bancos-chips');
+            if (!chips) return;
+            chips.innerHTML = transferenciasData.map(b => `
+                <button type="button"
+                    class="fv-banco-chip px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-blue-400 hover:text-blue-600 transition-all cursor-pointer"
+                    data-id="${b.idEntidad}" data-nombre="${b.nombreEntidad}" data-grupo="transferencia">
+                    ${b.nombreEntidad}
+                </button>`).join('');
+        };
+
+        const renderTarjeta = () => {
+            const chips = document.getElementById('fv-tarjeta-chips');
+            if (!chips) return;
+            chips.innerHTML = tarjetaData.map(b => `
+                <button type="button"
+                    class="fv-banco-chip px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-purple-400 hover:text-purple-600 transition-all cursor-pointer"
+                    data-id="${b.idEntidad}" data-nombre="${b.nombreEntidad}" data-grupo="tarjeta">
+                    ${b.nombreEntidad}
+                </button>`).join('');
+        };
+
+        const renderCredito = () => {
+            const chips = document.getElementById('fv-credito-chips');
+            if (!chips) return;
+            chips.innerHTML = creditoData.map(b => `
+                <button type="button"
+                    class="fv-banco-chip px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-orange-400 hover:text-orange-600 transition-all cursor-pointer"
+                    data-id="${b.idEntidad}" data-nombre="${b.nombreEntidad}" data-grupo="credito">
+                    ${b.nombreEntidad}
+                </button>`).join('');
+        };
+
+        // ── Rows por entidad ───────────────────────────────────────────────────
+        const calcularTransferencia = () => {
+            let suma = 0;
+            entidadesActivas.forEach((_, id) => {
+                suma += window.parseMoney?.(document.getElementById(`fv-tr-monto-${id}`)?.value) ?? 0;
+            });
+            return suma;
+        };
+
+        const añadirRowEntidad = (id, nombre) => {
+            const contenedor = document.getElementById('fv-transferencia-rows');
+            if (!contenedor || document.getElementById(`fv-tr-row-${id}`)) return;
+            const row = document.createElement('div');
+            row.id        = `fv-tr-row-${id}`;
+            row.className = 'flex gap-2 items-center p-2 bg-white rounded-xl border border-blue-100';
+            row.innerHTML = `
+                <span class="text-[10px] font-black text-blue-600 uppercase tracking-wide w-20 flex-shrink-0 truncate">${nombre}</span>
+                <div class="relative flex-[3]">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm pointer-events-none">$</span>
+                    <input id="fv-tr-monto-${id}" type="text" inputmode="numeric"
+                           placeholder="Monto"
+                           class="w-full pl-6 pr-2 h-9 bg-gray-50 border border-gray-100 rounded-lg text-right font-black text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-300">
+                </div>
+                <input id="fv-tr-ref-${id}" type="text"
+                       placeholder="Ref."
+                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-300">`;
+            contenedor.appendChild(row);
+            window.initMoneyInput?.(document.getElementById(`fv-tr-monto-${id}`));
+            document.getElementById(`fv-tr-monto-${id}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-tr-monto-${id}`); actualizarResumenPagos(); });
+            document.getElementById(`fv-tr-ref-${id}`)?.addEventListener('input', actualizarResumenPagos);
+            // Pre-rellenar con el restante
+            const montoTr = document.getElementById(`fv-tr-monto-${id}`);
+            if (montoTr) { const r = calcularRestante(); if (r > 0) { montoTr.value = fmtMoney(r); actualizarResumenPagos(); } }
+        };
+
+        const quitarRowEntidad = (id) => {
+            document.getElementById(`fv-tr-row-${id}`)?.remove();
+            entidadesActivas.delete(id);
+            actualizarResumenPagos();
+        };
+
+        // ── Rows por tarjeta ───────────────────────────────────────────────────
+        const calcularTarjeta = () => {
+            let suma = 0;
+            entidadesActivasTarjeta.forEach((_, id) => {
+                suma += window.parseMoney?.(document.getElementById(`fv-ta-monto-${id}`)?.value) ?? 0;
+            });
+            return suma;
+        };
+
+        const añadirRowTarjeta = (id, nombre) => {
+            const contenedor = document.getElementById('fv-tarjeta-rows');
+            if (!contenedor || document.getElementById(`fv-ta-row-${id}`)) return;
+            const row = document.createElement('div');
+            row.id        = `fv-ta-row-${id}`;
+            row.className = 'flex gap-2 items-center p-2 bg-white rounded-xl border border-purple-100';
+            row.innerHTML = `
+                <span class="text-[10px] font-black text-purple-600 uppercase tracking-wide w-20 flex-shrink-0 truncate">${nombre}</span>
+                <div class="relative flex-[3]">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm pointer-events-none">$</span>
+                    <input id="fv-ta-monto-${id}" type="text" inputmode="numeric"
+                           placeholder="Monto"
+                           class="w-full pl-6 pr-2 h-9 bg-gray-50 border border-gray-100 rounded-lg text-right font-black text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-300">
+                </div>
+                <input id="fv-ta-ref-${id}" type="text"
+                       placeholder="Ref."
+                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-300">`;
+            contenedor.appendChild(row);
+            window.initMoneyInput?.(document.getElementById(`fv-ta-monto-${id}`));
+            document.getElementById(`fv-ta-monto-${id}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-ta-monto-${id}`); actualizarResumenPagos(); });
+            document.getElementById(`fv-ta-ref-${id}`)?.addEventListener('input', actualizarResumenPagos);
+            // Pre-rellenar con el restante
+            const montoTa = document.getElementById(`fv-ta-monto-${id}`);
+            if (montoTa) { const r = calcularRestante(); if (r > 0) { montoTa.value = fmtMoney(r); actualizarResumenPagos(); } }
+        };
+
+        const quitarRowTarjeta = (id) => {
+            document.getElementById(`fv-ta-row-${id}`)?.remove();
+            entidadesActivasTarjeta.delete(id);
+            actualizarResumenPagos();
+        };
+
+        // ── Rows por entidad crediticia ────────────────────────────────────────
+        const calcularCredito = () => {
+            let suma = 0;
+            entidadesActivasCredito.forEach((_, id) => {
+                suma += window.parseMoney?.(document.getElementById(`fv-cr-monto-${id}`)?.value) ?? 0;
+            });
+            return suma;
+        };
+
+        const añadirRowCredito = (id, nombre) => {
+            const contenedor = document.getElementById('fv-credito-rows');
+            if (!contenedor || document.getElementById(`fv-cr-row-${id}`)) return;
+            const row = document.createElement('div');
+            row.id        = `fv-cr-row-${id}`;
+            row.className = 'flex gap-2 items-center p-2 bg-white rounded-xl border border-orange-100';
+            row.innerHTML = `
+                <span class="text-[10px] font-black text-orange-600 uppercase tracking-wide w-20 flex-shrink-0 truncate">${nombre}</span>
+                <div class="relative flex-[3]">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm pointer-events-none">$</span>
+                    <input id="fv-cr-monto-${id}" type="text" inputmode="numeric"
+                           placeholder="Monto"
+                           class="w-full pl-6 pr-2 h-9 bg-gray-50 border border-gray-100 rounded-lg text-right font-black text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-300">
+                </div>
+                <input id="fv-cr-ref-${id}" type="text"
+                       placeholder="Ref."
+                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-300">`;
+            contenedor.appendChild(row);
+            window.initMoneyInput?.(document.getElementById(`fv-cr-monto-${id}`));
+            document.getElementById(`fv-cr-monto-${id}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-cr-monto-${id}`); actualizarResumenPagos(); });
+            document.getElementById(`fv-cr-ref-${id}`)?.addEventListener('input', actualizarResumenPagos);
+            // Pre-rellenar con el restante
+            const montoCr = document.getElementById(`fv-cr-monto-${id}`);
+            if (montoCr) { const r = calcularRestante(); if (r > 0) { montoCr.value = fmtMoney(r); actualizarResumenPagos(); } }
+        };
+
+        const quitarRowCredito = (id) => {
+            document.getElementById(`fv-cr-row-${id}`)?.remove();
+            entidadesActivasCredito.delete(id);
+            actualizarResumenPagos();
+        };
+
+        // ── Reset pagos ────────────────────────────────────────────────────────
+        const resetearPagos = () => {
+            // Cerrar acordeones
+            ['efectivo', 'transferencia', 'tarjeta', 'credito'].forEach(m => {
+                document.getElementById(`fv-${m}-body`)?.classList.add('hidden');
+                document.getElementById(`fv-${m}-chevron`)?.classList.remove('rotate-180');
+            });
+            // Limpiar campos fijos
+            ['fv-efectivo-monto'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            document.getElementById('fv-efectivo-cambio') && (document.getElementById('fv-efectivo-cambio').textContent = '$0');
+            // Limpiar empleado
+            empleadoActual = null;
+            clearTimeout(empleadoTimer);
+            const elCodigo = document.getElementById('fv-empleado-codigo');
+            if (elCodigo) elCodigo.value = '';
+            ocultarBadgeEmpleado();
+            // Limpiar rows de transferencia
+            entidadesActivas.clear();
+            const rows = document.getElementById('fv-transferencia-rows');
+            if (rows) rows.innerHTML = '';
+            // Limpiar rows de tarjeta
+            entidadesActivasTarjeta.clear();
+            const rowsTa = document.getElementById('fv-tarjeta-rows');
+            if (rowsTa) rowsTa.innerHTML = '';
+            // Limpiar rows de crédito
+            entidadesActivasCredito.clear();
+            const rowsCred = document.getElementById('fv-credito-rows');
+            if (rowsCred) rowsCred.innerHTML = '';
+            // Desactivar chips visualmente
+            document.querySelectorAll('.fv-banco-chip').forEach(c => {
+                c.disabled = false;
+                c.classList.remove(
+                    'border-blue-400',   'text-blue-600',   'bg-blue-50',
+                    'border-purple-400', 'text-purple-600', 'bg-purple-50',
+                    'border-orange-400', 'text-orange-600', 'bg-orange-50',
+                    'opacity-40', 'cursor-not-allowed'
+                );
+                c.classList.add('cursor-pointer');
+            });
+            // Resetear recuadros resumen y botón
+            ['fv-resumen-efectivo-val', 'fv-resumen-transferencia-val', 'fv-resumen-tarjeta-val', 'fv-resumen-credito-val'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.textContent = '$0';
+            });
+            const btn = document.getElementById('btn-procesar-pago');
+            if (btn) {
+                btn.disabled  = true;
+                btn.className = 'flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed';
+            }
+        };
+
+        // ── Acordeón ───────────────────────────────────────────────────────────
+        const togglePago = (metodo, activeColor) => {
+            const body    = document.getElementById(`fv-${metodo}-body`);
+            const chevron = document.getElementById(`fv-${metodo}-chevron`);
+            const card    = document.getElementById(`fv-metodo-${metodo}`);
+            if (!body) return;
+            const isOpen  = !body.classList.contains('hidden');
+            body.classList.toggle('hidden', isOpen);
+            if (chevron) chevron.classList.toggle('rotate-180', !isOpen);
+            if (card) {
+                card.classList.toggle(activeColor, !isOpen);
+                card.classList.toggle('border-transparent', isOpen);
+            }
+        };
+
+        // ── Resumen de pagos + activación del botón ───────────────────────────
+        const leerMonto = (id) => window.parseMoney?.(document.getElementById(id)?.value) ?? 0;
+
+        const fmtMoney = (n) => n > 0 ? new Intl.NumberFormat('es-CO').format(n) : '';
+
+        const calcularRestante = () => Math.max(0,
+            calcularSubtotal()
+            - leerMonto('fv-efectivo-monto')
+            - calcularTransferencia()
+            - calcularTarjeta()
+            - calcularCredito()
+        );
+
+        // Si la suma total supera el valor de la orden, limpia el campo que lo causó
+        const checkExcesoMonto = (elId) => {
+            const total = calcularSubtotal();
+            if (total <= 0) return;
+            const suma = leerMonto('fv-efectivo-monto') + calcularTransferencia() + calcularTarjeta() + calcularCredito();
+            if (suma > total) {
+                const el = document.getElementById(elId);
+                if (el) el.value = '';
+            }
+        };
+
+        const actualizarResumenPagos = () => {
+            const efectivo      = leerMonto('fv-efectivo-monto');
+            const transferencia = calcularTransferencia();
+            const tarjeta       = calcularTarjeta();
+            const credito       = calcularCredito();
+            const suma          = efectivo + transferencia + tarjeta + credito;
+            const total         = calcularSubtotal();
+
+            const elEf = document.getElementById('fv-resumen-efectivo-val');
+            const elTr = document.getElementById('fv-resumen-transferencia-val');
+            const elTa = document.getElementById('fv-resumen-tarjeta-val');
+            const elCr = document.getElementById('fv-resumen-credito-val');
+            if (elEf) elEf.textContent = `$${fmt(efectivo)}`;
+            if (elTr) elTr.textContent = `$${fmt(transferencia)}`;
+            if (elTa) elTa.textContent = `$${fmt(tarjeta)}`;
+            if (elCr) elCr.textContent = `$${fmt(credito)}`;
+
+            // Referencia obligatoria para transferencias, tarjeta y crédito
+            const refsOk = [...entidadesActivas.keys()].every(id => {
+                const monto = window.parseMoney?.(document.getElementById(`fv-tr-monto-${id}`)?.value) ?? 0;
+                if (monto === 0) return true;
+                return (document.getElementById(`fv-tr-ref-${id}`)?.value?.trim().length ?? 0) > 0;
+            });
+            const refsTaOk = [...entidadesActivasTarjeta.keys()].every(id => {
+                const monto = window.parseMoney?.(document.getElementById(`fv-ta-monto-${id}`)?.value) ?? 0;
+                if (monto === 0) return true;
+                return (document.getElementById(`fv-ta-ref-${id}`)?.value?.trim().length ?? 0) > 0;
+            });
+            const refsCrOk = [...entidadesActivasCredito.keys()].every(id => {
+                const monto = window.parseMoney?.(document.getElementById(`fv-cr-monto-${id}`)?.value) ?? 0;
+                if (monto === 0) return true;
+                return (document.getElementById(`fv-cr-ref-${id}`)?.value?.trim().length ?? 0) > 0;
+            });
+
+            const btn    = document.getElementById('btn-procesar-pago');
+            if (!btn) return;
+            const activo = total > 0 && suma >= total && refsOk && refsTaOk && refsCrOk && empleadoActual !== null;
+            btn.disabled  = !activo;
+            btn.className = activo
+                ? 'flex items-center gap-3 px-8 py-3.5 bg-gh-primaryHover text-white rounded-2xl font-bold shadow-lg shadow-gh-primary/30 hover:brightness-110 transition-all active:scale-95 cursor-pointer'
+                : 'flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed';
+
+            // Bloquear chips inactivos si el total ya está cubierto
+            const totalCubierto = total > 0 && suma >= total;
+            document.querySelectorAll('.fv-banco-chip').forEach(chip => {
+                const cid   = chip.dataset.id;
+                const grupo = chip.dataset.grupo;
+                const isActive =
+                    (grupo === 'transferencia' && entidadesActivas.has(cid)) ||
+                    (grupo === 'tarjeta'       && entidadesActivasTarjeta.has(cid)) ||
+                    (grupo === 'credito'       && entidadesActivasCredito.has(cid));
+                const bloquear = totalCubierto && !isActive;
+                chip.disabled = bloquear;
+                chip.classList.toggle('opacity-40',        bloquear);
+                chip.classList.toggle('cursor-not-allowed', bloquear);
+                chip.classList.toggle('cursor-pointer',    !bloquear);
+            });
+        };
+
+        // ── Efectivo: cambio + resumen ─────────────────────────────────────────
+        document.getElementById('fv-efectivo-monto')?.addEventListener('input', () => {
+            checkExcesoMonto('fv-efectivo-monto');
+            const monto  = leerMonto('fv-efectivo-monto');
+            const total  = calcularSubtotal();
+            const cambio = Math.max(0, monto - total);
+            const elCambio = document.getElementById('fv-efectivo-cambio');
+            if (elCambio) elCambio.textContent = `$${fmt(cambio)}`;
+            actualizarResumenPagos();
+        });
+
+
+        // ── Eventos delegados ──────────────────────────────────────────────────
+        document.addEventListener('click', (e) => {
+            if (!modalFV || modalFV.classList.contains('hidden')) return;
+
+            if (e.target.closest('#fv-efectivo-header')) {
+                togglePago('efectivo', 'border-green-200');
+                const efBody = document.getElementById('fv-efectivo-body');
+                if (efBody && !efBody.classList.contains('hidden')) {
+                    const elEf = document.getElementById('fv-efectivo-monto');
+                    if (elEf && leerMonto('fv-efectivo-monto') === 0) {
+                        const r = calcularRestante();
+                        if (r > 0) {
+                            elEf.value = fmtMoney(r);
+                            const elCambio = document.getElementById('fv-efectivo-cambio');
+                            if (elCambio) elCambio.textContent = '$0';
+                            actualizarResumenPagos();
+                        }
+                    }
+                }
+                return;
+            }
+            if (e.target.closest('#fv-transferencia-header')) { togglePago('transferencia', 'border-blue-200');   return; }
+            if (e.target.closest('#fv-tarjeta-header'))       { togglePago('tarjeta',       'border-purple-200'); return; }
+            if (e.target.closest('#fv-credito-header'))       { togglePago('credito',       'border-orange-200'); return; }
+
+            const chip = e.target.closest('.fv-banco-chip');
+            if (chip) {
+                const id     = chip.dataset.id;
+                const nombre = chip.dataset.nombre;
+                const grupo  = chip.dataset.grupo;
+                if (grupo === 'tarjeta') {
+                    if (entidadesActivasTarjeta.has(id)) {
+                        chip.classList.remove('border-purple-400', 'text-purple-600', 'bg-purple-50');
+                        quitarRowTarjeta(id);
+                    } else {
+                        chip.classList.add('border-purple-400', 'text-purple-600', 'bg-purple-50');
+                        entidadesActivasTarjeta.set(id, { nombre });
+                        añadirRowTarjeta(id, nombre);
+                    }
+                } else if (grupo === 'credito') {
+                    if (entidadesActivasCredito.has(id)) {
+                        chip.classList.remove('border-orange-400', 'text-orange-600', 'bg-orange-50');
+                        quitarRowCredito(id);
+                    } else {
+                        chip.classList.add('border-orange-400', 'text-orange-600', 'bg-orange-50');
+                        entidadesActivasCredito.set(id, { nombre });
+                        añadirRowCredito(id, nombre);
+                    }
+                } else {
+                    if (entidadesActivas.has(id)) {
+                        chip.classList.remove('border-blue-400', 'text-blue-600', 'bg-blue-50');
+                        quitarRowEntidad(id);
+                    } else {
+                        chip.classList.add('border-blue-400', 'text-blue-600', 'bg-blue-50');
+                        entidadesActivas.set(id, { nombre });
+                        añadirRowEntidad(id, nombre);
+                    }
+                }
+                return;
+            }
+
+            if (e.target.closest('#fv-btn-cambiar-cliente')) {
+                cerrarFV();
+                document.getElementById('btn-abrir-modal-cliente')?.click();
+                return;
+            }
+        });
+
+        // Overlay click
+        modalFV?.addEventListener('click', (e) => { if (e.target === modalFV) cerrarFV(); });
+
+        // Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modalFV && !modalFV.classList.contains('hidden')) cerrarFV();
+        });
+
+        if (btnAbrir)  btnAbrir.addEventListener('click', abrirFV);
+        if (btnCerrar) btnCerrar.addEventListener('click', cerrarFV);
+
+        // Botón procesar pago (placeholder)
+        document.getElementById('btn-procesar-pago')?.addEventListener('click', () => {
+            Swal.fire({ icon: 'info', title: 'Próximamente', text: 'El procesamiento de pagos está en desarrollo.', confirmButtonColor: '#EC5FA3' });
+        });
+    }
+
+    // ─── GUARD DE NAVEGACIÓN ─────────────────────────────────────────────────
+    // Cierre / recarga de pestaña → dialog nativo del browser
+    window.addEventListener('beforeunload', (e) => {
+        if (!cart.size) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    // Navegación por links internos → SweetAlert
+    document.addEventListener('click', async (e) => {
+        const link = e.target.closest('a[href]');
+        if (!link) return;
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('javascript')) return;
+        if (!cart.size) return;
+
+        e.preventDefault();
+
+        const totalItems = totalQtyEnOrden();
+        const { isConfirmed } = await Swal.fire({
+            icon: 'warning',
+            title: '¿Salir del POS?',
+            html: `Tienes <strong>${totalItems} unidad${totalItems === 1 ? '' : 'es'}</strong> en la orden actual.<br>Si sales ahora <strong>se perderá</strong> el progreso de esta venta.`,
+            showCancelButton: true,
+            confirmButtonText: 'Sí, salir',
+            cancelButtonText: 'Quedarme',
+            confirmButtonColor: '#EC5FA3',
+            cancelButtonColor: '#6b7280',
+            reverseButtons: true
+        });
+
+        if (isConfirmed) window.location.href = href;
     });
 })();

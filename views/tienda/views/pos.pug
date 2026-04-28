@@ -3,44 +3,46 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
     div(class="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-y-auto")
         
         //- Buscador Gigante
-        div(class="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-sm border border-white")
-            input(id="codigo" name="codigo" type="text"  placeholder="Ingresa el SKU, nombre o serial..."  autofocus  class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none"
-            )   
-        //- Catálogo de Pro s
-        div(class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6")
-            +tarjetaProducto('1', 'Vestido Satinado Rosa', '23', 'CD-32D-233', '89.000', '120.000', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/PJ-001-1771853499104-0.webp', 'modal-producto-PJ-001')
-            +tarjetaProducto('4f2c4dd8-1e30-4fbd-81e2-2986bbfef862', 'Top Boreal', '15', 'TOP-BOR-007', '55.000', '90.000', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/TOP-BOR-007-1769460139461-0.webp')
-            +tarjetaProducto('3', 'Blusa Argentina', '89', 'ARG001', '10.900', '21.800', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856977-0.webp')
+        div(class="bg-white/70 backdrop-blur-md rounded-[1.5rem] p-6 shadow-sm border border-white")
+            input(id="codigo" name="codigo" type="text" placeholder="Ingresa el SKU, nombre o serial..." autofocus class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none")
+            div(class="flex items-center justify-center gap-3 mt-4 pt-3 border-t border-gray-100/80")
+                label(class="flex items-center gap-3 cursor-pointer select-none group")
+                    input(id="auto-add-toggle" type="checkbox" class="sr-only" checked)
+                    span.switch
+                        span.switch-thumb
+                    span(class="text-xs font-semibold text-gray-400 group-hover:text-gray-600 transition-colors uppercase tracking-wide") Agregar a orden automáticamente   
+        //- Catálogo de Productos
+        div(id="catalogo-pos" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6")
         //- SECCIÓN DE RECOMENDACIONES (Estilo Ticket)
         div(class="mt-10")
-            h3(class="text-gh-primary font-bold uppercase tracking-tighter mb-4 ml-2") Sugerencias de venta
+            h3(class="text-gh-primary font-bold uppercase tracking-tighter mb-4 ml-2")
             div(class="grid grid-cols-1 md:grid-cols-2 gap-4")
-                +tarjetaRecomendacion('Onitsuka Tiger - Pijama Conjunto', '21d 12h 23m', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/BDTR001-1771852413584-2.webp', true)
-                +tarjetaRecomendacion('Pijama Soft Dream', '12h 45m', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/BDTR001-1771852413584-2.webp', false)
+                //+tarjetaRecomendacion('Onitsuka Tiger - Pijama Conjunto', '21d 12h 23m', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/BDTR001-1771852413584-2.webp', true)
+                //+tarjetaRecomendacion('Pijama Soft Dream', '12h 45m', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/BDTR001-1771852413584-2.webp', false)
     
     
     //- SECCIÓN DERECHA: ESTADO DE COMPRA (4 Columnas)
-    aside(class="col-span-12 lg:col-span-4 flex flex-col")
-        div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/60 shadow-xl flex flex-col h-full")
-            
+    aside(id="drop-zone" data-wholesale-min=wholesaleMin class="col-span-12 lg:col-span-4 flex flex-col")
+        div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[1.5rem] border border-white/60 shadow-xl flex flex-col h-full transition-all")
+
             //- Header de la Orden
             div(class="flex items-center justify-between mb-6")
                 div
                     h2(class="font-display text-2xl text-gray-900") Tu Orden
-                    p(class="text-[10px] text-gray-400 font-bold uppercase") {nro items} items seleccionnados
-                button(id="btn-clear-cart" class="p-2 text-gh-primary hover:bg-gh-primary/10 rounded-xl transition-colors") 
+                    div(class="flex items-center gap-1 mt-0.5")
+                        p(id="cart-count" class="text-[10px] text-gray-400 font-bold uppercase") 0 items seleccionados
+                        span(id="cart-modo-badge" class="hidden")
+                button(id="btn-clear-cart" class="p-2 text-gh-primary hover:bg-gh-primary/10 rounded-xl transition-colors cursor-pointer")
                     i(class="fi-rr-trash text-xl")
             //- Lista Scrolleable (Items del Carrito)
-            div(class="flex-1 overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-4 mb-4")
-                //- id, nombre, imagen, talla, color, cantidad, precio
-                +itemCarrito('3333', 'Blusa Argentina', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/ARG001-1772122856977-0.webp', 'Unica', 'Blanca', '3', '30.000', "90.000")
-                
-                +itemCarrito('1', 'Vestido Satinado', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/PJ-001-1771853499104-0.webp', 'M', 'Rosa', '1', '89.000', '89.000')
-                +itemCarrito('1', 'Vestido Satinado', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/BDTR001-1771852413584-2.webp', 'M', 'Rosa', '1', '89.000', '89.000')
+            div(id="cart-list" class="flex-1 overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-4 mb-4")
             //- Resumen y Cliente (Anclados al fondo)
             div(class="space-y-4 mt-auto")
-                +tarjetaClienteFidelizado('223223424', 'Cliente Genérico', '322233243', 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/documentacion/empleados/perfil/perfil-234231212-1772060518050.webp')
-                +resumenFactura(340000, 0, 50000)
-                
-                button(class="w-full py-4 bg-gh-primary text-white rounded-2xl font-bold shadow-lg shadow-gh-primary/30 hover:bg-gh-deep transition-all active:scale-95") 
+                input(type="hidden" id="idCliente" value=clienteGenerico.idCliente)
+                - const cliNombre = ((clienteGenerico.primer_nombre || '') + ' ' + (clienteGenerico.primer_apellido || '')).trim()
+                - const cliDoc    = (clienteGenerico.tipo_documento || 'CC') + ' ' + (clienteGenerico.numero_doc || '')
+                +tarjetaClienteFidelizado(clienteGenerico.idCliente, cliNombre || 'Cliente Genérico', cliDoc, '/img/avatars/cliente.webp')
+                +resumenFactura(0, 0, 0)
+
+                button(id="btn-procesar-factura" class="w-full py-4 bg-gh-primary text-white rounded-2xl font-bold shadow-lg shadow-gh-primary/30 hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer")
                     | Procesar Factura

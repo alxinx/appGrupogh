@@ -1,26 +1,47 @@
 import {
     Traslados, DetalleTraslados, PuntosDeVenta,
     Pack, DetallesPack, Productos, Stock, Imagenes,
-    Empleados, InsidenciaTraslado
+    Empleados, InsidenciaTraslado,
+    Clientes, ClientesTributario, ClientesUbicacion,
+    Departamentos, Municipios, Documentacion,
+    Atributos, VariacionesProducto, Entidades
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import db from '../config/bd.js';
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
+import { Upload } from '@aws-sdk/lib-storage';
+import s3Client from '../config/r2.js';
+import sharp from 'sharp';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
 
 const dashboardStores = async (req, res) => {
     const idPuntoDeVenta = req.idPuntoDeVenta;
 
-    const trasladosPendientes = idPuntoDeVenta
-        ? await Traslados.count({ where: { idDestino: idPuntoDeVenta, estado: 'EN_TRANSITO' } })
-        : 0;
+    const [trasladosPendientes, departamentos, clienteRaw] = await Promise.all([
+        idPuntoDeVenta
+            ? Traslados.count({ where: { idDestino: idPuntoDeVenta, estado: 'EN_TRANSITO' } })
+            : 0,
+        Departamentos.findAll({ attributes: ['id', 'nombre'], order: [['nombre', 'ASC']], raw: true }),
+        Clientes.findOne({ where: { idCliente: '0' }, raw: true }).catch(() => null)
+    ]);
+
+    const clienteGenerico = clienteRaw || {
+        idCliente: '0',
+        primer_nombre: 'Cliente',
+        primer_apellido: 'Genérico',
+        tipo_documento: 'CC',
+        numero_doc: '0000000000'
+    };
 
     return res.render('./tienda/layout', {
         pagina: `Panel principal de ${req.usuario.nombreUsuario}`,
         csrfToken: req.csrfToken(),
         currentPath: req.path,
-        trasladosPendientes
+        trasladosPendientes,
+        wholesaleMin: parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6,
+        departamentos,
+        clienteGenerico
     });
 };
 
@@ -664,6 +685,343 @@ const getPerfilProducto = async (req, res) => {
     }
 };
 
+const buscarPosProducto = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ success: true, productos: [] });
+
+    try {
+        const term = `%${q}%`;
+        const productos = await Productos.findAll({
+            where: {
+                activo: 1,
+                [Op.or]: [
+                    { nombreProducto: { [Op.like]: term } },
+                    { sku:            { [Op.like]: term } },
+                    { ean:            { [Op.like]: term } }
+                ]
+            },
+            attributes: ['idProducto', 'nombreProducto', 'sku', 'precioVentaMayorista', 'precioVentaPublicoFinal'],
+            include: [{
+                model: Imagenes,
+                as: 'imagenes',
+                attributes: ['nombreImagen'],
+                limit: 1,
+                required: false
+            }],
+            limit: 8
+        });
+
+        if (!productos.length) return res.json({ success: true, productos: [] });
+
+        const ids = productos.map(p => p.idProducto);
+
+        const stockRows = await Stock.findAll({
+            where: {
+                idPuntoVenta: idPdv,
+                idProducto:   { [Op.in]: ids },
+                cantidadExistente: { [Op.gt]: 0 }
+            },
+            attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stock']],
+            group: ['idProducto'],
+            raw: true
+        });
+        const mapStock = Object.fromEntries(stockRows.map(r => [r.idProducto, parseInt(r.stock) || 0]));
+
+        const r2 = `${process.env.R2_PUBLIC_URL}/productos/`;
+        const resultado = productos
+            .map(p => {
+                const img = p.imagenes?.[0]?.nombreImagen;
+                return {
+                    idProducto:              p.idProducto,
+                    nombreProducto:          p.nombreProducto,
+                    sku:                     p.sku,
+                    precioVentaMayorista:    parseFloat(p.precioVentaMayorista)    || 0,
+                    precioVentaPublicoFinal: parseFloat(p.precioVentaPublicoFinal) || 0,
+                    stock:                   mapStock[p.idProducto] || 0,
+                    imagen:                  img ? `${r2}${img}` : '/img/image-default.webp'
+                };
+            })
+            .sort((a, b) => b.stock - a.stock);
+
+        return res.json({ success: true, productos: resultado });
+    } catch (e) {
+        console.error('buscarPosProducto:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── POS: DETALLE PRODUCTO (modal) ──────────────────────────────────────────
+
+const getPosProductoJSON = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    const { idProducto } = req.params;
+    try {
+        const [producto, variaciones, stockRows] = await Promise.all([
+            Productos.findOne({
+                where: { idProducto, activo: 1 },
+                attributes: ['idProducto', 'nombreProducto', 'descripcion', 'precioVentaMayorista', 'precioVentaPublicoFinal'],
+                include: [{ model: Imagenes, as: 'imagenes', attributes: ['nombreImagen'], required: false }]
+            }),
+            VariacionesProducto.findAll({ where: { idProducto } }),
+            Stock.findAll({
+                where: { idProducto, cantidadExistente: { [Op.gt]: 0 } },
+                attributes: ['idPuntoVenta', [fn('SUM', col('cantidadExistente')), 'total']],
+                group: ['idPuntoVenta'],
+                raw: true
+            })
+        ]);
+        if (!producto) return res.json({ success: false });
+
+        const attrIds = [...new Set(
+            variaciones.flatMap(v => v.idAtributos.split('|').map(Number)).filter(Boolean)
+        )];
+        let tallas = [], colores = [];
+        if (attrIds.length) {
+            const attrs = await Atributos.findAll({ where: { idAtributo: { [Op.in]: attrIds } } });
+            tallas  = attrs.filter(a => a.tipo === 'TALLA').map(a => a.valor);
+            colores = attrs.filter(a => a.tipo === 'COLOR').map(a => ({ valor: a.valor, codigo: a.codigo1 || '#cccccc' }));
+        }
+
+        const pdvIds = stockRows.map(r => r.idPuntoVenta).filter(Boolean);
+        let pdvMap = {};
+        if (pdvIds.length) {
+            const pdvs = await PuntosDeVenta.findAll({
+                where: { idPuntoDeVenta: { [Op.in]: pdvIds } },
+                attributes: ['idPuntoDeVenta', 'nombreComercial', 'tipo'],
+                raw: true
+            });
+            pdvMap = Object.fromEntries(pdvs.map(p => [p.idPuntoDeVenta, p]));
+        }
+
+        const stockPorTienda = stockRows
+            .map(r => ({
+                nombre:  pdvMap[r.idPuntoVenta]?.nombreComercial || '—',
+                tipo:    pdvMap[r.idPuntoVenta]?.tipo            || '—',
+                stock:   parseInt(r.total) || 0,
+                esLocal: r.idPuntoVenta === idPdv
+            }))
+            .sort((a, b) => b.esLocal - a.esLocal);
+
+        const stockLocal = stockPorTienda.find(s => s.esLocal)?.stock || 0;
+
+        const r2 = `${process.env.R2_PUBLIC_URL}/productos/`;
+        return res.json({
+            success: true,
+            producto: {
+                idProducto:   producto.idProducto,
+                nombre:       producto.nombreProducto,
+                descripcion:  producto.descripcion || '',
+                precioMayor:  parseFloat(producto.precioVentaMayorista)    || 0,
+                precioDetal:  parseFloat(producto.precioVentaPublicoFinal) || 0,
+                imagenes:     producto.imagenes.map(i => `${r2}${i.nombreImagen}`),
+                tallas,
+                colores,
+                stockLocal,
+                stockPorTienda
+            }
+        });
+    } catch (e) {
+        console.error('getPosProductoJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── CLIENTES ────────────────────────────────────────────────────────────────
+
+const buscarClientePorDoc = async (req, res) => {
+    const { doc } = req.query;
+    if (!doc || doc.trim().length < 3) return res.json({ success: false });
+    try {
+        const cliente = await Clientes.findOne({
+            where: { numero_doc: doc.trim() },
+            include: [
+                { model: ClientesTributario, as: 'tributario', required: false },
+                { model: ClientesUbicacion, as: 'ubicaciones', required: false }
+            ]
+        });
+        if (!cliente) return res.json({ success: false });
+        return res.json({ success: true, cliente });
+    } catch (e) {
+        console.error('buscarClientePorDoc:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const getMunicipiosStoreJSON = async (req, res) => {
+    const { deptoId } = req.params;
+    try {
+        const municipios = await Municipios.findAll({
+            where: { departamento_id: deptoId },
+            attributes: ['id', 'nombre'],
+            order: [['nombre', 'ASC']],
+            raw: true
+        });
+        return res.json(municipios);
+    } catch (e) {
+        return res.status(500).json([]);
+    }
+};
+
+const guardarCliente = async (req, res) => {
+    const {
+        idCliente: idClienteExistente,
+        tipo_persona: tipo_personaRaw,
+        tipo_documento, numero_doc, digito_verif,
+        razon_social, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
+        email, telefono,
+        regimen_fiscal, gran_contribuyente, autorretenedor, agente_retencion, obligado_aduanero,
+        ciiu, descripcion_ciiu, fecha_rut,
+        idDepartamento, nombreDepartamento, idMunicipio, nombreMunicipio, direccion
+    } = req.body;
+
+    if (!tipo_documento || !numero_doc) {
+        return res.status(400).json({ success: false, mensaje: 'Tipo y número de documento son requeridos.' });
+    }
+
+    const tipo_persona = tipo_personaRaw || (tipo_documento === 'NIT' ? 'J' : 'N');
+    const esEmpresa    = tipo_persona === 'J';
+    const toBool       = (v) => v === 'true' || v === true;
+    const toTitle      = (s) => s ? s.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : null;
+
+    const t = await db.transaction();
+    let idCliente;
+
+    try {
+        const datosBase = {
+            tipo_persona,
+            tipo_documento,
+            numero_doc:       numero_doc.trim(),
+            digito_verif:     digito_verif || null,
+            razon_social:     toTitle(razon_social),
+            primer_nombre:    toTitle(primer_nombre),
+            segundo_nombre:   toTitle(segundo_nombre),
+            primer_apellido:  toTitle(primer_apellido),
+            segundo_apellido: toTitle(segundo_apellido),
+            email:            email?.trim().toLowerCase() || null,
+            telefono:         telefono?.trim() || null,
+            activo:           true
+        };
+
+        if (idClienteExistente && idClienteExistente !== '0') {
+            await Clientes.update(datosBase, { where: { idCliente: idClienteExistente }, transaction: t });
+            idCliente = idClienteExistente;
+        } else {
+            const existente = await Clientes.findOne({ where: { numero_doc: numero_doc.trim() }, transaction: t });
+            if (existente) {
+                await existente.update(datosBase, { transaction: t });
+                idCliente = existente.idCliente;
+            } else {
+                const nuevo = await Clientes.create(datosBase, { transaction: t });
+                idCliente = nuevo.idCliente;
+            }
+        }
+
+        // Tributario (solo si empresa)
+        if (esEmpresa && regimen_fiscal) {
+            const tribExist = await ClientesTributario.findOne({ where: { idCliente }, transaction: t });
+            const tribData = {
+                regimen_fiscal,
+                gran_contribuyente: toBool(gran_contribuyente),
+                autorretenedor:     toBool(autorretenedor),
+                agente_retencion:   toBool(agente_retencion),
+                obligado_aduanero:  toBool(obligado_aduanero),
+                ciiu:               ciiu || null,
+                descripcion_ciiu:   toTitle(descripcion_ciiu),
+                fecha_rut:          fecha_rut || null
+            };
+            if (tribExist) {
+                await tribExist.update(tribData, { transaction: t });
+            } else {
+                await ClientesTributario.create({ idCliente, ...tribData }, { transaction: t });
+            }
+        }
+
+        // Ubicación
+        if (idDepartamento || direccion) {
+            const ubExist = await ClientesUbicacion.findOne({ where: { idCliente, es_principal: true }, transaction: t });
+            const ubData = {
+                idDepartamento:    idDepartamento || null,
+                nombreDepartamento: nombreDepartamento || null,
+                idMunicipio:       idMunicipio || null,
+                nombreMunicipio:   nombreMunicipio || null,
+                direccion:         direccion || null,
+                es_principal:      true
+            };
+            if (ubExist) {
+                await ubExist.update(ubData, { transaction: t });
+            } else {
+                await ClientesUbicacion.create({ idCliente, ...ubData }, { transaction: t });
+            }
+        }
+
+        // RUT
+        if (req.file) {
+            const file = req.file;
+            const ext  = file.originalname.split('.').pop().toLowerCase();
+            const isImage = file.mimetype.startsWith('image/');
+            const nombreArchivo = `rut-${numero_doc.trim()}-${Date.now()}.${isImage ? 'webp' : ext}`;
+            const r2Key = `documentacion/clientes/${nombreArchivo}`;
+
+            let buffer      = file.buffer;
+            let contentType = file.mimetype;
+            if (isImage) {
+                buffer = await sharp(file.buffer)
+                    .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toBuffer();
+                contentType = 'image/webp';
+            }
+
+            await new Upload({
+                client: s3Client,
+                params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: buffer, ContentType: contentType }
+            }).done();
+
+            await Documentacion.create({
+                idPropietario:  idCliente,
+                nombreDocumento: 'RUT',
+                keyName:         r2Key,
+                formato:         isImage ? 'WEBP' : ext.toUpperCase(),
+                pertenece:       'cliente'
+            }, { transaction: t });
+        }
+
+        await t.commit();
+
+        const nombreDisplay = esEmpresa
+            ? (razon_social || `${primer_nombre || ''} ${primer_apellido || ''}`.trim())
+            : `${primer_nombre || ''} ${primer_apellido || ''}`.trim();
+
+        return res.json({
+            success: true,
+            idCliente,
+            nombre:    nombreDisplay,
+            documento: `${tipo_documento} ${numero_doc.trim()}`
+        });
+    } catch (e) {
+        await t.rollback();
+        console.error('guardarCliente:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al guardar el cliente.' });
+    }
+};
+
+const getEntidadesJSON = async (req, res) => {
+    try {
+        const entidades = await Entidades.findAll({
+            where: { recibirPagosPos: true },
+            attributes: ['idEntidad', 'nombreEntidad', 'tipoEntidad'],
+            raw: true
+        });
+        return res.json({ success: true, entidades });
+    } catch (e) {
+        console.error('getEntidadesJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 export {
     dashboardStores,
     getTraslados,
@@ -678,5 +1036,11 @@ export {
     getDestinosJSON,
     desempacarPackAPI,
     trasladarDesdeStoreAPI,
-    getPerfilProducto
+    getPerfilProducto,
+    buscarPosProducto,
+    getPosProductoJSON,
+    buscarClientePorDoc,
+    getMunicipiosStoreJSON,
+    guardarCliente,
+    getEntidadesJSON
 };
