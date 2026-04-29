@@ -10,7 +10,7 @@ const CajaTienda = db.define('CAJA_TIENDA', {
         allowNull: false
     },
     idEmpleado: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.UUID,
         allowNull: false,
         references: {
             model: 'EMPLEADOS',

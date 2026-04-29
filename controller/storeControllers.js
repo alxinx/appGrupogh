@@ -4,10 +4,19 @@ import {
     Empleados, InsidenciaTraslado,
     Clientes, ClientesTributario, ClientesUbicacion,
     Departamentos, Municipios, Documentacion,
-    Atributos, VariacionesProducto, Entidades
+    Atributos, VariacionesProducto, Entidades,
+    FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente,
+    DetallesPagosFactura, RegimenFacturacion
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
+import PDFDocument from 'pdfkit';
+import { fileURLToPath } from 'url';
+import path from 'path';
 import db from '../config/bd.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+const LOGO_PATH  = path.resolve(__dirname, '../public/img/logo.png');
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
@@ -905,10 +914,19 @@ const guardarCliente = async (req, res) => {
             activo:           true
         };
 
-        if (idClienteExistente && idClienteExistente !== '0') {
-            await Clientes.update(datosBase, { where: { idCliente: idClienteExistente }, transaction: t });
-            idCliente = idClienteExistente;
+        // Si viene con un idCliente cargado, verificar si el doc sigue siendo el mismo
+        const clienteCargado = (idClienteExistente && idClienteExistente !== '0')
+            ? await Clientes.findOne({ where: { idCliente: idClienteExistente }, attributes: ['idCliente', 'numero_doc'], transaction: t })
+            : null;
+
+        const mismoDoc = clienteCargado && clienteCargado.numero_doc.trim() === numero_doc.trim();
+
+        if (mismoDoc) {
+            // Mismo documento → actualizar el cliente existente
+            await clienteCargado.update(datosBase, { transaction: t });
+            idCliente = clienteCargado.idCliente;
         } else {
+            // Documento distinto o cliente nuevo → buscar por doc o crear
             const existente = await Clientes.findOne({ where: { numero_doc: numero_doc.trim() }, transaction: t });
             if (existente) {
                 await existente.update(datosBase, { transaction: t });
@@ -1022,6 +1040,406 @@ const getEntidadesJSON = async (req, res) => {
     }
 };
 
+// ─── HELPER FORMATO MONEDA ───────────────────────────────────────────────────
+const fmtCOP = n => Math.round(n).toLocaleString('es-CO');
+
+// ─── PROCESAR FACTURA ─────────────────────────────────────────────────────────
+const procesarFactura = async (req, res) => {
+    const { idCliente, idEmpleado, items, pagos } = req.body;
+    const idPuntoDeVenta = req.idPuntoDeVenta;
+    const WHOLESALE_MIN  = parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6;
+
+    // ── 1. Validar datos del frontend ─────────────────────────────────────────
+    if (!idPuntoDeVenta)
+        return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
+    if (!idCliente || typeof idCliente !== 'string' || !idCliente.trim())
+        return res.status(400).json({ success: false, mensaje: 'Cliente inválido.' });
+    const _idEmpleado = String(idEmpleado || '').trim();
+    if (!_idEmpleado)
+        return res.status(400).json({ success: false, mensaje: 'Empleado inválido.' });
+    if (!Array.isArray(items) || items.length === 0)
+        return res.status(400).json({ success: false, mensaje: 'Orden sin artículos.' });
+    for (const it of items) {
+        if (!it.idProducto || typeof it.idProducto !== 'string')
+            return res.status(400).json({ success: false, mensaje: 'Producto inválido en la orden.' });
+        const qty = parseInt(it.cantidad);
+        if (!Number.isInteger(qty) || qty <= 0)
+            return res.status(400).json({ success: false, mensaje: `Cantidad inválida para producto ${it.idProducto}.` });
+    }
+    if (!Array.isArray(pagos) || pagos.length === 0)
+        return res.status(400).json({ success: false, mensaje: 'Sin métodos de pago.' });
+    for (const p of pagos) {
+        const val = Number(p.valor);
+        if (!Number.isFinite(val) || val <= 0)
+            return res.status(400).json({ success: false, mensaje: 'Valor de pago inválido.' });
+        if (p.idEntidad != null && !Number.isInteger(Number(p.idEntidad)))
+            return res.status(400).json({ success: false, mensaje: 'idEntidad inválido.' });
+        if (p.nroReferencia != null && typeof p.nroReferencia !== 'string')
+            return res.status(400).json({ success: false, mensaje: 'Referencia inválida.' });
+    }
+
+    // ── 2. Verificar suma de pagos = total de la orden ────────────────────────
+    const idProductos = [...new Set(items.map(i => i.idProducto))];
+    const productos   = await Productos.findAll({
+        where: { idProducto: idProductos },
+        attributes: ['idProducto', 'nombreProducto', 'precioVentaMayorista', 'precioVentaPublicoFinal'],
+        raw: true
+    });
+    const prodMap = new Map(productos.map(p => [p.idProducto, p]));
+    for (const it of items)
+        if (!prodMap.has(it.idProducto))
+            return res.status(400).json({ success: false, mensaje: `Producto no encontrado: ${it.idProducto}.` });
+
+    const totalCantidad   = items.reduce((s, i) => s + parseInt(i.cantidad), 0);
+    const esMayorista     = totalCantidad >= WHOLESALE_MIN;
+    let   totalOrden      = 0;
+    const itemsProcesados = items.map(it => {
+        const prod    = prodMap.get(it.idProducto);
+        const qty     = parseInt(it.cantidad);
+        const precio  = esMayorista
+            ? parseFloat(prod.precioVentaMayorista)
+            : parseFloat(prod.precioVentaPublicoFinal);
+        const subTotal = parseFloat((precio * qty).toFixed(2));
+        totalOrden    += subTotal;
+        return { idProducto: it.idProducto, nombreProducto: prod.nombreProducto, cantidad: qty, valorUnidad: precio, subTotal, total: subTotal };
+    });
+    totalOrden = parseFloat(totalOrden.toFixed(2));
+    const sumaPagos = parseFloat(pagos.reduce((s, p) => s + Number(p.valor), 0).toFixed(2));
+    if (Math.abs(sumaPagos - totalOrden) > 1)
+        return res.status(400).json({ success: false, mensaje: `Suma de pagos ($${sumaPagos}) ≠ total orden ($${totalOrden}).` });
+
+    // ── 3. Verificar cliente ──────────────────────────────────────────────────
+    const clienteExiste = await Clientes.count({ where: { idCliente: idCliente.trim() } });
+    if (!clienteExiste)
+        return res.status(400).json({ success: false, mensaje: 'Cliente no encontrado.' });
+
+    // ── 4. Verificar stock por producto ───────────────────────────────────────
+    for (const it of itemsProcesados) {
+        const [{ total: stockTotal }] = await Stock.findAll({
+            where: { idPuntoVenta: idPuntoDeVenta, idProducto: it.idProducto, cantidadExistente: { [Op.gt]: 0 } },
+            attributes: [[fn('SUM', col('cantidadExistente')), 'total']],
+            raw: true
+        });
+        if ((stockTotal || 0) < it.cantidad)
+            return res.status(400).json({
+                success: false,
+                mensaje: `Stock insuficiente para "${it.nombreProducto}". Disponible: ${stockTotal || 0}, requerido: ${it.cantidad}.`
+            });
+    }
+
+    // ── 5. Verificar resolución de facturación ────────────────────────────────
+    const regimen = await RegimenFacturacion.findOne({
+        where: { idPuntoDeVenta, activa: true, fechaVencimiento: { [Op.gte]: new Date() } },
+        raw: true
+    });
+    if (!regimen)
+        return res.status(400).json({ success: false, mensaje: 'Sin resolución de facturación vigente.' });
+    if (BigInt(regimen.nroActual) >= BigInt(regimen.nroFin))
+        return res.status(400).json({ success: false, mensaje: 'Resolución de facturación agotada.' });
+
+    // ── Transacción ───────────────────────────────────────────────────────────
+    const t = await db.transaction();
+    try {
+        const ahora       = new Date();
+        const nroFactura  = Number(regimen.nroActual) + 1;
+
+        // ── 6. Crear factura ──────────────────────────────────────────────────
+        const factura = await FacturaClientes.create({
+            idCliente:            idCliente.trim(),
+            idRegimenFacturacion: regimen.idRegimenFacturacion,
+            idPuntoDeVenta,
+            idEmpleado:           _idEmpleado,
+            tipoDocumento:        regimen.tipoFactura || '03',
+            prefijo:              regimen.prefijo     || '',
+            numeroFactura:        String(nroFactura),
+            fechaEmision:         ahora.toISOString().slice(0, 10),
+            horaEmision:          ahora.toTimeString().slice(0, 8)
+        }, { transaction: t });
+
+        await RegimenFacturacion.update(
+            { nroActual: nroFactura },
+            { where: { idRegimenFacturacion: regimen.idRegimenFacturacion }, transaction: t }
+        );
+
+        // ── 7. Detalles de factura ────────────────────────────────────────────
+        const detallesCreados = [];
+        for (const it of itemsProcesados) {
+            const det = await DetallesFactura.create({
+                idFacturaCliente: factura.idFacturaCliente,
+                idProducto:       it.idProducto,
+                cantidad:         it.cantidad,
+                valorUnidad:      it.valorUnidad,
+                subTotal:         it.subTotal,
+                total:            it.total
+            }, { transaction: t });
+            detallesCreados.push({ ...it, idDetallesFactura: det.idDetallesFactura });
+        }
+
+        // ── 8. Detalles de pagos ──────────────────────────────────────────────
+        const idEntidades  = pagos.filter(p => p.idEntidad != null).map(p => Number(p.idEntidad));
+        const entidadesMap = new Map();
+        if (idEntidades.length) {
+            const ents = await Entidades.findAll({
+                where: { idEntidad: idEntidades },
+                attributes: ['idEntidad', 'tipoEntidad'],
+                raw: true, transaction: t
+            });
+            ents.forEach(e => entidadesMap.set(e.idEntidad, e.tipoEntidad));
+        }
+        for (const p of pagos) {
+            const metodoPago = p.idEntidad != null
+                ? (entidadesMap.get(Number(p.idEntidad)) || 'Efectivo')
+                : 'Efectivo';
+            await DetallesPagosFactura.create({
+                idFacturaCliente: factura.idFacturaCliente,
+                idEntidad:        p.idEntidad != null ? Number(p.idEntidad) : null,
+                metodoPago,
+                valor:            Number(p.valor),
+                nroReferencia:    p.nroReferencia?.trim() || null
+            }, { transaction: t });
+        }
+
+        // ── 9. Actualizar stock FIFO ──────────────────────────────────────────
+        for (const it of itemsProcesados) {
+            let pendiente   = it.cantidad;
+            const stockRows = await Stock.findAll({
+                where:    { idPuntoVenta: idPuntoDeVenta, idProducto: it.idProducto, cantidadExistente: { [Op.gt]: 0 } },
+                order:    [['createdAt', 'ASC']],
+                transaction: t,
+                lock:     t.LOCK.UPDATE
+            });
+            for (const row of stockRows) {
+                if (pendiente <= 0) break;
+                if (row.cantidadExistente <= pendiente) {
+                    pendiente -= row.cantidadExistente;
+                    await Stock.update({ cantidadExistente: 0 }, { where: { idStock: row.idStock }, transaction: t });
+                } else {
+                    await Stock.update({ cantidadExistente: row.cantidadExistente - pendiente }, { where: { idStock: row.idStock }, transaction: t });
+                    pendiente = 0;
+                }
+            }
+            if (pendiente > 0) {
+                await t.rollback();
+                return res.status(400).json({ success: false, mensaje: `Stock insuficiente para "${it.nombreProducto}" al facturar.` });
+            }
+        }
+
+        // ── 10. Impuestos base cero ───────────────────────────────────────────
+        for (const det of detallesCreados) {
+            await DetallesImpuestosFacturaCliente.create({
+                idFacturaCliente:  factura.idFacturaCliente,
+                idDetallesFactura: det.idDetallesFactura,
+                tipoImpuesto:      '0',
+                nombreImpuesto:    null,
+                porcentaje:        0,
+                baseGravable:      det.subTotal,
+                valorImpuesto:     0,
+                retencion:         false
+            }, { transaction: t });
+        }
+
+        await t.commit();
+        return res.json({ success: true, idFacturaCliente: factura.idFacturaCliente });
+
+    } catch (error) {
+        await t.rollback();
+        console.error('procesarFactura:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error interno al procesar la factura.' });
+    }
+};
+
+// ─── TIRILLA PDF ──────────────────────────────────────────────────────────────
+const getTirillaPDF = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const factura = await FacturaClientes.findOne({
+            where:   { idFacturaCliente: id },
+            include: [
+                { model: Clientes,           as: 'cliente' },
+                { model: RegimenFacturacion, as: 'regimen' },
+                { model: PuntosDeVenta,      as: 'puntoDeVenta' },
+                {
+                    model:   DetallesFactura, as: 'detalles',
+                    include: [{ model: Productos, as: 'producto', attributes: ['nombreProducto'] }]
+                }
+            ]
+        });
+        if (!factura) return res.status(404).json({ success: false, mensaje: 'Factura no encontrada.' });
+
+        const pagosFactura = await DetallesPagosFactura.findAll({
+            where:   { idFacturaCliente: id },
+            include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
+        });
+
+        const municipio = factura.puntoDeVenta?.ciudad
+            ? await Municipios.findOne({ where: { id: factura.puntoDeVenta.ciudad }, attributes: ['nombre'], raw: true })
+            : null;
+
+        let clienteUbicacion = null;
+        if (factura.idCliente !== '0') {
+            clienteUbicacion = await ClientesUbicacion.findOne({
+                where: { idCliente: factura.idCliente },
+                order: [['createdAt', 'DESC']],
+                raw: true
+            });
+        }
+
+        // ── PDF ───────────────────────────────────────────────────────────────
+        const W      = 227;
+        const MARGIN = 8;
+        const CW     = W - MARGIN * 2;
+        const LOGO_SIZE = 60;
+        const estH   = 350 + factura.detalles.length * 24 + pagosFactura.length * 18 + 100 + LOGO_SIZE + 10;
+
+        const doc    = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        const pdfEnd = new Promise(r => doc.on('end', r));
+
+        const reg = factura.regimen;
+        const pdv = factura.puntoDeVenta;
+        const cli = factura.cliente;
+
+        // Helper: fila multi-columna
+        const row = (cols, startY) => {
+            let maxY = startY;
+            for (const { txt, x, w, align, bold, size } of cols) {
+                doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size || 6.5);
+                doc.text(txt, x, startY, { width: w, align: align || 'left', lineBreak: true });
+                if (doc.y > maxY) maxY = doc.y;
+                doc.y = startY;
+            }
+            doc.y = maxY + 1;
+        };
+        const hr = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.5).stroke(); doc.moveDown(0.3); };
+
+        // CABECERA — logo centrado
+        const logoX = MARGIN + (CW - LOGO_SIZE) / 2;
+        doc.image(LOGO_PATH, logoX, MARGIN, { width: LOGO_SIZE, height: LOGO_SIZE });
+        doc.y = MARGIN + LOGO_SIZE + 4;
+
+        doc.font('Helvetica-Bold').fontSize(9).text(reg?.razonSocial || '', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.font('Helvetica').fontSize(7);
+        if (reg?.taxId) doc.text(`NIT: ${reg.taxId}${reg.DV ? '-' + reg.DV : ''}`, MARGIN, doc.y, { width: CW, align: 'center' });
+        if (pdv?.direccionPrincipal) doc.text(pdv.direccionPrincipal, MARGIN, doc.y, { width: CW, align: 'center' });
+        if (municipio?.nombre) doc.text(municipio.nombre, MARGIN, doc.y, { width: CW, align: 'center' });
+        if (reg?.responsabilidades) doc.text(reg.responsabilidades, MARGIN, doc.y, { width: CW, align: 'center' });
+
+        doc.moveDown(0.3); hr();
+
+        // Número y fecha de factura
+        doc.font('Helvetica-Bold').fontSize(8)
+           .text(`Factura No: ${factura.prefijo || ''}${factura.numeroFactura}`, MARGIN, doc.y, { width: CW });
+        doc.font('Helvetica').fontSize(7)
+           .text(`Fecha: ${factura.fechaEmision}  Hora: ${factura.horaEmision || ''}`, MARGIN, doc.y, { width: CW });
+
+        doc.moveDown(0.3); hr();
+
+        // Cliente
+        if (factura.idCliente === '0') {
+            doc.font('Helvetica-Bold').fontSize(7).text('Cliente: Consumidor Final', MARGIN, doc.y, { width: CW });
+        } else if (cli) {
+            const nomCli = [cli.primer_nombre, cli.segundo_nombre, cli.primer_apellido, cli.segundo_apellido].filter(Boolean).join(' ');
+            const docCli = `${cli.tipo_documento || ''} ${cli.numero_doc || ''}${cli.digito_verif ? '-' + cli.digito_verif : ''}`.trim();
+            doc.font('Helvetica-Bold').fontSize(7).text(`Cliente: ${nomCli}`, MARGIN, doc.y, { width: CW });
+            doc.font('Helvetica').fontSize(7).text(`Doc: ${docCli}`, MARGIN, doc.y, { width: CW });
+            if (clienteUbicacion) {
+                const dir = [clienteUbicacion.direccion, clienteUbicacion.nombreMunicipio, clienteUbicacion.nombreDepartamento].filter(Boolean).join(', ');
+                doc.text(`Dir: ${dir}`, MARGIN, doc.y, { width: CW });
+            }
+        }
+
+        doc.moveDown(0.3); hr();
+
+        // Tabla de productos — encabezado
+        const c1 = CW * 0.42, c2 = CW * 0.11, c3 = CW * 0.23, c4 = CW * 0.24;
+        row([
+            { txt: 'Producto',  x: MARGIN,            w: c1, bold: true },
+            { txt: 'Cant',      x: MARGIN + c1,        w: c2, bold: true, align: 'center' },
+            { txt: 'V/U',       x: MARGIN + c1 + c2,   w: c3, bold: true, align: 'right' },
+            { txt: 'Subtotal',  x: MARGIN + c1+c2+c3,  w: c4, bold: true, align: 'right' }
+        ], doc.y);
+        hr();
+
+        let subtotalFactura = 0;
+        for (const det of factura.detalles) {
+            const nombre = det.producto?.nombreProducto || det.idProducto;
+            const vu     = parseFloat(det.valorUnidad);
+            const vtotal = parseFloat(det.total);
+            subtotalFactura += vtotal;
+            row([
+                { txt: nombre,         x: MARGIN,            w: c1 },
+                { txt: String(parseInt(det.cantidad)), x: MARGIN + c1, w: c2, align: 'center' },
+                { txt: `$${fmtCOP(vu)}`,    x: MARGIN + c1 + c2,  w: c3, align: 'right' },
+                { txt: `$${fmtCOP(vtotal)}`, x: MARGIN+c1+c2+c3, w: c4, align: 'right' }
+            ], doc.y);
+        }
+
+        hr();
+
+        // Totales
+        const totRow = (label, valor, bold = false) => {
+            const tY = doc.y;
+            doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 7.5 : 7);
+            doc.text(label, MARGIN, tY, { width: CW * 0.65 });
+            doc.text(`$${fmtCOP(valor)}`, MARGIN + CW * 0.65, tY, { width: CW * 0.35, align: 'right' });
+            doc.y = Math.max(doc.y, tY + (bold ? 10 : 9));
+            doc.moveDown(0.1);
+        };
+        totRow('Subtotal:', subtotalFactura);
+        totRow('Total Impuestos:', 0);
+        doc.moveDown(0.1);
+        totRow('TOTAL A PAGAR:', subtotalFactura, true);
+
+        hr();
+
+        // Métodos de pago
+        doc.font('Helvetica-Bold').fontSize(7).text('MÉTODOS DE PAGO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.2);
+        const p1 = CW * 0.38, p2 = CW * 0.32, p3 = CW * 0.30;
+        row([
+            { txt: 'Método',     x: MARGIN,      w: p1, bold: true },
+            { txt: 'Referencia', x: MARGIN + p1, w: p2, bold: true },
+            { txt: 'Valor',      x: MARGIN+p1+p2, w: p3, bold: true, align: 'right' }
+        ], doc.y);
+        for (const pago of pagosFactura) {
+            const nomEntidad = pago.metodoPago === 'Efectivo' ? 'Efectivo' : (pago.entidad?.nombreEntidad || pago.metodoPago);
+            row([
+                { txt: nomEntidad,               x: MARGIN,       w: p1 },
+                { txt: pago.nroReferencia || '-', x: MARGIN + p1,  w: p2 },
+                { txt: `$${fmtCOP(parseFloat(pago.valor))}`, x: MARGIN+p1+p2, w: p3, align: 'right' }
+            ], doc.y);
+        }
+
+        hr();
+
+        // Footer punto de venta
+        if (pdv?.footerBill) {
+            doc.font('Helvetica').fontSize(6.5).text(pdv.footerBill, MARGIN, doc.y, { width: CW, align: 'center' });
+            doc.moveDown(0.4);
+        }
+
+        // Footer CODEDREAM
+        const footerCD = process.env.FOOTER_CODEDREAM || '';
+        if (footerCD) {
+            doc.font('Helvetica').fontSize(6).text(footerCD, MARGIN, doc.y, { width: CW, align: 'center' });
+        }
+
+        doc.end();
+        await pdfEnd;
+
+        const buf = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="tirilla-${factura.prefijo || ''}${factura.numeroFactura}.pdf"`);
+        res.setHeader('Content-Length', buf.length);
+        return res.send(buf);
+
+    } catch (error) {
+        console.error('getTirillaPDF:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error al generar la tirilla.' });
+    }
+};
+
 export {
     dashboardStores,
     getTraslados,
@@ -1042,5 +1460,7 @@ export {
     buscarClientePorDoc,
     getMunicipiosStoreJSON,
     guardarCliente,
-    getEntidadesJSON
+    getEntidadesJSON,
+    procesarFactura,
+    getTirillaPDF
 };

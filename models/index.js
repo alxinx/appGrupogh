@@ -31,6 +31,7 @@ import Entidades from './Entidades.js'
 import FacturaClientes from './FacturaClientes.js'
 import DetallesFactura from './DetallesFactura.js'
 import DetallesImpuestosFacturaCliente from './DetallesImpuestosFacturaCliente.js'
+import DetallesPagosFactura from './DetallesPagosFactura.js'
 //ASOCIACIONES
 
 
@@ -162,6 +163,12 @@ Empleados.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'sede' })
 //OrdenDeCompra.belongsTo(Provedores, { foreignKey: 'idProveedor' });
 
 
+// ─── DetallesPagosFactura ────────────────────────────────────────────────────
+FacturaClientes.hasMany(DetallesPagosFactura, { foreignKey: 'idFacturaCliente', as: 'pagos' });
+DetallesPagosFactura.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente' });
+DetallesPagosFactura.belongsTo(Entidades, { foreignKey: 'idEntidad', as: 'entidad' });
+Entidades.hasMany(DetallesPagosFactura, { foreignKey: 'idEntidad' });
+
 export {
   Usuarios,
   Departamentos,
@@ -175,5 +182,5 @@ export {
   Imagenes, Documentacion, Empleados,
   Clientes, ClientesTributario, ClientesUbicacion,
   CajaTienda, Entidades,
-  FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente
+  FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura
 }

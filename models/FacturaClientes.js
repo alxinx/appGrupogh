@@ -39,7 +39,7 @@ const FacturaClientes = db.define('FACTURA_CLIENTES', {
         onDelete: 'RESTRICT'
     },
     idEmpleado: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.UUID,
         allowNull: true,
         references: {
             model: 'EMPLEADOS',

@@ -1429,8 +1429,82 @@
         if (btnCerrar) btnCerrar.addEventListener('click', cerrarFV);
 
         // Botón procesar pago (placeholder)
-        document.getElementById('btn-procesar-pago')?.addEventListener('click', () => {
-            Swal.fire({ icon: 'info', title: 'Próximamente', text: 'El procesamiento de pagos está en desarrollo.', confirmButtonColor: '#EC5FA3' });
+        document.getElementById('btn-procesar-pago')?.addEventListener('click', async () => {
+            const btn = document.getElementById('btn-procesar-pago');
+            if (!btn || btn.disabled) return;
+
+            // ── Armar payload ────────────────────────────────────────────────
+            const idCliente  = document.getElementById('idCliente')?.value?.trim() || '0';
+            const idEmpleado = empleadoActual?.idEmpleado;
+
+            const items = [...cart.values()].map(i => ({ idProducto: i.idProducto, cantidad: i.cantidad }));
+
+            const pagosPayload = [];
+
+            // Efectivo
+            const montoEf = leerMonto('fv-efectivo-monto');
+            if (montoEf > 0) pagosPayload.push({ idEntidad: null, valor: montoEf, nroReferencia: null });
+
+            // Transferencia
+            entidadesActivas.forEach((_, id) => {
+                const val = leerMonto(`fv-tr-monto-${id}`);
+                const ref = document.getElementById(`fv-tr-ref-${id}`)?.value?.trim() || null;
+                if (val > 0) pagosPayload.push({ idEntidad: parseInt(id), valor: val, nroReferencia: ref });
+            });
+
+            // Tarjeta
+            entidadesActivasTarjeta.forEach((_, id) => {
+                const val = leerMonto(`fv-ta-monto-${id}`);
+                const ref = document.getElementById(`fv-ta-ref-${id}`)?.value?.trim() || null;
+                if (val > 0) pagosPayload.push({ idEntidad: parseInt(id), valor: val, nroReferencia: ref });
+            });
+
+            // Crédito
+            entidadesActivasCredito.forEach((_, id) => {
+                const val = leerMonto(`fv-cr-monto-${id}`);
+                const ref = document.getElementById(`fv-cr-ref-${id}`)?.value?.trim() || null;
+                if (val > 0) pagosPayload.push({ idEntidad: parseInt(id), valor: val, nroReferencia: ref });
+            });
+
+            // ── Enviar ───────────────────────────────────────────────────────
+            btn.disabled  = true;
+            btn.className = 'flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed';
+
+            try {
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+                          || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
+
+                const resp = await fetch('/store/facturas/procesar', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    body:    JSON.stringify({ idCliente, idEmpleado, items, pagos: pagosPayload })
+                });
+                const data = await resp.json();
+
+                if (!data.success) {
+                    Swal.fire({ icon: 'error', title: 'Error al facturar', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
+                    btn.disabled  = false;
+                    actualizarResumenPagos();
+                    return;
+                }
+
+                // Éxito → abrir tirilla y limpiar carrito
+                window.open(`/store/facturas/${data.idFacturaCliente}/tirilla`, '_blank');
+                cerrarFV();
+                cart.clear();
+                renderCart?.();
+                Swal.fire({
+                    icon: 'success', title: '¡Venta registrada!',
+                    text: 'La factura fue generada correctamente.',
+                    timer: 2500, timerProgressBar: true, showConfirmButton: false
+                });
+
+            } catch (err) {
+                console.error('procesarFactura:', err);
+                Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo conectar con el servidor.', confirmButtonColor: '#EC5FA3' });
+                btn.disabled  = false;
+                actualizarResumenPagos();
+            }
         });
     }
 

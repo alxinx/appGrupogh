@@ -20,7 +20,9 @@ import {
     buscarClientePorDoc,
     getMunicipiosStoreJSON,
     guardarCliente,
-    getEntidadesJSON
+    getEntidadesJSON,
+    procesarFactura,
+    getTirillaPDF
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
@@ -77,5 +79,9 @@ routes.post('/inventario/trasladar',  csrfProtection, trasladarDesdeStoreAPI);
 
 // Clientes
 routes.post('/clientes/guardar', csrfProtection, uploadMixed.single('rut'), guardarCliente);
+
+// Facturas
+routes.post('/facturas/procesar', csrfProtection, procesarFactura);
+routes.get('/facturas/:id/tirilla', getTirillaPDF);
 
 export default routes;
