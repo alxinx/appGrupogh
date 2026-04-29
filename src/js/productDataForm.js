@@ -85,6 +85,8 @@
                     document.getElementById('tallaTitulo').innerText = nombreTalla;
                     const seleccionados = variantesSeleccionadas[idTalla] || [];
                     checksColor.forEach(c => c.checked = seleccionados.includes(c.value));
+                    const buscador = document.getElementById('buscadorColor');
+                    if (buscador) { buscador.value = ''; filtrarColores(''); }
                     modal.classList.remove('hidden');
                 };
 
@@ -114,6 +116,8 @@
                     document.getElementById('tallaTitulo').innerText = this.dataset.nombre;
                     const seleccionados = variantesSeleccionadas[tallaActualId] || [];
                     checksColor.forEach(c => c.checked = seleccionados.includes(c.value));
+                    const buscador = document.getElementById('buscadorColor');
+                    if (buscador) { buscador.value = ''; filtrarColores(''); }
                     modal.classList.remove('hidden');
                 } else {
                     Swal.fire({
@@ -165,7 +169,24 @@
 
         hidratarFormulario();
 
-        document.getElementById('cerrarModal').onclick = () => modal.classList.add('hidden');
+        document.getElementById('cerrarModal').onclick = () => {
+            modal.classList.add('hidden');
+            const buscador = document.getElementById('buscadorColor');
+            if (buscador) { buscador.value = ''; filtrarColores(''); }
+        };
+
+        const filtrarColores = (texto) => {
+            const termino = texto.toLowerCase().trim();
+            document.querySelectorAll('#gridColores label').forEach(label => {
+                const nombre = label.querySelector('span')?.textContent.toLowerCase() || '';
+                label.style.display = nombre.includes(termino) ? '' : 'none';
+            });
+        };
+
+        const buscadorColor = document.getElementById('buscadorColor');
+        if (buscadorColor) {
+            buscadorColor.addEventListener('input', (e) => filtrarColores(e.target.value));
+        }
         
         window.eliminarTalla = (idTalla) => {
             Swal.fire({
@@ -379,8 +400,32 @@ actualizarEstadoWeb();
     if (!formulario) return;
 
     formulario.addEventListener('submit', async function(e) {
-        e.preventDefault(); 
-        
+        e.preventDefault();
+
+        const limpiarPrecio = (val) => parseInt(String(val).replace(/\D/g, '')) || 0;
+        const mayorista = limpiarPrecio(document.getElementById('precioVentaMayorista')?.value);
+        const publico   = limpiarPrecio(document.getElementById('precioVentaPublicoFinal')?.value);
+
+        if (mayorista <= 0 || publico <= 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Precios requeridos',
+                text: 'El precio mayorista y el precio al público deben ser mayores a $0.',
+                confirmButtonColor: '#EC5FA3'
+            });
+            return;
+        }
+
+        if (mayorista >= publico) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Precio inválido',
+                text: 'El precio mayorista debe ser menor que el precio al público final.',
+                confirmButtonColor: '#EC5FA3'
+            });
+            return;
+        }
+
         Swal.fire({
             title: 'Guardando producto...',
             text: 'Estamos procesando los datos e imágenes para el inventario.',
@@ -406,12 +451,24 @@ actualizarEstadoWeb();
             const resultado = await respuesta.json();
 
             if (resultado.errores) {
+                const mensajes = Object.values(resultado.errores).join('\n');
                 Swal.fire({
                     icon: 'error',
                     title: 'Error de validación',
-                    text: 'Revisa los campos del formulario.'
+                    text: mensajes,
+                    confirmButtonColor: '#EC5FA3'
+                });
+            } else if (resultado.mensaje && !resultado.success) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: resultado.mensaje,
+                    confirmButtonColor: '#EC5FA3'
                 });
             } else {
+                if (resultado.idProducto) {
+                    window.open(`/admin/inventario/etiqueta-sku/${resultado.idProducto}`, '_blank');
+                }
                 Swal.fire({
                     icon: 'success',
                     title: '¡Producto Guardado!',
@@ -419,7 +476,7 @@ actualizarEstadoWeb();
                     timer: 2000,
                     showConfirmButton: false
                 }).then(() => {
-                    window.location.href = '/admin/inventario/listado'; 
+                    window.location.href = '/admin/inventario/listado';
                 });
             }
 

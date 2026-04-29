@@ -29,9 +29,9 @@
             return;
         }
 
-        empleados.forEach(emp => {
+        const filas = empleados.map(emp => {
             const sede = emp.sede ? emp.sede.nombreComercial : '<span class="text-gray-400 italic text-xs">Sin sede</span>';
-            contenedor.innerHTML += `
+            return `
                 <tr class="border-b border-gray-100 hover:bg-gray-100 transition-colors">
                     <td class="px-6 py-4">
                         <p class="font-bold text-slate-800">${emp.PrimerNombre} ${emp.PrimerApellido}</p>
@@ -40,7 +40,11 @@
                     <td class="px-4 py-4 text-center text-sm text-slate-600">${emp.NumeroDocumento}</td>
                     <td class="px-4 py-4 text-center text-sm text-slate-600">${emp.telefonoContacto || '--'}</td>
                     <td class="px-4 py-4 text-center">
-                        <span class="font-mono text-xs bg-slate-100 px-2 py-1 rounded">${emp.codigoEmpleado}</span>
+                        <span
+                            class="codigo-empleado font-mono text-xs bg-slate-100 px-2 py-1 rounded cursor-pointer select-none"
+                            style="filter:blur(5px); transition:filter 0.25s ease;"
+                            title="Doble clic para revelar"
+                        >${emp.codigoEmpleado}</span>
                     </td>
                     <td class="px-4 py-4 text-center text-sm text-slate-600">${sede}</td>
                     <td class="px-6 py-4 text-center">
@@ -50,6 +54,21 @@
                     </td>
                 </tr>
             `;
+        });
+
+        contenedor.innerHTML = filas.join('');
+
+        contenedor.querySelectorAll('.codigo-empleado').forEach(el => {
+            let timer = null;
+            el.addEventListener('dblclick', () => {
+                el.style.filter = 'blur(0)';
+                el.title = 'Se ocultará en 3 segundos...';
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    el.style.filter = 'blur(5px)';
+                    el.title = 'Doble clic para revelar';
+                }, 3000);
+            });
         });
     };
 

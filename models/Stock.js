@@ -23,11 +23,11 @@ const Stock = db.define('STOCKS', {
         allowNull: true 
 
     },
-    idProducto: { 
-        type: DataTypes.UUID, 
-        allowNull: false 
-        
-    }, 
+    idProducto: {
+        type: DataTypes.UUID,
+        allowNull: true   // null cuando el stock representa un pack completo
+
+    },
     cantidadExistente: { 
         type: DataTypes.INTEGER.UNSIGNED, 
         allowNull: false,

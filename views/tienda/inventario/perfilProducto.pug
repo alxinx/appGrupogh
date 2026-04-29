@@ -1,0 +1,100 @@
+extends ../../layout/index
+
+block contenedor
+    - const imgPrincipal = producto.imagenes?.find(i => i.tipo === 'principal') || producto.imagenes?.[0]
+    - const imgUrl = imgPrincipal ? r2Url + imgPrincipal.nombreImagen : '/img/image-default.webp'
+    - const fmt = (n) => Number(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+
+    div(class="fixed inset-0 flex" style="background:#F4E8FF")
+        include ../partials/leftMenu
+
+        div(class="flex-1 flex flex-col min-w-0")
+            include ../../partials/header
+
+            main(class="flex-1 overflow-y-auto md:p-4")
+                div(class="mainDashboard")
+
+                    //- ── CABECERA ────────────────────────────────────────────
+                    div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center justify-between gap-4 flex-wrap")
+                        div(class="flex items-center gap-4")
+                            div(class="w-20 h-20 rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-700 flex items-center justify-center flex-shrink-0 shadow-lg shadow-purple-400")
+                                img(src="/img/avatars/producto.webp" alt="Inventario" class="w-14 h-14 object-contain")
+                            div
+                                h1(class="h1") Perfil de producto
+                                p(class="text-sm text-slate-400 mt-1") Existencias y detalle del producto
+                        a(href="/store/inventario/lista" class="btn btn-secondary flex items-center gap-2 cursor-pointer")
+                            i(class="fi fi-rr-arrow-left text-sm")
+                            | Volver al inventario
+
+                    //- ── INFO PRINCIPAL ──────────────────────────────────────
+                    div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-6")
+
+                        //- Imagen + badges
+                        div(class="cards p-6 flex flex-col items-center gap-4")
+                            img(
+                                src=imgUrl
+                                alt=producto.nombreProducto
+                                class="w-48 h-48 object-cover rounded-2xl border-2 border-purple-300 shadow-lg shadow-purple-200"
+                            )
+                            div(class="flex flex-wrap gap-2 justify-center")
+                                if producto.activo
+                                    span(class="text-xs font-bold bg-green-100 text-green-700 px-3 py-1 rounded-full") Activo
+                                else
+                                    span(class="text-xs font-bold bg-red-100 text-red-600 px-3 py-1 rounded-full") Inactivo
+                                if producto.web
+                                    span(class="text-xs font-bold bg-blue-100 text-blue-600 px-3 py-1 rounded-full")
+                                        i(class="fi fi-rr-globe mr-1")
+                                        | En web
+
+                        //- Datos del producto
+                        div(class="cards p-6 md:col-span-2 flex flex-col gap-4")
+                            h2(class="text-xl font-bold text-slate-800")= producto.nombreProducto
+
+                            div(class="grid grid-cols-2 gap-3")
+                                div(class="bg-slate-50 rounded-xl p-3")
+                                    p(class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-0.5") SKU
+                                    p(class="font-mono font-bold text-slate-700")= producto.sku || '—'
+                                div(class="bg-slate-50 rounded-xl p-3")
+                                    p(class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-0.5") EAN / Barcode
+                                    p(class="font-mono font-bold text-slate-700")= producto.ean || '—'
+                                div(class="bg-purple-50 rounded-xl p-3")
+                                    p(class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-0.5") Precio mayorista
+                                    p(class="font-bold text-gh-primary text-lg") $ #{fmt(producto.precioVentaMayorista)}
+                                div(class="bg-fuchsia-50 rounded-xl p-3")
+                                    p(class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-0.5") Precio público
+                                    p(class="font-bold text-fuchsia-600 text-lg") $ #{fmt(producto.precioVentaPublicoFinal)}
+
+                            if producto.descripcion
+                                div(class="bg-slate-50 rounded-xl p-3")
+                                    p(class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1") Descripción
+                                    p(class="text-sm text-slate-600")= producto.descripcion
+
+                    //- ── STOCK POR TIENDA ─────────────────────────────────────
+                    div(class="col-span-12 cards p-6")
+                        h3(class="h3 mb-4")
+                            i(class="fi fi-rr-shop mr-2")
+                            | Stock por ubicación
+
+                        if stockPorTienda.length
+                            div(class="overflow-x-auto")
+                                table(class="w-full text-left border-collapse")
+                                    thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
+                                        tr
+                                            th(class="p-4 text-sm font-semibold text-gray-600") Tienda / Ubicación
+                                            th(class="p-4 text-sm font-semibold text-gray-600") Tipo
+                                            th(class="p-4 text-sm font-semibold text-gray-600 text-center") Stock disponible
+                                    tbody
+                                        each s in stockPorTienda
+                                            tr(class=`border-b border-gray-100 transition-colors ${s.esTiendaActual ? 'bg-purple-50/60' : 'hover:bg-gray-50'}`)
+                                                td(class="p-4")
+                                                    div(class="flex items-center gap-2")
+                                                        if s.esTiendaActual
+                                                            span(class="text-xs font-bold bg-purple-500 text-white px-2 py-0.5 rounded-full") Esta tienda
+                                                        span(class="font-semibold text-slate-700")= s.nombreComercial
+                                                td(class="p-4 text-sm text-slate-500 capitalize")= s.tipo
+                                                td(class="p-4 text-center")
+                                                    span(class=`font-bold text-lg ${s.total > 0 ? 'text-green-600' : 'text-red-400'}`)= s.total
+                        else
+                            div(class="flex flex-col items-center justify-center py-10 text-gray-400 gap-2")
+                                i(class="fi fi-rr-box-open-full text-3xl")
+                                p(class="text-sm") Sin stock registrado en ninguna ubicación

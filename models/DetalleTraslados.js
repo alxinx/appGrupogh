@@ -23,7 +23,16 @@ const DetalleTraslados = db.define('DETALLE_TRASLADOS', {
     },
     cantidad: {
         type: DataTypes.INTEGER,
-        allowNull: false // 1 si es pack, N si es producto suelto
+        allowNull: false
+    },
+    cantidadControversia: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: null
+    },
+    estado: {
+        type: DataTypes.ENUM('PENDIENTE', 'RECIBIDO', 'CONTROVERSIA'),
+        defaultValue: 'PENDIENTE'
     }
 }, {
     tableName: 'DETALLE_TRASLADOS',

@@ -2,17 +2,18 @@ import express from "express";
 import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson } from "../controller/adminControllers.js"
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
+checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU } from "../controller/adminControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
-import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack } from '../controller/dosificacionController.js'
+import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado, historialPack } from '../controller/dosificacionController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
+import apiRateLimit from '../middlewares/apiRateLimit.js';
 
 
 
@@ -40,6 +41,7 @@ routes.get('/inventario/listado', listaProductos);
 routes.get('/inventario/ver/:idProducto', verProducto)
 routes.get('/inventario/editar/:idProducto', editarProducto)
 routes.get('/inventario/batch/', batchBuyOrder)
+routes.get('/inventario/etiqueta-sku/:idProducto', imprimirEtiquetaSKU)
 
 
 //PROVEDORES
@@ -110,7 +112,8 @@ routes.post('/inventario/editar/:idProducto',
 
 /************************[JSON]******************************/
 
-
+routes.use('/json', apiRateLimit);
+routes.use('/api', apiRateLimit);
 
 routes.get('/json/municipios/:departamentoId', municipiosJson)
 routes.get('/json/categorias/:idCategoria', categoriasJson);
@@ -122,6 +125,7 @@ routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
 routes.get('/json/personal/documento/:tipo/:numero', checkDocumentoPersonal);
 routes.get('/json/personal/email/:email', checkEmailPersonal);
 routes.get('/json/personal/lista', filterEmployeeListJson);
+routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
 routes.get('/json/provedores/', filterSupplierListJson);
 routes.get('/json/inventario-tienda/:idPuntoDeVenta', filterStoreInventoryJson);
 routes.get('/json/tiendas/', async (req, res) => {
@@ -131,13 +135,16 @@ routes.get('/json/tiendas/', async (req, res) => {
 
 // API CHECKS
 routes.get('/api/check-nit/:nit', checkNitSupplier);
+routes.get('/api/inventario/:idProducto/stock-total', stockTotalProducto);
 
 
 routes.get('/api/dosificaciones/stats-global', widgetGlobales);
+routes.get('/api/pack/:idPack/historial', historialPack);
 
 routes.get('/api/dosificaciones/productos/:id', obtenerProductosPorDose);
 routes.get('/api/dosificaciones/metadata/:id', obtenerMetadataDose);
 routes.get('/dosificaciones/etiquetas/unica/:idPack/', imprimirEtiquetasPorPack);
+routes.get('/dosificaciones/comprobante/:idTraslado', imprimirComprobanteTraslado);
 
 routes.get('/dosificaciones/etiquetas/:idDosificacion/:numLote', imprimirEtiquetasLote);
 routes.get('/api/dosificaciones/:query', obtenerDosificacionesPaginadas)

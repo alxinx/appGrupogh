@@ -76,7 +76,7 @@ mixin tarjetaProducto(id, name, stock, codigo, precioM, precioD, imagen, modalId
 
 
 
-//PEFIL DE COMPRADOR, 
+//PEFIL DE COMPRADOR,
 mixin tarjetaClienteFidelizado(idCliente, nombre, documento, imagen)
   //- Contenedor con Glassmorphism para que resalte sobre el fondo fucsia
   div(
@@ -88,7 +88,8 @@ mixin tarjetaClienteFidelizado(idCliente, nombre, documento, imagen)
       div(class="col-span-2 flex justify-center")
         div(class="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-white")
           img(
-            src=imagen || "/img/default-user.webp" 
+            id="cli-display-img"
+            src=imagen || "/img/avatars/cliente.webp"
             alt=`Perfil de ${nombre}`
             class="w-full h-full object-cover"
           )
@@ -96,21 +97,173 @@ mixin tarjetaClienteFidelizado(idCliente, nombre, documento, imagen)
       //- Información Detallada del Cliente
       div(class="col-span-7 pl-2")
         h2(class="text-[10px] font-bold text-gh-primary uppercase tracking-widest mb-1") Datos del Cliente
-        h4(class="text-lg font-bold text-slate-800 leading-tight truncate")= nombre
-        p(class="text-xs font-semibold text-slate-500 uppercase tracking-tighter") 
-          | CC: #{documento}
+        h4(id="cli-display-nombre" class="text-lg font-bold text-slate-800 leading-tight truncate")= nombre
+        p(id="cli-display-doc" class="text-xs font-semibold text-slate-500 uppercase tracking-tighter")= documento
 
       //- Botón para abrir el Modal de Edición
       div(class="col-span-3 flex justify-end")
         button(
           type="button"
+          id="btn-abrir-modal-cliente"
           class="btn-editar-cliente bg-gh-primary/10 text-gh-primary hover:bg-gh-primary hover:text-white transition-all px-4 py-4 rounded-2xl shadow-sm cursor-pointer group flex items-center justify-center"
           data-id=idCliente
-          data-nombre=nombre
-          data-documento=documento
           title="Editar datos del cliente"
         )
           i(class="fi-rr-user-pen text-2xl group-hover:scale-110 transition-transform")
+
+
+//- MODAL CLIENTE POS
+mixin modalCliente(departamentos)
+  - const tribSwitches = [['Gran contribuyente','gran_contribuyente'],['Autorretenedor','autorretenedor'],['Agente de retención','agente_retencion'],['Obligado aduanero','obligado_aduanero']]
+  - const lbl = 'text-sm font-medium text-gray-400 whitespace-nowrap flex-shrink-0'
+  - const row = 'flex items-center gap-5 py-4 border-b border-gray-100'
+
+  div(id="modal-cliente" class="absolute inset-0 z-50 hidden items-center justify-center p-6 bg-black/30 backdrop-blur-sm")
+    div(id="modal-cliente-card" class="bg-white rounded-[1.5rem] shadow-2xl w-[60%] max-h-[92%] flex flex-col overflow-hidden")
+
+      //- ── Cabecera ─────────────────────────────────────────────────────────
+      div(class="bg-gray-50 px-10 pt-8 pb-6 flex-shrink-0")
+        div(class="flex items-center gap-5")
+          div(class="relative flex-shrink-0")
+            img(id="cli-modal-img" src="/img/avatars/cliente.webp" alt="Cliente" class="w-16 h-16 rounded-full object-cover ring-4 ring-white shadow-md")
+            span(class="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-gh-primary rounded-full flex items-center justify-center border-2 border-white shadow-sm")
+              i(class="fi-rr-check text-white text-[8px] leading-none")
+          div(class="flex-1 min-w-0")
+            p(id="cli-modal-nombre" class="text-xl font-bold text-gray-900 leading-tight truncate") Nuevo cliente
+            p(id="cli-modal-doc-display" class="text-sm text-gray-400 mt-0.5") Completa el formulario
+          button(type="button" class="btn-cerrar-modal-cliente flex-shrink-0 w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-white rounded-xl transition-colors cursor-pointer")
+            i(class="fi-rr-cross-small text-xl")
+
+        div(class="flex gap-1 p-1 bg-white rounded-xl mt-6 border border-gray-100")
+          button(type="button" id="tab-btn-natural" class="cli-tab-btn flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg text-sm font-bold transition-all bg-gh-primary/10 text-gh-primary")
+            i(class="fi-rr-user text-sm")
+            | Persona Natural
+          button(type="button" id="tab-btn-empresa" class="cli-tab-btn flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg text-sm font-bold transition-all text-gray-400 hover:text-gray-600")
+            i(class="fi-rr-building text-sm")
+            | Empresa
+
+      //- ── Cuerpo scrolleable ────────────────────────────────────────────────
+      div(class="overflow-y-auto flex-1 custom-scrollbar px-10 pb-6")
+        input(type="hidden" id="cli-id-hidden" value="")
+
+        //- ── FILA 1: Tipo + Número + [sufijo por tab] ─────────────────────
+        div(class=row + " mt-2")
+
+          //- Tipo de doc. — 15%
+          div(class="flex items-center gap-2 basis-[15%] flex-shrink-0 min-w-0")
+            span(class="text-sm font-medium text-gray-400 whitespace-nowrap flex-shrink-0") Tipo
+            select(id="cli-tipo-doc" name="tipo_documento" class="field-text flex-1 min-w-0")
+              option(value="CC") Cédula de Ciudadanía
+              option(value="CE") Cédula de Extranjería
+              option(value="TI") Tarjeta de Identidad
+              option(value="NIT") NIT
+              option(value="PP") Pasaporte
+              option(value="DE") Doc. Extranjero
+
+          //- Número de doc. — 20%
+          div(class="flex items-center gap-2 basis-[20%] flex-shrink-0 min-w-0")
+            span(class="text-sm font-medium text-gray-400 whitespace-nowrap flex-shrink-0") N.° doc.
+            div(class="relative flex-1 min-w-0")
+              input(id="cli-numero-doc" name="numero_doc" type="text" placeholder="Número de documento..." class="field-text w-full pr-8")
+              div(id="cli-doc-loader" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-gh-primary")
+                i(class="fi-rr-loading animate-spin text-sm")
+
+          //- Natural: Nombres — 60% (flex-1 toma el resto)
+          div(class="tab-natural-content flex items-center gap-3 flex-1 min-w-0")
+            span(class=lbl) Nombres
+            input(id="cli-primer-nombre" name="primer_nombre" type="text" placeholder="Primer nombre" class="field-text flex-1 min-w-0")
+            input(id="cli-segundo-nombre" name="segundo_nombre" type="text" placeholder="Segundo nombre" class="field-text flex-1 min-w-0")
+
+          //- Empresa: Dígito verif. + Razón Social — 60% (flex-1)
+          div(class="tab-empresa-content hidden flex items-center gap-3 flex-1 min-w-0")
+            span(class=lbl) Díg. verif.
+            input(id="cli-digito-verif" name="digito_verif" type="text" maxlength="1" placeholder="0" class="field-text w-14 text-center flex-shrink-0")
+            span(class=lbl) Razón Social
+            input(id="cli-razon-social" name="razon_social" type="text" placeholder="Nombre de la empresa..." class="field-text flex-1 min-w-0")
+
+        //- ── FILA 2 natural: Apellidos + Email + Teléfono ─────────────────
+        div(class="tab-natural-content " + row)
+
+          //- Apellidos — flex-1 (~60%)
+          div(class="flex items-center gap-3 flex-1 min-w-0")
+            span(class=lbl) Apellidos
+            input(id="cli-primer-apellido" name="primer_apellido" type="text" placeholder="Primer apellido" class="field-text flex-1 min-w-0")
+            input(id="cli-segundo-apellido" name="segundo_apellido" type="text" placeholder="Segundo apellido" class="field-text flex-1 min-w-0")
+
+          //- Email — 20%
+          div(class="flex items-center gap-2 basis-[20%] flex-shrink-0 min-w-0")
+            span(class=lbl) Email
+            input(id="cli-email-n" name="email" type="email" placeholder="correo@ejemplo.com" class="field-text flex-1 min-w-0")
+
+          //- Teléfono — 20%
+          div(class="flex items-center gap-2 basis-[20%] flex-shrink-0 min-w-0")
+            span(class=lbl) Teléfono
+            input(id="cli-telefono-n" name="telefono" type="tel" placeholder="3XXXXXXXXX" class="field-text flex-1 min-w-0")
+
+        //- ── FILA 2 empresa: Régimen + Email + Teléfono ───────────────────
+        div(class="tab-empresa-content hidden " + row)
+
+          //- Régimen fiscal — 20%
+          div(class="flex items-center gap-2 basis-[20%] flex-shrink-0 min-w-0")
+            span(class="text-sm font-medium text-gray-400 whitespace-nowrap flex-shrink-0") Régimen
+            select(id="cli-regimen" name="regimen_fiscal" class="field-text flex-1 min-w-0")
+              option(value="48") 48 — Responsable de IVA
+              option(value="49") 49 — No responsable de IVA
+
+          //- Email — 50% (flex-1)
+          div(class="flex items-center gap-2 flex-1 min-w-0")
+            span(class="text-sm font-medium text-gray-400 whitespace-nowrap flex-shrink-0") Email
+            input(id="cli-email-e" name="email_e" type="email" placeholder="correo@empresa.com" class="field-text flex-1 min-w-0")
+
+          //- Teléfono — 30%
+          div(class="flex items-center gap-2 basis-[30%] flex-shrink-0 min-w-0")
+            span(class="text-sm font-medium text-gray-400 whitespace-nowrap flex-shrink-0") Teléfono
+            input(id="cli-telefono-e" name="telefono_e" type="tel" placeholder="3XXXXXXXXX" class="field-text flex-1 min-w-0")
+
+        //- ── FILA 3 empresa: Switches tributarios (4 inline) ──────────────
+        div(class="tab-empresa-content hidden " + row)
+          each item in tribSwitches
+            label(class="flex items-center justify-between gap-3 flex-1 px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 cursor-pointer hover:border-gh-primary/30 transition-colors")
+              span(class="text-sm font-medium text-gray-700 whitespace-nowrap")= item[0]
+              div(class="flex items-center flex-shrink-0")
+                input(type="checkbox" name=item[1] class="sr-only cli-trib-sw")
+                span.switch
+                  span.switch-thumb
+
+        //- ── FILA 4 empresa: CIIU + Desc. + Fecha RUT + RUT ──────────────
+        div(class="tab-empresa-content hidden " + row)
+          span(class=lbl) CIIU
+          input(id="cli-ciiu" name="ciiu" type="text" placeholder="Ej: 4771" class="field-text w-24 flex-shrink-0")
+          span(class=lbl) Descripción
+          input(id="cli-desc-ciiu" name="descripcion_ciiu" type="text" placeholder="Actividad económica" class="field-text flex-1 min-w-0")
+          span(class=lbl) Fecha RUT
+          input(id="cli-fecha-rut" name="fecha_rut" type="date" class="field-text w-32 flex-shrink-0")
+          span(class=lbl) RUT
+          label(for="cli-rut-file" class="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gh-primary transition-colors bg-white flex-shrink-0 h-[38px]")
+            i(class="fi-rr-document text-gray-300")
+            span(class="text-sm text-gray-400") Cargar
+          input(type="file" id="cli-rut-file" name="rut" accept=".pdf,.jpg,.jpeg,.png,.webp" class="hidden")
+          p(id="cli-rut-nombre" class="hidden text-xs font-semibold text-gh-primary truncate max-w-[100px]")
+
+        //- ── UBICACIÓN (siempre visible) ──────────────────────────────────
+        div(class="pt-2")
+          p(class="text-[10px] font-bold text-gh-primary uppercase tracking-widest py-3") Ubicación
+          div(class="flex items-center gap-5 py-3")
+            span(class=lbl) Departamento
+            select(id="cli-departamento" name="idDepartamento" class="field-text w-44 flex-shrink-0")
+              option(value="") Seleccionar...
+              each dpto in departamentos
+                option(value=dpto.id)= dpto.nombre
+            span(class=lbl) Ciudad
+            select(id="cli-municipio" name="idMunicipio" class="field-text flex-1")
+              option(value="") — selecciona un departamento —
+            span(class=lbl) Dirección
+            input(id="cli-direccion" name="direccion" type="text" placeholder="Calle, carrera, manzana..." class="field-text flex-1 min-w-0")
+
+      //- ── Footer ───────────────────────────────────────────────────────────
+      div(class="px-10 py-5 border-t border-gray-100 flex items-center justify-end gap-3 flex-shrink-0")
+        button(type="button" class="btn-cerrar-modal-cliente btn btn-secondary cursor-pointer") Cancelar
+        button(type="button" id="btn-guardar-cliente" class="btn btn-primary cursor-pointer") Guardar Cliente
 
 
 mixin resumenFactura(subtotal, impuestos, descuento)
@@ -121,21 +274,21 @@ mixin resumenFactura(subtotal, impuestos, descuento)
 
     div(class="flex justify-between")
       span(class="text-gray-600 font-medium") Subtotal
-      span(class="font-semibold text-gray-900") $#{subtotal.toFixed(2)}
+      span(id="res-subtotal" class="font-semibold text-gray-900") $#{subtotal.toFixed(0)}
 
     div(class="flex justify-between")
       span(class="text-gray-600 font-medium") Impuestos
-      span(class="font-semibold text-gray-900") $#{impuestos.toFixed(2)}
+      span(id="res-impuestos" class="font-semibold text-gray-900") $#{impuestos.toFixed(0)}
 
     div(class="flex justify-between")
       span(class="text-gray-600 font-medium") Descuento a mayorista
-      span(class="font-semibold text-green-600") -$#{descuento.toFixed(2)}
+      span(id="res-descuento" class="font-semibold text-green-600") -$#{descuento.toFixed(0)}
 
     hr(class="border-gray-200 my-2")
 
     div(class="flex justify-between text-base")
       span(class="font-bold text-gray-900") Total
-      span(class="font-bold text-3xl text-pink-600") $#{total.toFixed(0)}
+      span(id="res-total" class="font-bold text-3xl text-pink-600") $#{total.toFixed(0)}
 
   
 mixin itemCarrito(id, nombre, imagen, talla, color, cantidad, precioUnitario, precioTotal)

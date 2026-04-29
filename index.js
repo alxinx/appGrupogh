@@ -8,6 +8,7 @@ import storeRoutes from "./routes/storeRoutes.js"
 import webRouters from "./routes/webRoutes.js"
 import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
+import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
 
 
 dotenv.config();
@@ -58,3 +59,10 @@ app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS
 app.listen(port, () => {
     console.log(`Servidor corriendo en ${process.env.APP_URL}:${port}`);
 });
+
+// Verificar traslados expirados cada 15 minutos
+const CHECK_INTERVAL_MS = 15 * 60 * 1000;
+setTimeout(async () => {
+    await verificarTrasladosExpirados();
+    setInterval(verificarTrasladosExpirados, CHECK_INTERVAL_MS);
+}, 5000);

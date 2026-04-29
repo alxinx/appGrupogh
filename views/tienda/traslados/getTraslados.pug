@@ -1,17 +1,234 @@
 extends ../../layout/index
 
 block contenedor
-    div(class="flex min-h-screen bg-gray-50 bgbody")
+    //- Banner global de controversias
+    div(
+        id="controversia-banner"
+        class="hidden fixed top-0 left-0 right-0 z-50 bg-red-600 text-white text-center py-2 px-4 text-sm font-bold shadow-lg"
+    )
+        i(class="fi fi-rr-triangle-warning mr-2")
+        span#controversia-texto TIENE 0 CONTROVERSIAS POR RESOLVER
+        a(href="/store/traslados/get" class="ml-4 underline text-white hover:text-red-200") Ver ahora
+
+    div(class="fixed inset-0 flex" style="background:#F4E8FF")
         include ../partials/leftMenu
 
-        div(class="flex-1 flex flex-col")
+        div(class="flex-1 flex flex-col min-w-0")
             include ../../partials/header
-            include ../../components/mixinsPos
-            include ../../components/modals
 
-            main(class="flex-1 overflow-y-auto p-4")
-                //- Definimos el Grid Principal de 12 columnas
-                include ../views/pos 
+            main(class="flex-1 overflow-y-auto p-6 pt-5")
 
-    
-    script(src="js/pos.js") 
+                //- ══ HEADER ═════════════════════════════════════════════════
+                div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 mb-6 flex items-center gap-5 shadow-sm border border-white/60")
+                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-700 flex items-center justify-center flex-shrink-0 shadow-lg shadow-purple-400")
+                        img(src="/img/avatars/traslados.webp" alt="Traslados" class="w-14 h-14 object-contain")
+                    div
+                        h1(class="text-2xl font-bold text-slate-800") Traslados
+                        p(class="text-sm text-slate-400 mt-0.5") Gestión de traslados de mercancía entre tiendas
+                    button#btn-nuevo-traslado(
+                        class="ml-auto btn btn-primary gap-2 rounded-xl shadow cursor-pointer"
+                    )
+                        i(class="fi fi-rr-paper-plane text-sm")
+                        | Nuevo Traslado
+
+                //- ══ GRID DOS COLUMNAS ══════════════════════════════════════
+                div(class="grid grid-cols-1 lg:grid-cols-2 gap-6")
+
+                    //- COLUMNA IZQUIERDA ─ PENDIENTES ───────────────────────
+                    div
+                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                            div(class="flex items-center gap-3 p-5 border-b border-slate-100")
+                                div(class="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600")
+                                    i(class="fi fi-rr-shipping-fast text-base")
+                                div
+                                    h2(class="font-bold text-slate-800 text-base") Traslados Pendientes
+                                    p(class="text-xs text-slate-400") Entrantes y salientes en tránsito
+                                span#badge-pendientes(class="ml-auto bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full") 0
+
+                            div(class="overflow-x-auto")
+                                table(class="w-full text-sm text-left")
+                                    thead
+                                        tr(class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider border-b border-slate-100")
+                                            th(class="px-4 py-3") Código
+                                            th(class="px-4 py-3") Contraparte
+                                            th(class="px-4 py-3") Hora envío
+                                            th(class="px-4 py-3 text-center") Estado
+                                            th(class="px-4 py-3")
+                                    tbody#tabla-pendientes(class="divide-y divide-slate-100")
+                                        tr
+                                            td(colspan="5" class="px-4 py-10 text-center text-slate-400 text-sm")
+                                                i(class="fi fi-rr-spinner animate-spin mr-2")
+                                                | Cargando pendientes...
+
+                    //- COLUMNA DERECHA ─ HISTORIAL ───────────────────────────
+                    div
+                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                            div(class="flex items-center gap-3 p-5 border-b border-slate-100")
+                                div(class="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600")
+                                    i(class="fi fi-rr-book-bookmark text-base")
+                                div
+                                    h2(class="font-bold text-slate-800 text-base") Historial
+                                    p(class="text-xs text-slate-400") Recibidos, controversias y anulados
+
+                            div(class="px-4 pt-4 pb-2")
+                                div(class="relative")
+                                    i(class="fi fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs")
+                                    input(
+                                        id="busqueda-historial"
+                                        type="text"
+                                        placeholder="Buscar por código de traslado..."
+                                        class="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20 transition-all"
+                                    )
+
+                            div(class="overflow-x-auto")
+                                table(class="w-full text-sm text-left")
+                                    thead
+                                        tr(class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider border-b border-slate-100")
+                                            th(class="px-4 py-3") Código
+                                            th(class="px-4 py-3") Contraparte
+                                            th(class="px-4 py-3") Fecha
+                                            th(class="px-4 py-3 text-center") Estado
+                                            th(class="px-4 py-3")
+                                    tbody#tabla-historial(class="divide-y divide-slate-100")
+                                        tr
+                                            td(colspan="4" class="px-4 py-10 text-center text-slate-400 text-sm")
+                                                i(class="fi fi-rr-spinner animate-spin mr-2")
+                                                | Cargando historial...
+
+                            div(class="px-4 py-3 border-t border-slate-100 flex items-center justify-between")
+                                p#resumen-historial(class="text-xs text-slate-400") Cargando...
+                                div#paginacion-historial
+
+    //- ══ MODAL NUEVO TRASLADO ═══════════════════════════════════════════════
+    div(id="modal-nuevo-traslado" class="fixed inset-0 z-50 hidden")
+        div(id="nt-overlay" class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm")
+        div(class="absolute inset-0 flex items-center justify-center p-4")
+            div(class="bg-white w-full rounded-3xl shadow-2xl flex flex-col max-h-[94vh]" style="max-width:700px")
+
+                //- Header modal
+                div(class="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0")
+                    div(class="flex items-center gap-3")
+                        div(class="w-9 h-9 rounded-xl bg-fuchsia-100 flex items-center justify-center text-fuchsia-600")
+                            i(class="fi fi-rr-paper-plane text-base")
+                        h3(class="font-bold text-slate-800 text-lg") Trasladar Mercancía
+                    button#nt-close(class="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer")
+                        i(class="fi fi-rr-cross-small text-2xl")
+
+                //- Body scrollable
+                div(class="flex-1 overflow-y-auto px-6 py-5 space-y-4")
+
+                    //- Tabla de productos
+                    div(class="border border-slate-200 rounded-2xl overflow-hidden")
+                        table(class="w-full text-sm")
+                            thead
+                                tr(class="bg-slate-50 text-xs text-slate-500 uppercase border-b border-slate-200")
+                                    th(class="px-3 py-3 text-left w-36") SKU / Código
+                                    th(class="px-3 py-3 text-left") Producto
+                                    th(class="px-3 py-3 text-center w-28") Unidades
+                                    th(class="px-3 py-3 w-10")
+                            tbody#nt-items(class="divide-y divide-slate-100")
+
+                    //- Botón agregar ítem
+                    button#nt-agregar(
+                        class="w-full btn btn-ghost btn-sm border border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-fuchsia-400 hover:text-fuchsia-600 cursor-pointer"
+                    )
+                        i(class="fi fi-rr-add text-xs mr-2")
+                        | Agregar otro ítem
+
+                    //- Notas
+                    div
+                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Notas
+                        textarea#nt-notas(
+                            rows="2"
+                            placeholder="Observaciones del traslado (opcional)..."
+                            class="textarea textarea-bordered w-full text-sm resize-none rounded-xl"
+                        )
+
+                //- Footer
+                div(class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex-shrink-0 space-y-3")
+                    div(class="grid grid-cols-2 gap-3")
+
+                        //- Código empleado
+                        div
+                            label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Código empleado *
+                            div(class="relative")
+                                input(
+                                    id="nt-codigo-empleado"
+                                    type="text"
+                                    placeholder="Ej: EMP01"
+                                    maxlength="10"
+                                    autocomplete="off"
+                                    class="input input-bordered w-full pl-9 text-sm font-mono uppercase tracking-widest rounded-xl"
+                                )
+                                i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
+                            div#nt-feedback-empleado(class="mt-1 text-xs min-h-[1rem]")
+
+                        //- Destino
+                        div
+                            label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Destino *
+                            select#nt-destino(class="select select-bordered w-full text-sm rounded-xl")
+                                option(value="") Cargando destinos...
+
+                    div(class="flex gap-3")
+                        button#nt-cancelar(class="flex-1 btn btn-ghost rounded-xl cursor-pointer") Cancelar
+                        button#nt-submit(class="flex-1 btn btn-primary rounded-xl cursor-pointer")
+                            i(class="fi fi-rr-paper-plane mr-2")
+                            | Hacer Traslado
+
+    //- ══ LIGHTBOX DETALLE ═══════════════════════════════════════════════════
+    div(id="lightbox-traslado" class="fixed inset-0 z-50 hidden")
+        div(id="lightbox-overlay" class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm")
+        div(class="absolute inset-0 flex items-center justify-center p-4")
+            div(class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[92vh]")
+
+                div(class="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0")
+                    div(class="flex items-center gap-3")
+                        div(class="w-9 h-9 rounded-xl bg-gh-primaryHover/10 flex items-center justify-center text-gh-primaryHover")
+                            i(class="fi fi-rr-box-open-full text-base")
+                        div
+                            h3#lb-titulo(class="font-bold text-slate-800 text-lg") Detalle del Traslado
+                            p#lb-subtitulo(class="text-xs text-slate-400") —
+                    button#lb-close(class="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer")
+                        i(class="fi fi-rr-cross-small text-2xl")
+
+                div(class="flex-1 overflow-y-auto px-6 py-4 space-y-4")
+                    div#lb-info(class="grid grid-cols-2 gap-2 text-sm bg-slate-50 rounded-2xl p-4")
+                    div(class="border border-slate-200 rounded-2xl overflow-hidden")
+                        table(class="w-full text-sm")
+                            thead
+                                tr(class="bg-slate-50 text-xs text-slate-500 uppercase border-b border-slate-200")
+                                    th(class="px-3 py-3 w-8")
+                                    th(class="px-3 py-3 text-left") Producto / Pack
+                                    th(class="px-3 py-3 text-center w-28") Cantidad
+                                    th(class="px-3 py-3 text-center w-8") ✓
+                            tbody#lb-items(class="divide-y divide-slate-100")
+                    div#lb-razones(class="space-y-2")
+
+                div(class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex-shrink-0 space-y-3")
+                    div#lb-footer-form(class="flex gap-3 items-center")
+                        div(class="flex-1 relative")
+                            label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Código empleado que recibe *
+                            div(class="relative")
+                                input(
+                                    id="lb-codigo-empleado"
+                                    type="text"
+                                    placeholder="Ej: 12345"
+                                    maxlength="5"
+                                    autocomplete="off"
+                                    class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20"
+                                )
+                                i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
+                        div(id="lb-feedback-empleado" class="self-end text-xs pb-1")
+                    div(class="flex gap-3")
+                        button#lb-cancelar(class="flex-1 btn btn-secondary py-3 cursor-pointer") Cancelar
+                        button#lb-aceptar(class="flex-1 btn btn-primary py-3 cursor-pointer")
+                            i(class="fi fi-rr-check mr-2")
+                            | Aceptar Traslado
+
+    //- Contenedor de toasts
+    div#toast-container(class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none")
+
+    input#csrf-token(type="hidden" value=csrfToken)
+
+    script(src="/js/storeGlobal.js")
+    script(src="/js/storeTraslados.js")

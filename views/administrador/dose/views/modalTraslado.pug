@@ -20,11 +20,11 @@ div(id="modalTraslado" class="fixed inset-0 z-50 hidden")
                     div(class="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-500 flex-shrink-0")
                         span(class="fi-rr-info")
                     p(class="text-sm text-pink-600 font-medium")
-                        | Has seleccionado 
+                        | Has seleccionado
                         span(id="countPacksSelected" class="font-bold underline") 0
                         |  paquetes para trasladar.
 
-                //- Selection
+                //- Destino
                 div(class="space-y-3")
                     label(class="text-xs font-bold text-slate-400 uppercase tracking-wider block ml-1") Selecciona para donde lo enviarás
                     div(class="relative")
@@ -32,6 +32,31 @@ div(id="modalTraslado" class="fixed inset-0 z-50 hidden")
                             option(value="") Elije una bodega o almacén...
                         span(class="fi-rr-box absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg")
                         span(class="fi-rr-angle-small-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg pointer-events-none")
+
+                //- Empleado responsable
+                div(class="space-y-2")
+                    label(class="text-xs font-bold text-slate-400 uppercase tracking-wider block ml-1") Código del empleado responsable *
+                    div(class="relative")
+                        input(
+                            type="text"
+                            id="codigoEmpleadoDespacha"
+                            placeholder="Ej: 12345"
+                            maxlength="5"
+                            autocomplete="off"
+                            class="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-mono font-medium focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20 transition-all uppercase tracking-widest"
+                        )
+                        span(class="fi-rr-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg")
+                    div(id="feedbackEmpleadoDespacha" class="text-xs ml-2 h-4")
+
+                //- Notas
+                div(class="space-y-2")
+                    label(class="text-xs font-bold text-slate-400 uppercase tracking-wider block ml-1") Notas
+                    textarea(
+                        id="notasTraslado"
+                        placeholder="Observaciones del traslado..."
+                        rows="2"
+                        class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20 transition-all"
+                    )
 
             //- Footer
             div(class="p-8 bg-slate-50/50 flex gap-4")

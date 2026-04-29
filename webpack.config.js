@@ -21,7 +21,10 @@ export default {
         doseView : '/src/js/doseView.js',
         dataEmployee : '/src/js/dataEmployee.js',
         employeeList : '/src/js/employeeList.js',
-        pos : '/src/js/pos.js'
+        pos : '/src/js/pos.js',
+        storeGlobal : '/src/js/storeGlobal.js',
+        storeTraslados : '/src/js/storeTraslados.js',
+        storeInventario : '/src/js/storeInventario.js'
     },
     output: {
         filename: '[name].js',
