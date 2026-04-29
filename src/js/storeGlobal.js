@@ -93,11 +93,38 @@
             }, 60 * 60 * 1000);
         });
 
+        sseSource.addEventListener('traslado_devuelto', (e) => {
+            const { codigo } = JSON.parse(e.data);
+            mostrarBannerDevuelto(codigo);
+        });
+
         sseSource.onerror = () => {
-            // Reconectar tras 5 s
             setTimeout(conectarSSE, 5000);
         };
     };
+
+    // Banner persistente para traslados devueltos por vencimiento
+    const bannerDevuelto = (() => {
+        let codigos = [];
+        const render = () => {
+            let el = document.getElementById('banner-devuelto');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'banner-devuelto';
+                el.className = 'fixed top-0 left-0 right-0 z-50 bg-orange-600 text-white text-center py-2 px-4 text-sm font-bold shadow-lg';
+                document.body.prepend(el);
+            }
+            el.innerHTML = `<i class="fi fi-rr-triangle-warning mr-2"></i>
+                ⚠ TRASLADO${codigos.length > 1 ? 'S' : ''} DEVUELTO${codigos.length > 1 ? 'S' : ''} POR VENCIMIENTO: ${codigos.join(', ')} — La mercancía fue regresada al inventario de origen.
+                <button class="ml-4 underline hover:text-orange-200" onclick="document.getElementById('banner-devuelto').remove()">Entendido</button>`;
+        };
+        return (codigo) => {
+            if (!codigos.includes(codigo)) codigos.push(codigo);
+            render();
+        };
+    })();
+
+    window.mostrarBannerDevuelto = bannerDevuelto;
 
     document.addEventListener('DOMContentLoaded', conectarSSE);
 

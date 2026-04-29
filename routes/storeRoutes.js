@@ -22,7 +22,9 @@ import {
     guardarCliente,
     getEntidadesJSON,
     procesarFactura,
-    getTirillaPDF
+    getTirillaPDF,
+    buscarProductoPorSKU,
+    crearTrasladoSueltos
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
@@ -59,6 +61,7 @@ routes.get('/json/pos/producto/:idProducto', getPosProductoJSON);
 routes.get('/json/clientes/buscar', buscarClientePorDoc);
 routes.get('/json/municipios/:deptoId', getMunicipiosStoreJSON);
 routes.get('/json/entidades', getEntidadesJSON);
+routes.get('/json/traslados/buscar-sku', buscarProductoPorSKU);
 
 // APIs JSON — traslados
 routes.get('/traslados/pendientes', getPendientesJSON);
@@ -72,6 +75,7 @@ routes.get('/inventario/json', getInventarioJSON);
 // Acciones — traslados
 routes.post('/traslados/aceptar', csrfProtection, aceptarTrasladoAPI);
 routes.post('/traslados/resolver', csrfProtection, resolverControversiaAPI);
+routes.post('/traslados/crear', csrfProtection, crearTrasladoSueltos);
 
 // Acciones — inventario
 routes.post('/inventario/desempacar', csrfProtection, desempacarPackAPI);

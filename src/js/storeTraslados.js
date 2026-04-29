@@ -15,6 +15,7 @@
         RECIBIDO:        ['badge-success',  'Recibido'],
         ANULADO:         ['badge-ghost',    'Anulado'],
         EN_CONTROVERSIA: ['badge-error',    'Controversia'],
+        DEVUELTO:        ['badge-ghost',    'Devuelto'],
     };
 
     const estadoBadge = (estado) => {
@@ -50,7 +51,7 @@
         if (!tbody) return;
         try {
             const res = await fetch('/store/traslados/pendientes');
-            const { success, traslados } = await res.json();
+            const { success, traslados, idPdv } = await res.json();
             if (!success) throw new Error();
 
             if (!traslados.length) {
@@ -61,19 +62,29 @@
                 return;
             }
 
-            tbody.innerHTML = traslados.map(t => `
-                <tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-4 py-3 font-mono font-bold text-slate-700 text-xs">${t.codigoTraslado}</td>
-                    <td class="px-4 py-3 text-slate-500 text-xs">${origenLabel(t)}</td>
-                    <td class="px-4 py-3 text-slate-500 text-xs">${fmtHora(t.fechaEnvio)}</td>
-                    <td class="px-4 py-3 text-center">${estadoBadge(t.estado)}</td>
-                    <td class="px-4 py-3 text-right">
-                        <button class="btn btn-xs btn-primary cursor-pointer"
+            tbody.innerHTML = traslados.map(t => {
+                const soyDestino = t.idDestino === idPdv;
+                const contraparte = soyDestino
+                    ? (t.origen?.nombreComercial || origenLabel(t))
+                    : (t.destino?.nombreComercial || t.idDestino);
+                const dirTag = soyDestino
+                    ? `<span class="badge badge-info badge-xs">Entrante</span>`
+                    : `<span class="badge badge-ghost badge-xs">Enviado</span>`;
+                const accion = soyDestino
+                    ? `<button class="btn btn-xs btn-primary cursor-pointer"
                             onclick="window._abrirLightbox('${t.idTraslado}')">
                             <i class="fi fi-rr-box-open-full text-xs mr-1"></i>Recibir
-                        </button>
-                    </td>
-                </tr>`).join('');
+                        </button>`
+                    : `<span class="text-xs text-slate-400">En tránsito</span>`;
+                return `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-4 py-3 font-mono font-bold text-slate-700 text-xs">${t.codigoTraslado}</td>
+                    <td class="px-4 py-3 text-slate-500 text-xs">${contraparte} ${dirTag}</td>
+                    <td class="px-4 py-3 text-slate-500 text-xs">${fmtHora(t.fechaEnvio)}</td>
+                    <td class="px-4 py-3 text-center">${estadoBadge(t.estado)}</td>
+                    <td class="px-4 py-3 text-right">${accion}</td>
+                </tr>`;
+            }).join('');
         } catch {
             tbody.innerHTML = `<tr>
                 <td colspan="5" class="px-4 py-10 text-center text-red-400 text-sm">Error al cargar pendientes</td>
@@ -97,7 +108,8 @@
             const data = await res.json();
             if (!data.success) throw new Error();
 
-            const { traslados, totalPaginas, paginaActual, total } = data;
+            const { traslados, totalPaginas, paginaActual, total, idPdv: myPdv } = data;
+            data.idPdv = myPdv;
 
             if (!traslados.length) {
                 tbody.innerHTML = `<tr>
@@ -110,9 +122,23 @@
 
             tbody.innerHTML = traslados.map(t => {
                 const esControversia = t.estado === 'EN_CONTROVERSIA';
+                const esDevuelto     = t.estado === 'DEVUELTO';
+                const soyDestino     = t.idDestino === data.idPdv;
+                const contraparte    = soyDestino
+                    ? (t.origen?.nombreComercial  || t.idOrigen)
+                    : (t.destino?.nombreComercial || t.idDestino);
+                const dirTag = soyDestino
+                    ? `<span class="badge badge-info badge-xs ml-1">Recibido</span>`
+                    : `<span class="badge badge-ghost badge-xs ml-1">Enviado</span>`;
+                const rowCls = esControversia
+                    ? 'bg-red-50 border-l-2 border-red-400'
+                    : esDevuelto
+                        ? 'bg-orange-50 border-l-2 border-orange-400'
+                        : 'hover:bg-slate-50';
                 return `
-                <tr class="${esControversia ? 'bg-red-50 border-l-2 border-red-400' : 'hover:bg-slate-50'} transition-colors">
+                <tr class="${rowCls} transition-colors">
                     <td class="px-4 py-3 font-mono font-bold text-slate-700 text-xs">${t.codigoTraslado}</td>
+                    <td class="px-4 py-3 text-slate-500 text-xs">${contraparte}${dirTag}</td>
                     <td class="px-4 py-3 text-slate-500 text-xs">${fmtFecha(t.fechaEnvio)}</td>
                     <td class="px-4 py-3 text-center">${estadoBadge(t.estado)}</td>
                     <td class="px-4 py-3 text-right flex gap-1 justify-end">
@@ -245,6 +271,8 @@
                 const esControversia = item.estado === 'CONTROVERSIA';
                 const deshabilitado  = !esPendiente ? 'disabled' : '';
                 const checkDefault   = (esPendiente || yaRecibido) ? 'checked' : '';
+                // When showing a controversy item to origin, work with the disputed quantity
+                const cantMostrar    = esControversia ? (item.cantidadControversia ?? item.cantidad) : item.cantidad;
 
                 let iconHtml;
                 if (esControvTras && esControversia) {
@@ -268,7 +296,8 @@
                     data-index="${i}"
                     data-id="${item.idDetalleTraslado}"
                     data-pack="${item.idPack || ''}"
-                    data-cantidad="${item.cantidad}">
+                    data-producto="${item.idProducto || ''}"
+                    data-cantidad="${cantMostrar}">
                     <td class="px-3 py-2.5">
                         <input type="checkbox" class="item-check checkbox checkbox-sm checkbox-primary"
                             data-index="${i}" ${checkDefault} ${deshabilitado} />
@@ -276,13 +305,14 @@
                     <td class="px-3 py-2.5">
                         <div class="text-sm text-slate-700">${nombre}</div>
                         ${detalle ? `<div class="text-xs text-slate-400 mt-0.5">${detalle}</div>` : ''}
+                        ${esControversia ? `<div class="text-xs text-orange-500 font-medium mt-0.5">En controversia: ${cantMostrar} uds.</div>` : ''}
                     </td>
                     <td class="px-3 py-2.5 text-center">
                         <input type="number"
                             class="item-qty input input-xs w-20 text-center font-mono"
-                            value="${item.cantidad}"
-                            min="0" max="${item.cantidad}"
-                            data-original="${item.cantidad}"
+                            value="${cantMostrar}"
+                            min="0" max="${cantMostrar}"
+                            data-original="${cantMostrar}"
                             data-index="${i}"
                             readonly ${deshabilitado}
                             title="Doble clic para editar" />
@@ -489,6 +519,7 @@
             const idx               = row.dataset.index;
             const idDetalleTraslado = parseInt(row.dataset.id);
             const idPack            = row.dataset.pack || null;
+            const idProducto        = row.dataset.producto || null;
             const cantidadOriginal  = parseInt(row.dataset.cantidad);
             const chk               = row.querySelector('.item-check');
             const qty               = row.querySelector('.item-qty');
@@ -498,7 +529,7 @@
             const cantidadAceptada  = parseInt(qty?.value ?? cantidadOriginal);
             const razon             = razonEl?.value?.trim() || '';
 
-            items.push({ idDetalleTraslado, idPack, cantidadOriginal, cantidadAceptada, aceptado, razon });
+            items.push({ idDetalleTraslado, idPack, idProducto, cantidadOriginal, cantidadAceptada, aceptado, razon });
         });
 
         // Validar que los ítems con incidencia tengan razón
@@ -610,5 +641,272 @@
         loadPendientes();
         loadHistorial();
     });
+
+    // ─── NUEVO TRASLADO ───────────────────────────────────────────────────────
+    (() => {
+        const modal      = document.getElementById('modal-nuevo-traslado');
+        const overlay    = document.getElementById('nt-overlay');
+        const btnAbrir   = document.getElementById('btn-nuevo-traslado');
+        const btnClose   = document.getElementById('nt-close');
+        const btnCancelar= document.getElementById('nt-cancelar');
+        const btnSubmit  = document.getElementById('nt-submit');
+        const btnAgregar = document.getElementById('nt-agregar');
+        const tbodyItems = document.getElementById('nt-items');
+        const inputEmp   = document.getElementById('nt-codigo-empleado');
+        const feedbackEmp= document.getElementById('nt-feedback-empleado');
+        const selectDest = document.getElementById('nt-destino');
+        const txtNotas   = document.getElementById('nt-notas');
+
+        if (!modal) return;
+
+        let ntItems    = [];   // [{ id, idProducto, sku, nombreProducto, stockDisponible, cantidad }]
+        let ntEmpleado = null;
+        let ntEmpTimer = null;
+        let ntRowId    = 0;
+
+        // ── Abrir / cerrar ───────────────────────────────────────────────────
+        const abrir = async () => {
+            ntItems    = [];
+            ntEmpleado = null;
+            ntRowId    = 0;
+            if (inputEmp)  inputEmp.value  = '';
+            if (feedbackEmp) feedbackEmp.innerHTML = '';
+            if (txtNotas) txtNotas.value = '';
+            tbodyItems.innerHTML = '';
+            agregarFila();
+
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+
+            try {
+                const r = await fetch('/store/json/destinos');
+                const destinos = await r.json();
+                selectDest.innerHTML = `<option value="">— Selecciona destino —</option>` +
+                    destinos.map(d => `<option value="${d.idPuntoDeVenta}">${d.nombreComercial} (${d.tipo})</option>`).join('');
+            } catch {
+                selectDest.innerHTML = `<option value="">Error al cargar destinos</option>`;
+            }
+        };
+
+        const cerrar = () => {
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+        };
+
+        btnAbrir?.addEventListener('click', abrir);
+        btnClose?.addEventListener('click', cerrar);
+        btnCancelar?.addEventListener('click', cerrar);
+        overlay?.addEventListener('click', cerrar);
+
+        // ── Filas de ítems ───────────────────────────────────────────────────
+        const agregarFila = () => {
+            const id = ntRowId++;
+            ntItems.push({ id, idProducto: null, sku: '', nombreProducto: '', stockDisponible: 0, cantidad: 1 });
+
+            const tr = document.createElement('tr');
+            tr.id = `nt-row-${id}`;
+            tr.className = 'align-top';
+            tr.innerHTML = `
+                <td class="px-3 py-2.5">
+                    <input type="text"
+                        class="input input-bordered input-sm w-full font-mono uppercase tracking-widest rounded-lg nt-sku"
+                        placeholder="SKU..."
+                        data-rowid="${id}"
+                        autocomplete="off" />
+                    <div class="nt-sku-feedback text-xs mt-0.5 min-h-[1rem]"></div>
+                </td>
+                <td class="px-3 py-2.5">
+                    <span class="nt-nombre text-xs text-slate-400 italic">Busca el SKU →</span>
+                </td>
+                <td class="px-3 py-2.5 text-center">
+                    <input type="number"
+                        class="input input-bordered input-sm w-20 text-center font-mono rounded-lg nt-qty"
+                        value="1" min="1" max="9999"
+                        data-rowid="${id}"
+                        disabled />
+                </td>
+                <td class="px-3 py-2.5 text-center">
+                    <button class="btn btn-ghost btn-xs text-red-400 hover:text-red-600 cursor-pointer nt-remove"
+                        data-rowid="${id}" title="Eliminar fila">
+                        <i class="fi fi-rr-trash text-xs"></i>
+                    </button>
+                </td>`;
+            tbodyItems.appendChild(tr);
+
+            // SKU lookup
+            const skuInput = tr.querySelector('.nt-sku');
+            const feedback = tr.querySelector('.nt-sku-feedback');
+            const nombreEl = tr.querySelector('.nt-nombre');
+            const qtyInput = tr.querySelector('.nt-qty');
+            let skuTimer;
+
+            skuInput.addEventListener('input', () => {
+                clearTimeout(skuTimer);
+                const val = skuInput.value.trim();
+                if (!val) {
+                    feedback.innerHTML = '';
+                    nombreEl.innerHTML = `<span class="text-slate-400 italic">Busca el SKU →</span>`;
+                    qtyInput.disabled = true;
+                    qtyInput.max = 9999;
+                    const item = ntItems.find(i => i.id === id);
+                    if (item) { item.idProducto = null; item.stockDisponible = 0; }
+                    return;
+                }
+                feedback.innerHTML = `<span class="text-slate-400"><i class="fi fi-rr-spinner animate-spin mr-1"></i>Buscando...</span>`;
+                skuTimer = setTimeout(async () => {
+                    try {
+                        const r = await fetch(`/store/json/traslados/buscar-sku?sku=${encodeURIComponent(val.toUpperCase())}`);
+                        const d = await r.json();
+                        if (d.success) {
+                            // Deduplicar: si ya existe este SKU en otra fila, rechazar
+                            const duplicado = ntItems.find(i => i.id !== id && i.sku === d.sku);
+                            if (duplicado) {
+                                feedback.innerHTML = `<span class="text-orange-500 text-xs">SKU ya está en otra fila — edita esa cantidad</span>`;
+                                nombreEl.innerHTML = `<span class="text-slate-400 italic text-xs">Duplicado</span>`;
+                                qtyInput.disabled = true;
+                                const item = ntItems.find(i => i.id === id);
+                                if (item) item.idProducto = null;
+                                return;
+                            }
+
+                            // Calcular stock restante (descontar lo ya asignado en otras filas del mismo producto)
+                            const yaAsignado = ntItems
+                                .filter(i => i.id !== id && i.idProducto === d.idProducto)
+                                .reduce((s, i) => s + i.cantidad, 0);
+                            const stockRestante = d.stockDisponible - yaAsignado;
+
+                            const item = ntItems.find(i => i.id === id);
+                            if (item) {
+                                item.idProducto     = d.idProducto;
+                                item.sku            = d.sku;
+                                item.nombreProducto = d.nombreProducto;
+                                item.stockDisponible= d.stockDisponible;
+                            }
+                            nombreEl.innerHTML = `<span class="text-slate-700 font-medium text-xs">${d.nombreProducto}</span>`;
+                            qtyInput.max = stockRestante;
+                            if (stockRestante <= 0) {
+                                feedback.innerHTML = `<span class="text-red-500 text-xs">Sin stock disponible</span>`;
+                                qtyInput.disabled = true;
+                            } else {
+                                feedback.innerHTML = `<span class="text-emerald-600 text-xs">Disponible: ${stockRestante}</span>`;
+                                qtyInput.disabled = false;
+                                qtyInput.value = Math.min(parseInt(qtyInput.value) || 1, stockRestante);
+                            }
+                        } else {
+                            nombreEl.innerHTML = `<span class="text-red-400 italic text-xs">No encontrado</span>`;
+                            feedback.innerHTML = `<span class="text-red-400 text-xs">${d.mensaje || 'SKU no existe'}</span>`;
+                            qtyInput.disabled = true;
+                            const item = ntItems.find(i => i.id === id);
+                            if (item) item.idProducto = null;
+                        }
+                    } catch {
+                        feedback.innerHTML = `<span class="text-red-400 text-xs">Error de conexión</span>`;
+                    }
+                }, 500);
+            });
+
+            // qty change → actualizar ntItems
+            qtyInput.addEventListener('change', () => {
+                const max = parseInt(qtyInput.max) || 9999;
+                let val = parseInt(qtyInput.value) || 1;
+                if (val < 1) val = 1;
+                if (val > max) val = max;
+                qtyInput.value = val;
+                const item = ntItems.find(i => i.id === id);
+                if (item) item.cantidad = val;
+            });
+
+            // remove row
+            tr.querySelector('.nt-remove').addEventListener('click', () => {
+                ntItems = ntItems.filter(i => i.id !== id);
+                tr.remove();
+            });
+        };
+
+        btnAgregar?.addEventListener('click', agregarFila);
+
+        // ── Validación empleado ──────────────────────────────────────────────
+        inputEmp?.addEventListener('input', () => {
+            clearTimeout(ntEmpTimer);
+            ntEmpleado = null;
+            const code = inputEmp.value.trim();
+            if (!code) { feedbackEmp.innerHTML = ''; return; }
+            feedbackEmp.innerHTML = `<span class="text-slate-400"><i class="fi fi-rr-spinner animate-spin mr-1"></i>Buscando...</span>`;
+            ntEmpTimer = setTimeout(async () => {
+                try {
+                    const r = await fetch(`/store/json/personal/codigo/${encodeURIComponent(code.toUpperCase())}`);
+                    const d = await r.json();
+                    if (d.success) {
+                        ntEmpleado = { idEmpleado: d.idEmpleado, nombre: d.nombre };
+                        feedbackEmp.innerHTML = `<span class="text-emerald-600 font-semibold"><i class="fi fi-rr-check mr-1"></i>${d.nombre}</span>`;
+                    } else {
+                        feedbackEmp.innerHTML = `<span class="text-red-500"><i class="fi fi-rr-cross-circle mr-1"></i>No encontrado</span>`;
+                    }
+                } catch {
+                    feedbackEmp.innerHTML = `<span class="text-red-400">Error al buscar</span>`;
+                }
+            }, 500);
+        });
+
+        // ── Submit ───────────────────────────────────────────────────────────
+        btnSubmit?.addEventListener('click', async () => {
+            const idDestino = selectDest?.value;
+            if (!idDestino) {
+                window.showToast?.('Selecciona un destino.', 'warning'); return;
+            }
+            if (!ntEmpleado) {
+                window.showToast?.('Ingresa un código de empleado válido.', 'warning');
+                inputEmp?.focus(); return;
+            }
+
+            // Leer cantidades actuales del DOM antes de validar
+            tbodyItems.querySelectorAll('tr').forEach(tr => {
+                const rowId  = parseInt(tr.id.replace('nt-row-', ''));
+                const qtyEl  = tr.querySelector('.nt-qty');
+                const item   = ntItems.find(i => i.id === rowId);
+                if (item && qtyEl) item.cantidad = parseInt(qtyEl.value) || 1;
+            });
+
+            const validos = ntItems.filter(i => i.idProducto && i.cantidad > 0);
+            if (!validos.length) {
+                window.showToast?.('Agrega al menos un producto con SKU válido.', 'warning'); return;
+            }
+            const sinStock = validos.filter(i => i.cantidad > i.stockDisponible);
+            if (sinStock.length) {
+                window.showToast?.(`Cantidad supera el stock disponible en: ${sinStock.map(i => i.sku).join(', ')}`, 'warning'); return;
+            }
+
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = '<i class="fi fi-rr-spinner animate-spin mr-2"></i>Procesando...';
+
+            try {
+                const r = await fetch('/store/traslados/crear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({
+                        items:          validos.map(i => ({ idProducto: i.idProducto, sku: i.sku, cantidad: i.cantidad })),
+                        idDestino,
+                        codigoEmpleado: inputEmp.value.trim().toUpperCase(),
+                        notas:          txtNotas?.value.trim() || null
+                    })
+                });
+                const data = await r.json();
+
+                if (data.success) {
+                    cerrar();
+                    await loadHistorial();
+                    window.open(`/store/traslados/comprobante/${data.idTraslado}`, '_blank');
+                } else {
+                    window.showToast?.(data.mensaje || 'Error al crear el traslado.', 'error');
+                    btnSubmit.disabled = false;
+                    btnSubmit.innerHTML = '<i class="fi fi-rr-paper-plane mr-2"></i>Hacer Traslado';
+                }
+            } catch {
+                window.showToast?.('Error de conexión.', 'error');
+                btnSubmit.disabled = false;
+                btnSubmit.innerHTML = '<i class="fi fi-rr-paper-plane mr-2"></i>Hacer Traslado';
+            }
+        });
+    })();
 
 })();

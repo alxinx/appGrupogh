@@ -115,14 +115,17 @@ const getPendientesJSON = async (req, res) => {
 
     try {
         const traslados = await Traslados.findAll({
-            where: { idDestino: idPdv, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } },
+            where: {
+                [Op.or]: [{ idDestino: idPdv }, { idOrigen: idPdv }],
+                estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] }
+            },
             include: [
                 { model: PuntosDeVenta, as: 'origen',  attributes: ['nombreComercial'], required: false },
                 { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'], required: false },
             ],
             order: [['fechaEnvio', 'DESC']]
         });
-        return res.json({ success: true, traslados });
+        return res.json({ success: true, traslados, idPdv });
     } catch (e) {
         console.error(e);
         return res.status(500).json({ success: false });
@@ -139,8 +142,8 @@ const getHistorialJSON = async (req, res) => {
 
     try {
         let where = {
-            idDestino: idPdv,
-            estado: { [Op.in]: ['RECIBIDO', 'EN_CONTROVERSIA', 'ANULADO'] }
+            [Op.or]: [{ idDestino: idPdv }, { idOrigen: idPdv }],
+            estado: { [Op.in]: ['RECIBIDO', 'EN_CONTROVERSIA', 'ANULADO', 'DEVUELTO'] }
         };
         if (busqueda.trim()) {
             where.codigoTraslado = { [Op.like]: `%${busqueda.trim()}%` };
@@ -149,7 +152,8 @@ const getHistorialJSON = async (req, res) => {
         const { count, rows } = await Traslados.findAndCountAll({
             where,
             include: [
-                { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] },
+                { model: PuntosDeVenta, as: 'origen',  attributes: ['nombreComercial'], required: false },
+                { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'], required: false },
             ],
             order: [
                 [db.literal("CASE WHEN estado = 'EN_CONTROVERSIA' THEN 0 ELSE 1 END"), 'ASC'],
@@ -163,6 +167,7 @@ const getHistorialJSON = async (req, res) => {
         return res.json({
             success: true,
             traslados: rows,
+            idPdv,
             totalPaginas: Math.ceil(count / limite),
             paginaActual: parseInt(pagina),
             total: count
@@ -258,8 +263,10 @@ const aceptarTrasladoAPI = async (req, res) => {
             const aceptado     = item.aceptado && cantAceptada === cantOriginal;
 
             // Actualizar estado del detalle
+            const updateDetalle = { estado: aceptado ? 'RECIBIDO' : 'CONTROVERSIA' };
+            if (!aceptado) updateDetalle.cantidadControversia = cantOriginal - cantAceptada;
             await DetalleTraslados.update(
-                { estado: aceptado ? 'RECIBIDO' : 'CONTROVERSIA' },
+                updateDetalle,
                 { where: { idDetalleTraslado: item.idDetalleTraslado }, transaction: t }
             );
 
@@ -276,7 +283,7 @@ const aceptarTrasladoAPI = async (req, res) => {
                 }, { transaction: t });
             }
 
-            // Un registro de stock por pack completo (el pack queda intacto)
+            // Crear stock en destino
             if (item.idPack && cantAceptada > 0) {
                 const detallesPack = await DetallesPack.findAll({
                     where: { idPack: item.idPack },
@@ -293,6 +300,21 @@ const aceptarTrasladoAPI = async (req, res) => {
                     cantidadOriginal:  cantAceptada,
                     valorUnidad:  valorPack,
                     estadoInterno: 'CERRADO'
+                }, { transaction: t });
+            } else if (!item.idPack && item.idProducto && cantAceptada > 0) {
+                const stockRef = await Stock.findOne({
+                    where: { idProducto: item.idProducto },
+                    order: [['createdAt', 'DESC']],
+                    transaction: t
+                });
+                await Stock.create({
+                    idPuntoVenta:      traslado.idDestino,
+                    idPack:            null,
+                    idProducto:        item.idProducto,
+                    cantidadExistente: cantAceptada,
+                    cantidadOriginal:  cantAceptada,
+                    valorUnidad:       stockRef?.valorUnidad || 0,
+                    estadoInterno:     'SUELTO'
                 }, { transaction: t });
             }
         }
@@ -576,10 +598,12 @@ const resolverControversiaAPI = async (req, res) => {
             const detalle = await DetalleTraslados.findByPk(item.idDetalleTraslado, { transaction: t });
             if (!detalle) continue;
 
+            // Cantidad real en controversia (puede ser menor que la original)
+            const cantControversia = detalle.cantidadControversia ?? detalle.cantidad;
+
             if (item.resolucion === 'RECIBIDO') {
                 await detalle.update({ estado: 'RECIBIDO' }, { transaction: t });
 
-                // Crear stock pack-nivel si tiene pack
                 if (item.idPack) {
                     const detallesPack = await DetallesPack.findAll({
                         where: { idPack: item.idPack },
@@ -592,10 +616,25 @@ const resolverControversiaAPI = async (req, res) => {
                         idPuntoVenta:      traslado.idDestino,
                         idPack:            item.idPack,
                         idProducto:        null,
-                        cantidadExistente: detalle.cantidad,
-                        cantidadOriginal:  detalle.cantidad,
+                        cantidadExistente: cantControversia,
+                        cantidadOriginal:  cantControversia,
                         valorUnidad:       valorPack,
                         estadoInterno:     'CERRADO'
+                    }, { transaction: t });
+                } else if (detalle.idProducto) {
+                    const stockRef = await Stock.findOne({
+                        where: { idProducto: detalle.idProducto },
+                        order: [['createdAt', 'DESC']],
+                        transaction: t
+                    });
+                    await Stock.create({
+                        idPuntoVenta:      traslado.idDestino,
+                        idPack:            null,
+                        idProducto:        detalle.idProducto,
+                        cantidadExistente: cantControversia,
+                        cantidadOriginal:  cantControversia,
+                        valorUnidad:       stockRef?.valorUnidad || 0,
+                        estadoInterno:     'SUELTO'
                     }, { transaction: t });
                 }
             } else if (item.resolucion === 'ANULADO') {
@@ -613,7 +652,7 @@ const resolverControversiaAPI = async (req, res) => {
                     idDetalleTraslado: item.idDetalleTraslado,
                     idEmpleado:        empleado.idEmpleado,
                     razonInsidencia:   `TRASLADO ANULADO POR ${nombreEmpleado}`,
-                    cantidadOriginal:  detalle.cantidad,
+                    cantidadOriginal:  cantControversia,
                     cantidadAceptada:  0,
                     resuelta:          'si'
                 }, { transaction: t });
@@ -1440,6 +1479,189 @@ const getTirillaPDF = async (req, res) => {
     }
 };
 
+// ─── BUSCAR PRODUCTO POR SKU (nuevo traslado) ────────────────────────────────
+const buscarProductoPorSKU = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    const { sku } = req.query;
+    if (!sku) return res.json({ success: false });
+    try {
+        const producto = await Productos.findOne({
+            where: { sku: sku.trim().toUpperCase() },
+            attributes: ['idProducto', 'nombreProducto', 'sku']
+        });
+        if (!producto) return res.json({ success: false, mensaje: 'Producto no encontrado.' });
+
+        const stockRows = await Stock.findAll({
+            where: { idProducto: producto.idProducto, idPuntoVenta: idPdv }
+        });
+        const stockDisponible = stockRows.reduce((sum, s) => sum + parseFloat(s.cantidadExistente || 0), 0);
+
+        return res.json({
+            success: true,
+            idProducto:      producto.idProducto,
+            nombreProducto:  producto.nombreProducto,
+            sku:             producto.sku,
+            stockDisponible
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── CREAR TRASLADO DE UNIDADES SUELTAS ──────────────────────────────────────
+const crearTrasladoSueltos = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    const { items, idDestino, codigoEmpleado, notas } = req.body;
+
+    if (!idDestino || !codigoEmpleado || !Array.isArray(items) || !items.length) {
+        return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
+    }
+
+    const empleado = await Empleados.findOne({
+        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
+        attributes: ['idEmpleado']
+    });
+    if (!empleado) return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
+
+    const t = await db.transaction();
+    try {
+        for (const item of items) {
+            const cantSolicitada = parseInt(item.cantidad);
+            if (!item.idProducto || cantSolicitada <= 0) {
+                await t.rollback();
+                return res.status(400).json({ success: false, mensaje: 'Ítem inválido.' });
+            }
+
+            const stockRows = await Stock.findAll({
+                where: { idProducto: item.idProducto, idPuntoVenta: idPdv, cantidadExistente: { [Op.gt]: 0 } },
+                order: [['createdAt', 'ASC']],
+                lock: t.LOCK.UPDATE,
+                transaction: t
+            });
+
+            const totalDisponible = stockRows.reduce((sum, s) => sum + parseFloat(s.cantidadExistente), 0);
+            if (totalDisponible < cantSolicitada) {
+                await t.rollback();
+                return res.status(400).json({
+                    success: false,
+                    mensaje: `Stock insuficiente para SKU ${item.sku || item.idProducto}. Disponible: ${totalDisponible}, solicitado: ${cantSolicitada}.`
+                });
+            }
+
+            let restante = cantSolicitada;
+            for (const row of stockRows) {
+                if (restante <= 0) break;
+                const disponible = parseFloat(row.cantidadExistente);
+                if (disponible <= restante) {
+                    await row.update({ cantidadExistente: 0 }, { transaction: t });
+                    restante -= disponible;
+                } else {
+                    await row.update({ cantidadExistente: disponible - restante }, { transaction: t });
+                    restante = 0;
+                }
+            }
+        }
+
+        const ultimoTraslado = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction: t });
+        const nroSiguiente   = ultimoTraslado ? parseInt(ultimoTraslado.codigoTraslado.split('-')[1]) + 1 : 1000;
+        const nuevoCodigo    = `TR-${nroSiguiente}`;
+
+        const traslado = await Traslados.create({
+            codigoTraslado:    nuevoCodigo,
+            idOrigen:          idPdv,
+            idDestino,
+            idUsuarioDespacha: empleado.idEmpleado,
+            notas:             notas || null,
+            estado:            'EN_TRANSITO'
+        }, { transaction: t });
+
+        for (const item of items) {
+            await DetalleTraslados.create({
+                idTraslado: traslado.idTraslado,
+                idPack:     null,
+                idProducto: item.idProducto,
+                cantidad:   parseInt(item.cantidad)
+            }, { transaction: t });
+        }
+
+        await t.commit();
+
+        const pendientes = await Traslados.count({
+            where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
+        });
+        broadcast(idDestino, 'new_traslado', { codigo: nuevoCodigo, pendientes });
+        broadcast(idDestino, 'state', { pendientes });
+
+        return res.json({ success: true, idTraslado: traslado.idTraslado, codigo: nuevoCodigo });
+    } catch (e) {
+        await t.rollback();
+        console.error('crearTrasladoSueltos:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
+    }
+};
+
+// ─── VERIFICAR TRASLADOS EXPIRADOS (llamado periódicamente) ──────────────────
+const verificarTrasladosExpirados = async () => {
+    try {
+        const maxHours = parseInt(process.env.MAX_TRANSFER_HOURS) || 24;
+        const corte    = new Date(Date.now() - maxHours * 60 * 60 * 1000);
+
+        const expirados = await Traslados.findAll({
+            where: {
+                estado:     { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] },
+                fechaEnvio: { [Op.lt]: corte }
+            },
+            include: [{ model: DetalleTraslados, as: 'items' }]
+        });
+
+        for (const traslado of expirados) {
+            const t = await db.transaction();
+            try {
+                for (const detalle of traslado.items) {
+                    if (detalle.idPack) {
+                        await Stock.update(
+                            { cantidadExistente: db.literal('cantidadOriginal'), estadoInterno: 'CERRADO' },
+                            { where: { idPack: detalle.idPack, idPuntoVenta: traslado.idOrigen }, transaction: t }
+                        );
+                        await Pack.update(
+                            { estado: 'EMPACADO' },
+                            { where: { idPack: detalle.idPack }, transaction: t }
+                        );
+                    } else if (detalle.idProducto) {
+                        const stockRef = await Stock.findOne({
+                            where: { idProducto: detalle.idProducto },
+                            order: [['createdAt', 'DESC']],
+                            transaction: t
+                        });
+                        await Stock.create({
+                            idPuntoVenta:      traslado.idOrigen,
+                            idPack:            null,
+                            idProducto:        detalle.idProducto,
+                            cantidadExistente: detalle.cantidad,
+                            cantidadOriginal:  detalle.cantidad,
+                            valorUnidad:       stockRef?.valorUnidad || 0,
+                            estadoInterno:     'SUELTO'
+                        }, { transaction: t });
+                    }
+                }
+
+                await traslado.update({ estado: 'DEVUELTO' }, { transaction: t });
+                await t.commit();
+
+                broadcast(traslado.idOrigen, 'traslado_devuelto', {
+                    idTraslado:  traslado.idTraslado,
+                    codigo:      traslado.codigoTraslado
+                });
+            } catch (e) {
+                await t.rollback();
+                console.error('verificarTrasladosExpirados traslado', traslado.idTraslado, e);
+            }
+        }
+    } catch (e) {
+        console.error('verificarTrasladosExpirados:', e);
+    }
+};
+
 export {
     dashboardStores,
     getTraslados,
@@ -1462,5 +1684,8 @@ export {
     guardarCliente,
     getEntidadesJSON,
     procesarFactura,
-    getTirillaPDF
+    getTirillaPDF,
+    buscarProductoPorSKU,
+    crearTrasladoSueltos,
+    verificarTrasladosExpirados
 };

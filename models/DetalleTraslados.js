@@ -25,6 +25,11 @@ const DetalleTraslados = db.define('DETALLE_TRASLADOS', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
+    cantidadControversia: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: null
+    },
     estado: {
         type: DataTypes.ENUM('PENDIENTE', 'RECIBIDO', 'CONTROVERSIA'),
         defaultValue: 'PENDIENTE'
