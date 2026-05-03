@@ -3,8 +3,22 @@
     // ─── BUSCADOR POS ─────────────────────────────────────────────────────────
     const inputCodigo    = document.getElementById('codigo');
     const catalogoPos    = document.getElementById('catalogo-pos');
+    const posEscena      = document.getElementById('pos-escena');
     const autoAddToggle  = document.getElementById('auto-add-toggle');
     let   buscarTimer    = null;
+
+    const setEscena = (visible) => {
+        if (!posEscena) return;
+        if (visible) {
+            posEscena.style.opacity  = '1';
+            posEscena.style.height   = '';
+            posEscena.style.overflow = '';
+        } else {
+            posEscena.style.opacity  = '0';
+            posEscena.style.height   = '0';
+            posEscena.style.overflow = 'hidden';
+        }
+    };
 
     // Productos actualmente visibles en pantalla (lookup para carrito)
     const productosEnPantalla = new Map();
@@ -77,6 +91,7 @@
 
     const buscarProductos = async (q) => {
         if (!catalogoPos) return;
+        setEscena(false);
         catalogoPos.innerHTML = `
             <div class="col-span-3 flex items-center justify-center py-12 text-gray-400">
                 <i class="fi fi-rr-spinner animate-spin text-2xl mr-3"></i>
@@ -112,6 +127,7 @@
             }
 
             catalogoPos.innerHTML = data.productos.map(renderTarjetaProducto).join('');
+            setEscena(false);
             animarTarjetas();
             bindDragEnCatalogo();
         } catch {
@@ -123,6 +139,7 @@
     const limpiarCatalogo = () => {
         productosEnPantalla.clear();
         if (catalogoPos) catalogoPos.innerHTML = '';
+        setEscena(true);
     };
 
     if (inputCodigo) {
