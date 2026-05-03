@@ -3,7 +3,9 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU } from "../controller/adminControllers.js"
+checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
+adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON } from "../controller/adminControllers.js"
+import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
@@ -89,12 +91,11 @@ routes.post('/provedores/new',
 
 
 //Ruta para la dosificacion
-
 routes.get('/dosificaciones/', homeDose); //DASHBOARD
 routes.get('/dosificaciones/new/', newDose);//Load paginna guardar
 routes.post('/dosificaciones/guardar', guardarDosificacion)
 routes.get('/dosificaciones/ver/:idDosificacion', verDosificacion)
-routes.post('/dosificaciones/trasladar', csrfProtection, trasladarPacks)
+routes.post('/dosificaciones/trasladar', csrfProtection, trasladarPacks);
 
 
 
@@ -132,6 +133,15 @@ routes.get('/json/tiendas/', async (req, res) => {
     const tiendas = await PuntosDeVenta.findAll({ attributes: ['idPuntoDeVenta', 'nombreComercial'] });
     res.json(tiendas);
 });
+
+// SSE admin
+routes.get('/sse', adminSseConnect);
+
+// Stats tiendas hoy
+routes.get('/api/tiendas/stats-hoy', getTiendasStatsHoy);
+routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', getTiendaStatsHoyDetalle);
+routes.get('/api/tiendas/:idPuntoDeVenta/facturas', getFacturasJSON);
+routes.get('/api/factura/:id/tirilla', getTirillaPDF);
 
 // API CHECKS
 routes.get('/api/check-nit/:nit', checkNitSupplier);

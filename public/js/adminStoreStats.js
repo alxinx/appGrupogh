@@ -1,0 +1,49 @@
+/*
+ * ATTENTION: The "eval" devtool has been used (maybe by default in mode: "development").
+ * This devtool is neither made for production nor for readable output files.
+ * It uses "eval()" calls to create a separate source file in the browser devtools.
+ * If you are trying to read the output file, select a different devtool (https://webpack.js.org/configuration/devtool/)
+ * or disable the default devtool with "devtool: false".
+ * If you are looking for production-ready output files, see mode: "production" (https://webpack.js.org/configuration/mode/).
+ */
+/******/ (() => { // webpackBootstrap
+/******/ 	"use strict";
+/******/ 	var __webpack_modules__ = ({
+
+/***/ "./src/js/adminStoreStats.js"
+/*!***********************************!*\
+  !*** ./src/js/adminStoreStats.js ***!
+  \***********************************/
+(__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) {
+
+eval("{__webpack_require__.r(__webpack_exports__);\n(function () {\n    'use strict';\n\n    const pdvId = document.getElementById('pdv-current-id')?.value;\n    if (!pdvId) return;\n\n    const fmtCOP = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;\n\n    // ─── MAPA: stat id → metodoPago / clave ──────────────────────────────────\n    const STATS = [\n        { id: 'stat-ventas',     bar: null,            key: null },\n        { id: 'stat-efectivo',   bar: 'bar-efectivo',  key: 'Efectivo' },\n        { id: 'stat-banco',      bar: 'bar-banco',      key: 'Banco' },\n        { id: 'stat-billetera',  bar: 'bar-billetera',  key: 'Billetera Virtual' },\n        { id: 'stat-crediticia', bar: 'bar-crediticia', key: 'Entidad Crediticia' },\n        { id: 'stat-tarjeta',    bar: 'bar-tarjeta',    key: 'Tarjeta Credito' },\n    ];\n\n    // ─── ANIMACIÓN COUNT-UP ───────────────────────────────────────────────────\n    const countUp = (el, toValue) => {\n        const from = parseFloat(el.dataset.val || '0');\n        const to   = parseFloat(toValue);\n        if (from === to) return;\n        el.dataset.val = to;\n\n        const duration = 750;\n        const start    = performance.now();\n\n        const step = (ts) => {\n            const progress = Math.min((ts - start) / duration, 1);\n            const eased    = 1 - Math.pow(1 - progress, 3);\n            el.textContent = fmtCOP(from + (to - from) * eased);\n            if (progress < 1) {\n                requestAnimationFrame(step);\n            } else {\n                el.textContent = fmtCOP(to);\n                el.style.color = to > from ? '#059669' : '#dc2626';\n                setTimeout(() => { el.style.color = ''; }, 1400);\n            }\n        };\n        requestAnimationFrame(step);\n    };\n\n    // ─── ACTUALIZAR BARRA DE PROPORCIÓN ──────────────────────────────────────\n    const actualizarBarras = (ventasTotal, pagos) => {\n        if (!ventasTotal) return;\n        STATS.filter(s => s.bar).forEach(s => {\n            const bar = document.getElementById(s.bar);\n            if (!bar) return;\n            const pct = Math.min(((pagos[s.key] || 0) / ventasTotal) * 100, 100);\n            bar.style.transition = 'width 0.7s ease';\n            bar.style.width = `${pct.toFixed(1)}%`;\n        });\n    };\n\n    // ─── APLICAR DATOS A LA UI ────────────────────────────────────────────────\n    const aplicarStats = (ventasHoy, pagos) => {\n        const ventasEl = document.getElementById('stat-ventas');\n        if (ventasEl) countUp(ventasEl, ventasHoy);\n\n        STATS.filter(s => s.key).forEach(s => {\n            const el = document.getElementById(s.id);\n            if (el) countUp(el, pagos[s.key] || 0);\n        });\n\n        actualizarBarras(ventasHoy, pagos);\n    };\n\n    // ─── CARGA INICIAL ────────────────────────────────────────────────────────\n    const cargarStats = async () => {\n        try {\n            const res  = await fetch(`/admin/api/tiendas/${pdvId}/stats-hoy-detalle`);\n            const json = await res.json();\n            if (json.success) aplicarStats(json.ventasHoy, json.pagos);\n        } catch (_) {}\n    };\n\n    // ─── SSE — JAMÁS POLLING ──────────────────────────────────────────────────\n    const conectarSSE = () => {\n        const sse = new EventSource('/admin/sse');\n\n        sse.addEventListener('store_stats_detail', (e) => {\n            const data = JSON.parse(e.data);\n            if (data.idPuntoDeVenta !== pdvId) return;\n            aplicarStats(data.ventasHoy, data.pagos);\n        });\n\n        sse.onerror = () => setTimeout(conectarSSE, 5000);\n    };\n\n    // ─── INIT ─────────────────────────────────────────────────────────────────\n    document.addEventListener('DOMContentLoaded', () => {\n        cargarStats();\n        conectarSSE();\n    });\n\n})();\n\n\n//# sourceURL=webpack://GRUPO_GH/./src/js/adminStoreStats.js?\n}");
+
+/***/ }
+
+/******/ 	});
+/************************************************************************/
+/******/ 	// The require scope
+/******/ 	var __webpack_require__ = {};
+/******/ 	
+/************************************************************************/
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	(() => {
+/******/ 		// define __esModule on exports
+/******/ 		__webpack_require__.r = (exports) => {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	})();
+/******/ 	
+/************************************************************************/
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module can't be inlined because the eval devtool is used.
+/******/ 	var __webpack_exports__ = {};
+/******/ 	__webpack_modules__["./src/js/adminStoreStats.js"](0,__webpack_exports__,__webpack_require__);
+/******/ 	
+/******/ })()
+;

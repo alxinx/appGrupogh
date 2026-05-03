@@ -1,0 +1,226 @@
+extends ../../layout/index
+
+block contenedor
+    div(class="fixed inset-0 flex" style="background:#F4E8FF")
+        include ../partials/leftMenu
+
+        div(class="flex-1 flex flex-col min-w-0 overflow-y-auto")
+            include ../../partials/header
+
+            main(class="flex-1 p-4 pb-10")
+
+                //- HEADER
+                div(class="flex items-center gap-4 mb-6 bg-white/70 backdrop-blur-md rounded-2xl p-5 shadow-sm")
+                    div(class="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md shadow-pink-200" style="background:linear-gradient(135deg,#EC5FA3,#d44a8a)")
+                        i(class="fi fi-rr-calculator text-white text-2xl")
+                    div
+                        h1(class="text-xl font-bold text-slate-800") Cuadre de Caja
+                        p#cc-apertura-info(class="text-xs text-slate-400 mt-0.5") Cargando datos...
+
+                //- DOS COLUMNAS
+                div(class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5")
+
+                    //- ── COLUMNA IZQUIERDA: Valores del Sistema ──────────────
+                    div(class="bg-white/80 backdrop-blur-md rounded-2xl p-5 shadow-sm space-y-3")
+                        div(class="flex items-center gap-2 mb-4")
+                            i(class="fi fi-rr-screen text-pink-500 text-base")
+                            h2(class="font-bold text-slate-700 text-sm uppercase tracking-wide") Valores del Sistema
+
+                        //- Total ventas
+                        div(class="rounded-xl p-4 border-l-4 border-blue-400" style="background:#F0F4FF")
+                            p(class="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1") Total de Ventas
+                            p#cc-s-ventas(class="text-2xl font-bold text-slate-800") —
+                            i(class="fi fi-rr-chart-line-up text-blue-300 text-lg float-right -mt-8")
+
+                        //- BASE
+                        div(class="flex justify-between items-center px-4 py-3 rounded-xl bg-slate-50 border border-slate-200")
+                            span(class="text-sm text-slate-600") Base (Caja Menor)
+                            span#cc-s-base(class="font-semibold text-slate-800") —
+
+                        //- Egresos (acordeón)
+                        div(class="rounded-xl border border-slate-200 overflow-hidden")
+                            button#cc-toggle-egresos(
+                                type="button"
+                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                            )
+                                span(class="text-sm text-slate-600") Total Egresos
+                                div(class="flex items-center gap-2")
+                                    span#cc-s-egresos(class="font-semibold text-rose-600") —
+                                    i#cc-icon-egresos(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
+                            div#cc-acordeon-egresos(class="hidden px-2 pb-2")
+                                table(class="w-full text-xs mt-1")
+                                    thead
+                                        tr(class="border-b border-slate-200")
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Referencia
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Descripción
+                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
+                                    tbody#cc-tbody-egresos
+
+                        //- Efectivo
+                        div(class="flex justify-between items-center px-4 py-3 rounded-xl bg-slate-50 border border-slate-200")
+                            span(class="text-sm text-slate-600") Ventas en Efectivo
+                            span#cc-s-efectivo(class="font-semibold text-slate-800") —
+
+                        //- Medios Electrónicos (acordeón)
+                        div(class="rounded-xl border border-slate-200 overflow-hidden")
+                            button#cc-toggle-medios(
+                                type="button"
+                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                            )
+                                span(class="text-sm text-slate-600") Medios Electrónicos
+                                div(class="flex items-center gap-2")
+                                    span#cc-s-medios(class="font-semibold text-slate-800") —
+                                    i#cc-icon-medios(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
+                            div#cc-acordeon-medios(class="hidden px-2 pb-2")
+                                table(class="w-full text-xs mt-1")
+                                    thead
+                                        tr(class="border-b border-slate-200")
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Nro Factura
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Entidad
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Ref.
+                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
+                                    tbody#cc-tbody-medios
+
+                        //- Ventas a Crédito (acordeón)
+                        div(class="rounded-xl border border-slate-200 overflow-hidden")
+                            button#cc-toggle-credito(
+                                type="button"
+                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                            )
+                                span(class="text-sm text-slate-600") Ventas a Crédito
+                                div(class="flex items-center gap-2")
+                                    span#cc-s-credito(class="font-semibold text-slate-800") —
+                                    i#cc-icon-credito(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
+                            div#cc-acordeon-credito(class="hidden px-2 pb-2")
+                                table(class="w-full text-xs mt-1")
+                                    thead
+                                        tr(class="border-b border-slate-200")
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Nro Factura
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Entidad
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Ref.
+                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
+                                    tbody#cc-tbody-credito
+
+                        div(class="mt-2 flex items-start gap-2 px-4 py-3 rounded-xl bg-pink-50 border border-pink-100 text-xs text-pink-500")
+                            i(class="fi fi-rr-info mt-0.5 flex-shrink-0")
+                            span Los valores del sistema son automáticos y no pueden ser editados. Corresponden a los registros digitales del día.
+
+                    //- ── COLUMNA DERECHA: Conteo del Operador ────────────────
+                    div(class="bg-white/80 backdrop-blur-md rounded-2xl p-5 shadow-sm space-y-4")
+                        div(class="flex items-center gap-2 mb-4")
+                            i(class="fi fi-rr-user-pen text-pink-500 text-base")
+                            h2(class="font-bold text-slate-700 text-sm uppercase tracking-wide") Conteo del Operador
+
+                        //- BASE operador
+                        div
+                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Base (Caja Menor)
+                            div(class="relative")
+                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
+                                input#cc-o-base(
+                                    type="text" inputmode="numeric"
+                                    placeholder="0"
+                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
+                                    data-field="base"
+                                )
+
+                        //- Egresos operador
+                        div
+                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Total Egresos
+                            div(class="relative")
+                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
+                                input#cc-o-egresos(
+                                    type="text" inputmode="numeric"
+                                    placeholder="0"
+                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
+                                    data-field="egresos"
+                                )
+
+                        //- Efectivo operador
+                        div
+                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Ventas en Efectivo
+                            div(class="relative")
+                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
+                                input#cc-o-efectivo(
+                                    type="text" inputmode="numeric"
+                                    placeholder="0"
+                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
+                                    data-field="efectivo"
+                                )
+
+                        //- Medios electrónicos operador
+                        div
+                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Medios Electrónicos
+                            div(class="relative")
+                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
+                                input#cc-o-medios(
+                                    type="text" inputmode="numeric"
+                                    placeholder="0"
+                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
+                                    data-field="medios"
+                                )
+
+                        //- Crédito operador
+                        div
+                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Ventas a Crédito
+                            div(class="relative")
+                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
+                                input#cc-o-credito(
+                                    type="text" inputmode="numeric"
+                                    placeholder="0"
+                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
+                                    data-field="credito"
+                                )
+
+                        //- Nota
+                        div
+                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Nota (opcional)
+                            textarea#cc-nota(
+                                rows="2"
+                                maxlength="255"
+                                placeholder="Observaciones del cierre..."
+                                class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                            )
+
+                //- ── PANEL INFERIOR: Autorización + Botón ────────────────────
+                div(class="bg-white/80 backdrop-blur-md rounded-2xl p-5 shadow-sm")
+                    div(class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-end")
+
+                        //- Código empleado
+                        div
+                            label(class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2") Código del Vendedor / Autorización
+                            div(class="flex gap-2")
+                                div(class="relative flex-1")
+                                    i(class="fi fi-rr-key absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none")
+                                    input#cc-codigo-empleado(
+                                        type="password"
+                                        placeholder="• • • • • •"
+                                        maxlength="10"
+                                        autocomplete="off"
+                                        class="w-full pl-9 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm font-mono tracking-widest focus:outline-none transition-colors"
+                                    )
+                                button#cc-btn-validar(
+                                    type="button"
+                                    class="px-4 py-3 rounded-xl text-white text-sm font-bold transition-all active:scale-95"
+                                    style="background:#EC5FA3"
+                                )
+                                    i(class="fi fi-rr-unlock")
+                            p#cc-empleado-info(class="text-xs mt-1.5 h-4")
+
+                        //- Aviso + botón cerrar
+                        div(class="space-y-3")
+                            div(class="flex items-start gap-2 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-xs text-green-700")
+                                i(class="fi fi-rr-badge-check mt-0.5 flex-shrink-0")
+                                span Al proceder, se generará un comprobante de cierre impreso y se notificará a la administración.
+                            button#cc-btn-cerrar(
+                                type="button"
+                                disabled
+                                class="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl text-white font-bold text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                                style="background:#EC5FA3"
+                            )
+                                i(class="fi fi-rr-print")
+                                span Cerrar e imprimir cuadre de caja
+
+    input#csrf-token(type="hidden" value=csrfToken)
+    script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+    script(src="/js/helpers.js")
+    script(src="/js/storeCuadrarCaja.js")

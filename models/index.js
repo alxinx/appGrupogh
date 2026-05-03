@@ -11,6 +11,7 @@ import Imagenes from './Imagenes.js'; import Documentacion from './Documentacion
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
 import Traslados from './Traslados.js'; import DetalleTraslados from './DetalleTraslados.js'
 import InsidenciaTraslado from './InsidenciasTraslados.js'
+import Egresos from './Egresos.js'
 
 import Stock from './Stock.js'
 
@@ -117,8 +118,11 @@ Clientes.hasMany(ClientesUbicacion, { foreignKey: 'idCliente', as: 'ubicaciones'
 ClientesUbicacion.belongsTo(Clientes, { foreignKey: 'idCliente' });
 
 // Caja tienda
-Empleados.hasMany(CajaTienda, { foreignKey: 'idEmpleado', as: 'cajas' });
-CajaTienda.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
+Empleados.hasMany(CajaTienda, { foreignKey: 'idEmpleadoApertura', as: 'cajasApertura' });
+CajaTienda.belongsTo(Empleados, { foreignKey: 'idEmpleadoApertura', as: 'empleadoApertura' });
+
+Empleados.hasMany(CajaTienda, { foreignKey: 'idEmpleadoCierre', as: 'cajasCierre' });
+CajaTienda.belongsTo(Empleados, { foreignKey: 'idEmpleadoCierre', as: 'empleadoCierre' });
 
 PuntosDeVenta.hasMany(CajaTienda, { foreignKey: 'idPuntoDeVenta', as: 'cajas' });
 CajaTienda.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'puntoDeVenta' });
@@ -169,6 +173,13 @@ DetallesPagosFactura.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente'
 DetallesPagosFactura.belongsTo(Entidades, { foreignKey: 'idEntidad', as: 'entidad' });
 Entidades.hasMany(DetallesPagosFactura, { foreignKey: 'idEntidad' });
 
+// ─── Egresos ─────────────────────────────────────────────────────────────────
+PuntosDeVenta.hasMany(Egresos, { foreignKey: 'idPuntoDeVenta', as: 'egresos' });
+Egresos.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'puntoDeVenta' });
+
+Empleados.hasMany(Egresos, { foreignKey: 'idEmpleado', as: 'egresos' });
+Egresos.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
+
 export {
   Usuarios,
   Departamentos,
@@ -182,5 +193,6 @@ export {
   Imagenes, Documentacion, Empleados,
   Clientes, ClientesTributario, ClientesUbicacion,
   CajaTienda, Entidades,
-  FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura
+  FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura,
+  Egresos
 }

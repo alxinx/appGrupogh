@@ -9,7 +9,17 @@ const CajaTienda = db.define('CAJA_TIENDA', {
         unique: true,
         allowNull: false
     },
-    idEmpleado: {
+    idEmpleadoApertura: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        references: {
+            model: 'EMPLEADOS',
+            key: 'idEmpleado'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
+    },
+    idEmpleadoCierre: {
         type: DataTypes.UUID,
         allowNull: false,
         references: {

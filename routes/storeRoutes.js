@@ -24,7 +24,17 @@ import {
     procesarFactura,
     getTirillaPDF,
     buscarProductoPorSKU,
-    crearTrasladoSueltos
+    crearTrasladoSueltos,
+    getExpensesPage,
+    crearEgreso,
+    getEgresosJSON,
+    getTotalEgresosHoy,
+    getEgresoComprobantePDF,
+    abrirCajaAPI,
+    cuadrarCajaPage,
+    getCuadreCajaDatos,
+    cerrarCajaAPI,
+    getCuadrePDF
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
@@ -84,8 +94,22 @@ routes.post('/inventario/trasladar',  csrfProtection, trasladarDesdeStoreAPI);
 // Clientes
 routes.post('/clientes/guardar', csrfProtection, uploadMixed.single('rut'), guardarCliente);
 
+// Caja
+routes.post('/caja/abrir', csrfProtection, abrirCajaAPI);
+
 // Facturas
 routes.post('/facturas/procesar', csrfProtection, procesarFactura);
 routes.get('/facturas/:id/tirilla', getTirillaPDF);
+
+// Storebehivors — cuadre de caja
+routes.get('/storebehivors/', csrfProtection, cuadrarCajaPage);
+routes.get('/storebehivors/caja/datos', getCuadreCajaDatos);
+routes.post('/storebehivors/caja/cerrar', csrfProtection, cerrarCajaAPI);
+routes.get('/storebehivors/caja/:idCajaTienda/pdf', getCuadrePDF);
+routes.get('/storebehivors/expenses', csrfProtection, getExpensesPage);
+routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
+routes.get('/storebehivors/expenses/json', getEgresosJSON);
+routes.get('/storebehivors/expenses/:idEgreso/pdf', getEgresoComprobantePDF);
+routes.post('/storebehivors/expenses/crear', csrfProtection, crearEgreso);
 
 export default routes;

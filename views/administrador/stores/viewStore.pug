@@ -10,47 +10,40 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         div(class="mainDashboard")
                             //******************[CUERPO PANELES]*********************//
-                            
+
                             //HEADER
                             div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6")
                                 include  ./headers/headerStore.pug
                                 include  ./headers/actionBtns.pug
-                                
 
-
-                                    
-                            
-                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
-                                //- Card 1
-                                include ./stats/dailySales.pug 
-                                include ./stats/cashRegister.pug 
-                                include ./stats/debitAndCardRegister.pug 
-                                include ./stats/wallets.pug 
-
-
-
+                            //- STATS — 6 cards en 2 filas × 3 columnas
+                            div(class="col-span-12 grid grid-cols-2 md:grid-cols-3 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+                                include ./stats/dailySales.pug
+                                include ./stats/cashRegister.pug
+                                include ./stats/debitAndCardRegister.pug
+                                include ./stats/wallets.pug
+                                include ./stats/creditEntity.pug
+                                include ./stats/creditCard.pug
 
                             div(class="col-span-12 grid grid-cols-12 items-start")
                                 //COLUMNA 1
                                 div(class="col-span-12 md:col-span-8 grid grid-cols-1 gap-4 cards cardsWhite p-6")
                                     include ./headers/navInsideStore.pug
-                                    
+
                                     div(class="p-0")
                                         #loadDataStore
-                                        //include ./views/listaFacturasDia.pug
-
-
-
-
 
                                 //COLUMNA 2
                                 div(class="col-span-12 md:col-span-4 grid grid-cols-1 gap-4 cards cardsWhite p-6")
                                     include ./views/overdueBills.pug
-        
+
+        //- ID del punto de venta para el JS de stats
+        input(type="hidden" id="pdv-current-id" value=dato.idPuntoDeVenta)
+
         script(src="/js/dropdownBtn.js")
-        script(src="/js/dataStore.js")          
+        script(src="/js/dataStore.js")
         script(src="/js/paginador.js")
         script(src="/js/storeInventory.js")
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
-
-                                
+        script(src="/js/adminStoreStats.js")
+        script(src="/js/adminStoreBilling.js")

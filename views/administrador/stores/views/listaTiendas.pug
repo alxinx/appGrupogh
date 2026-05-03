@@ -1,6 +1,6 @@
 div(class="bg-gray-50  rounded-t-2xl  p-3 shadow-sm border border-slate-100  overflow-hidden")
         h2.h2.text-gh-primaryHover
-            i.fi-rr-store-alt 
+            i.fi-rr-store-alt
             | Estado Actual de las tiendas
         p(class="text-sm text-slate-400") Lista completa de las tiendas que administras
 
@@ -12,46 +12,71 @@ div(class="bg-gray-50  rounded-t-2xl  p-3 shadow-sm border border-slate-100  ove
                 th(class="px-2  text-center text-gray-600") Estado de Caja
                 th(class="px-2   text-center text-gray-600") Ventas del Día
                 th(class="px-2  text-center text-gray-600") Egresos del Día
-                th(class="px-8   text-center text-gray-600") 
+                th(class="px-8   text-center text-gray-600")
 
             tbody(class="divide-y divide-slate-100 ")
               if listaPuntosDeVenta
                 each listado in listaPuntosDeVenta
-                  //- Row 1
+                  //- Row
                   tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
                     td(class="px-8 py-5")
                       div(class="flex items-center space-x-3")
-                      
+
                         div
                           p(class="font-bold text-slate-800 ")=listado.nombreComercial
                           p(class="text-xs text-slate-400") NIT: #{listado.taxId}
 
                     td(class="px-6 py-5")
-                      span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 ")
-                        span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
-                        | ABIERTA
+                      if listado.estadoCaja === 'abierta'
+                        span(
+                          class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600"
+                          data-caja-badge=listado.idPuntoDeVenta
+                          style="transition: opacity 0.25s, transform 0.25s"
+                        )
+                          span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                          | ABIERTA
+                      else if listado.estadoCaja === 'cuadrada'
+                        span(
+                          class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-600"
+                          data-caja-badge=listado.idPuntoDeVenta
+                          style="transition: opacity 0.25s, transform 0.25s"
+                        )
+                          span(class="w-1.5 h-1.5 rounded-full bg-blue-500 mr-2")
+                          | CUADRADA
+                      else
+                        span(
+                          class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500"
+                          data-caja-badge=listado.idPuntoDeVenta
+                          style="transition: opacity 0.25s, transform 0.25s"
+                        )
+                          span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                          | CERRADA
 
                     td(class="px-6 py-5 text-right")
-                      p(class="font-bold text-slate-800 ") $12,450.00
+                      p(
+                        class="font-bold text-slate-800 tabular-nums"
+                        data-stat="ventas"
+                        data-pdv=listado.idPuntoDeVenta
+                        data-val="0"
+                      ) —
 
                     td(class="px-6 py-5")
-                      div(class="flex -space-x-2")
-                        p(class="font-bold text-red-800 ") $12,450.00
-                        
+                      p(
+                        class="font-bold text-red-700 tabular-nums"
+                        data-stat="egresos"
+                        data-pdv=listado.idPuntoDeVenta
+                        data-val="0"
+                      ) —
+
                     td(class="px-8 py-5 text-center")
-                      a(href=`tiendas/ver/${listado.idPuntoDeVenta}` class="btn btn-secondary text-xs") 
+                      a(href=`tiendas/ver/${listado.idPuntoDeVenta}` class="btn btn-secondary text-xs")
                         i.fi-rr-eye.text-xs
                         |Ver Mas
 
 
         div(class="px-8 py-4 bg-slate-50/30  border-t border-slate-100  flex items-center justify-between")
             p(class="text-xs text-slate-400")
-                | Mostrando 
-                span(class="font-bold text-slate-600 ") 4
-                |  de 
-                span(class="font-bold text-slate-600 ") 12
+                | Mostrando
+                span(class="font-bold text-slate-600 ")= listaPuntosDeVenta ? listaPuntosDeVenta.length : 0
                 |  tiendas activas
-
-              
-              
 

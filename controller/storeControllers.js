@@ -6,7 +6,8 @@ import {
     Departamentos, Municipios, Documentacion,
     Atributos, VariacionesProducto, Entidades,
     FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente,
-    DetallesPagosFactura, RegimenFacturacion
+    DetallesPagosFactura, RegimenFacturacion, Egresos,
+    CajaTienda
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import PDFDocument from 'pdfkit';
@@ -50,7 +51,8 @@ const dashboardStores = async (req, res) => {
         trasladosPendientes,
         wholesaleMin: parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6,
         departamentos,
-        clienteGenerico
+        clienteGenerico,
+        cajaMenorDefault: parseFloat(process.env.PETTY_CASH_FOUND) || 0
     });
 };
 
@@ -1084,6 +1086,7 @@ const fmtCOP = n => Math.round(n).toLocaleString('es-CO');
 
 // ─── PROCESAR FACTURA ─────────────────────────────────────────────────────────
 const procesarFactura = async (req, res) => {
+  try {
     const { idCliente, idEmpleado, items, pagos } = req.body;
     const idPuntoDeVenta = req.idPuntoDeVenta;
     const WHOLESALE_MIN  = parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6;
@@ -1091,6 +1094,14 @@ const procesarFactura = async (req, res) => {
     // ── 1. Validar datos del frontend ─────────────────────────────────────────
     if (!idPuntoDeVenta)
         return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
+
+    const cajaAbierta = await CajaTienda.findOne({
+        where: { idPuntoDeVenta, estado: 'abierto' },
+        attributes: ['idCajaTienda']
+    });
+    if (!cajaAbierta)
+        return res.status(403).json({ success: false, mensaje: 'No hay caja abierta. Debes abrir la caja antes de facturar.' });
+
     if (!idCliente || typeof idCliente !== 'string' || !idCliente.trim())
         return res.status(400).json({ success: false, mensaje: 'Cliente inválido.' });
     const _idEmpleado = String(idEmpleado || '').trim();
@@ -1191,7 +1202,7 @@ const procesarFactura = async (req, res) => {
             tipoDocumento:        regimen.tipoFactura || '03',
             prefijo:              regimen.prefijo     || '',
             numeroFactura:        String(nroFactura),
-            fechaEmision:         ahora.toISOString().slice(0, 10),
+            fechaEmision:         `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,'0')}-${String(ahora.getDate()).padStart(2,'0')}`,
             horaEmision:          ahora.toTimeString().slice(0, 8)
         }, { transaction: t });
 
@@ -1278,13 +1289,90 @@ const procesarFactura = async (req, res) => {
         }
 
         await t.commit();
+
+        // Notificar admin con ventas y desglose de pagos del día para este PDV
+        try {
+            const hoyStart = new Date(); hoyStart.setHours(0, 0, 0, 0);
+            const factHoy = await FacturaClientes.findAll({
+                attributes: ['idFacturaCliente'],
+                where: { idPuntoDeVenta, createdAt: { [Op.gte]: hoyStart } },
+                raw: true
+            });
+            let ventasHoy = 0;
+            const pagosHoy = { Efectivo: 0, Banco: 0, 'Billetera Virtual': 0, 'Entidad Crediticia': 0, 'Tarjeta Credito': 0 };
+            if (factHoy.length) {
+                const ids = factHoy.map(f => f.idFacturaCliente);
+                const [detallesRows, pagosRows] = await Promise.all([
+                    DetallesFactura.findAll({
+                        attributes: [[fn('SUM', col('total')), 'suma']],
+                        where: { idFacturaCliente: { [Op.in]: ids } },
+                        raw: true
+                    }),
+                    DetallesPagosFactura.findAll({
+                        attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
+                        where: { idFacturaCliente: { [Op.in]: ids } },
+                        group: ['metodoPago'],
+                        raw: true
+                    })
+                ]);
+                ventasHoy = parseFloat(detallesRows[0]?.suma || 0);
+                for (const r of pagosRows) {
+                    if (Object.prototype.hasOwnProperty.call(pagosHoy, r.metodoPago)) {
+                        pagosHoy[r.metodoPago] = parseFloat(r.total || 0);
+                    }
+                }
+            }
+            broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta, ventasHoy });
+            broadcast('__ADMIN__', 'store_stats_detail', { idPuntoDeVenta, ventasHoy, pagos: pagosHoy });
+
+            // Global: ventas + métodos de pago de todas las tiendas hoy
+            const todasFacturasHoy = await FacturaClientes.findAll({
+                attributes: ['idFacturaCliente'],
+                where: { createdAt: { [Op.gte]: hoyStart } },
+                raw: true
+            });
+            if (todasFacturasHoy.length) {
+                const todosIds = todasFacturasHoy.map(f => f.idFacturaCliente);
+                const [globalVentasRow, globalPagosRows] = await Promise.all([
+                    DetallesFactura.findAll({
+                        attributes: [[fn('SUM', col('total')), 'suma']],
+                        where: { idFacturaCliente: { [Op.in]: todosIds } },
+                        raw: true
+                    }),
+                    DetallesPagosFactura.findAll({
+                        attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
+                        where: { idFacturaCliente: { [Op.in]: todosIds } },
+                        group: ['metodoPago'],
+                        raw: true
+                    })
+                ]);
+                const pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0 };
+                for (const r of globalPagosRows) {
+                    const v = Math.round(parseFloat(r.total || 0));
+                    if (r.metodoPago === 'Efectivo')                                           pagosGlobales.efectivo  += v;
+                    else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill += v;
+                    else if (r.metodoPago === 'Tarjeta Credito')                               pagosGlobales.tCredito  += v;
+                    else if (r.metodoPago === 'Entidad Crediticia')                            pagosGlobales.creditos  += v;
+                }
+                broadcast('__ADMIN__', 'global_stats', {
+                    ventasGlobalesHoy: Math.round(parseFloat(globalVentasRow[0]?.suma || 0)),
+                    pagosGlobales
+                });
+            }
+        } catch (_) {}
+
         return res.json({ success: true, idFacturaCliente: factura.idFacturaCliente });
 
     } catch (error) {
         await t.rollback();
-        console.error('procesarFactura:', error);
+        console.error('procesarFactura [transacción]:', error);
         return res.status(500).json({ success: false, mensaje: 'Error interno al procesar la factura.' });
     }
+
+  } catch (error) {
+      console.error('procesarFactura [validación]:', error);
+      return res.status(500).json({ success: false, mensaje: 'Error al procesar la solicitud.' });
+  }
 };
 
 // ─── TIRILLA PDF ──────────────────────────────────────────────────────────────
@@ -1600,6 +1688,627 @@ const crearTrasladoSueltos = async (req, res) => {
     }
 };
 
+// ─── EGRESOS ──────────────────────────────────────────────────────────────────
+
+const getExpensesPage = async (req, res) => {
+    return res.render('./tienda/storebehivors/expenses', {
+        pagina: 'Egresos',
+        csrfToken: req.csrfToken(),
+        currentPath: '/storebehivors/expenses'
+    });
+};
+
+const cuadrarCajaPage = async (req, res) => {
+    return res.render('./tienda/storebehivors/cuadrarCaja', {
+        pagina: 'Cuadre de Caja',
+        csrfToken: req.csrfToken(),
+        currentPath: '/storebehivors/'
+    });
+};
+
+const getCuadreCajaDatos = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
+
+    try {
+        const hoy   = new Date();
+        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0);
+        const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59);
+
+        const caja = await CajaTienda.findOne({
+            where: {
+                idPuntoDeVenta: idPdv,
+                estado: 'abierto',
+                fechaApertura: { [Op.gte]: inicio },
+                fechaCierre: null
+            },
+            include: [{ model: Empleados, as: 'empleadoApertura', attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido'] }]
+        });
+        if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta.' });
+
+        const [egresosRows, facturas] = await Promise.all([
+            Egresos.findAll({
+                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['referencia', 'descripcion', 'valorEgreso'],
+                raw: true
+            }),
+            FacturaClientes.findAll({
+                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
+                include: [{
+                    model: DetallesPagosFactura, as: 'pagos',
+                    include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
+                }]
+            })
+        ]);
+
+        let efectivo = 0, mediosElectronicos = 0, credito = 0;
+        const txElectronicos = [], txCredito = [];
+
+        for (const f of facturas) {
+            const nroFactura = `${f.prefijo || ''}${f.numeroFactura}`;
+            for (const p of f.pagos) {
+                const val = Math.round(parseFloat(p.valor) || 0);
+                if (p.metodoPago === 'Efectivo') {
+                    efectivo += val;
+                } else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) {
+                    mediosElectronicos += val;
+                    txElectronicos.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
+                } else if (p.metodoPago === 'Entidad Crediticia') {
+                    credito += val;
+                    txCredito.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
+                }
+            }
+        }
+
+        const txEgresos = egresosRows.map(e => ({
+            referencia:  e.referencia  || '—',
+            descripcion: e.descripcion || '—',
+            valor:       Math.round(parseFloat(e.valorEgreso) || 0)
+        }));
+        const sumaEgresos = txEgresos.reduce((s, e) => s + e.valor, 0);
+
+        return res.json({
+            success: true,
+            caja: {
+                idCajaTienda: caja.idCajaTienda,
+                cajaMenor: Math.round(parseFloat(caja.cajaMenor) || 0),
+                empleadoApertura: `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim()
+            },
+            totales: {
+                ventas: efectivo + mediosElectronicos + credito,
+                egresos: sumaEgresos,
+                efectivo, mediosElectronicos, credito
+            },
+            txElectronicos,
+            txCredito,
+            txEgresos
+        });
+    } catch (e) {
+        console.error('getCuadreCajaDatos:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const cerrarCajaAPI = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
+
+    const { codigoEmpleado, operadorEgresos, operadorEfectivo, operadorElectronicos, operadorCredito, operadorBase, nota } = req.body;
+
+    try {
+        const hoy    = new Date();
+        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0);
+        const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59);
+
+        // Validar empleado de la tienda
+        const codigo = String(codigoEmpleado || '').trim().toUpperCase();
+        if (!codigo) return res.status(400).json({ success: false, mensaje: 'Código de empleado requerido.' });
+        const empleadoCierre = await Empleados.findOne({
+            where: { codigoEmpleado: codigo, idPuntoDeVenta: idPdv },
+            attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido']
+        });
+        if (!empleadoCierre) return res.status(400).json({ success: false, mensaje: 'Empleado no pertenece a esta tienda.' });
+
+        const caja = await CajaTienda.findOne({
+            where: {
+                idPuntoDeVenta: idPdv,
+                estado: 'abierto',
+                fechaApertura: { [Op.gte]: inicio },
+                fechaCierre: null
+            },
+            include: [{ model: Empleados, as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
+                      { model: PuntosDeVenta, as: 'puntoDeVenta', attributes: ['nombreComercial', 'footerBill'] }]
+        });
+        if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta.' });
+
+        // Datos sistema
+        const [egresosRows, facturas] = await Promise.all([
+            Egresos.findAll({
+                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['referencia', 'descripcion', 'valorEgreso'],
+                raw: true
+            }),
+            FacturaClientes.findAll({
+                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
+                include: [{
+                    model: DetallesPagosFactura, as: 'pagos',
+                    include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
+                }]
+            })
+        ]);
+
+        let sEfectivo = 0, sMedios = 0, sCredito = 0;
+        const txElectronicos = [], txCredito = [];
+        for (const f of facturas) {
+            const nroFactura = `${f.prefijo || ''}${f.numeroFactura}`;
+            for (const p of f.pagos) {
+                const val = Math.round(parseFloat(p.valor) || 0);
+                if (p.metodoPago === 'Efectivo') { sEfectivo += val; }
+                else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) {
+                    sMedios += val;
+                    txElectronicos.push({ nroFactura, entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
+                } else if (p.metodoPago === 'Entidad Crediticia') {
+                    sCredito += val;
+                    txCredito.push({ nroFactura, entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
+                }
+            }
+        }
+        const txEgresos     = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
+        const sEgresos      = txEgresos.reduce((s, e) => s + e.valor, 0);
+        const sVentas       = sEfectivo + sMedios + sCredito;
+        const oEgresos      = Math.round(parseFloat(operadorEgresos)      || 0);
+        const oEfectivo     = Math.round(parseFloat(operadorEfectivo)     || 0);
+        const oElectronicos = Math.round(parseFloat(operadorElectronicos) || 0);
+        const oCredito      = Math.round(parseFloat(operadorCredito)      || 0);
+
+        const idFacturas = facturas.map(f => f.idFacturaCliente);
+        if (idFacturas.length > 0) {
+            await FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente: idFacturas } });
+        }
+        if (idFacturas.length > 0) {
+            await Egresos.update({ estado: 'liquidada' }, {
+                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } }
+            });
+        }
+
+        await caja.update({
+            idEmpleadoCierre:               empleadoCierre.idEmpleado,
+            fechaCierre:                    new Date(),
+            ventasTotales:                  sVentas,
+            ventasTotalesRegistradas:       oEfectivo + oElectronicos + oCredito,
+            egresosTotales:                 sEgresos,
+            egresosTotalesRegistrados:      oEgresos,
+            ventasCredito:                  sCredito,
+            ventasCreditoRegistradas:       oCredito,
+            ventasEfectivo:                 sEfectivo,
+            ventasEfectivoRegistradas:      oEfectivo,
+            ventasMediosElectronicos:        sMedios,
+            ventasMediosElectronicosRegistradas: oElectronicos,
+            estado:                         'cerrado',
+            nota:                           nota || null
+        });
+
+        broadcast('__ADMIN__', 'caja_status', { idPuntoDeVenta: idPdv, estado: 'cuadrada' });
+
+        return res.json({ success: true, idCajaTienda: caja.idCajaTienda });
+    } catch (e) {
+        console.error('cerrarCajaAPI:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
+    }
+};
+
+// ── Helper reutilizable para generar el PDF de cuadre ────────────────────────
+const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fecha) => {
+    const W = 227, MARGIN = 10, CW = W - MARGIN * 2;
+    const doc = new PDFDocument({ size: [W, 900], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    const pdfEnd = new Promise(r => doc.on('end', r));
+
+    const hr  = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.3).stroke(); doc.moveDown(0.3); };
+    const fmt = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const fechaStr = fecha.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    try {
+        const LOGO_SIZE = 40;
+        doc.image(LOGO_PATH, MARGIN + (CW - LOGO_SIZE) / 2, MARGIN, { width: LOGO_SIZE, height: LOGO_SIZE });
+        doc.y = MARGIN + LOGO_SIZE + 4;
+    } catch (_) { doc.y = MARGIN + 8; }
+
+    doc.font('Helvetica-Bold').fontSize(8).text(caja.puntoDeVenta?.nombreComercial || 'Punto de Venta', MARGIN, doc.y, { width: CW, align: 'center' });
+    doc.font('Helvetica-Bold').fontSize(7).text(`CIERRE DE CAJA — ${fechaStr}`, MARGIN, doc.y, { width: CW, align: 'center' });
+    doc.moveDown(0.3); hr();
+
+    const nomApertura = `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim();
+    const nomCierre   = `${caja.empleadoCierre?.PrimerNombre || ''} ${caja.empleadoCierre?.PrimerApellido || ''}`.trim();
+    doc.font('Helvetica').fontSize(6.5);
+    doc.text(`Apertura: ${nomApertura}`, MARGIN, doc.y, { width: CW });
+    doc.text(`Cierre:   ${nomCierre}`,   MARGIN, doc.y, { width: CW });
+    doc.moveDown(0.3); hr();
+
+    const sEfectivo = Math.round(parseFloat(caja.ventasEfectivo)                    || 0);
+    const sMedios   = Math.round(parseFloat(caja.ventasMediosElectronicos)           || 0);
+    const sCredito  = Math.round(parseFloat(caja.ventasCredito)                      || 0);
+    const sEgresos  = Math.round(parseFloat(caja.egresosTotales)                     || 0);
+    const oEfectivo = Math.round(parseFloat(caja.ventasEfectivoRegistradas)          || 0);
+    const oMedios   = Math.round(parseFloat(caja.ventasMediosElectronicosRegistradas)|| 0);
+    const oCredito  = Math.round(parseFloat(caja.ventasCreditoRegistradas)           || 0);
+    const oEgresos  = Math.round(parseFloat(caja.egresosTotalesRegistrados)          || 0);
+
+    const col1 = MARGIN, col2 = MARGIN + 70, col3 = MARGIN + 120, wCol = 45;
+    doc.font('Helvetica-Bold').fontSize(6).text('Concepto', col1, doc.y, { width: 65 });
+    doc.y -= doc.currentLineHeight(); doc.text('Sistema',    col2, doc.y, { width: wCol, align: 'right' });
+    doc.y -= doc.currentLineHeight(); doc.text('Registrado', col3, doc.y, { width: wCol, align: 'right' });
+    doc.moveDown(0.2); hr();
+
+    let enControversia = false;
+    for (const { label, sis, op } of [
+        { label: 'Egresos',             sis: sEgresos,  op: oEgresos  },
+        { label: 'Efectivo',            sis: sEfectivo, op: oEfectivo },
+        { label: 'Medios Electrónicos', sis: sMedios,   op: oMedios   },
+        { label: 'Crédito',             sis: sCredito,  op: oCredito  },
+    ]) {
+        const diff = Math.abs(sis - op) > 0.5;
+        if (diff) enControversia = true;
+        const y = doc.y;
+        doc.font(diff ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.5)
+           .text(label + (diff ? ' ✗' : ''), col1, y, { width: 65 });
+        doc.y = y; doc.text(fmt(sis), col2, y, { width: wCol, align: 'right' });
+        doc.y = y; doc.text(fmt(op),  col3, y, { width: wCol, align: 'right' });
+        doc.moveDown(0.2);
+    }
+    hr();
+
+    if (txEgresos.length > 0) {
+        doc.font('Helvetica-Bold').fontSize(6.5).text('Egresos', MARGIN, doc.y, { width: CW });
+        doc.moveDown(0.2);
+        for (const e of txEgresos) {
+            const y = doc.y; doc.font('Helvetica').fontSize(6);
+            doc.text(e.referencia,  MARGIN,       y, { width: 50 });
+            doc.y = y; doc.text(e.descripcion, MARGIN + 53,  y, { width: 60 });
+            doc.y = y; doc.text(fmt(e.valor),  MARGIN + 116, y, { width: 37, align: 'right' });
+            doc.moveDown(0.15);
+        }
+        hr();
+    }
+
+    if (txElectronicos.length > 0) {
+        doc.font('Helvetica-Bold').fontSize(6.5).text('Medios Electrónicos', MARGIN, doc.y, { width: CW });
+        doc.moveDown(0.2);
+        for (const t of txElectronicos) {
+            const y = doc.y; doc.font('Helvetica').fontSize(6);
+            doc.text(t.entidad,    MARGIN,       y, { width: 55 });
+            doc.y = y; doc.text(t.referencia, MARGIN + 58,  y, { width: 55 });
+            doc.y = y; doc.text(fmt(t.valor), MARGIN + 116, y, { width: 37, align: 'right' });
+            doc.moveDown(0.15);
+        }
+        hr();
+    }
+
+    if (txCredito.length > 0) {
+        doc.font('Helvetica-Bold').fontSize(6.5).text('Ventas a Crédito', MARGIN, doc.y, { width: CW });
+        doc.moveDown(0.2);
+        for (const t of txCredito) {
+            const y = doc.y; doc.font('Helvetica').fontSize(6);
+            doc.text(t.entidad,    MARGIN,       y, { width: 55 });
+            doc.y = y; doc.text(t.referencia, MARGIN + 58,  y, { width: 55 });
+            doc.y = y; doc.text(fmt(t.valor), MARGIN + 116, y, { width: 37, align: 'right' });
+            doc.moveDown(0.15);
+        }
+        hr();
+    }
+
+    if (caja.nota) {
+        doc.font('Helvetica-Bold').fontSize(6.5).text('Nota:', MARGIN, doc.y);
+        doc.font('Helvetica').fontSize(6.5).text(caja.nota, MARGIN, doc.y, { width: CW });
+        doc.moveDown(0.3); hr();
+    }
+
+    doc.font('Helvetica-Bold').fontSize(9)
+       .text(`[ ${enControversia ? 'EN CONTROVERSIA' : 'CAJA EN ORDEN'} ]`, MARGIN, doc.y, { width: CW, align: 'center' });
+
+    doc.end();
+    await pdfEnd;
+    return Buffer.concat(chunks);
+};
+
+const getCuadrePDF = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    const { idCajaTienda } = req.params;
+
+    try {
+        const caja = await CajaTienda.findOne({
+            where: { idCajaTienda, idPuntoDeVenta: idPdv, estado: 'cerrado' },
+            include: [
+                { model: Empleados,    as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
+                { model: Empleados,    as: 'empleadoCierre',   attributes: ['PrimerNombre', 'PrimerApellido'] },
+                { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial'] }
+            ]
+        });
+        if (!caja) return res.status(404).send('Caja no encontrada.');
+
+        const fecha  = new Date(caja.fechaCierre);
+        const inicio = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 0, 0, 0);
+        const fin    = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 23, 59, 59);
+
+        const [egresosRows, facturas] = await Promise.all([
+            Egresos.findAll({
+                where: { idPuntoDeVenta: idPdv, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['referencia', 'descripcion', 'valorEgreso'], raw: true
+            }),
+            FacturaClientes.findAll({
+                where: { idPuntoDeVenta: idPdv, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['prefijo', 'numeroFactura'],
+                include: [{ model: DetallesPagosFactura, as: 'pagos', include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }]
+            })
+        ]);
+
+        const txEgresos = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
+        const txElectronicos = [], txCredito = [];
+        for (const f of facturas) {
+            for (const p of f.pagos) {
+                const val = Math.round(parseFloat(p.valor) || 0);
+                if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago))
+                    txElectronicos.push({ entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
+                else if (p.metodoPago === 'Entidad Crediticia')
+                    txCredito.push({ entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
+            }
+        }
+
+        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, fecha);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="cuadre-${fecha.toISOString().slice(0,10)}.pdf"`);
+        res.setHeader('Content-Length', buf.length);
+        return res.send(buf);
+    } catch (e) {
+        console.error('getCuadrePDF:', e);
+        return res.status(500).send('Error al generar el PDF.');
+    }
+};
+
+const crearEgreso = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
+
+    const { valorEgreso, referencia, codigoEmpleado, descripcion } = req.body;
+    if (!valorEgreso || !codigoEmpleado) {
+        return res.status(400).json({ success: false, mensaje: 'Valor y código de empleado son requeridos.' });
+    }
+
+    const empleado = await Empleados.findOne({
+        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
+        attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido', 'codigoEmpleado']
+    });
+    if (!empleado) {
+        return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
+    }
+
+    const valor = parseFloat(valorEgreso);
+    if (!Number.isFinite(valor) || valor <= 0) {
+        return res.status(400).json({ success: false, mensaje: 'Valor inválido.' });
+    }
+
+    try {
+        const egreso = await Egresos.create({
+            idPuntoDeVenta: idPdv,
+            idEmpleado: empleado.idEmpleado,
+            valorEgreso: valor,
+            referencia: referencia?.trim() || null,
+            descripcion: descripcion?.trim() || null,
+            estado: 'pendiente'
+        });
+
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const totalHoy = await Egresos.sum('valorEgreso', {
+            where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: hoy } }
+        });
+
+        broadcast(idPdv, 'new_egreso', {
+            egreso: {
+                idEgreso: egreso.idEgreso,
+                referencia: egreso.referencia,
+                valorEgreso: parseFloat(egreso.valorEgreso),
+                descripcion: egreso.descripcion,
+                estado: egreso.estado,
+                createdAt: egreso.createdAt
+            },
+            totalHoy: totalHoy || 0
+        });
+
+        broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta: idPdv, egresosHoy: totalHoy || 0 });
+
+        return res.json({
+            success: true,
+            idEgreso: egreso.idEgreso,
+            nombreEmpleado: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`
+        });
+    } catch (e) {
+        console.error('crearEgreso:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
+    }
+};
+
+const getEgresosJSON = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    const { pagina = 1, fechaA, fechaB, estado } = req.query;
+    const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+    const offset = (parseInt(pagina) - 1) * limite;
+
+    try {
+        const where = { idPuntoDeVenta: idPdv };
+
+        if (fechaA && fechaB) {
+            const inicio = new Date(fechaA); inicio.setHours(0, 0, 0, 0);
+            const fin    = new Date(fechaB); fin.setHours(23, 59, 59, 999);
+            where.createdAt = { [Op.between]: [inicio, fin] };
+        } else if (fechaA) {
+            const inicio = new Date(fechaA); inicio.setHours(0, 0, 0, 0);
+            where.createdAt = { [Op.gte]: inicio };
+        } else if (fechaB) {
+            const fin = new Date(fechaB); fin.setHours(23, 59, 59, 999);
+            where.createdAt = { [Op.lte]: fin };
+        }
+
+        if (estado && ['pendiente', 'liquidada'].includes(estado)) {
+            where.estado = estado;
+        }
+
+        const { count, rows } = await Egresos.findAndCountAll({
+            where,
+            order: [['createdAt', 'DESC']],
+            limit: limite,
+            offset,
+            distinct: true
+        });
+
+        return res.json({
+            success: true,
+            egresos: rows,
+            totalPaginas: Math.ceil(count / limite),
+            paginaActual: parseInt(pagina),
+            total: count
+        });
+    } catch (e) {
+        console.error('getEgresosJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const getTotalEgresosHoy = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    try {
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const total = await Egresos.sum('valorEgreso', {
+            where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: hoy } }
+        });
+        return res.json({ success: true, total: total || 0 });
+    } catch (e) {
+        console.error('getTotalEgresosHoy:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const getEgresoComprobantePDF = async (req, res) => {
+    const { idEgreso } = req.params;
+    const idPdv = req.idPuntoDeVenta;
+
+    try {
+        const egreso = await Egresos.findOne({
+            where: { idEgreso, idPuntoDeVenta: idPdv },
+            include: [
+                { model: Empleados,     as: 'empleado',      attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'] },
+                { model: PuntosDeVenta, as: 'puntoDeVenta',  attributes: ['nombreComercial'] }
+            ]
+        });
+        if (!egreso) return res.status(404).json({ success: false, mensaje: 'Egreso no encontrado.' });
+
+        const W = 227, MARGIN = 10, CW = W - MARGIN * 2, LOGO_H = 55;
+        const estH = 450;
+
+        const doc = new PDFDocument({
+            size: [W, estH],
+            margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
+            autoFirstPage: true
+        });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        const pdfEnd = new Promise(r => doc.on('end', r));
+
+        const hr = () => {
+            doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#BBBBBB').lineWidth(0.5).stroke();
+            doc.moveDown(0.4);
+        };
+
+        const fila = (label, valor) => {
+            const y = doc.y;
+            doc.font('Helvetica-Bold').fontSize(6.5).text(label, MARGIN, y, { width: CW * 0.38 });
+            doc.font('Helvetica').fontSize(6.5).text(String(valor), MARGIN + CW * 0.38, y, { width: CW * 0.62 });
+            doc.y = Math.max(doc.y, y + 11);
+            doc.moveDown(0.1);
+        };
+
+        // Logo
+        const logoX = MARGIN + (CW - LOGO_H) / 2;
+        doc.image(LOGO_PATH, logoX, MARGIN, { width: LOGO_H, height: LOGO_H });
+        doc.y = MARGIN + LOGO_H + 6;
+
+        // Encabezado
+        doc.font('Helvetica-Bold').fontSize(10).text('COMPROBANTE DE EGRESO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.2);
+        if (egreso.puntoDeVenta?.nombreComercial) {
+            doc.font('Helvetica').fontSize(7).text(egreso.puntoDeVenta.nombreComercial, MARGIN, doc.y, { width: CW, align: 'center' });
+        }
+        doc.moveDown(0.4);
+        hr();
+
+        // Fecha y hora en zona Colombia
+        const fechaEgreso = new Date(egreso.createdAt);
+        const fechaStr = fechaEgreso.toLocaleString('es-CO', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false, timeZone: 'America/Bogota'
+        });
+
+        fila('Egreso N°:', `#${egreso.idEgreso}`);
+        fila('Fecha y hora:', fechaStr);
+        fila('Estado:', egreso.estado.toUpperCase());
+
+        doc.moveDown(0.2); hr();
+
+        const nombreEmp  = egreso.empleado ? `${egreso.empleado.PrimerNombre} ${egreso.empleado.PrimerApellido}` : 'N/A';
+        const codigoEmp  = egreso.empleado?.codigoEmpleado || 'N/A';
+
+        fila('Responsable:', nombreEmp);
+        fila('Cód. empleado:', codigoEmp);
+
+        doc.moveDown(0.2); hr();
+
+        if (egreso.referencia) fila('Referencia:', egreso.referencia);
+        if (egreso.descripcion) {
+            doc.font('Helvetica-Bold').fontSize(6.5).text('Descripción:', MARGIN, doc.y, { width: CW });
+            doc.moveDown(0.1);
+            doc.font('Helvetica').fontSize(6.5).text(egreso.descripcion, MARGIN, doc.y, { width: CW });
+            doc.moveDown(0.4);
+        }
+
+        doc.moveDown(0.2); hr();
+
+        // Valor grande y destacado
+        const valorStr = `$${Math.round(parseFloat(egreso.valorEgreso)).toLocaleString('es-CO')}`;
+        doc.font('Helvetica-Bold').fontSize(16).text(valorStr, MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.1);
+        doc.font('Helvetica').fontSize(6.5).text('VALOR DEL EGRESO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.6);
+
+        hr();
+
+        const footerCD = process.env.FOOTER_CODEDREAM || '';
+        if (footerCD) {
+            doc.font('Helvetica').fontSize(6).text(footerCD, MARGIN, doc.y, { width: CW, align: 'center' });
+        }
+
+        doc.end();
+        await pdfEnd;
+
+        const buf = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="egreso-${egreso.idEgreso}.pdf"`);
+        res.setHeader('Content-Length', buf.length);
+        return res.send(buf);
+
+    } catch (e) {
+        console.error('getEgresoComprobantePDF:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al generar el comprobante.' });
+    }
+};
+
 // ─── VERIFICAR TRASLADOS EXPIRADOS (llamado periódicamente) ──────────────────
 const verificarTrasladosExpirados = async () => {
     try {
@@ -1662,6 +2371,59 @@ const verificarTrasladosExpirados = async () => {
     }
 };
 
+const abrirCajaAPI = async (req, res) => {
+    const idPuntoDeVenta = req.idPuntoDeVenta;
+    if (!idPuntoDeVenta)
+        return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
+
+    try {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+
+        const cajaExistente = await CajaTienda.findOne({
+            where: {
+                idPuntoDeVenta,
+                estado: 'abierto',
+                fechaApertura: { [Op.gte]: hoy },
+                fechaCierre: null
+            }
+        });
+        if (cajaExistente)
+            return res.status(400).json({ success: false, mensaje: 'Ya hay una caja abierta.' });
+
+        const cajaMenor = Number(req.body.cajaMenor);
+        if (!Number.isFinite(cajaMenor) || cajaMenor < 0)
+            return res.status(400).json({ success: false, mensaje: 'Caja menor inválida.' });
+
+        const codigo = String(req.body.codigoEmpleado || '').trim().toUpperCase();
+        if (!codigo)
+            return res.status(400).json({ success: false, mensaje: 'Código de empleado requerido.' });
+
+        const empleado = await Empleados.findOne({
+            where: { codigoEmpleado: codigo, idPuntoDeVenta },
+            attributes: ['idEmpleado']
+        });
+        if (!empleado)
+            return res.status(400).json({ success: false, mensaje: 'Empleado no pertenece a esta tienda.' });
+
+        const caja = await CajaTienda.create({
+            idPuntoDeVenta,
+            idEmpleadoApertura: empleado.idEmpleado,
+            idEmpleadoCierre:   empleado.idEmpleado,   // placeholder hasta el cierre real
+            cajaMenor,
+            fechaApertura: new Date(),
+            estado: 'abierto'
+        });
+
+        broadcast('__ADMIN__', 'caja_status', { idPuntoDeVenta, estado: 'abierta' });
+
+        return res.json({ success: true, idCajaTienda: caja.idCajaTienda });
+    } catch (e) {
+        console.error('abrirCajaAPI:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
+    }
+};
+
 export {
     dashboardStores,
     getTraslados,
@@ -1687,5 +2449,15 @@ export {
     getTirillaPDF,
     buscarProductoPorSKU,
     crearTrasladoSueltos,
-    verificarTrasladosExpirados
+    verificarTrasladosExpirados,
+    getExpensesPage,
+    crearEgreso,
+    getEgresosJSON,
+    getTotalEgresosHoy,
+    getEgresoComprobantePDF,
+    abrirCajaAPI,
+    cuadrarCajaPage,
+    getCuadreCajaDatos,
+    cerrarCajaAPI,
+    getCuadrePDF
 };

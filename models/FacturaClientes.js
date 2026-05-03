@@ -1,4 +1,4 @@
-import { DataTypes } from "sequelize";
+import { DataTypes, ENUM } from "sequelize";
 import db from "../config/bd.js";
 
 const FacturaClientes = db.define('FACTURA_CLIENTES', {
@@ -80,6 +80,10 @@ const FacturaClientes = db.define('FACTURA_CLIENTES', {
     horaEmision: {
         type: DataTypes.TIME,
         allowNull: true
+    },
+    estado :{
+        type : ENUM('pendiente', 'liquidada'),
+        defaultValue : 'pendiente'
     }
 }, {
     tableName: 'FACTURA_CLIENTES',

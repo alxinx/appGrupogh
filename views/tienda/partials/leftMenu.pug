@@ -57,6 +57,38 @@ aside(
         a(href="/store/traslados/history" class="submenu-item")
           i(class="fi fi-rr-book-bookmark text-sm mr-2") 
           |Historial de Traslados
+      
+    
+    
+    // Caja y ventas(submenu)
+    details(class="group")
+      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
+        div(class="flex items-center gap-3")
+          i(class="fi fi-rr -dialogue-exchange")
+          span Caja y ventas
+        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+ 
+      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+        if sinCaja
+          button#btn-apertura-caja-menu(
+            type="button"
+            class="submenu-item w-full text-left"
+            onclick="window.abrirModalCaja && window.abrirModalCaja()"
+          )
+            i(class="fi fi-rr-open text-sm mr-2")
+            | Apertura de Caja
+        else
+          a#btn-apertura-caja-menu(href="/store/storebehivors/" class="submenu-item")
+            i(class="fi fi-rr-calculator text-sm mr-2")
+            | Cuadrar Caja
+        
+        a(href="/store/storebehivors/sales" class="submenu-item")
+          i(class="fi fi fi-rr-selling text-sm mr-2")
+          | Mis Ventas
+        
+        a(href="/store/storebehivors/expenses" class="submenu-item")
+          i(class="fi fi fi-rr-expense text-sm mr-2")
+          | Egresos
  
 
     a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)

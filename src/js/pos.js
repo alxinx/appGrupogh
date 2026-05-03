@@ -164,6 +164,16 @@
     const addToCart = (p, qty = 1) => {
         if (!p?.idProducto || qty < 1) return;
 
+        if (window.__cajaAbierta === false) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Caja no abierta',
+                text: 'Debes abrir la caja antes de registrar una venta.',
+                confirmButtonColor: '#EC5FA3'
+            });
+            return;
+        }
+
         if (cart.has(p.idProducto)) {
             const item = cart.get(p.idProducto);
             const nueva = Math.min(item.cantidad + qty, item.stock);
@@ -876,6 +886,7 @@
         };
 
         const cerrarFV = () => {
+            if (!modalFV) return;
             modalFV.classList.add('hidden');
             modalFV.classList.remove('flex');
         };
@@ -1467,6 +1478,16 @@
             });
 
             // ── Enviar ───────────────────────────────────────────────────────
+            if (window.__cajaAbierta === false) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Caja no abierta',
+                    text: 'Debes abrir la caja antes de registrar una venta.',
+                    confirmButtonColor: '#EC5FA3'
+                });
+                return;
+            }
+
             btn.disabled  = true;
             btn.className = 'flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed';
 
@@ -1501,7 +1522,10 @@
 
             } catch (err) {
                 console.error('procesarFactura:', err);
-                Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo conectar con el servidor.', confirmButtonColor: '#EC5FA3' });
+                const texto = err?.message?.includes('JSON') || err?.message?.includes('fetch')
+                    ? 'No se pudo conectar con el servidor.'
+                    : (err?.message || 'Error inesperado.');
+                Swal.fire({ icon: 'error', title: 'Error de conexión', text: texto, confirmButtonColor: '#EC5FA3' });
                 btn.disabled  = false;
                 actualizarResumenPagos();
             }

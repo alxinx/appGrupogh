@@ -1,18 +1,21 @@
 div(class="tarjetaBase")
 
     p(class="text-xs font-bold text-gh-primaryHover uppercase tracking-wider mb-2")
-        | Nequi/Daviplata
+        | Nequi / Daviplata
     div(class="flex items-end justify-between")
         div
-            h3(class="text-3xl font-bold text-slate-800")
-                | $2.443.000
+            h3(
+                id="stat-billetera"
+                data-val="0"
+                class="text-3xl font-bold text-slate-800 tabular-nums transition-colors duration-300"
+            ) —
 
         div(class="w-10 h-10 rounded-full pl-1.5 bg-fuchsia-700 flex items-center justify-center text-blue-100")
             i.fi-rr-wallet-income.text-2xl
-    
+
     div(class="mt-4 flex items-center space-x-2")
-    div(class="flex-1 h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full")
-        div(class="w-1/6 h-full bg-fuchsia-500 rounded-full")
+    div(class="flex-1 h-2.5 bg-slate-100 rounded-full")
+        div(id="bar-billetera" class="h-full bg-fuchsia-500 rounded-full" style="width:0%")
 
     span(class="text-[10px] font-bold text-slate-400")
-        | 15% de lo recaudado esta en tarjeta.
+        | Billeteras virtuales del día

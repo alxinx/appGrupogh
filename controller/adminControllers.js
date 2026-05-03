@@ -7,7 +7,8 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, CajaTienda } from "../models/index.js";
+import { addClient, removeClient, sendEvent } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
@@ -53,16 +54,41 @@ const dashboardStores = async (req, res) => {
     const listaPuntosDeVenta = await PuntosDeVenta.findAll({
         raw: true,
         attributes: ['idPuntoDeVenta', 'nombreComercial', 'taxId']
-    })
+    });
+
+    const hoyInicio = new Date();
+    hoyInicio.setHours(0, 0, 0, 0);
+    const hoyFin = new Date();
+    hoyFin.setHours(23, 59, 59, 999);
+
+    const cajasHoy = await CajaTienda.findAll({
+        raw: true,
+        attributes: ['idPuntoDeVenta', 'estado', 'fechaApertura', 'fechaCierre'],
+        where: {
+            fechaApertura: { [Op.between]: [hoyInicio, hoyFin] }
+        }
+    });
+
+    const cajasMap = {};
+    for (const c of cajasHoy) {
+        cajasMap[c.idPuntoDeVenta] = c;
+    }
+
+    const tiendas = listaPuntosDeVenta.map(t => {
+        const caja = cajasMap[t.idPuntoDeVenta];
+        let estadoCaja = 'cerrada';
+        if (caja && caja.estado === 'abierto' && !caja.fechaCierre) estadoCaja = 'abierta';
+        else if (caja && caja.fechaCierre) estadoCaja = 'cuadrada';
+        return { ...t, estadoCaja };
+    });
 
     return res.status(201).render('./administrador/stores/homeStores', {
         pagina: "Tiendas",
         subPagina: "Gestión Tiendas",
         csrfToken: req.csrfToken(),
         currentPath: req.path,
-        listaPuntosDeVenta: listaPuntosDeVenta
-
-    })
+        listaPuntosDeVenta: tiendas
+    });
 }
 
 
@@ -233,13 +259,88 @@ const dashboardInventorys = async (req, res) => {
 //
 const billingToday = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
-    res.send(`
-        <div class="p-8 text-center">
-            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: FACTURACIÓN HOY</h2>
-            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
-        </div>
-    `);
-}
+    return res.render('./administrador/stores/views/listaFacturasDia', { idPuntoDeVenta });
+};
+
+const getFacturasJSON = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    const { fecha, pagina = 1, exportar } = req.query;
+
+    try {
+        const _hoy = new Date();
+        const fechaHoy = `${_hoy.getFullYear()}-${String(_hoy.getMonth()+1).padStart(2,'0')}-${String(_hoy.getDate()).padStart(2,'0')}`;
+        const fechaFiltro = fecha || fechaHoy;
+        const limite  = exportar === '1' ? 2000 : (parseInt(process.env.LIMIT_PER_PAGE) || 15);
+        const offset  = exportar === '1' ? 0 : (parseInt(pagina) - 1) * limite;
+
+        const { count, rows } = await FacturaClientes.findAndCountAll({
+            where: { idPuntoDeVenta, fechaEmision: fechaFiltro },
+            include: [
+                {
+                    model: Clientes, as: 'cliente',
+                    attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipo_documento', 'numero_doc'],
+                    required: false
+                },
+                {
+                    model: Empleados, as: 'vendedor',
+                    attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'],
+                    required: false
+                },
+                {
+                    model: DetallesFactura, as: 'detalles',
+                    attributes: ['cantidad', 'total'],
+                    required: false
+                },
+                {
+                    model: DetallesPagosFactura, as: 'pagos',
+                    attributes: ['metodoPago'],
+                    required: false
+                }
+            ],
+            order: [['createdAt', 'DESC']],
+            limit: limite,
+            offset,
+            distinct: true
+        });
+
+        const facturasMapped = rows.map(f => {
+            const totalVenta   = f.detalles.reduce((s, d) => s + parseFloat(d.total || 0), 0);
+            const nroItems     = f.detalles.reduce((s, d) => s + parseInt(d.cantidad || 0), 0);
+            const metodos      = [...new Set(f.pagos.map(p => p.metodoPago))].join(', ');
+            const cli          = f.cliente;
+            const nombreCliente = f.idCliente === '0'
+                ? 'Consumidor Final'
+                : (cli?.razon_social || `${cli?.primer_nombre || ''} ${cli?.primer_apellido || ''}`.trim() || 'N/A');
+            const docCliente   = cli ? `${cli.tipo_documento || ''} ${cli.numero_doc || ''}`.trim() : '';
+            const vendedor     = f.vendedor
+                ? `${f.vendedor.PrimerNombre} ${f.vendedor.PrimerApellido}`
+                : 'N/A';
+            return {
+                idFacturaCliente: f.idFacturaCliente,
+                nroFactura:  `${f.prefijo || ''}${f.numeroFactura}`,
+                cliente:     nombreCliente,
+                docCliente,
+                fechaEmision: f.fechaEmision,
+                horaEmision:  f.horaEmision || '',
+                total:        totalVenta,
+                metodos,
+                nroItems,
+                vendedor
+            };
+        });
+
+        return res.json({
+            success: true,
+            facturas: facturasMapped,
+            totalPaginas: exportar === '1' ? 1 : Math.ceil(count / limite),
+            paginaActual: parseInt(pagina),
+            total: count
+        });
+    } catch (e) {
+        console.error('getFacturasJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
 
 
 const storeInventory = async (req, res) => {
@@ -252,12 +353,90 @@ const storeInventory = async (req, res) => {
 
 const storeEmployers = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
-    res.send(`
-        <div class="p-8 text-center">
-            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: EMPLEADOS TIENDA</h2>
-            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
-        </div>
-    `);
+    try {
+        const empleados = await Empleados.findAll({
+            where: { idPuntoDeVenta },
+            attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido', 'emailEmpleado', 'NumeroDocumento', 'telefonoContacto', 'codigoEmpleado', 'estado'],
+            include: [{ model: PuntosDeVenta, as: 'sede', attributes: ['nombreComercial'] }],
+            order: [['PrimerNombre', 'ASC']],
+        });
+
+        const estadoBadge = (estado) => {
+            const map = {
+                activo:     'bg-emerald-100 text-emerald-700',
+                suspendido: 'bg-yellow-100 text-yellow-700',
+                despedido:  'bg-red-100 text-red-700',
+                vacaciones: 'bg-blue-100 text-blue-700',
+                enfermedad: 'bg-orange-100 text-orange-700',
+                licencia:   'bg-purple-100 text-purple-700',
+                otro:       'bg-gray-100 text-gray-600',
+            };
+            const cls = map[estado] || map.otro;
+            return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}">${estado}</span>`;
+        };
+
+        const filas = empleados.length === 0
+            ? `<tr><td colspan="6" class="px-6 py-10 text-center text-slate-400 text-sm">
+                   <i class="fi-rr-user-slash text-2xl block mb-2"></i>
+                   No hay empleados asignados a esta tienda.
+               </td></tr>`
+            : empleados.map(e => {
+                const sede = e.sede ? e.sede.nombreComercial : '<span class="text-gray-400 italic text-xs">Sin sede</span>';
+                return `
+                <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4">
+                        <p class="font-bold text-slate-800">${e.PrimerNombre} ${e.PrimerApellido}</p>
+                        <p class="text-xs text-slate-400">${e.emailEmpleado || ''}</p>
+                        <p class="mt-0.5">${estadoBadge(e.estado)}</p>
+                    </td>
+                    <td class="px-4 py-4 text-center text-sm text-slate-600">${e.NumeroDocumento || '--'}</td>
+                    <td class="px-4 py-4 text-center text-sm text-slate-600">${e.telefonoContacto || '--'}</td>
+                    <td class="px-4 py-4 text-center">
+                        <span
+                            class="codigo-empleado font-mono text-xs bg-slate-100 px-2 py-1 rounded cursor-pointer select-none"
+                            style="filter:blur(5px); transition:filter 0.25s ease;"
+                            title="Doble clic para revelar"
+                        >${e.codigoEmpleado}</span>
+                    </td>
+                    <td class="px-4 py-4 text-center text-sm text-slate-600">${sede}</td>
+                    <td class="px-6 py-4 text-center">
+                        <a href="/admin/personal/ver/${e.idEmpleado}" class="btn btn-secondary text-xs">
+                            <i class="fi-rr-eye text-xs"></i> Ver más
+                        </a>
+                    </td>
+                </tr>`;
+            }).join('');
+
+        res.send(`
+            <div class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden">
+                <h2 class="h2 text-gh-primaryHover">
+                    <i class="fi-rr-users-alt"></i> Personal Asignado
+                </h2>
+                <p class="text-sm text-slate-400">Empleados vinculados a este punto de venta</p>
+                <div class="overflow-x-auto pt-4">
+                    <table class="w-full text-left text-2xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-gh-primaryHover text-sm transition-colors">
+                                <th class="px-6 py-4 text-gray-600">Empleado</th>
+                                <th class="px-4 py-4 text-center text-gray-600">Documento</th>
+                                <th class="px-4 py-4 text-center text-gray-600">Teléfono</th>
+                                <th class="px-4 py-4 text-center text-gray-600">Código</th>
+                                <th class="px-4 py-4 text-center text-gray-600">Sede Asignada</th>
+                                <th class="px-6 py-4 text-center text-gray-600"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">${filas}</tbody>
+                    </table>
+                </div>
+                <div class="px-4 py-4 bg-slate-50/30 border-t border-slate-100">
+                    <p class="text-xs text-slate-400">${empleados.length} empleado${empleados.length !== 1 ? 's' : ''} en esta tienda</p>
+                </div>
+            </div>
+        `);
+    } catch (error) {
+        console.error('Error en storeEmployers:', error);
+        return res.status(500).send(`<div class="p-6 text-center text-red-500">Error al cargar empleados.</div>`);
+    }
 }
 
 
@@ -1982,6 +2161,141 @@ const imprimirEtiquetaSKU = async (req, res) => {
     }
 };
 
+// ─── STATS DETALLE TIENDA HOY ─────────────────────────────────────────────────
+const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+
+const getTiendaStatsHoyDetalle = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    try {
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+        const facturasHoy = await FacturaClientes.findAll({
+            attributes: ['idFacturaCliente'],
+            where: { idPuntoDeVenta, createdAt: { [Op.gte]: hoy } },
+            raw: true
+        });
+
+        let ventasHoy = 0;
+        const pagos = Object.fromEntries(METODOS_PAGO.map(m => [m, 0]));
+
+        if (facturasHoy.length) {
+            const ids = facturasHoy.map(f => f.idFacturaCliente);
+            const [detallesRows, pagosRows] = await Promise.all([
+                DetallesFactura.findAll({
+                    attributes: [[fn('SUM', col('total')), 'suma']],
+                    where: { idFacturaCliente: { [Op.in]: ids } },
+                    raw: true
+                }),
+                DetallesPagosFactura.findAll({
+                    attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
+                    where: { idFacturaCliente: { [Op.in]: ids } },
+                    group: ['metodoPago'],
+                    raw: true
+                })
+            ]);
+            ventasHoy = parseFloat(detallesRows[0]?.suma || 0);
+            for (const r of pagosRows) {
+                if (Object.prototype.hasOwnProperty.call(pagos, r.metodoPago)) {
+                    pagos[r.metodoPago] = parseFloat(r.total || 0);
+                }
+            }
+        }
+
+        return res.json({ success: true, ventasHoy, pagos });
+    } catch (e) {
+        console.error('getTiendaStatsHoyDetalle:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── ADMIN SSE ───────────────────────────────────────────────────────────────
+const adminSseConnect = (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    addClient('__ADMIN__', res);
+    const hb = setInterval(() => res.write(': ping\n\n'), 25000);
+    req.on('close', () => {
+        clearInterval(hb);
+        removeClient('__ADMIN__', res);
+    });
+};
+
+// ─── STATS TIENDAS HOY ────────────────────────────────────────────────────────
+const getTiendasStatsHoy = async (req, res) => {
+    try {
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+        const [facturasHoy, egresosRows] = await Promise.all([
+            FacturaClientes.findAll({
+                attributes: ['idPuntoDeVenta', 'idFacturaCliente'],
+                where: { createdAt: { [Op.gte]: hoy } },
+                raw: true
+            }),
+            Egresos.findAll({
+                attributes: ['idPuntoDeVenta', [fn('SUM', col('valorEgreso')), 'totalEgresos']],
+                where: { createdAt: { [Op.gte]: hoy } },
+                group: ['idPuntoDeVenta'],
+                raw: true
+            })
+        ]);
+
+        // Agrupar ventas por PDV usando DetallesFactura
+        const ventaMap = {};
+        if (facturasHoy.length) {
+            const factIds = facturasHoy.map(f => f.idFacturaCliente);
+            const detallesRows = await DetallesFactura.findAll({
+                attributes: ['idFacturaCliente', [fn('SUM', col('total')), 'suma']],
+                where: { idFacturaCliente: { [Op.in]: factIds } },
+                group: ['idFacturaCliente'],
+                raw: true
+            });
+            const pdvMap = Object.fromEntries(facturasHoy.map(f => [f.idFacturaCliente, f.idPuntoDeVenta]));
+            for (const row of detallesRows) {
+                const pdv = pdvMap[row.idFacturaCliente];
+                ventaMap[pdv] = (ventaMap[pdv] || 0) + parseFloat(row.suma || 0);
+            }
+        }
+
+        const egresoMap = Object.fromEntries(egresosRows.map(r => [r.idPuntoDeVenta, parseFloat(r.totalEgresos || 0)]));
+
+        const pdvs = await PuntosDeVenta.findAll({ attributes: ['idPuntoDeVenta'], raw: true });
+        const stats = pdvs.map(p => ({
+            idPuntoDeVenta: p.idPuntoDeVenta,
+            ventasHoy: ventaMap[p.idPuntoDeVenta] || 0,
+            egresosHoy: egresoMap[p.idPuntoDeVenta] || 0
+        }));
+
+        const ventasGlobalesHoy = Math.round(Object.values(ventaMap).reduce((a, b) => a + b, 0));
+
+        // Totales globales por método de pago
+        let pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0 };
+        if (facturasHoy.length) {
+            const factIds = facturasHoy.map(f => f.idFacturaCliente);
+            const pagosRows = await DetallesPagosFactura.findAll({
+                attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
+                where: { idFacturaCliente: { [Op.in]: factIds } },
+                group: ['metodoPago'],
+                raw: true
+            });
+            for (const r of pagosRows) {
+                const v = Math.round(parseFloat(r.total || 0));
+                if (r.metodoPago === 'Efectivo')                                       pagosGlobales.efectivo  += v;
+                else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill += v;
+                else if (r.metodoPago === 'Tarjeta Credito')                           pagosGlobales.tCredito  += v;
+                else if (r.metodoPago === 'Entidad Crediticia')                        pagosGlobales.creditos  += v;
+            }
+        }
+
+        return res.json({ success: true, stats, ventasGlobalesHoy, pagosGlobales });
+    } catch (e) {
+        console.error('getTiendasStatsHoy:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 export {
     dashboard,
     dashboardStores,
@@ -2016,5 +2330,9 @@ export {
     baseFrondend,
     filterSupplierListJson,
     filterStoreInventoryJson,
-    imprimirEtiquetaSKU
+    imprimirEtiquetaSKU,
+    adminSseConnect,
+    getTiendasStatsHoy,
+    getTiendaStatsHoyDetalle,
+    getFacturasJSON
 }

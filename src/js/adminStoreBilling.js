@@ -1,0 +1,192 @@
+(function () {
+    'use strict';
+
+    const hoy = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    };
+    const fmtCOP = (n) => `$${Math.round(parseFloat(n) || 0).toLocaleString('es-CO')}`;
+
+    const fmtFechaHora = (fecha, hora) => {
+        if (!fecha) return '—';
+        const [y, m, d] = fecha.split('-');
+        const h = hora ? ` ${hora.slice(0, 5)}` : '';
+        return `${d}/${m}/${y}${h}`;
+    };
+
+    // ─── CARGA LAZY DE SHEETJS ────────────────────────────────────────────────
+    const cargarSheetJS = () => new Promise((resolve) => {
+        if (window.XLSX) { resolve(); return; }
+        const s  = document.createElement('script');
+        s.src    = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = resolve;
+        document.head.appendChild(s);
+    });
+
+    // ─── ESTADO LOCAL ─────────────────────────────────────────────────────────
+    let pdvId        = null;
+    let fechaActual  = hoy();
+    let paginaActual = 1;
+
+    // ─── ROW HTML ─────────────────────────────────────────────────────────────
+    const facturaRow = (f) => {
+        return `
+            <tr class="border-b border-slate-100 hover:bg-pink-50/30 transition-colors">
+                <td class="px-4 py-3 font-mono text-xs font-bold text-slate-700">${f.nroFactura}</td>
+                <td class="px-4 py-3">
+                    <p class="text-sm font-medium text-slate-800">${f.cliente}</p>
+                    <p class="text-xs text-slate-400">${f.docCliente}</p>
+                </td>
+                <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${fmtFechaHora(f.fechaEmision, f.horaEmision)}</td>
+                <td class="px-4 py-3 text-right font-bold text-slate-800 text-sm whitespace-nowrap">${fmtCOP(f.total)}</td>
+                <td class="px-4 py-3 text-center">
+                    <a href="/admin/api/factura/${f.idFacturaCliente}/tirilla" target="_blank"
+                       class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-600 transition-colors"
+                       title="Ver tirilla PDF">
+                        <i class="fi fi-rr-file-pdf text-sm"></i>
+                    </a>
+                </td>
+            </tr>`;
+    };
+
+    // ─── CARGAR TABLA ─────────────────────────────────────────────────────────
+    const cargarFacturas = async (pagina = 1) => {
+        paginaActual = pagina;
+        const tbody = document.getElementById('billing-tbody');
+        if (!tbody) return;
+
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">
+            <i class="fi fi-rr-spinner animate-spin mr-2"></i>Cargando...</td></tr>`;
+
+        try {
+            const params = new URLSearchParams({ fecha: fechaActual, pagina });
+            const res    = await fetch(`/admin/api/tiendas/${pdvId}/facturas?${params}`);
+            const json   = await res.json();
+
+            if (!json.success) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">Error al cargar facturas.</td></tr>`;
+                return;
+            }
+
+            if (!json.facturas.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-slate-400 text-sm">
+                    <i class="fi fi-rr-receipt mr-2"></i>Sin facturas para esta fecha.</td></tr>`;
+                document.getElementById('billing-paginacion').innerHTML = '';
+                return;
+            }
+
+            tbody.innerHTML = json.facturas.map(facturaRow).join('');
+            generarPaginacion('#billing-paginacion', json.totalPaginas, json.paginaActual, cargarFacturas);
+        } catch (_) {
+            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">Error de red.</td></tr>`;
+        }
+    };
+
+    // ─── EXPORTAR A EXCEL ─────────────────────────────────────────────────────
+    const exportarExcel = async () => {
+        const btn = document.getElementById('billing-export');
+        if (!btn) return;
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fi fi-rr-spinner animate-spin mr-2"></i>Exportando...';
+
+        try {
+            await cargarSheetJS();
+
+            const params = new URLSearchParams({ fecha: fechaActual, exportar: '1' });
+            const res    = await fetch(`/admin/api/tiendas/${pdvId}/facturas?${params}`);
+            const json   = await res.json();
+
+            if (!json.success || !json.facturas.length) {
+                alert('No hay facturas para exportar en esta fecha.');
+                return;
+            }
+
+            const encabezado = [
+                'Nro Factura',
+                'Cliente',
+                'Doc Cliente',
+                'Fecha',
+                'Hora',
+                'Valor ($)',
+                'Método de Pago',
+                'Nro Items',
+                'Vendedor'
+            ];
+
+            const filas = json.facturas.map(f => [
+                f.nroFactura,
+                f.cliente,
+                f.docCliente,
+                f.fechaEmision,
+                f.horaEmision,
+                parseFloat(f.total) || 0,
+                f.metodos,
+                f.nroItems,
+                f.vendedor
+            ]);
+
+            const wb  = window.XLSX.utils.book_new();
+            const ws  = window.XLSX.utils.aoa_to_sheet([encabezado, ...filas]);
+
+            // Ancho de columnas
+            ws['!cols'] = [
+                { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 12 },
+                { wch: 8 },  { wch: 16 }, { wch: 24 }, { wch: 10 }, { wch: 28 }
+            ];
+
+            window.XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
+            window.XLSX.writeFile(wb, `facturas-${fechaActual}.xlsx`);
+
+        } catch (e) {
+            console.error('exportarExcel:', e);
+            alert('Error al generar el Excel.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    };
+
+    // ─── INICIALIZAR (llamado cuando el tab se carga en el DOM) ───────────────
+    const initBilling = () => {
+        pdvId = document.getElementById('billing-pdv-id')?.value;
+        if (!pdvId) return;
+
+        // Fecha por defecto: hoy
+        const inputFecha = document.getElementById('billing-fecha');
+        const fechaHoy = hoy();
+        const tabBtn   = document.getElementById('facturacionHoy');
+
+        const actualizarNombreTab = (fecha) => {
+            if (!tabBtn) return;
+            if (fecha === fechaHoy) {
+                tabBtn.textContent = 'Facturación de hoy';
+            } else {
+                const [y, m, d] = fecha.split('-');
+                tabBtn.textContent = `Facturación del ${d}/${m}/${y}`;
+            }
+        };
+
+        if (inputFecha) {
+            inputFecha.value = fechaActual;
+            inputFecha.max   = fechaHoy;
+            inputFecha.addEventListener('change', (e) => {
+                fechaActual = e.target.value;
+                actualizarNombreTab(fechaActual);
+                cargarFacturas(1);
+            });
+        }
+
+        // Botón exportar
+        const btnExport = document.getElementById('billing-export');
+        if (btnExport) btnExport.addEventListener('click', exportarExcel);
+
+        cargarFacturas(1);
+    };
+
+    // ─── ESCUCHAR EVENTO DE TAB CARGADO ──────────────────────────────────────
+    document.addEventListener('tabLoaded', ({ detail }) => {
+        if (detail.tabId === 'facturacionHoy') initBilling();
+    });
+
+})();

@@ -68,5 +68,19 @@
 
         // Carga inicial por defecto (Facturación de hoy)
         loadTabContent('facturacionHoy');
+
+        // Event delegation: blur reveal para codigos de empleado
+        const blurTimers = new WeakMap();
+        container.addEventListener('dblclick', (e) => {
+            const el = e.target.closest('.codigo-empleado');
+            if (!el) return;
+            el.style.filter = 'blur(0)';
+            el.title = 'Se ocultará en 5 segundos...';
+            clearTimeout(blurTimers.get(el));
+            blurTimers.set(el, setTimeout(() => {
+                el.style.filter = 'blur(5px)';
+                el.title = 'Doble clic para revelar';
+            }, 5000));
+        });
     });
 })()

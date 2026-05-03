@@ -56,6 +56,16 @@ app.use("/", loginRoutes); // LOGIN
 app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes); // ADMINISTRADOR
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS
 
+// 5. CSRF error handler
+app.use((err, req, res, next) => {
+    if (err.code !== 'EBADCSRFTOKEN') return next(err);
+    console.error(`[CSRF] ${req.method} ${req.url} — token inválido o ausente`);
+    const isJson = req.headers.accept?.includes('application/json') ||
+                   req.headers['content-type']?.includes('application/json');
+    if (isJson) return res.status(403).json({ success: false, mensaje: 'Sesión expirada. Recarga la página.' });
+    return res.status(403).send('<h2>Sesión expirada. <a href="javascript:location.reload()">Recargar</a></h2>');
+});
+
 app.listen(port, () => {
     console.log(`Servidor corriendo en ${process.env.APP_URL}:${port}`);
 });
