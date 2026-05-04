@@ -4,7 +4,9 @@ const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
-adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON } from "../controller/adminControllers.js"
+adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
+jsonPermisosRecursos, jsonPermisosAcciones,
+verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -58,6 +60,13 @@ routes.post('/personal/new', uploadMixed.fields([
     { name: 'fotoEmpleado', maxCount: 1 },
     { name: 'documentos', maxCount: 10 }
 ]), saveEmployee);
+
+routes.get('/personal/ver/:idEmpleado', verEmpleado);
+routes.post('/personal/ver/:idEmpleado', uploadMixed.fields([
+    { name: 'fotoEmpleado', maxCount: 1 },
+    { name: 'documentos', maxCount: 10 }
+]), actualizarEmpleado);
+routes.post('/personal/documentos/eliminar/:idDocumento', csrfProtection, eliminarDocumentoEmpleado);
 
 
 
@@ -127,6 +136,8 @@ routes.get('/json/personal/documento/:tipo/:numero', checkDocumentoPersonal);
 routes.get('/json/personal/email/:email', checkEmailPersonal);
 routes.get('/json/personal/lista', filterEmployeeListJson);
 routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
+routes.get('/json/permisos/recursos/:tipo', jsonPermisosRecursos);
+routes.get('/json/permisos/acciones', jsonPermisosAcciones);
 routes.get('/json/provedores/', filterSupplierListJson);
 routes.get('/json/inventario-tienda/:idPuntoDeVenta', filterStoreInventoryJson);
 routes.get('/json/tiendas/', async (req, res) => {

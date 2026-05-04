@@ -7,7 +7,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, CajaTienda } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos } from "../models/index.js";
 import { addClient, removeClient, sendEvent } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
@@ -826,13 +826,11 @@ const newSupplier = async (req, res) => {
 
 const checkDocumentoPersonal = async (req, res) => {
     const { tipo, numero } = req.params;
+    const { exclude } = req.query;
     try {
-        const empleado = await Empleados.findOne({
-            where: {
-                TipoDocumento: tipo,
-                NumeroDocumento: numero
-            }
-        });
+        const where = { TipoDocumento: tipo, NumeroDocumento: numero };
+        if (exclude) where.idEmpleado = { [Op.ne]: exclude };
+        const empleado = await Empleados.findOne({ where });
         return res.json({ exists: !!empleado });
     } catch (error) {
         console.error("Error en checkDocumentoPersonal:", error);
@@ -842,8 +840,11 @@ const checkDocumentoPersonal = async (req, res) => {
 
 const checkEmailPersonal = async (req, res) => {
     const { email } = req.params;
+    const { exclude } = req.query;
     try {
-        const empleado = await Empleados.findOne({ where: { emailEmpleado: email } });
+        const where = { emailEmpleado: email };
+        if (exclude) where.idEmpleado = { [Op.ne]: exclude };
+        const empleado = await Empleados.findOne({ where });
         return res.json({ exists: !!empleado });
     } catch (error) {
         console.error("Error en checkEmailPersonal:", error);
@@ -1011,7 +1012,20 @@ const saveEmployee = async (req, res) => {
             await empleado.update({ imagen: keyPhoto }, { transaction: t });
         }
 
-        // 6. Procesar Documentos (empleados/)
+        // 6. Guardar permisos en USER_PERMISOS
+        if (usuarioCreado && req.body.permisosJSON) {
+            const parsed = JSON.parse(req.body.permisosJSON);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                const filas = parsed.map(({ idRecurso, idAccion }) => ({
+                    idUsuario: usuarioCreado.idUsuario,
+                    idRecurso,
+                    idAccion,
+                }));
+                await UserPermisos.bulkCreate(filas, { transaction: t });
+            }
+        }
+
+        // 7. Procesar Documentos (empleados/)
         if (req.files && req.files.documentos) {
             const docsData = await Promise.all(req.files.documentos.map(async (file, idx) => {
                 const ext = file.originalname.split('.').pop();
@@ -2296,6 +2310,200 @@ const getTiendasStatsHoy = async (req, res) => {
     }
 };
 
+const verEmpleado = async (req, res) => {
+    const { idEmpleado } = req.params;
+    try {
+        const [empleado, documentos, departamentos, puntosDeVenta] = await Promise.all([
+            Empleados.findByPk(idEmpleado, { raw: true }),
+            Documentacion.findAll({
+                where: { idPropietario: idEmpleado, pertenece: 'empleado' },
+                order: [['createdAt', 'DESC']],
+                raw: true
+            }),
+            Departamentos.findAll({ raw: true }),
+            PuntosDeVenta.findAll({
+                where: { tipo: { [Op.in]: ['Punto de venta', 'Bodega'] } },
+                raw: true
+            })
+        ]);
+
+        if (!empleado) return res.redirect('/admin/personal');
+
+        const [ciudades, permisosEmpleado] = await Promise.all([
+            Municipios.findAll({ where: { departamento_id: empleado.departamento }, raw: true }),
+            empleado.idUsuario
+                ? UserPermisos.findAll({ where: { idUsuario: empleado.idUsuario }, attributes: ['idRecurso', 'idAccion'], raw: true })
+                : []
+        ]);
+
+        return res.render('./administrador/employeers/ver', {
+            pagina: 'Empleados',
+            subPagina: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`,
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            empleado,
+            documentos,
+            departamentos,
+            ciudades,
+            tipoIdentificacion,
+            contratosLaborales,
+            puntosDeVenta,
+            permisosEmpleado,
+            btnName: 'Actualizar Empleado',
+            r2PublicUrl: process.env.R2_PUBLIC_URL
+        });
+    } catch (error) {
+        console.error('verEmpleado:', error);
+        res.redirect('/admin/personal');
+    }
+};
+
+const actualizarEmpleado = async (req, res) => {
+    const { idEmpleado } = req.params;
+    const {
+        PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
+        TipoDocumento, NumeroDocumento, fechaNacimiento, direccionResidencia,
+        departamentoSelect, ciudadSelect, emailEmpleado, telefonoContacto,
+        contactoEmergencia, telefonoEmergencia, fechaIngreso, tipoContrato,
+        cargo, salarioBase, comisiones, idPuntoDeVenta
+    } = req.body;
+
+    // Resolver usuario ANTES de la transacción para no bloquear el pool de conexiones
+    const rolesConUsuario = { vendedor: 'STORE', bodega: 'EMPLOYER', administrativo: 'ADMIN' };
+    const empleadoBase = await Empleados.findByPk(idEmpleado, { raw: true });
+    if (!empleadoBase) return res.status(404).json({ success: false, mensaje: 'Empleado no encontrado' });
+
+    let idUsuarioPrevio = empleadoBase.idUsuario;
+    if (!idUsuarioPrevio && rolesConUsuario[cargo]) {
+        try {
+            const [usuario] = await Usuarios.findOrCreate({
+                where: { emailUsuario: emailEmpleado },
+                defaults: {
+                    nombreUsuario: PrimerNombre,
+                    apellidoUsuario: PrimerApellido,
+                    password: NumeroDocumento,
+                    permisos: rolesConUsuario[cargo],
+                },
+            });
+            idUsuarioPrevio = usuario.idUsuario;
+            await Empleados.update({ idUsuario: idUsuarioPrevio }, { where: { idEmpleado } });
+        } catch (userErr) {
+            console.error('actualizarEmpleado — vincular usuario:', userErr.message);
+        }
+    }
+
+    const t = await db.transaction();
+    const uploadedFiles = [];
+
+    try {
+        const empleado = await Empleados.findByPk(idEmpleado);
+        if (!empleado) { await t.rollback().catch(() => {}); return res.status(404).json({ success: false, mensaje: 'Empleado no encontrado' }); }
+
+        const administrativeId = '00000000-0000-0000-0000-000000000000';
+        const finalIdPuntoDeVenta = (cargo === 'vendedor' || cargo === 'bodega') ? (idPuntoDeVenta || administrativeId) : administrativeId;
+
+        await empleado.update({
+            idPuntoDeVenta: finalIdPuntoDeVenta,
+            TipoDocumento, NumeroDocumento, PrimerNombre, OtrosNombres,
+            PrimerApellido, SegundoApellido, telefonoContacto, emailEmpleado,
+            fechaIngreso, fechaNacimiento,
+            departamento: departamentoSelect,
+            ciudad: ciudadSelect,
+            direccionResidencia, contactoEmergencia, telefonoEmergencia,
+            tipoContrato, cargo,
+            salarioBase: limpiarPrecio(salarioBase),
+            comisiones: comisiones === 'on',
+        }, { transaction: t });
+
+        // Foto nueva
+        if (req.files?.fotoEmpleado?.[0]) {
+            if (empleado.imagen) {
+                await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: empleado.imagen })).catch(() => {});
+            }
+            const file = req.files.fotoEmpleado[0];
+            const keyPhoto = `documentacion/empleados/perfil/perfil-${NumeroDocumento}-${Date.now()}.webp`;
+            const buffer = await sharp(file.buffer).resize(500, 500, { fit: 'cover' }).webp({ quality: 80 }).toBuffer();
+            await new Upload({ client: s3Client, params: { Bucket: process.env.R2_BUCKET_NAME, Key: keyPhoto, Body: buffer, ContentType: 'image/webp' } }).done();
+            uploadedFiles.push(keyPhoto);
+            await empleado.update({ imagen: keyPhoto }, { transaction: t });
+        }
+
+        // Documentos nuevos
+        if (req.files?.documentos?.length) {
+            const docsData = await Promise.all(req.files.documentos.map(async (file, idx) => {
+                const ext = file.originalname.split('.').pop();
+                const keyDoc = `documentacion/empleados/doc-${NumeroDocumento}-${Date.now()}-${idx}.${ext}`;
+                await new Upload({ client: s3Client, params: { Bucket: process.env.R2_BUCKET_NAME, Key: keyDoc, Body: file.buffer, ContentType: file.mimetype } }).done();
+                uploadedFiles.push(keyDoc);
+                return { idPropietario: idEmpleado, nombreDocumento: file.originalname, keyName: keyDoc, formato: ext.toUpperCase(), pertenece: 'empleado' };
+            }));
+            await Documentacion.bulkCreate(docsData, { transaction: t });
+        }
+
+        // Permisos: reemplazar (idUsuarioPrevio ya fue resuelto antes de la transacción)
+        if (idUsuarioPrevio && req.body.permisosJSON) {
+            await UserPermisos.destroy({ where: { idUsuario: idUsuarioPrevio }, transaction: t });
+            const parsed = JSON.parse(req.body.permisosJSON);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                await UserPermisos.bulkCreate(
+                    parsed.map(({ idRecurso, idAccion }) => ({ idUsuario: idUsuarioPrevio, idRecurso, idAccion })),
+                    { transaction: t }
+                );
+            }
+        }
+
+        await t.commit();
+        res.json({ success: true, mensaje: 'Empleado actualizado con éxito.' });
+    } catch (error) {
+        await t.rollback().catch(() => {});
+        if (uploadedFiles.length) {
+            await Promise.all(uploadedFiles.map(key => s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key })))).catch(() => {});
+        }
+        console.error('actualizarEmpleado:', error);
+        res.status(500).json({ success: false, mensaje: 'Error al actualizar: ' + error.message });
+    }
+};
+
+const eliminarDocumentoEmpleado = async (req, res) => {
+    const { idDocumento } = req.params;
+    try {
+        const doc = await Documentacion.findByPk(idDocumento);
+        if (!doc) return res.status(404).json({ success: false, mensaje: 'Documento no encontrado' });
+        await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: doc.keyName })).catch(() => {});
+        await doc.destroy();
+        res.json({ success: true });
+    } catch (error) {
+        console.error('eliminarDocumentoEmpleado:', error);
+        res.status(500).json({ success: false, mensaje: 'Error al eliminar el documento' });
+    }
+};
+
+const jsonPermisosRecursos = async (req, res) => {
+    try {
+        const { tipo } = req.params;
+        const recursos = await PermisosRecursos.findAll({
+            where: { tipo },
+            attributes: ['idRecurso', 'nombreRecurso'],
+            order: [['nombreRecurso', 'ASC']],
+        });
+        res.json(recursos);
+    } catch (e) {
+        res.status(500).json({ error: 'Error al obtener recursos' });
+    }
+};
+
+const jsonPermisosAcciones = async (req, res) => {
+    try {
+        const acciones = await PermisosAcciones.findAll({
+            attributes: ['idAccion', 'nombreAccion'],
+            order: [['nombreAccion', 'ASC']],
+        });
+        res.json(acciones);
+    } catch (e) {
+        res.status(500).json({ error: 'Error al obtener acciones' });
+    }
+};
+
 export {
     dashboard,
     dashboardStores,
@@ -2334,5 +2542,8 @@ export {
     adminSseConnect,
     getTiendasStatsHoy,
     getTiendaStatsHoyDetalle,
-    getFacturasJSON
+    getFacturasJSON,
+    jsonPermisosRecursos,
+    jsonPermisosAcciones,
+    verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado,
 }
