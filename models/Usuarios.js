@@ -25,7 +25,7 @@ const Usuarios =  db.define('USUARIOS', {
     },
     password : {
         type : DataTypes.STRING,
-        allowNull : false,
+        allowNull : true,
     },
     permisos : {
         type : DataTypes.ENUM('ADMIN', 'STORE', 'EMPLOYER'),
@@ -53,6 +53,7 @@ const Usuarios =  db.define('USUARIOS', {
 )
 //PROTOTYPES FOR PASSWORD
 Usuarios.prototype.checkPassword = function(password){
+    if (!this.password) return false; // cuenta bloqueada
     return bcrypt.compareSync(password, this.password);
 }
 

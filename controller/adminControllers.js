@@ -2360,6 +2360,8 @@ const verEmpleado = async (req, res) => {
 
 const actualizarEmpleado = async (req, res) => {
     const { idEmpleado } = req.params;
+
+    // ── 1. EXTRAER CAMPOS ────────────────────────────────────────────────────────
     const {
         PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
         TipoDocumento, NumeroDocumento, fechaNacimiento, direccionResidencia,
@@ -2368,96 +2370,227 @@ const actualizarEmpleado = async (req, res) => {
         cargo, salarioBase, comisiones, idPuntoDeVenta
     } = req.body;
 
-    // Resolver usuario ANTES de la transacción para no bloquear el pool de conexiones
-    const rolesConUsuario = { vendedor: 'STORE', bodega: 'EMPLOYER', administrativo: 'ADMIN' };
-    const empleadoBase = await Empleados.findByPk(idEmpleado, { raw: true });
-    if (!empleadoBase) return res.status(404).json({ success: false, mensaje: 'Empleado no encontrado' });
+    // ── 2. VALIDACIÓN ────────────────────────────────────────────────────────────
+    const errores = {};
+    if (!PrimerNombre?.trim())  errores.PrimerNombre  = 'El primer nombre es requerido';
+    if (!PrimerApellido?.trim()) errores.PrimerApellido = 'El primer apellido es requerido';
 
-    let idUsuarioPrevio = empleadoBase.idUsuario;
-    if (!idUsuarioPrevio && rolesConUsuario[cargo]) {
+    const tiposDocValidos = ['CC', 'CE', 'TI', 'NIT', 'PP'];
+    if (!TipoDocumento || !tiposDocValidos.includes(TipoDocumento))
+        errores.TipoDocumento = 'Selecciona un tipo de documento válido';
+    if (!NumeroDocumento?.trim())
+        errores.NumeroDocumento = 'El número de documento es requerido';
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailEmpleado?.trim() || !emailRegex.test(emailEmpleado.trim()))
+        errores.emailEmpleado = 'Ingresa un email válido';
+
+    if (!fechaIngreso?.trim())
+        errores.fechaIngreso = 'La fecha de ingreso es requerida';
+
+    const contratosValidos = ['1', '2', '3', '4', '5', '6'];
+    if (!tipoContrato || !contratosValidos.includes(String(tipoContrato)))
+        errores.tipoContrato = 'Selecciona un tipo de contrato válido';
+
+    const cargosValidos = ['vendedor', 'bodega', 'administrativo', 'operario', 'otro'];
+    if (!cargo || !cargosValidos.includes(cargo))
+        errores.cargo = 'El área de desempeño es inválida';
+
+    if (!departamentoSelect || isNaN(parseInt(departamentoSelect)))
+        errores.departamento = 'El departamento es requerido';
+    if (!ciudadSelect || isNaN(parseInt(ciudadSelect)))
+        errores.ciudad = 'La ciudad es requerida';
+
+    if (Object.keys(errores).length)
+        return res.status(422).json({ success: false, mensaje: 'Revisa los campos marcados', errores });
+
+    // ── 3. CARGAR ESTADO ACTUAL DEL EMPLEADO ─────────────────────────────────────
+    const empleadoActual = await Empleados.findByPk(idEmpleado, { raw: true });
+    if (!empleadoActual) return res.status(404).json({ success: false, mensaje: 'Empleado no encontrado' });
+
+    const rolesConUsuario = { vendedor: 'STORE', bodega: 'EMPLOYER', administrativo: 'ADMIN' };
+    const teniRol  = !!rolesConUsuario[empleadoActual.cargo];   // tenía cuenta de acceso
+    const tieneRol = !!rolesConUsuario[cargo];                  // necesita cuenta de acceso
+
+    // ── 4. PRE-TRANSACCIÓN: crear usuario si pasa de sin-rol → con-rol ───────────
+    // (fuera de la transacción para no bloquear el pool de conexiones MySQL)
+    let usuarioNuevo = null;
+    if (!teniRol && tieneRol) {
         try {
-            const [usuario] = await Usuarios.findOrCreate({
-                where: { emailUsuario: emailEmpleado },
+            const [u] = await Usuarios.findOrCreate({
+                where: { emailUsuario: emailEmpleado.trim() },
                 defaults: {
-                    nombreUsuario: PrimerNombre,
-                    apellidoUsuario: PrimerApellido,
-                    password: NumeroDocumento,
-                    permisos: rolesConUsuario[cargo],
+                    nombreUsuario:   PrimerNombre.trim(),
+                    apellidoUsuario: PrimerApellido.trim(),
+                    password:        NumeroDocumento.trim(),
+                    permisos:        rolesConUsuario[cargo],
                 },
             });
-            idUsuarioPrevio = usuario.idUsuario;
-            await Empleados.update({ idUsuario: idUsuarioPrevio }, { where: { idEmpleado } });
+            usuarioNuevo = u;
         } catch (userErr) {
-            console.error('actualizarEmpleado — vincular usuario:', userErr.message);
+            console.error('actualizarEmpleado — crear usuario:', userErr.message);
+            return res.status(500).json({ success: false, mensaje: 'No se pudo crear el acceso del usuario.' });
         }
     }
 
+    // ── 5. TRANSACCIÓN PRINCIPAL ─────────────────────────────────────────────────
     const t = await db.transaction();
     const uploadedFiles = [];
 
     try {
-        const empleado = await Empleados.findByPk(idEmpleado);
-        if (!empleado) { await t.rollback().catch(() => {}); return res.status(404).json({ success: false, mensaje: 'Empleado no encontrado' }); }
+        const empleado = await Empleados.findByPk(idEmpleado, { transaction: t });
 
-        const administrativeId = '00000000-0000-0000-0000-000000000000';
-        const finalIdPuntoDeVenta = (cargo === 'vendedor' || cargo === 'bodega') ? (idPuntoDeVenta || administrativeId) : administrativeId;
-
-        await empleado.update({
-            idPuntoDeVenta: finalIdPuntoDeVenta,
-            TipoDocumento, NumeroDocumento, PrimerNombre, OtrosNombres,
-            PrimerApellido, SegundoApellido, telefonoContacto, emailEmpleado,
-            fechaIngreso, fechaNacimiento,
-            departamento: departamentoSelect,
-            ciudad: ciudadSelect,
-            direccionResidencia, contactoEmergencia, telefonoEmergencia,
-            tipoContrato, cargo,
-            salarioBase: limpiarPrecio(salarioBase),
-            comisiones: comisiones === 'on',
-        }, { transaction: t });
-
-        // Foto nueva
+        // 5.1 FOTO: subir primero a R2, actualizar DB, borrar la vieja DESPUÉS del commit
+        let nuevaFotoKey = null;
         if (req.files?.fotoEmpleado?.[0]) {
-            if (empleado.imagen) {
-                await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: empleado.imagen })).catch(() => {});
-            }
             const file = req.files.fotoEmpleado[0];
+            const allowedImg = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+            if (!allowedImg.includes(file.mimetype))
+                throw new Error('Formato de foto no válido. Usa JPG, PNG o WebP.');
+            if (file.size > 5 * 1024 * 1024)
+                throw new Error('La foto no puede superar 5 MB.');
+
             const keyPhoto = `documentacion/empleados/perfil/perfil-${NumeroDocumento}-${Date.now()}.webp`;
-            const buffer = await sharp(file.buffer).resize(500, 500, { fit: 'cover' }).webp({ quality: 80 }).toBuffer();
+            const buffer   = await sharp(file.buffer).resize(500, 500, { fit: 'cover' }).webp({ quality: 80 }).toBuffer();
             await new Upload({ client: s3Client, params: { Bucket: process.env.R2_BUCKET_NAME, Key: keyPhoto, Body: buffer, ContentType: 'image/webp' } }).done();
             uploadedFiles.push(keyPhoto);
-            await empleado.update({ imagen: keyPhoto }, { transaction: t });
+            nuevaFotoKey = keyPhoto;
         }
 
-        // Documentos nuevos
+        // 5.2 DOCUMENTOS: validar, subir a R2
+        const allowedDoc = [
+            'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ];
+        let docsData = [];
         if (req.files?.documentos?.length) {
-            const docsData = await Promise.all(req.files.documentos.map(async (file, idx) => {
-                const ext = file.originalname.split('.').pop();
+            docsData = await Promise.all(req.files.documentos.map(async (file, idx) => {
+                if (!allowedDoc.includes(file.mimetype))
+                    throw new Error(`Formato no válido: "${file.originalname}". Usa PDF, Word, Excel o imagen.`);
+                if (file.size > 5 * 1024 * 1024)
+                    throw new Error(`"${file.originalname}" supera el límite de 5 MB.`);
+
+                const ext    = file.originalname.split('.').pop();
                 const keyDoc = `documentacion/empleados/doc-${NumeroDocumento}-${Date.now()}-${idx}.${ext}`;
                 await new Upload({ client: s3Client, params: { Bucket: process.env.R2_BUCKET_NAME, Key: keyDoc, Body: file.buffer, ContentType: file.mimetype } }).done();
                 uploadedFiles.push(keyDoc);
                 return { idPropietario: idEmpleado, nombreDocumento: file.originalname, keyName: keyDoc, formato: ext.toUpperCase(), pertenece: 'empleado' };
             }));
-            await Documentacion.bulkCreate(docsData, { transaction: t });
         }
 
-        // Permisos: reemplazar (idUsuarioPrevio ya fue resuelto antes de la transacción)
-        if (idUsuarioPrevio && req.body.permisosJSON) {
-            await UserPermisos.destroy({ where: { idUsuario: idUsuarioPrevio }, transaction: t });
-            const parsed = JSON.parse(req.body.permisosJSON);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                await UserPermisos.bulkCreate(
-                    parsed.map(({ idRecurso, idAccion }) => ({ idUsuario: idUsuarioPrevio, idRecurso, idAccion })),
-                    { transaction: t }
-                );
+        // 5.3 ACTUALIZAR TABLA EMPLEADOS
+        const administrativeId = '00000000-0000-0000-0000-000000000000';
+        const finalIdPuntoDeVenta = (cargo === 'vendedor' || cargo === 'bodega')
+            ? (idPuntoDeVenta || administrativeId)
+            : administrativeId;
+
+        const updatePayload = {
+            idPuntoDeVenta: finalIdPuntoDeVenta,
+            TipoDocumento, NumeroDocumento: NumeroDocumento.trim(),
+            PrimerNombre: PrimerNombre.trim(), OtrosNombres: OtrosNombres?.trim() || null,
+            PrimerApellido: PrimerApellido.trim(), SegundoApellido: SegundoApellido?.trim() || null,
+            telefonoContacto, emailEmpleado: emailEmpleado.trim(),
+            fechaIngreso, fechaNacimiento: fechaNacimiento || null,
+            departamento: departamentoSelect, ciudad: ciudadSelect,
+            direccionResidencia, contactoEmergencia, telefonoEmergencia,
+            tipoContrato, cargo,
+            salarioBase: limpiarPrecio(salarioBase),
+            comisiones: comisiones === 'on',
+        };
+        if (nuevaFotoKey) updatePayload.imagen = nuevaFotoKey;
+
+        await empleado.update(updatePayload, { transaction: t });
+
+        // 5.4 LÓGICA DE CARGO / USUARIO ──────────────────────────────────────────
+
+        if (!teniRol && tieneRol && usuarioNuevo) {
+            // CASO A: sin rol → con rol  (usuario ya creado pre-transacción)
+            await empleado.update({ idUsuario: usuarioNuevo.idUsuario }, { transaction: t });
+
+            if (req.body.permisosJSON) {
+                const parsed = JSON.parse(req.body.permisosJSON);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    await UserPermisos.bulkCreate(
+                        parsed.map(({ idRecurso, idAccion }) => ({ idUsuario: usuarioNuevo.idUsuario, idRecurso, idAccion })),
+                        { transaction: t }
+                    );
+                }
+            }
+
+            // Email de bienvenida (fire-and-forget, no bloquea la transacción)
+            mailWelcomeEmployer({ emailEmpleado: emailEmpleado.trim(), PrimerNombre: PrimerNombre.trim(), codigoEmpleado: empleadoActual.codigoEmpleado }).catch(() => {});
+
+        } else if (teniRol && !tieneRol) {
+            // CASO B: con rol → sin rol  → eliminar permisos y usuario
+            if (empleadoActual.idUsuario) {
+                await UserPermisos.destroy({ where: { idUsuario: empleadoActual.idUsuario }, transaction: t });
+                await Usuarios.destroy({ where: { idUsuario: empleadoActual.idUsuario }, transaction: t });
+                await empleado.update({ idUsuario: null }, { transaction: t });
+            }
+
+        } else if (teniRol && tieneRol && empleadoActual.idUsuario) {
+            // CASO C: mantiene (o cambia) rol → sincronizar usuario + diff de permisos
+            const usuario = await Usuarios.findByPk(empleadoActual.idUsuario, { transaction: t });
+            if (usuario) {
+                await usuario.update({
+                    permisos:        rolesConUsuario[cargo],
+                    emailUsuario:    emailEmpleado.trim(),
+                    nombreUsuario:   PrimerNombre.trim(),
+                    apellidoUsuario: PrimerApellido.trim(),
+                }, { transaction: t });
+            }
+
+            if (req.body.permisosJSON !== undefined) {
+                const deseados = JSON.parse(req.body.permisosJSON);
+                const actuales = await UserPermisos.findAll({
+                    where: { idUsuario: empleadoActual.idUsuario },
+                    raw: true,
+                    transaction: t,
+                });
+
+                const actualSet   = new Set(actuales.map(p => `${p.idRecurso}:${p.idAccion}`));
+                const deseadoSet  = new Set(deseados.map(p => `${p.idRecurso}:${p.idAccion}`));
+                const porAgregar  = deseados.filter(p => !actualSet.has(`${p.idRecurso}:${p.idAccion}`));
+                const porEliminar = actuales.filter(p => !deseadoSet.has(`${p.idRecurso}:${p.idAccion}`));
+
+                if (porAgregar.length) {
+                    await UserPermisos.bulkCreate(
+                        porAgregar.map(({ idRecurso, idAccion }) => ({ idUsuario: empleadoActual.idUsuario, idRecurso, idAccion })),
+                        { transaction: t }
+                    );
+                }
+                for (const p of porEliminar) {
+                    await UserPermisos.destroy({
+                        where: { idUsuario: empleadoActual.idUsuario, idRecurso: p.idRecurso, idAccion: p.idAccion },
+                        transaction: t,
+                    });
+                }
             }
         }
 
+        // 5.5 INSERTAR REGISTROS DE DOCUMENTOS EN DB
+        if (docsData.length) await Documentacion.bulkCreate(docsData, { transaction: t });
+
+        // ── 6. COMMIT ────────────────────────────────────────────────────────────
         await t.commit();
+
+        // ── 7. BORRAR FOTO ANTERIOR DE R2 (post-commit, best-effort) ─────────────
+        if (nuevaFotoKey && empleadoActual.imagen) {
+            s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: empleadoActual.imagen })).catch(() => {});
+        }
+
         res.json({ success: true, mensaje: 'Empleado actualizado con éxito.' });
+
     } catch (error) {
         await t.rollback().catch(() => {});
         if (uploadedFiles.length) {
-            await Promise.all(uploadedFiles.map(key => s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key })))).catch(() => {});
+            await Promise.all(
+                uploadedFiles.map(key => s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key })))
+            ).catch(() => {});
         }
         console.error('actualizarEmpleado:', error);
         res.status(500).json({ success: false, mensaje: 'Error al actualizar: ' + error.message });
@@ -2475,6 +2608,51 @@ const eliminarDocumentoEmpleado = async (req, res) => {
     } catch (error) {
         console.error('eliminarDocumentoEmpleado:', error);
         res.status(500).json({ success: false, mensaje: 'Error al eliminar el documento' });
+    }
+};
+
+const cambiarEstadoEmpleado = async (req, res) => {
+    const { idEmpleado } = req.params;
+    const { estado } = req.body;
+
+    const estadosValidos = ['activo', 'suspendido', 'despedido', 'vacaciones', 'enfermedad', 'licencia', 'otro'];
+    if (!estado || !estadosValidos.includes(estado))
+        return res.status(422).json({ success: false, mensaje: 'Estado inválido.' });
+
+    try {
+        const empleado = await Empleados.findByPk(idEmpleado, { raw: true });
+        if (!empleado) return res.status(404).json({ success: false, mensaje: 'Empleado no encontrado.' });
+
+        const t = await db.transaction();
+        try {
+            await Empleados.update({ estado }, { where: { idEmpleado }, transaction: t });
+
+            if (empleado.idUsuario) {
+                if (estado === 'activo') {
+                    // Restaurar acceso: hashear NumeroDocumento como nueva contraseña
+                    const usuario = await Usuarios.findByPk(empleado.idUsuario, { transaction: t });
+                    if (usuario) {
+                        usuario.password = empleado.NumeroDocumento;
+                        await usuario.save({ transaction: t });
+                    }
+                } else {
+                    // Bloquear acceso: poner password = NULL via query raw (bypass allowNull + hooks)
+                    await db.query(
+                        'UPDATE USUARIOS SET password = NULL WHERE idUsuario = :idUsuario',
+                        { replacements: { idUsuario: empleado.idUsuario }, transaction: t }
+                    );
+                }
+            }
+
+            await t.commit();
+            res.json({ success: true, mensaje: `Estado actualizado a "${estado}".` });
+        } catch (err) {
+            await t.rollback().catch(() => {});
+            throw err;
+        }
+    } catch (error) {
+        console.error('cambiarEstadoEmpleado:', error);
+        res.status(500).json({ success: false, mensaje: 'Error al cambiar el estado: ' + error.message });
     }
 };
 
@@ -2545,5 +2723,5 @@ export {
     getFacturasJSON,
     jsonPermisosRecursos,
     jsonPermisosAcciones,
-    verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado,
+    verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
 }

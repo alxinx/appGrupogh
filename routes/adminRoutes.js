@@ -6,7 +6,7 @@ import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editar
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
 jsonPermisosRecursos, jsonPermisosAcciones,
-verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado } from "../controller/adminControllers.js"
+verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -67,6 +67,7 @@ routes.post('/personal/ver/:idEmpleado', uploadMixed.fields([
     { name: 'documentos', maxCount: 10 }
 ]), actualizarEmpleado);
 routes.post('/personal/documentos/eliminar/:idDocumento', csrfProtection, eliminarDocumentoEmpleado);
+routes.post('/personal/estado/:idEmpleado', csrfProtection, cambiarEstadoEmpleado);
 
 
 

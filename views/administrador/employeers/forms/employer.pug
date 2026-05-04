@@ -1,254 +1,283 @@
-form(action="", method="post" id="formularioEmpleado" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start" data-empleado-id=empleado ? empleado.idEmpleado : '')
+- var estadosBloqueados = ['suspendido','despedido','vacaciones','enfermedad','licencia','otro']
+- var estaBloqueado = empleado && estadosBloqueados.includes(empleado.estado)
+form(action="", method="post" id="formularioEmpleado" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start" data-empleado-id=empleado ? empleado.idEmpleado : '' data-bloqueado=estaBloqueado ? 'true' : 'false' data-estado-actual=empleado ? empleado.estado : '')
 
 
     //- COLUMNA IZQUIERDA
     input(type="hidden", name="_csrf" value = csrfToken)
     input(type="hidden", name="idEmpleado" value=empleado ? empleado.idProveedor : '')
-    
 
-    div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
-        
-        //- Nombre del Producto
-        //- SEPARADOR 100% (ATRIBUTOS)
-        div(class="col-span-12 -mx-6    mt-4")
-            
-            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
-                div(class="border-b border-gray-200 w-full")
-                    i.fi-rr-features.pr-2
+
+    div(class="col-span-12 md:col-span-8 flex flex-col gap-0")
+
+        //- Barra de pestañas (solo para vendedores)
+        if empleado && empleado.cargo === 'vendedor'
+            div(class="flex bg-white rounded-t-2xl border-b border-gray-200 shadow-sm" id="tabBarEmp")
+                button(type="button" class="tab-emp-btn px-5 py-3 text-sm font-semibold border-b-2 border-pink-500 text-pink-600 -mb-px" data-tab="datos")
+                    i.fi-rr-id-card.mr-1(style="font-size:11px")
                     | Datos Básicos
+                button(type="button" class="tab-emp-btn px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-600 -mb-px" data-tab="stats")
+                    i.fi-rr-chart-histogram.mr-1(style="font-size:11px")
+                    | Estadísticas de #{empleado.PrimerNombre}
+
+        //- Contenido de pestañas
+        - var leftCardClass = empleado && empleado.cargo === 'vendedor' ? 'cards cardsWhite flex flex-col rounded-t-none' : 'cards cardsWhite flex flex-col'
+        div(class=leftCardClass)
+
+            //- Panel: Datos Básicos
+            div(class="grid grid-cols-12 gap-4 p-6" id="panelDatosEmp")
+
+                //- SEPARADOR 100% (ATRIBUTOS)
+                div(class="col-span-12 -mx-6 mt-4")
+                    h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                        div(class="border-b border-gray-200 w-full")
+                            i.fi-rr-features.pr-2
+                            | Datos Básicos
 
 
-        div(class="col-span-12 md:col-span-3")
-            label.label Primer Nombre
-                input(class="field-text" type="text" name="PrimerNombre" id="PrimerNombre" placeholder="Juan" value = (empleado && empleado.PrimerNombre) ? empleado.PrimerNombre : "")
-                #divError
+                div(class="col-span-12 md:col-span-3")
+                    label.label Primer Nombre
+                        input(class="field-text" type="text" name="PrimerNombre" id="PrimerNombre" placeholder="Juan" value = (empleado && empleado.PrimerNombre) ? empleado.PrimerNombre : "")
+                        #divError
 
-        div(class="col-span-12 md:col-span-3")
-            label.label Otros nombres
-                input(class="field-text" type="text" name="OtrosNombres" id="OtrosNombres" placeholder="Diego" value = (empleado && empleado.OtrosNombres) ? empleado.OtrosNombres : "")
-                #divError
-        
-        div(class="col-span-12 md:col-span-3")
-            label.label Primer Apellido
-                input(class="field-text" type="text" name="PrimerApellido" id="PrimerApellido" placeholder="Pérez" value = (empleado && empleado.PrimerApellido) ? empleado.PrimerApellido : "")
-                #divError
-        
-        div(class="col-span-12 md:col-span-3")
-            label.label Segundo Apellido
-                input(class="field-text" type="text" name="SegundoApellido" id="SegundoApellido" placeholder="Pérez" value = (empleado && empleado.SegundoApellido) ? empleado.SegundoApellido : "")
-                #divError
-        
+                div(class="col-span-12 md:col-span-3")
+                    label.label Otros nombres
+                        input(class="field-text" type="text" name="OtrosNombres" id="OtrosNombres" placeholder="Diego" value = (empleado && empleado.OtrosNombres) ? empleado.OtrosNombres : "")
+                        #divError
 
-        div(class="col-span-12 md:col-span-4")
-            label.label Tipo de Identificación
-               select(name="TipoDocumento" id="TipoDocumento" class = (errores && errores.TipoDocumento) ? "field-text field-text-error" : "field-text")
-                option(value="") Selecciona Tipo
-                each tipo in tipoIdentificacion
-                    option(value=tipo.codigo selected=(empleado && empleado.TipoDocumento == tipo.codigo))= tipo.descripcion
-                span.select-icon
-                 i.fi-rr-chevron-double-down
+                div(class="col-span-12 md:col-span-3")
+                    label.label Primer Apellido
+                        input(class="field-text" type="text" name="PrimerApellido" id="PrimerApellido" placeholder="Pérez" value = (empleado && empleado.PrimerApellido) ? empleado.PrimerApellido : "")
+                        #divError
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Segundo Apellido
+                        input(class="field-text" type="text" name="SegundoApellido" id="SegundoApellido" placeholder="Pérez" value = (empleado && empleado.SegundoApellido) ? empleado.SegundoApellido : "")
+                        #divError
 
 
+                div(class="col-span-12 md:col-span-4")
+                    label.label Tipo de Identificación
+                       select(name="TipoDocumento" id="TipoDocumento" class = (errores && errores.TipoDocumento) ? "field-text field-text-error" : "field-text")
+                        option(value="") Selecciona Tipo
+                        each tipo in tipoIdentificacion
+                            option(value=tipo.codigo selected=(empleado && empleado.TipoDocumento == tipo.codigo))= tipo.descripcion
+                        span.select-icon
+                         i.fi-rr-chevron-double-down
 
-        div(class="col-span-12 md:col-span-4")
-            label.label Número de identificación
-                input(class="field-text" type="text" name="NumeroDocumento" id="NumeroDocumento" placeholder="Nro de  NIT o Cédula" value = (empleado && empleado.NumeroDocumento) ? empleado.NumeroDocumento : "")
-                #divError
 
-        
-        div(class="col-span-12 md:col-span-4")
-            label.label Fecha de Nacimiento
-                input(class="field-text" type="date" name="fechaNacimiento" id="fechaNacimiento" placeholder="Cuándo nació?" value = (empleado && empleado.fechaNacimiento) ? empleado.fechaNacimiento : "")
-                #divError
-        
-        
-        div(class="col-span-12 -mx-6    mt-4")
-            
-            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
-                div(class="border-b border-gray-200 w-full")
 
-                    i.fi-rr-map-marker.pr-2
-                    | Datos de ubicación y contácto
+                div(class="col-span-12 md:col-span-4")
+                    label.label Número de identificación
+                        input(class="field-text" type="text" name="NumeroDocumento" id="NumeroDocumento" placeholder="Nro de  NIT o Cédula" value = (empleado && empleado.NumeroDocumento) ? empleado.NumeroDocumento : "")
+                        #divError
 
-        
-        div(class="col-span-12 md:col-span-7")
-            label.label Dirección de Residencia
-                input(class="field-text" type="text" name="direccionResidencia" id="direccionResidencia" placeholder="Calle 10 nro 10-10" value = (empleado && empleado.direccionResidencia) ? empleado.direccionResidencia : "")
-                #divError
-        
-        //-Departamento vivienda empleado
-        div(class="col-span-12 md:col-span-3")
-            label.label Departamento
-               select(name="departamentoSelect" id="departamentoSelect" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
-                           option(value="") Selecciona El Departamento 
-                               each departamento in departamentos
-                                   option(value= departamento.id
-                                       selected=(empleado && empleado.departamento == departamento.id) ? true : false
-                                   )=departamento.nombre
-               span.select-icon
-                   i.fi-rr-chevron-double-down
-               if errores && errores.departamento
-                   p(class="label-error pl-2.5")=errores.departamento
-                       i.fi-rr-light-emergency-on
 
-        //- ciudad vivienda empleado
-        div(class="col-span-12 md:col-span-2")
-            label.label Ciudad
-                div(class="select-wrapper")
-                    select(name="ciudadSelect" id="ciudadSelect" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text")
-                        if ciudades
-                            option(value="") Selecciona Ciudad
-                            each ciudad in ciudades
-                                option(
-                                    value=ciudad.id
-                                    selected=(empleado && empleado.ciudad == ciudad.id) ? true : false
-                                )= ciudad.nombre                        
-                        else 
-                            option(value="") -- Seleccione Depto primero --
+                div(class="col-span-12 md:col-span-4")
+                    label.label Fecha de Nacimiento
+                        input(class="field-text" type="date" name="fechaNacimiento" id="fechaNacimiento" placeholder="Cuándo nació?" value = (empleado && empleado.fechaNacimiento) ? empleado.fechaNacimiento : "")
+                        #divError
+
+
+                div(class="col-span-12 -mx-6 mt-4")
+                    h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                        div(class="border-b border-gray-200 w-full")
+                            i.fi-rr-map-marker.pr-2
+                            | Datos de ubicación y contácto
+
+
+                div(class="col-span-12 md:col-span-7")
+                    label.label Dirección de Residencia
+                        input(class="field-text" type="text" name="direccionResidencia" id="direccionResidencia" placeholder="Calle 10 nro 10-10" value = (empleado && empleado.direccionResidencia) ? empleado.direccionResidencia : "")
+                        #divError
+
+                //-Departamento vivienda empleado
+                div(class="col-span-12 md:col-span-3")
+                    label.label Departamento
+                       select(name="departamentoSelect" id="departamentoSelect" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
+                                   option(value="") Selecciona El Departamento
+                                       each departamento in departamentos
+                                           option(value= departamento.id
+                                               selected=(empleado && empleado.departamento == departamento.id) ? true : false
+                                           )=departamento.nombre
+                       span.select-icon
+                           i.fi-rr-chevron-double-down
+                       if errores && errores.departamento
+                           p(class="label-error pl-2.5")=errores.departamento
+                               i.fi-rr-light-emergency-on
+
+                //- ciudad vivienda empleado
+                div(class="col-span-12 md:col-span-2")
+                    label.label Ciudad
+                        div(class="select-wrapper")
+                            select(name="ciudadSelect" id="ciudadSelect" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text")
+                                if ciudades
+                                    option(value="") Selecciona Ciudad
+                                    each ciudad in ciudades
+                                        option(
+                                            value=ciudad.id
+                                            selected=(empleado && empleado.ciudad == ciudad.id) ? true : false
+                                        )= ciudad.nombre
+                                else
+                                    option(value="") -- Seleccione Depto primero --
+                                span.select-icon
+                                    i.fi-rr-chevron-double-down
+                            if errores && errores.ciudad
+                                p(class="label-error pl-2.5")=errores.ciudad
+                                    i.fi-rr-light-emergency-on
+                            span.select-icon
+                                i.fi-rr-chevron-double-down
+
+
+                //- EMAIL EMPLEADO
+                div(class="col-span-12 md:col-span-3")
+                    label.label Email
+                        input(class="field-text" type="email" id="emailEmpleado" name="emailEmpleado" placeholder="correo@empleado.com" value = (empleado && empleado.emailEmpleado) ? empleado.emailEmpleado : "" )
+
+
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Celular (whatsapp)
+                        input(class="field-text" type="tel" id="telefonoContacto" name="telefonoContacto" placeholder="57 316 222 33 22" value = (empleado && empleado.telefonoContacto) ? empleado.telefonoContacto : "" )
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Contacto de emergencia
+                        input(class="field-text" type="text" id="contactoEmergencia" name="contactoEmergencia" placeholder="Diana perez" value = (empleado && empleado.contactoEmergencia) ? empleado.contactoEmergencia : "" )
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Teléfono Contacto
+                        input(class="field-text" type="text" id="telefonoEmergencia" name="telefonoEmergencia" placeholder="57 313 000 00 00" value = (empleado && empleado.telefonoEmergencia) ? empleado.telefonoEmergencia : "" )
+
+
+
+
+
+
+                //- SEPARADOR 100% DATOS LABORALES
+                div(class="col-span-12 -mx-6 mt-4")
+                    div(class="border-b border-gray-200 w-full")
+                        h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                            i.fi-rr-store-buyer.mr-2
+                            | Datos Laborales
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Cuándo inició labores?
+                        input(class="field-text" type="date" name="fechaIngreso" id="fechaIngreso"  value = (empleado && empleado.fechaIngreso) ? empleado.fechaIngreso : "")
+                        #divError
+
+
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Tipo de Contrato
+                        select(name="tipoContrato" id="tipoContrato" class = (errores && errores.tipoContrato) ? "field-text field-text-error" : "field-text")
+                                    option(value="") Selecciona El Contrato
+                                    each contrato in contratosLaborales
+                                        option(value=contrato.codigo selected=(empleado && empleado.tipoContrato == contrato.codigo))= contrato.descripcion
                         span.select-icon
                             i.fi-rr-chevron-double-down
-                    if errores && errores.ciudad
-                        p(class="label-error pl-2.5")=errores.ciudad
-                            i.fi-rr-light-emergency-on
-                    span.select-icon
-                        i.fi-rr-chevron-double-down
-
-     
-        //- EMAIL EMPLEADO
-        div(class="col-span-12 md:col-span-3")
-            label.label Email
-                input(class="field-text" type="email" id="emailEmpleado" name="emailEmpleado" placeholder="correo@empleado.com" value = (empleado && empleado.emailEmpleado) ? empleado.emailEmpleado : "" )
-        
 
 
-        div(class="col-span-12 md:col-span-3")
-            label.label Celular (whatsapp)
-                input(class="field-text" type="tel" id="telefonoContacto" name="telefonoContacto" placeholder="57 316 222 33 22" value = (empleado && empleado.telefonoContacto) ? empleado.telefonoContacto : "" )
-        
-        div(class="col-span-12 md:col-span-3")
-            label.label Contacto de emergencia
-                input(class="field-text" type="text" id="contactoEmergencia" name="contactoEmergencia" placeholder="Diana perez" value = (empleado && empleado.contactoEmergencia) ? empleado.contactoEmergencia : "" )
+                div(class="col-span-12 md:col-span-3")
+                    label.label Área de desempeño
+                        select(name="cargo" id="cargo" class = (errores && errores.cargo) ? "field-text field-text-error" : "field-text")
+                                    option(value="") --Selecciona el área--
+                                    option(value="vendedor" selected=(empleado && empleado.cargo == 'vendedor')) Vendedor
+                                    option(value="bodega" selected=(empleado && empleado.cargo == 'bodega')) En Bodega
+                                    option(value="administrativo" selected=(empleado && empleado.cargo == 'administrativo')) Administrativo
+                                    option(value="operario" selected=(empleado && empleado.cargo == 'operario')) Operativo
+                                    option(value="otro" selected=(empleado && empleado.cargo == 'otro')) Otra Área
 
-        div(class="col-span-12 md:col-span-3")
-            label.label Teléfono Contacto
-                input(class="field-text" type="text" id="telefonoEmergencia" name="telefonoEmergencia" placeholder="57 313 000 00 00" value = (empleado && empleado.telefonoEmergencia) ? empleado.telefonoEmergencia : "" )
-        
-        
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
 
+                div(class="col-span-12 md:col-span-3")
+                    label.label Asignar Sede
+                        select(name="idPuntoDeVenta" id="idPuntoDeVenta" class = (errores && errores.idPuntoDeVenta) ? "field-text field-text-error" : "field-text" disabled)
+                                    option(value="") --Selecciona Sede--
+                                    each punto in puntosDeVenta
+                                        option(value=punto.idPuntoDeVenta selected=(empleado && empleado.idPuntoDeVenta == punto.idPuntoDeVenta))= punto.nombreComercial
 
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
 
-
-        //- SEPARADOR 100% DATOS DE CONTACTO S
-        div(class="col-span-12 -mx-6 mt-4")
-            div(class="border-b border-gray-200 w-full")
-                h1.h1(class="text-left pl-11 flex items-center text-gray-700")
-                    i.fi-rr-store-buyer.mr-2
-                    | Datos Laborales 
-            
-        div(class="col-span-12 md:col-span-3")
-            label.label Cuándo inició labores?
-                input(class="field-text" type="date" name="fechaIngreso" id="fechaIngreso"  value = (empleado && empleado.fechaIngreso) ? empleado.fechaIngreso : "")
-                #divError
-
-        
-
-        div(class="col-span-12 md:col-span-3")
-            label.label Tipo de Contrato
-                select(name="tipoContrato" id="tipoContrato" class = (errores && errores.tipoContrato) ? "field-text field-text-error" : "field-text")
-                            option(value="") Selecciona El Contrato
-                            each contrato in contratosLaborales
-                                option(value=contrato.codigo selected=(empleado && empleado.tipoContrato == contrato.codigo))= contrato.descripcion
-                span.select-icon
-                    i.fi-rr-chevron-double-down
+                div(class="col-span-12 md:col-span-6")
+                    label.label Salario Base
+                        input(class="field-text" type="text" id="salarioBase" name="salarioBase" placeholder="$ 1.700.000" value = (empleado && empleado.salarioBase) ? parseInt(empleado.salarioBase).toLocaleString('es-CO') : "" )
 
 
-        div(class="col-span-12 md:col-span-3")
-            label.label Área de desempeño
-                select(name="cargo" id="cargo" class = (errores && errores.cargo) ? "field-text field-text-error" : "field-text")
-                            option(value="") --Selecciona el área--
-                            option(value="vendedor" selected=(empleado && empleado.cargo == 'vendedor')) Vendedor
-                            option(value="bodega" selected=(empleado && empleado.cargo == 'bodega')) En Bodega 
-                            option(value="administrativo" selected=(empleado && empleado.cargo == 'administrativo')) Administrativo
-                            option(value="operario" selected=(empleado && empleado.cargo == 'operario')) Operativo 
-                            option(value="otro" selected=(empleado && empleado.cargo == 'otro')) Otra Área
-                              
-                span.select-icon
-                    i.fi-rr-chevron-double-down
+                div(class="col-span-12 md:col-span-6 pt-8 flex items-center gap-4")
+                    label.flex.items-center.cursor-pointer
+                        input(type="checkbox" class="sr-only" id="comisiones" name="comisiones" checked=(empleado && (empleado.comisiones == true || empleado.comisiones == 1 || empleado.comisiones === '1')))
+                        span.switch
+                            span.switch-thumb
+                        span.ml-3.text-sm.text-gray-700 Activar Comisiones
 
-        div(class="col-span-12 md:col-span-3")
-            label.label Asignar Sede
-                select(name="idPuntoDeVenta" id="idPuntoDeVenta" class = (errores && errores.idPuntoDeVenta) ? "field-text field-text-error" : "field-text" disabled)
-                            option(value="") --Selecciona Sede--
-                            each punto in puntosDeVenta
-                                option(value=punto.idPuntoDeVenta selected=(empleado && empleado.idPuntoDeVenta == punto.idPuntoDeVenta))= punto.nombreComercial
-                              
-                span.select-icon
-                    i.fi-rr-chevron-double-down
+                    if empleado
+                        button(type="button" id="btnCambiarEstado" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-red-500 text-white hover:bg-red-600 active:scale-95 transition-all shadow-sm")
+                            i.fi-rr-user-slash
+                            | Modificar Estado
 
-        div(class="col-span-12 md:col-span-6")
-            label.label Salario Base
-                input(class="field-text" type="text" id="salarioBase" name="salarioBase" placeholder="$ 1.700.000" value = (empleado && empleado.salarioBase) ? parseInt(empleado.salarioBase).toLocaleString('es-CO') : "" )
-        
+                //- SECCIÓN PERMISOS
+                div(class="col-span-12" id="seccionPermisos" style="display:none")
+                    div(class="col-span-12 -mx-6 mt-4")
+                        h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                            div(class="border-b border-gray-200 w-full")
+                                i.fi-rr-shield-check.pr-2
+                                | Permisos
 
-        div(class="col-span-12 md:col-span-6 pt-8")
-            label.flex.items-center.cursor-pointer
-                input(type="checkbox" class="sr-only" id="comisiones" name="comisiones" checked=(empleado && (empleado.comisiones == true || empleado.comisiones == 1 || empleado.comisiones === '1')))
-                span.switch
-                    span.switch-thumb
-                span.ml-3.text-sm.text-gray-700 Activar Comisiones
+                    div(id="permisosVendedor" style="display:none")
+                        p(class="text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-3 pl-1") Permisos del Vendedor
+                        div(class="flex flex-wrap gap-2" id="pillsVendedor")
+                            span(class="text-xs text-gray-400 italic") Cargando recursos...
+                        div(class="mt-4 rounded-xl border border-pink-100 bg-pink-50 p-4" id="accionesVendedor" style="display:none")
+                            div(class="flex items-center justify-between mb-3")
+                                p(class="text-xs font-semibold text-pink-600 uppercase tracking-wide flex items-center gap-1.5 m-0")
+                                    i.fi-rr-shield-check
+                                    | Acciones para: &nbsp;
+                                    span(id="tituloAccionesVendedor" class="normal-case font-bold")
+                                label(class="flex items-center gap-2 cursor-pointer select-none")
+                                    input(type="checkbox" id="toggleTodosVendedor" class="w-4 h-4 cursor-pointer")
+                                    span(class="text-xs text-pink-600 font-medium") Todos
+                            div(class="flex flex-wrap gap-2" id="checkboxesAccionesVendedor")
 
-        //- SECCIÓN PERMISOS
-        div(class="col-span-12" id="seccionPermisos" style="display:none")
-            div(class="col-span-12 -mx-6 mt-4")
-                h1.h1(class="text-left pl-11 flex items-center text-gray-700")
-                    div(class="border-b border-gray-200 w-full")
-                        i.fi-rr-shield-check.pr-2
-                        | Permisos
+                    div(id="permisosAdministrativo" style="display:none")
+                        p(class="text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-3 pl-1") Permisos de Administrador
+                        div(class="flex flex-wrap gap-2" id="pillsAdministrativo")
+                            span(class="text-xs text-gray-400 italic") Cargando recursos...
+                        div(class="mt-4 rounded-xl border border-pink-100 bg-pink-50 p-4" id="accionesAdministrativo" style="display:none")
+                            div(class="flex items-center justify-between mb-3")
+                                p(class="text-xs font-semibold text-pink-600 uppercase tracking-wide flex items-center gap-1.5 m-0")
+                                    i.fi-rr-shield-check
+                                    | Acciones para: &nbsp;
+                                    span(id="tituloAccionesAdmin" class="normal-case font-bold")
+                                label(class="flex items-center gap-2 cursor-pointer select-none")
+                                    input(type="checkbox" id="toggleTodosAdmin" class="w-4 h-4 cursor-pointer")
+                                    span(class="text-xs text-pink-600 font-medium") Todos
+                            div(class="flex flex-wrap gap-2" id="checkboxesAccionesAdmin")
 
-            div(id="permisosVendedor" style="display:none")
-                p(class="text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-3 pl-1") Permisos del Vendedor
-                div(class="flex flex-wrap gap-2" id="pillsVendedor")
-                    span(class="text-xs text-gray-400 italic") Cargando recursos...
-                div(class="mt-4 rounded-xl border border-pink-100 bg-pink-50 p-4" id="accionesVendedor" style="display:none")
-                    div(class="flex items-center justify-between mb-3")
-                        p(class="text-xs font-semibold text-pink-600 uppercase tracking-wide flex items-center gap-1.5 m-0")
-                            i.fi-rr-shield-check
-                            | Acciones para: &nbsp;
-                            span(id="tituloAccionesVendedor" class="normal-case font-bold")
-                        label(class="flex items-center gap-2 cursor-pointer select-none")
-                            input(type="checkbox" id="toggleTodosVendedor" class="w-4 h-4 cursor-pointer")
-                            span(class="text-xs text-pink-600 font-medium") Todos
-                    div(class="flex flex-wrap gap-2" id="checkboxesAccionesVendedor")
+                    div(id="permisosBodega" style="display:none")
+                        p(class="text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-3 pl-1") Permisos de Bodega
+                        div(class="flex flex-wrap gap-2" id="pillsBodega")
+                            span(class="text-xs text-gray-400 italic") Cargando recursos...
+                        div(class="mt-4 rounded-xl border border-pink-100 bg-pink-50 p-4" id="accionesBodega" style="display:none")
+                            div(class="flex items-center justify-between mb-3")
+                                p(class="text-xs font-semibold text-pink-600 uppercase tracking-wide flex items-center gap-1.5 m-0")
+                                    i.fi-rr-shield-check
+                                    | Acciones para: &nbsp;
+                                    span(id="tituloAccionesBodega" class="normal-case font-bold")
+                                label(class="flex items-center gap-2 cursor-pointer select-none")
+                                    input(type="checkbox" id="toggleTodosBodega" class="w-4 h-4 cursor-pointer")
+                                    span(class="text-xs text-pink-600 font-medium") Todos
+                            div(class="flex flex-wrap gap-2" id="checkboxesAccionesBodega")
 
-            div(id="permisosAdministrativo" style="display:none")
-                p(class="text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-3 pl-1") Permisos de Administrador
-                div(class="flex flex-wrap gap-2" id="pillsAdministrativo")
-                    span(class="text-xs text-gray-400 italic") Cargando recursos...
-                div(class="mt-4 rounded-xl border border-pink-100 bg-pink-50 p-4" id="accionesAdministrativo" style="display:none")
-                    div(class="flex items-center justify-between mb-3")
-                        p(class="text-xs font-semibold text-pink-600 uppercase tracking-wide flex items-center gap-1.5 m-0")
-                            i.fi-rr-shield-check
-                            | Acciones para: &nbsp;
-                            span(id="tituloAccionesAdmin" class="normal-case font-bold")
-                        label(class="flex items-center gap-2 cursor-pointer select-none")
-                            input(type="checkbox" id="toggleTodosAdmin" class="w-4 h-4 cursor-pointer")
-                            span(class="text-xs text-pink-600 font-medium") Todos
-                    div(class="flex flex-wrap gap-2" id="checkboxesAccionesAdmin")
 
-            div(id="permisosBodega" style="display:none")
-                p(class="text-xs font-semibold text-gray-400 uppercase tracking-widest mt-3 mb-3 pl-1") Permisos de Bodega
-                div(class="flex flex-wrap gap-2" id="pillsBodega")
-                    span(class="text-xs text-gray-400 italic") Cargando recursos...
-                div(class="mt-4 rounded-xl border border-pink-100 bg-pink-50 p-4" id="accionesBodega" style="display:none")
-                    div(class="flex items-center justify-between mb-3")
-                        p(class="text-xs font-semibold text-pink-600 uppercase tracking-wide flex items-center gap-1.5 m-0")
-                            i.fi-rr-shield-check
-                            | Acciones para: &nbsp;
-                            span(id="tituloAccionesBodega" class="normal-case font-bold")
-                        label(class="flex items-center gap-2 cursor-pointer select-none")
-                            input(type="checkbox" id="toggleTodosBodega" class="w-4 h-4 cursor-pointer")
-                            span(class="text-xs text-pink-600 font-medium") Todos
-                    div(class="flex flex-wrap gap-2" id="checkboxesAccionesBodega")
+            //- Panel: Estadísticas (solo vendedores)
+            if empleado && empleado.cargo === 'vendedor'
+                div(class="p-6 min-h-64" id="panelStatsEmp" style="display:none")
+                    div(class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2")
+                        i.fi-rr-chart-histogram(style="font-size:2.5rem")
+                        p(class="text-sm font-medium") Estadísticas de #{empleado.PrimerNombre}
+                        p(class="text-xs") Próximamente
 
     //- COLUMNA DERECHA
     div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")
@@ -340,6 +369,36 @@ form(action="", method="post" id="formularioEmpleado" enctype="multipart/form-da
                 i.fi-rr-disk
                 | #{btnName}
 
+
+if empleado
+    div(id="modalEstadoEmpleado" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm")
+        div(class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4")
+            div(class="p-6")
+                div(class="flex items-center gap-3 mb-5")
+                    div(class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0")
+                        i.fi-rr-triangle-warning(class="text-red-600 text-lg")
+                    h3(class="text-base font-bold text-gray-800") Modificación Crítica de Usuario
+
+                p(class="text-xs font-semibold text-red-700 uppercase tracking-wide bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 leading-relaxed")
+                    | ⚠️ ESTÁS A PUNTO DE HACER UNA MODIFICACIÓN CRÍTICA AL USUARIO. SI ESTÁS SEGURO, SELECCIONA QUÉ QUIERES HACER CON ÉL.
+
+                div(class="mb-6")
+                    label(class="label mb-1") Estado del empleado
+                    select(id="selectEstadoEmpleado" class="field-text w-full")
+                        option(value="") -- Selecciona una acción --
+                        option(value="activo") Activo
+                        option(value="suspendido") Suspendido
+                        option(value="despedido") Despedido
+                        option(value="vacaciones") Vacaciones
+                        option(value="enfermedad") Enfermedad / Incapacidad
+                        option(value="licencia") Licencia
+                        option(value="otro") Otro
+
+                div(class="flex gap-3")
+                    button(type="button" id="btnCancelarEstado" class="btn btn-ghost flex-1") Cancelar
+                    button(type="button" id="btnConfirmarEstado" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" disabled)
+                        i.fi-rr-user-slash
+                        span(id="txtConfirmarEstado") Selecciona una acción
 
 script.
     window.__PERMISOS_EMPLEADO__ = !{JSON.stringify(typeof permisosEmpleado !== 'undefined' ? permisosEmpleado : [])};

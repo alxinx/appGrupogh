@@ -14,6 +14,26 @@
     // ID del empleado en modo edición (vacío en modo nuevo)
     const empleadoId = form?.dataset.empleadoId || '';
 
+    // ── Bloquear formulario si el empleado tiene estado inactivo ─────────────────
+    const bloqueado = form?.dataset.bloqueado === 'true';
+    if (bloqueado) {
+        // Deshabilitar todos los controles excepto btnCambiarEstado y campos hidden
+        const controles = form.querySelectorAll('input:not([type="hidden"]), select, textarea, button');
+        controles.forEach(el => {
+            if (el.id !== 'btnCambiarEstado') el.disabled = true;
+        });
+
+        // Banner de aviso en la parte superior del panel
+        const panel = document.getElementById('panelDatosEmp');
+        if (panel) {
+            const banner = document.createElement('div');
+            banner.className = 'col-span-12 flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-2';
+            banner.innerHTML = `<i class="fi-rr-lock text-red-500 text-base flex-shrink-0"></i>
+                <span class="text-sm font-medium text-red-700">Este empleado no está activo. Solo puedes modificar su estado desde el botón <strong>Modificar Estado</strong>.</span>`;
+            panel.insertBefore(banner, panel.firstChild);
+        }
+    }
+
     // Referencias para Sede y Cargo
     const cargoSelect = document.getElementById('cargo');
     const sedeSelect = document.getElementById('idPuntoDeVenta');
@@ -143,6 +163,7 @@
     if (form) {
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
+            if (bloqueado) return;
 
             // Validaciones básicas requeridas
             const required = ['PrimerNombre', 'PrimerApellido', 'TipoDocumento', 'NumeroDocumento', 'fechaNacimiento', 'direccionResidencia', 'emailEmpleado', 'telefonoContacto', 'tipoContrato', 'cargo', 'salarioBase'];
@@ -504,5 +525,124 @@
             }
         });
     });
+
+    // ── Cambiar estado del empleado ──────────────────────────────────────────────
+    const btnCambiarEstado = document.getElementById('btnCambiarEstado');
+    if (btnCambiarEstado && empleadoId) {
+        const modal          = document.getElementById('modalEstadoEmpleado');
+        const selectEstado   = document.getElementById('selectEstadoEmpleado');
+        const btnConfirmar   = document.getElementById('btnConfirmarEstado');
+        const txtConfirmar   = document.getElementById('txtConfirmarEstado');
+        const btnCancelar    = document.getElementById('btnCancelarEstado');
+
+        const estadoLabels = {
+            activo:      'Reactivar Empleado',
+            suspendido:  'Suspender Acceso',
+            despedido:   'Marcar como Despedido',
+            vacaciones:  'Enviar a Vacaciones',
+            enfermedad:  'Registrar Incapacidad',
+            licencia:    'Registrar Licencia',
+            otro:        'Aplicar Otro Estado',
+        };
+
+        const abrirModal = () => {
+            const estadoActual = form?.dataset.estadoActual || '';
+            selectEstado.value = estadoActual;
+            if (estadoActual) {
+                btnConfirmar.disabled = false;
+                txtConfirmar.textContent = estadoLabels[estadoActual] || estadoActual;
+            } else {
+                btnConfirmar.disabled = true;
+                txtConfirmar.textContent = 'Selecciona una acción';
+            }
+            modal.classList.remove('hidden');
+        };
+        const cerrarModal = () => modal.classList.add('hidden');
+
+        btnCambiarEstado.addEventListener('click', abrirModal);
+        btnCancelar.addEventListener('click', cerrarModal);
+        modal.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
+
+        selectEstado.addEventListener('change', () => {
+            const val = selectEstado.value;
+            if (val) {
+                btnConfirmar.disabled = false;
+                txtConfirmar.textContent = estadoLabels[val] || val;
+            } else {
+                btnConfirmar.disabled = true;
+                txtConfirmar.textContent = 'Selecciona una acción';
+            }
+        });
+
+        btnConfirmar.addEventListener('click', async () => {
+            const estado = selectEstado.value;
+            if (!estado) return;
+            cerrarModal();
+
+            const { isConfirmed } = await Swal.fire({
+                icon: 'warning',
+                title: '¿Confirmas el cambio?',
+                html: `El empleado quedará como <strong>${estadoLabels[estado] || estado}</strong>.<br>
+                       <small class="text-gray-500">${estado !== 'activo' ? 'Se bloqueará el acceso al sistema.' : 'Se restaurará el acceso al sistema.'}</small>`,
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: 'Sí, confirmar',
+                cancelButtonText: 'Cancelar',
+            });
+
+            if (!isConfirmed) return;
+
+            try {
+                const csrf = document.querySelector('[name="_csrf"]')?.value;
+                const response = await fetch(`/admin/personal/estado/${empleadoId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrf || '',
+                    },
+                    body: JSON.stringify({ estado }),
+                });
+
+                if (!response.headers.get('content-type')?.includes('application/json')) {
+                    window.location.href = '/admin/login';
+                    return;
+                }
+
+                const data = await response.json();
+                if (data.success) {
+                    await Swal.fire({
+                        icon: 'success',
+                        title: '¡Estado actualizado!',
+                        text: data.mensaje,
+                        timer: 2000,
+                        showConfirmButton: false,
+                    });
+                    window.location.reload();
+                } else {
+                    throw new Error(data.mensaje);
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            }
+        });
+    }
+
+    // Tab switching for employee edit form
+    const tabBtns = document.querySelectorAll('.tab-emp-btn');
+    if (tabBtns.length) {
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', function () {
+                const target = this.dataset.tab;
+                tabBtns.forEach(b => {
+                    b.classList.remove('border-pink-500', 'text-pink-600', 'font-semibold');
+                    b.classList.add('border-transparent', 'text-gray-400', 'font-medium');
+                });
+                this.classList.add('border-pink-500', 'text-pink-600', 'font-semibold');
+                this.classList.remove('border-transparent', 'text-gray-400', 'font-medium');
+                document.getElementById('panelDatosEmp').style.display = target === 'datos' ? '' : 'none';
+                document.getElementById('panelStatsEmp').style.display = target === 'stats' ? '' : 'none';
+            });
+        });
+    }
 
 })();
