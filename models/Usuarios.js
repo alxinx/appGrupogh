@@ -53,7 +53,7 @@ const Usuarios =  db.define('USUARIOS', {
 )
 //PROTOTYPES FOR PASSWORD
 Usuarios.prototype.checkPassword = function(password){
-    if (!this.password) return false; // cuenta bloqueada
+    if (!this.password || this.password === '0') return false; // cuenta bloqueada
     return bcrypt.compareSync(password, this.password);
 }
 

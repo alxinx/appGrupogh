@@ -40,6 +40,21 @@ block contenedor
         //- ID del punto de venta para el JS de stats
         input(type="hidden" id="pdv-current-id" value=dato.idPuntoDeVenta)
 
+        //- Modal: transacciones del día por método de pago
+        div#modalPagosMetodo(class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4")
+            div(class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden")
+                div(class="flex items-center justify-between px-6 py-4 border-b border-gray-100")
+                    h2#modalPagosTitulo(class="text-base font-bold text-slate-800") Movimientos del día
+                    button.cerrar-modal-pagos(class="text-slate-400 hover:text-slate-600 transition-colors")
+                        i.fi-rr-cross
+                div#modalPagosBody(class="overflow-y-auto max-h-80 px-6 py-4")
+                    p(class="text-sm text-slate-400 text-center py-6") Cargando...
+                div(class="px-6 py-4 border-t border-gray-100 flex items-center justify-between")
+                    span(class="text-xs text-slate-500")
+                        | Total:
+                        strong#modalPagosTotal(class="text-slate-800") —
+                    button.cerrar-modal-pagos(class="px-4 py-2 bg-gh-primary text-white rounded-xl text-sm font-semibold hover:bg-gh-primaryHover transition-colors") Cerrar
+
         script(src="/js/dropdownBtn.js")
         script(src="/js/dataStore.js")
         script(src="/js/paginador.js")

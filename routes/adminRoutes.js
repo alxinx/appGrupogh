@@ -6,7 +6,8 @@ import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editar
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
 jsonPermisosRecursos, jsonPermisosAcciones,
-verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado } from "../controller/adminControllers.js"
+verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
+getPagosHoyPorMetodo } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -153,6 +154,7 @@ routes.get('/sse', adminSseConnect);
 routes.get('/api/tiendas/stats-hoy', getTiendasStatsHoy);
 routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', getTiendaStatsHoyDetalle);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', getFacturasJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/pagos-hoy/:metodoPago', getPagosHoyPorMetodo);
 routes.get('/api/factura/:id/tirilla', getTirillaPDF);
 
 // API CHECKS

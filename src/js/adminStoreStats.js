@@ -88,10 +88,89 @@
         sse.onerror = () => setTimeout(conectarSSE, 5000);
     };
 
+    // ─── MODAL PAGOS POR MÉTODO ───────────────────────────────────────────────
+    const CLICKABLES = [
+        { id: 'stat-efectivo',   metodo: 'Efectivo',           label: 'En Efectivo' },
+        { id: 'stat-banco',      metodo: 'Banco',              label: 'Transferencias / Banco' },
+        { id: 'stat-billetera',  metodo: 'Billetera Virtual',  label: 'Nequi / Daviplata' },
+        { id: 'stat-crediticia', metodo: 'Entidad Crediticia', label: 'Entidad Crediticia' },
+    ];
+
+    const modal       = document.getElementById('modalPagosMetodo');
+    const modalTitulo = document.getElementById('modalPagosTitulo');
+    const modalBody   = document.getElementById('modalPagosBody');
+    const modalTotal  = document.getElementById('modalPagosTotal');
+
+    const fmtHora = (h) => h && h !== '—' ? h.slice(0, 5) : '—';
+
+    const abrirModalPagos = async (metodo, label) => {
+        if (!modal) return;
+        modalTitulo.textContent = label;
+        modalBody.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">Cargando...</p>';
+        modalTotal.textContent = '—';
+        modal.classList.remove('hidden');
+
+        try {
+            const res  = await fetch(`/admin/api/tiendas/${pdvId}/pagos-hoy/${encodeURIComponent(metodo)}`);
+            const json = await res.json();
+            if (!json.success) throw new Error();
+
+            if (!json.movimientos.length) {
+                modalBody.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">Sin movimientos hoy</p>';
+                modalTotal.textContent = fmtCOP(0);
+                return;
+            }
+
+            const filas = json.movimientos.map(m => `
+                <tr class="border-b border-slate-100 last:border-0">
+                    <td class="py-2 pr-3 text-xs font-semibold text-slate-700">${m.nroFactura}</td>
+                    <td class="py-2 pr-3 text-xs text-slate-500">${fmtHora(m.hora)}</td>
+                    <td class="py-2 pr-3 text-xs text-slate-500 text-right font-mono">${fmtCOP(m.valor)}</td>
+                    <td class="py-2 text-xs text-slate-400">${m.referencia}</td>
+                </tr>
+            `).join('');
+
+            modalBody.innerHTML = `
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-[10px] font-bold uppercase text-slate-400 border-b border-slate-200">
+                            <th class="pb-2 pr-3 text-left">Factura</th>
+                            <th class="pb-2 pr-3 text-left">Hora</th>
+                            <th class="pb-2 pr-3 text-right">Valor</th>
+                            <th class="pb-2 text-left">Referencia</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filas}</tbody>
+                </table>
+            `;
+            modalTotal.textContent = fmtCOP(json.total);
+        } catch (_) {
+            modalBody.innerHTML = '<p class="text-sm text-red-400 text-center py-6">Error al cargar</p>';
+        }
+    };
+
+    const cerrarModalPagos = () => modal?.classList.add('hidden');
+
     // ─── INIT ─────────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => {
         cargarStats();
         conectarSSE();
+
+        // Hacer clickables las tarjetas de métodos de pago
+        CLICKABLES.forEach(({ id, metodo, label }) => {
+            const h3 = document.getElementById(id);
+            if (!h3) return;
+            const card = h3.closest('.tarjetaBase');
+            if (!card) return;
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', () => abrirModalPagos(metodo, label));
+        });
+
+        // Cerrar modal
+        document.querySelectorAll('.cerrar-modal-pagos').forEach(btn => {
+            btn.addEventListener('click', cerrarModalPagos);
+        });
+        modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarModalPagos(); });
     });
 
 })();

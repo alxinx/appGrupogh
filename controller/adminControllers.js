@@ -2222,6 +2222,52 @@ const getTiendaStatsHoyDetalle = async (req, res) => {
     }
 };
 
+// ─── PAGOS HOY POR MÉTODO ─────────────────────────────────────────────────────
+const getPagosHoyPorMetodo = async (req, res) => {
+    const { idPuntoDeVenta, metodoPago } = req.params;
+    const metodo = decodeURIComponent(metodoPago);
+    const metodosValidos = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+    if (!metodosValidos.includes(metodo)) return res.status(400).json({ success: false, mensaje: 'Método inválido' });
+
+    try {
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+        const facturasHoy = await FacturaClientes.findAll({
+            attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura', 'horaEmision'],
+            where: { idPuntoDeVenta, createdAt: { [Op.gte]: hoy } },
+            raw: true
+        });
+
+        if (!facturasHoy.length) return res.json({ success: true, movimientos: [], total: 0 });
+
+        const ids = facturasHoy.map(f => f.idFacturaCliente);
+        const facturaMap = Object.fromEntries(facturasHoy.map(f => [f.idFacturaCliente, f]));
+
+        const pagos = await DetallesPagosFactura.findAll({
+            attributes: ['idFacturaCliente', 'valor', 'nroReferencia'],
+            where: { idFacturaCliente: { [Op.in]: ids }, metodoPago: metodo },
+            order: [['create_at', 'ASC']],
+            raw: true
+        });
+
+        const movimientos = pagos.map(p => {
+            const f = facturaMap[p.idFacturaCliente] || {};
+            return {
+                nroFactura: `${f.prefijo || ''}${f.numeroFactura || '—'}`,
+                hora: f.horaEmision || '—',
+                valor: parseFloat(p.valor),
+                referencia: p.nroReferencia || '—'
+            };
+        });
+
+        const total = movimientos.reduce((s, m) => s + m.valor, 0);
+        return res.json({ success: true, movimientos, total });
+    } catch (e) {
+        console.error('getPagosHoyPorMetodo:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 // ─── ADMIN SSE ───────────────────────────────────────────────────────────────
 const adminSseConnect = (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -2636,9 +2682,9 @@ const cambiarEstadoEmpleado = async (req, res) => {
                         await usuario.save({ transaction: t });
                     }
                 } else {
-                    // Bloquear acceso: poner password = NULL via query raw (bypass allowNull + hooks)
+                    // Bloquear acceso: poner password = '0' via query raw (bypass hooks)
                     await db.query(
-                        'UPDATE USUARIOS SET password = NULL WHERE idUsuario = :idUsuario',
+                        "UPDATE USUARIOS SET password = '0' WHERE idUsuario = :idUsuario",
                         { replacements: { idUsuario: empleado.idUsuario }, transaction: t }
                     );
                 }
@@ -2724,4 +2770,5 @@ export {
     jsonPermisosRecursos,
     jsonPermisosAcciones,
     verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
+    getPagosHoyPorMetodo,
 }
