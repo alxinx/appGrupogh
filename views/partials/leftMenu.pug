@@ -37,12 +37,7 @@ aside(
         a(href="/admin/inventario/batch" class="submenu-item") Agregar Productos Al inventario
 
       
-    // Bancos y Entidades (submenu)
-
-    a(
-      href="/admin/bankentities/listado"  class=`menu-item ${currentPath === '/bankentities/listado' ? 'active' : ''}`)
-      i(class="fi fi-rr-bank text-lg")
-      span Bancos y Entidades
+    
 
         
 
@@ -60,17 +55,12 @@ aside(
 
     
     // Bancos y Entidades (submenu)
-    details(class="group")
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/bankentities' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-bank text-lg")
-          span Bancos y Entidades
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+    a(
+      href="/admin/bankentities/listado"  class=`menu-item ${currentPath === '/bankentities/listado' ? 'active' : ''}`)
+      i(class="fi fi-rr-bank text-lg")
+      span Bancos y Entidades
 
-      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/admin/bankentities/ingreso" class=`submenu-item`) Ingreso Nuevo Banco/Entidad
-        a(href="/admin/bankentities/listado" class="submenu-item") Listado de Bancos y Entidades
-
+      
 
     a(href="/admin/provedores" class=`menu-item ${currentPath === '/provedores' ? 'active' : ''}`)
       i(class="fi fi-rr-supplier-alt text-lg")
