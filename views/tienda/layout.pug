@@ -93,6 +93,7 @@ block contenedor
         window.__SIN_CAJA__          = !{JSON.stringify(!!sinCaja)};
         window.__CAJA_MENOR_DEFAULT__ = !{JSON.stringify(cajaMenorDefault || 0)};
         window.__cajaAbierta          = !window.__SIN_CAJA__;
+        window.__idUsuario__          = !{JSON.stringify(idUsuario || '')};
 
     script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
     script(src="/js/helpers.js")

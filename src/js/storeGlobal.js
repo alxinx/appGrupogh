@@ -103,6 +103,29 @@
             if (typeof window.onNuevoEgreso === 'function') window.onNuevoEgreso(data);
         });
 
+        sseSource.addEventListener('permisos_actualizados', (e) => {
+            const { idUsuario } = JSON.parse(e.data);
+            if (idUsuario !== window.__idUsuario__) return;
+            showToast('Tus permisos de acceso fueron actualizados. Recargando...', 'info', 3000);
+            setTimeout(() => window.location.reload(), 2500);
+        });
+
+        sseSource.addEventListener('sesion_invalidada', (e) => {
+            const { idUsuario } = JSON.parse(e.data);
+            if (idUsuario !== window.__idUsuario__) return;
+            showToast('Tu sesión fue cerrada por el administrador. Redirigiendo...', 'warning', 4000);
+            setTimeout(async () => {
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                try {
+                    await fetch('/logout', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' }
+                    });
+                } catch (_) {}
+                window.location.href = './';
+            }, 3000);
+        });
+
         sseSource.onerror = () => {
             setTimeout(conectarSSE, 5000);
         };

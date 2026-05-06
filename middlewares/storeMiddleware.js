@@ -1,22 +1,42 @@
 import { Op } from 'sequelize';
-import { Empleados, PuntosDeVenta, CajaTienda } from '../models/index.js';
+import { Empleados, PuntosDeVenta, CajaTienda, UserPermisos, PermisosRecursos } from '../models/index.js';
 
 const API_PATH = /\/(json|sse|pdf|api)\//;
 
 export const cargarPuntoDeVenta = async (req, res, next) => {
-    // Valor seguro por defecto: sin caja (muestra modal) a menos que se confirme que hay una abierta hoy
-    res.locals.sinCaja = false;
+    res.locals.sinCaja      = false;
+    res.locals.menuRecursos = null; // null = sin restricción (mostrar todo)
 
     try {
-        const empleado = await Empleados.findOne({
-            where: { idUsuario: req.usuario.idUsuario },
-            attributes: ['idEmpleado', 'idPuntoDeVenta', 'PrimerNombre', 'PrimerApellido'],
-            include: [{ model: PuntosDeVenta, as: 'sede', attributes: ['nombreComercial'] }]
-        });
+        const [empleado, permisosRaw] = await Promise.all([
+            Empleados.findOne({
+                where: { idUsuario: req.usuario.idUsuario },
+                attributes: ['idEmpleado', 'idPuntoDeVenta', 'PrimerNombre', 'PrimerApellido'],
+                include: [{ model: PuntosDeVenta, as: 'sede', attributes: ['nombreComercial'] }]
+            }),
+            UserPermisos.findAll({
+                where: { idUsuario: req.usuario.idUsuario },
+                attributes: ['idRecurso'],
+                raw: true
+            })
+        ]);
+
         req.empleado              = empleado || null;
         req.idPuntoDeVenta        = empleado?.idPuntoDeVenta || null;
         res.locals.idPuntoDeVenta = req.idPuntoDeVenta;
         res.locals.nombreTienda   = empleado?.sede?.nombreComercial || null;
+        res.locals.idUsuario      = req.usuario.idUsuario;
+
+        // Si el usuario tiene permisos definidos, construir el Set de recursos
+        if (permisosRaw.length > 0) {
+            const ids = [...new Set(permisosRaw.map(p => p.idRecurso))];
+            const recursos = await PermisosRecursos.findAll({
+                where: { idRecurso: { [Op.in]: ids } },
+                attributes: ['nombreRecurso'],
+                raw: true
+            });
+            res.locals.menuRecursos = new Set(recursos.map(r => r.nombreRecurso));
+        }
 
         if (req.method === 'GET' && !API_PATH.test(req.path) && req.idPuntoDeVenta) {
             const hoy = new Date();
@@ -35,7 +55,6 @@ export const cargarPuntoDeVenta = async (req, res, next) => {
         }
     } catch (e) {
         console.error('[storeMiddleware] error al verificar caja:', e.message);
-        // En caso de error, se asume sin caja para forzar apertura
         res.locals.sinCaja = true;
     }
     next();

@@ -8,7 +8,7 @@ import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
 import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos } from "../models/index.js";
-import { addClient, removeClient, sendEvent } from '../helpers/sseManager.js';
+import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
@@ -2583,6 +2583,21 @@ const actualizarEmpleado = async (req, res) => {
             s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: empleadoActual.imagen })).catch(() => {});
         }
 
+        // ── 8. NOTIFICACIONES SSE ─────────────────────────────────────────────────
+        const idUsuarioAfectado = usuarioNuevo?.idUsuario ?? empleadoActual.idUsuario ?? null;
+
+        // 8a. Permisos actualizados → el menú se refresca en la tienda
+        if (req.body.permisosJSON !== undefined && idUsuarioAfectado && finalIdPuntoDeVenta) {
+            broadcast(finalIdPuntoDeVenta, 'permisos_actualizados', { idUsuario: idUsuarioAfectado });
+        }
+
+        // 8b. Cambio de tienda o cargo → forzar cierre de sesión (en la tienda ORIGINAL)
+        const cambiaTienda = finalIdPuntoDeVenta !== empleadoActual.idPuntoDeVenta;
+        const cambiaCargo  = cargo !== empleadoActual.cargo;
+        if ((cambiaTienda || cambiaCargo) && idUsuarioAfectado && empleadoActual.idPuntoDeVenta) {
+            broadcast(empleadoActual.idPuntoDeVenta, 'sesion_invalidada', { idUsuario: idUsuarioAfectado });
+        }
+
         res.json({ success: true, mensaje: 'Empleado actualizado con éxito.' });
 
     } catch (error) {
@@ -2645,6 +2660,12 @@ const cambiarEstadoEmpleado = async (req, res) => {
             }
 
             await t.commit();
+
+            // Cerrar sesión del empleado en tiempo real
+            if (empleado.idUsuario && empleado.idPuntoDeVenta) {
+                broadcast(empleado.idPuntoDeVenta, 'sesion_invalidada', { idUsuario: empleado.idUsuario });
+            }
+
             res.json({ success: true, mensaje: `Estado actualizado a "${estado}".` });
         } catch (err) {
             await t.rollback().catch(() => {});

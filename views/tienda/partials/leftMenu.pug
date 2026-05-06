@@ -1,3 +1,9 @@
+-
+  var tieneRecurso = function(nombre) {
+    if (!menuRecursos) return true;
+    return menuRecursos.has(nombre);
+  }
+
 // Sidebar container
 aside(
   id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col  shadow-2xl")
@@ -8,94 +14,97 @@ aside(
       src="/img/logo.png"
       alt="Logo"
       class="max-w-40 h-30 object-contain"
-    ) 
+    )
 
   // Menu
   nav(class="flex-1 px-4 py-6 space-y-1 bg-[#F9F4FD] overflow-y-auto")
 
-    a(
-      href="/store"  class=`menu-item ${currentPath === '/' ? 'active' : ''}`)
-      i(class="fi fi-rr-point-of-sale-bill text-lg")
-    
-      span POST DE VENTA
+    if tieneRecurso('Pos de venta')
+      a(
+        href="/store"  class=`menu-item ${currentPath === '/' ? 'active' : ''}`)
+        i(class="fi fi-rr-point-of-sale-bill text-lg")
+
+        span POST DE VENTA
 
 
     // Inventario (submenu)
-    details(class="group")
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/inventario' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-box text-lg")
-          span Inventario y Productos
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+    if tieneRecurso('Inventario y Productos')
+      details(class="group")
+        summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/inventario' ? 'active' : ''}`)
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-box text-lg")
+            span Inventario y Productos
+          i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
 
-      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/store/inventario/lista" class=`submenu-item`)
-          i(class="fi fi-rr-tshirt text-sm mr-2")
-          | Ver Existencias
-        a(href="" name="buscarExistencia" id="buscarExistencia" class=`submenu-item`)
-          i(class="fi fi-rr-eye text-sm mr-2")
-          | Buscar Existencia
- 
-        
+        div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+          a(href="/store/inventario/lista" class=`submenu-item`)
+            i(class="fi fi-rr-tshirt text-sm mr-2")
+            | Ver Existencias
+          a(href="" name="buscarExistencia" id="buscarExistencia" class=`submenu-item`)
+            i(class="fi fi-rr-eye text-sm mr-2")
+            | Buscar Existencia
+
 
     // Dosificador y traslados (submenu)
-    details(class="group")
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr -dialogue-exchange")
-          span Traslados
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
- 
-      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/store/traslados/get" class="submenu-item")
-          i(class="fi fi-rr-inbox-in text-sm mr-2")
-         
-          | Recibir Traslados
-        a(href="/store/traslados/new" class="submenu-item") 
-          i(class="fi fi-rr-inbox-out text-sm mr-2")
-          |Realizar Traslados
-        a(href="/store/traslados/history" class="submenu-item")
-          i(class="fi fi-rr-book-bookmark text-sm mr-2") 
-          |Historial de Traslados
-      
-    
-    
+    if tieneRecurso('Traslados')
+      details(class="group")
+        summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr -dialogue-exchange")
+            span Traslados
+          i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+
+        div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+          a(href="/store/traslados/get" class="submenu-item")
+            i(class="fi fi-rr-inbox-in text-sm mr-2")
+
+            | Recibir Traslados
+          a(href="/store/traslados/new" class="submenu-item")
+            i(class="fi fi-rr-inbox-out text-sm mr-2")
+            |Realizar Traslados
+          a(href="/store/traslados/history" class="submenu-item")
+            i(class="fi fi-rr-book-bookmark text-sm mr-2")
+            |Historial de Traslados
+
+
+
     // Caja y ventas(submenu)
-    details(class="group")
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr -dialogue-exchange")
-          span Caja y ventas
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
- 
-      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        if sinCaja
-          button#btn-apertura-caja-menu(
-            type="button"
-            class="submenu-item w-full text-left"
-            onclick="window.abrirModalCaja && window.abrirModalCaja()"
-          )
-            i(class="fi fi-rr-open text-sm mr-2")
-            | Apertura de Caja
-        else
-          a#btn-apertura-caja-menu(href="/store/storebehivors/" class="submenu-item")
-            i(class="fi fi-rr-calculator text-sm mr-2")
-            | Cuadrar Caja
-        
-        a(href="/store/storebehivors/sales" class="submenu-item")
-          i(class="fi fi fi-rr-selling text-sm mr-2")
-          | Mis Ventas
-        
-        a(href="/store/storebehivors/expenses" class="submenu-item")
-          i(class="fi fi fi-rr-expense text-sm mr-2")
-          | Egresos
- 
+    if tieneRecurso('Caja y ventas')
+      details(class="group")
+        summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr -dialogue-exchange")
+            span Caja y ventas
+          i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+
+        div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+          if sinCaja
+            button#btn-apertura-caja-menu(
+              type="button"
+              class="submenu-item w-full text-left"
+              onclick="window.abrirModalCaja && window.abrirModalCaja()"
+            )
+              i(class="fi fi-rr-open text-sm mr-2")
+              | Apertura de Caja
+          else
+            a#btn-apertura-caja-menu(href="/store/storebehivors/" class="submenu-item")
+              i(class="fi fi-rr-calculator text-sm mr-2")
+              | Cuadrar Caja
+
+          a(href="/store/storebehivors/sales" class="submenu-item")
+            i(class="fi fi fi-rr-selling text-sm mr-2")
+            | Mis Ventas
+
+          a(href="/store/storebehivors/expenses" class="submenu-item")
+            i(class="fi fi fi-rr-expense text-sm mr-2")
+            | Egresos
+
 
     a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
       i(class="fi fi-rr-settings text-lg")
       span Settings
 
-   
+
   // Logout
   div(class="p-4 border-t border-gray-300")
     form(action="/logout" method="POST")
