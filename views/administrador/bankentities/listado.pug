@@ -1,0 +1,238 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center justify-between")
+                                div
+                                    h1(class="text-xl font-bold text-slate-800") Entidades Bancarias
+                                    p(class="text-xs text-slate-400 mt-0.5") Gestiona los métodos de pago disponibles en el POS
+
+                            //- CUERPO: dos columnas
+                            div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
+
+                                //- COLUMNA IZQUIERDA — Listado (misma estética que listaTiendas)
+                                div(class="col-span-12 md:col-span-8")
+                                    div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                        h2(class="h2 text-gh-primaryHover")
+                                            i.fi-rr-bank
+                                            |  Entidades registradas
+                                        p(class="text-sm text-slate-400") Lista de entidades disponibles para recibir pagos en el POS
+
+                                        div(class="overflow-x-auto pt-4")
+                                            table(class="w-full text-left text-2xs border-collapse")
+                                                thead
+                                                    tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                                                        th(class="px-8 py-4 text-center text-gray-600") Nombre
+                                                        th(class="px-2 text-center text-gray-600") Tipo
+                                                        th(class="px-2 text-center text-gray-600") Recibir pagos POS
+                                                        th(class="px-8 text-center text-gray-600") Acción
+
+                                                tbody#tabla-entidades(class="divide-y divide-slate-100")
+                                                    each ent in entidades
+                                                        tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors" data-id=ent.idEntidad)
+                                                            td(class="px-8 py-5")
+                                                                p(class="font-bold text-slate-800") #{ent.nombreEntidad}
+
+                                                            td(class="px-6 py-5 text-center")
+                                                                span(class=`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${ent.tipoEntidad === 'Banco' ? 'bg-blue-100 text-blue-700' : ent.tipoEntidad === 'Billetera Virtual' ? 'bg-fuchsia-100 text-fuchsia-700' : ent.tipoEntidad === 'Entidad Crediticia' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`)
+                                                                    | #{ent.tipoEntidad}
+
+                                                            td(class="px-6 py-5 text-center")
+                                                                if ent.recibirPagosPos
+                                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600")
+                                                                        span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                                        | Activo
+                                                                else
+                                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500")
+                                                                        span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                                        | Inactivo
+
+                                                            td(class="px-8 py-5 text-center")
+                                                                a(href=`/admin/bankentities/detallesEntidad/${ent.idEntidad}` class="btn btn-secondary text-xs")
+                                                                    i.fi-rr-eye.text-xs
+                                                                    | Ver más
+
+                                        div(class="px-8 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between")
+                                            p(class="text-xs text-slate-400")
+                                                | Mostrando
+                                                span(class="font-bold text-slate-600 mx-1")= entidades.length
+                                                | entidades registradas
+
+                                //- COLUMNA DERECHA — Formulario
+                                div(class="col-span-12 md:col-span-4 bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                    h2(class="h2 text-gh-primaryHover")
+                                        i.fi-rr-add
+                                        |  Nueva entidad
+                                    p(class="text-sm text-slate-400 mb-4") Registra una nueva entidad bancaria
+
+                                    form#form-nueva-entidad(class="flex flex-col gap-4 px-4 pb-4")
+                                        input(type="hidden" name="_csrf" value=csrfToken)
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Nombre
+                                            input#input-nombre-entidad(
+                                                type="text"
+                                                name="nombreEntidad"
+                                                placeholder="Ej: Bancolombia"
+                                                maxlength="100"
+                                                autocomplete="off"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Tipo de entidad
+                                            select#input-tipo-entidad(
+                                                name="tipoEntidad"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+                                                option(value="") Seleccionar...
+                                                option(value="Banco") Banco
+                                                option(value="Billetera Virtual") Billetera Virtual
+                                                option(value="Entidad Crediticia") Entidad Crediticia
+                                                option(value="Tarjeta Credito") Tarjeta Crédito
+
+                                        div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
+                                            div
+                                                p(class="text-xs font-semibold text-slate-700") Recibir pagos en el POS
+                                                p(class="text-[10px] text-slate-400 mt-0.5") Habilita este método en todas las tiendas
+                                            label(class="flex items-center cursor-pointer")
+                                                input#switch-recibir-pagos(type="checkbox" name="recibirPagosPos" class="sr-only" value="true")
+                                                span.switch
+                                                    span.switch-thumb
+
+                                        button#btn-guardar-entidad(
+                                            type="button"
+                                            class="w-full py-3 bg-gh-primary text-white rounded-2xl font-bold text-sm hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer"
+                                        ) Guardar entidad
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script.
+            (function () {
+                const csrf       = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const tabla      = document.getElementById('tabla-entidades');
+                const btnGuardar = document.getElementById('btn-guardar-entidad');
+
+                const badgeClass = {
+                    'Banco':              'bg-blue-100 text-blue-700',
+                    'Billetera Virtual':  'bg-fuchsia-100 text-fuchsia-700',
+                    'Entidad Crediticia': 'bg-indigo-100 text-indigo-700',
+                    'Tarjeta Credito':    'bg-slate-100 text-slate-600',
+                };
+
+                // ── CREAR ENTIDAD ─────────────────────────────────────────────
+                btnGuardar.addEventListener('click', async () => {
+                    const nombre  = document.getElementById('input-nombre-entidad').value.trim();
+                    const tipo    = document.getElementById('input-tipo-entidad').value;
+                    const recibir = document.getElementById('switch-recibir-pagos').checked;
+
+                    if (!nombre) return Swal.fire({ icon: 'warning', title: 'Falta el nombre', text: 'Ingresa el nombre de la entidad.', confirmButtonColor: '#EC5FA3' });
+                    if (!tipo)   return Swal.fire({ icon: 'warning', title: 'Falta el tipo', text: 'Selecciona el tipo de entidad.', confirmButtonColor: '#EC5FA3' });
+
+                    btnGuardar.disabled    = true;
+                    btnGuardar.textContent = 'Guardando...';
+
+                    try {
+                        const r = await fetch('/admin/bankentities/crear', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                            body: JSON.stringify({ nombreEntidad: nombre, tipoEntidad: tipo, recibirPagosPos: recibir })
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje || 'Error al crear');
+
+                        await Swal.fire({
+                            icon: 'success',
+                            title: '¡Entidad creada!',
+                            text: `"${nombre}" fue registrada correctamente.`,
+                            confirmButtonColor: '#EC5FA3',
+                            timer: 3000,
+                            timerProgressBar: true
+                        });
+
+                        const ent  = d.entidad;
+                        const badge = `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${badgeClass[ent.tipoEntidad] || 'bg-slate-100 text-slate-600'}">${ent.tipoEntidad}</span>`;
+                        const estado = ent.recibirPagosPos
+                            ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2"></span>Activo</span>`
+                            : `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>Inactivo</span>`;
+                        const btnToggle = ent.recibirPagosPos
+                            ? `<button type="button" class="btn-toggle-entidad btn btn-secondary text-xs bg-red-50 text-red-500 hover:bg-red-100 border-red-200" data-id="${ent.idEntidad}" data-activo="true"><i class="fi-rr-ban text-xs"></i> Desactivar</button>`
+                            : `<button type="button" class="btn-toggle-entidad btn btn-secondary text-xs" data-id="${ent.idEntidad}" data-activo="false"><i class="fi-rr-check text-xs"></i> Activar</button>`;
+
+                        const fila = document.createElement('tr');
+                        fila.className = 'border-b border-gray-100 hover:bg-gray-100 transition-colors';
+                        fila.dataset.id = ent.idEntidad;
+                        fila.innerHTML = `
+                            <td class="px-8 py-5"><p class="font-bold text-slate-800">${ent.nombreEntidad}</p></td>
+                            <td class="px-6 py-5 text-center">${badge}</td>
+                            <td class="px-6 py-5 text-center">${estado}</td>
+                            <td class="px-8 py-5 text-center">${btnToggle}</td>`;
+                        tabla.appendChild(fila);
+
+                        document.getElementById('input-nombre-entidad').value    = '';
+                        document.getElementById('input-tipo-entidad').value      = '';
+                        document.getElementById('switch-recibir-pagos').checked  = false;
+                    } catch (err) {
+                        Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    } finally {
+                        btnGuardar.disabled    = false;
+                        btnGuardar.textContent = 'Guardar entidad';
+                    }
+                });
+
+                // ── TOGGLE ACTIVAR / DESACTIVAR ───────────────────────────────
+                tabla.addEventListener('click', async (e) => {
+                    const btn = e.target.closest('.btn-toggle-entidad');
+                    if (!btn) return;
+
+                    const id     = btn.dataset.id;
+                    const activo = btn.dataset.activo === 'true';
+
+                    const { isConfirmed } = await Swal.fire({
+                        icon: 'question',
+                        title: activo ? '¿Desactivar entidad?' : '¿Activar entidad?',
+                        text: `Se ${activo ? 'desactivará' : 'activará'} para recibir pagos en el POS.`,
+                        showCancelButton: true,
+                        confirmButtonColor: '#EC5FA3',
+                        cancelButtonColor: '#94a3b8',
+                        confirmButtonText: activo ? 'Sí, desactivar' : 'Sí, activar',
+                        cancelButtonText: 'Cancelar'
+                    });
+                    if (!isConfirmed) return;
+
+                    try {
+                        const r = await fetch(`/admin/bankentities/toggle/${id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                            body: JSON.stringify({ recibirPagosPos: !activo })
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje);
+
+                        const nuevoActivo = !activo;
+                        const fila = tabla.querySelector(`tr[data-id="${id}"]`);
+                        if (!fila) return;
+
+                        const tdEstado = fila.querySelector('td:nth-child(3)');
+                        tdEstado.innerHTML = nuevoActivo
+                            ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2"></span>Activo</span>`
+                            : `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>Inactivo</span>`;
+
+                        btn.className = `btn-toggle-entidad btn btn-secondary text-xs${nuevoActivo ? ' bg-red-50 text-red-500 hover:bg-red-100 border-red-200' : ''}`;
+                        btn.innerHTML = nuevoActivo
+                            ? `<i class="fi-rr-ban text-xs"></i> Desactivar`
+                            : `<i class="fi-rr-check text-xs"></i> Activar`;
+                        btn.dataset.activo = String(nuevoActivo);
+                    } catch (err) {
+                        Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    }
+                });
+            })();

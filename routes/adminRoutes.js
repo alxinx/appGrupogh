@@ -7,7 +7,8 @@ checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOr
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
-getPagosHoyPorMetodo } from "../controller/adminControllers.js"
+getPagosHoyPorMetodo,
+listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -48,6 +49,14 @@ routes.get('/inventario/editar/:idProducto', editarProducto)
 routes.get('/inventario/batch/', batchBuyOrder)
 routes.get('/inventario/etiqueta-sku/:idProducto', imprimirEtiquetaSKU)
 
+
+//ENTIDADES BANCARIAS
+routes.get('/bankentities/listado', csrfProtection, listarEntidades);
+routes.post('/bankentities/crear', csrfProtection, crearEntidad);
+routes.post('/bankentities/toggle/:id', csrfProtection, toggleEntidad);
+routes.get('/bankentities/detallesEntidad/:idEntidad', csrfProtection, verDetallesEntidad);
+routes.post('/bankentities/editar/:idEntidad', csrfProtection, editarEntidad);
+routes.get('/api/bankentities/:idEntidad/transacciones', getTransaccionesEntidad);
 
 //PROVEDORES
 routes.get('/provedores/', dashboardSupplier);

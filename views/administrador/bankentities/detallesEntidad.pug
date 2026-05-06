@@ -1,0 +1,291 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center justify-between")
+                                div
+                                    div(class="flex items-center gap-2 mb-1")
+                                        a(href="/admin/bankentities/listado" class="text-xs text-slate-400 hover:text-gh-primary transition-colors")
+                                            i.fi-rr-angle-left
+                                            |  Entidades
+                                        span(class="text-xs text-slate-300") /
+                                        span(class="text-xs text-slate-500") #{entidad.nombreEntidad}
+                                    h1(class="text-xl font-bold text-slate-800") #{entidad.nombreEntidad}
+                                    p(class="text-xs text-slate-400 mt-0.5") Detalles y transacciones de la entidad
+
+                            //- CUERPO: dos columnas
+                            div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
+
+                                //- COLUMNA IZQUIERDA — Transacciones
+                                div(class="col-span-12 md:col-span-8")
+                                    div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                        div(class="flex items-center justify-between mb-1")
+                                            div
+                                                h2(class="h2 text-gh-primaryHover")
+                                                    i.fi-rr-receipt
+                                                    |  Transacciones
+                                                p(class="text-sm text-slate-400") Pagos registrados con esta entidad
+
+                                            button#btn-exportar(
+                                                type="button"
+                                                class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
+                                            )
+                                                i.fi-rr-file-spreadsheet
+                                                | Exportar Excel
+
+                                        //- Filtro fechas
+                                        div(class="flex items-end gap-3 mt-3 mb-4 px-1")
+                                            div
+                                                label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Desde
+                                                input#filtro-desde(
+                                                    type="date"
+                                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-300/40"
+                                                )
+                                            div
+                                                label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Hasta
+                                                input#filtro-hasta(
+                                                    type="date"
+                                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-300/40"
+                                                )
+                                            div
+                                                label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Referencia
+                                                input#filtro-referencia(
+                                                    type="text"
+                                                    placeholder="Buscar referencia..."
+                                                    autocomplete="off"
+                                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-300/40 w-40"
+                                                )
+                                            button#btn-filtrar(
+                                                type="button"
+                                                class="px-4 py-2 bg-gh-primary text-white rounded-xl text-xs font-bold hover:bg-gh-primaryHover transition-colors cursor-pointer"
+                                            ) Filtrar
+                                            button#btn-limpiar(
+                                                type="button"
+                                                class="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+                                            ) Limpiar
+
+                                        div(class="overflow-x-auto pt-2")
+                                            table(class="w-full text-left text-2xs border-collapse")
+                                                thead
+                                                    tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                                                        th(class="px-4 py-4 text-center text-gray-600") Nro Factura
+                                                        th(class="px-4 py-4 text-center text-gray-600") Tienda
+                                                        th(class="px-4 py-4 text-center text-gray-600") Fecha
+                                                        th(class="px-4 py-4 text-center text-gray-600") Hora
+                                                        th(class="px-4 py-4 text-center text-gray-600") Valor
+                                                        th(class="px-4 py-4 text-center text-gray-600") Referencia
+
+                                                tbody#tabla-transacciones(class="divide-y divide-slate-100")
+                                                    tr#fila-cargando
+                                                        td(colspan="6" class="px-4 py-8 text-center text-slate-400 text-xs") Cargando...
+
+                                        div(class="px-4 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between")
+                                            p#resumen-transacciones(class="text-xs text-slate-400") —
+                                            div#paginador-transacciones(class="flex gap-1")
+
+                                //- COLUMNA DERECHA — Formulario edición
+                                div(class="col-span-12 md:col-span-4 bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                    h2(class="h2 text-gh-primaryHover")
+                                        i.fi-rr-edit
+                                        |  Editar entidad
+                                    p(class="text-sm text-slate-400 mb-4") Modifica los datos de la entidad
+
+                                    form#form-editar-entidad(class="flex flex-col gap-4 px-4 pb-4")
+                                        input(type="hidden" name="_csrf" value=csrfToken)
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Nombre
+                                            input#input-nombre-entidad(
+                                                type="text"
+                                                name="nombreEntidad"
+                                                value=entidad.nombreEntidad
+                                                maxlength="100"
+                                                autocomplete="off"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Tipo de entidad
+                                            select#input-tipo-entidad(
+                                                name="tipoEntidad"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+                                                option(value="Banco" selected=entidad.tipoEntidad === 'Banco') Banco
+                                                option(value="Billetera Virtual" selected=entidad.tipoEntidad === 'Billetera Virtual') Billetera Virtual
+                                                option(value="Entidad Crediticia" selected=entidad.tipoEntidad === 'Entidad Crediticia') Entidad Crediticia
+                                                option(value="Tarjeta Credito" selected=entidad.tipoEntidad === 'Tarjeta Credito') Tarjeta Crédito
+
+                                        div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
+                                            div
+                                                p(class="text-xs font-semibold text-slate-700") Recibir pagos en el POS
+                                                p(class="text-[10px] text-slate-400 mt-0.5") Habilita este método en todas las tiendas
+                                            label(class="flex items-center cursor-pointer")
+                                                input#switch-recibir-pagos(
+                                                    type="checkbox"
+                                                    name="recibirPagosPos"
+                                                    class="sr-only"
+                                                    value="true"
+                                                    checked=entidad.recibirPagosPos
+                                                )
+                                                span.switch
+                                                    span.switch-thumb
+
+                                        button#btn-guardar-edicion(
+                                            type="button"
+                                            class="w-full py-3 bg-gh-primary text-white rounded-2xl font-bold text-sm hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer"
+                                        ) Guardar cambios
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js")
+        script(src="/js/paginador.js")
+        script.
+            (function () {
+                const csrf       = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const idEntidad  = !{JSON.stringify(entidad.idEntidad)};
+                const fmtMoney   = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
+
+                let paginaActual = 1;
+
+                // ── CARGAR TRANSACCIONES ──────────────────────────────────────
+                async function cargarTransacciones(pagina = 1) {
+                    const desde      = document.getElementById('filtro-desde').value;
+                    const hasta      = document.getElementById('filtro-hasta').value;
+                    const referencia = document.getElementById('filtro-referencia').value.trim();
+                    const tbody = document.getElementById('tabla-transacciones');
+                    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-xs">Cargando...</td></tr>';
+
+                    const params = new URLSearchParams({ pagina });
+                    if (desde) params.append('desde', desde);
+                    if (hasta) params.append('hasta', hasta);
+                    if (referencia) params.append('referencia', referencia);
+
+                    try {
+                        const r = await fetch(`/admin/api/bankentities/${idEntidad}/transacciones?${params}`);
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje);
+
+                        paginaActual = d.paginaActual;
+
+                        if (!d.transacciones.length) {
+                            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400 text-xs">Sin transacciones para los filtros seleccionados.</td></tr>';
+                            document.getElementById('resumen-transacciones').textContent = 'Sin resultados';
+                            document.getElementById('paginador-transacciones').innerHTML = '';
+                            return;
+                        }
+
+                        tbody.innerHTML = d.transacciones.map(t => `
+                            <tr class="border-b border-gray-100 hover:bg-gray-100 transition-colors">
+                                <td class="px-4 py-4 text-center">
+                                    <span class="font-bold text-slate-800 text-xs">${t.nroFactura || '—'}</span>
+                                </td>
+                                <td class="px-4 py-4 text-center text-xs text-slate-600">${t.tienda || '—'}</td>
+                                <td class="px-4 py-4 text-center text-xs text-slate-600">${t.fechaEmision || '—'}</td>
+                                <td class="px-4 py-4 text-center text-xs text-slate-500">${t.horaEmision ? t.horaEmision.substring(0,5) : '—'}</td>
+                                <td class="px-4 py-4 text-center">
+                                    <span class="font-bold text-emerald-700 text-xs">${fmtMoney.format(t.valor)}</span>
+                                </td>
+                                <td class="px-4 py-4 text-center text-xs text-slate-500">${t.nroReferencia || '—'}</td>
+                            </tr>
+                        `).join('');
+
+                        document.getElementById('resumen-transacciones').innerHTML =
+                            `Mostrando <strong class="text-slate-600">${d.transacciones.length}</strong> de <strong class="text-slate-600">${d.total}</strong> transacciones`;
+
+                        window.generarPaginacion('#paginador-transacciones', d.totalPaginas, d.paginaActual, cargarTransacciones);
+                    } catch (err) {
+                        tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-400 text-xs">${err.message}</td></tr>`;
+                    }
+                }
+
+                // ── FILTROS ───────────────────────────────────────────────────
+                document.getElementById('btn-filtrar').addEventListener('click', () => cargarTransacciones(1));
+                document.getElementById('btn-limpiar').addEventListener('click', () => {
+                    document.getElementById('filtro-desde').value = '';
+                    document.getElementById('filtro-hasta').value = '';
+                    document.getElementById('filtro-referencia').value = '';
+                    cargarTransacciones(1);
+                });
+
+                // ── EXPORTAR EXCEL ────────────────────────────────────────────
+                document.getElementById('btn-exportar').addEventListener('click', async () => {
+                    const desde      = document.getElementById('filtro-desde').value;
+                    const hasta      = document.getElementById('filtro-hasta').value;
+                    const referencia = document.getElementById('filtro-referencia').value.trim();
+                    const params = new URLSearchParams({ exportar: '1' });
+                    if (desde) params.append('desde', desde);
+                    if (hasta) params.append('hasta', hasta);
+                    if (referencia) params.append('referencia', referencia);
+
+                    try {
+                        const r = await fetch(`/admin/api/bankentities/${idEntidad}/transacciones?${params}`);
+                        const d = await r.json();
+                        if (!d.success || !d.transacciones.length)
+                            return Swal.fire({ icon: 'info', title: 'Sin datos', text: 'No hay transacciones para exportar.', confirmButtonColor: '#EC5FA3' });
+
+                        const XLSX = window.XLSX;
+                        const rows = d.transacciones.map(t => ({
+                            'Nro Factura': t.nroFactura || '',
+                            'Tienda': t.tienda || '',
+                            'Fecha': t.fechaEmision || '',
+                            'Hora': t.horaEmision ? t.horaEmision.substring(0,5) : '',
+                            'Valor': parseFloat(t.valor),
+                            'Referencia': t.nroReferencia || '',
+                        }));
+                        const ws = XLSX.utils.json_to_sheet(rows);
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, ws, 'Transacciones');
+                        XLSX.writeFile(wb, `transacciones_${idEntidad}_${new Date().toISOString().slice(0,10)}.xlsx`);
+                    } catch (err) {
+                        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo exportar: ' + err.message, confirmButtonColor: '#EC5FA3' });
+                    }
+                });
+
+                // ── EDITAR ENTIDAD ────────────────────────────────────────────
+                document.getElementById('btn-guardar-edicion').addEventListener('click', async () => {
+                    const nombre  = document.getElementById('input-nombre-entidad').value.trim();
+                    const tipo    = document.getElementById('input-tipo-entidad').value;
+                    const recibir = document.getElementById('switch-recibir-pagos').checked;
+                    const btn     = document.getElementById('btn-guardar-edicion');
+
+                    if (!nombre) return Swal.fire({ icon: 'warning', title: 'Falta el nombre', text: 'Ingresa el nombre de la entidad.', confirmButtonColor: '#EC5FA3' });
+
+                    btn.disabled    = true;
+                    btn.textContent = 'Guardando...';
+
+                    try {
+                        const r = await fetch(`/admin/bankentities/editar/${idEntidad}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                            body: JSON.stringify({ nombreEntidad: nombre, tipoEntidad: tipo, recibirPagosPos: recibir })
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje || 'Error al guardar');
+
+                        await Swal.fire({
+                            icon: 'success',
+                            title: '¡Actualizado!',
+                            text: 'Los datos de la entidad fueron actualizados.',
+                            confirmButtonColor: '#EC5FA3',
+                            timer: 2500,
+                            timerProgressBar: true
+                        });
+                    } catch (err) {
+                        Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    } finally {
+                        btn.disabled    = false;
+                        btn.textContent = 'Guardar cambios';
+                    }
+                });
+
+                // Carga inicial
+                cargarTransacciones(1);
+            })();

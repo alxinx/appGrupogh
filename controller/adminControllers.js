@@ -7,8 +7,8 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos } from "../models/index.js";
-import { addClient, removeClient, sendEvent } from '../helpers/sseManager.js';
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades } from "../models/index.js";
+import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
@@ -2702,6 +2702,154 @@ const cambiarEstadoEmpleado = async (req, res) => {
     }
 };
 
+// ─── ENTIDADES BANCARIAS ──────────────────────────────────────────────────────
+const listarEntidades = async (req, res) => {
+    try {
+        const entidades = await Entidades.findAll({ order: [['nombreEntidad', 'ASC']], raw: true });
+        return res.render('./administrador/bankentities/listado', {
+            pagina: 'Entidades Bancarias',
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            entidades,
+        });
+    } catch (e) {
+        console.error('listarEntidades:', e);
+        return res.status(500).send('Error al cargar entidades');
+    }
+};
+
+const crearEntidad = async (req, res) => {
+    try {
+        const { nombreEntidad, tipoEntidad, recibirPagosPos } = req.body;
+        const tiposValidos = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+        if (!nombreEntidad?.trim() || !tiposValidos.includes(tipoEntidad))
+            return res.status(422).json({ success: false, mensaje: 'Datos inválidos.' });
+
+        const entidad = await Entidades.create({
+            nombreEntidad: nombreEntidad.trim(),
+            tipoEntidad,
+            recibirPagosPos: recibirPagosPos === true || recibirPagosPos === 'true',
+        });
+        return res.json({ success: true, entidad: entidad.toJSON() });
+    } catch (e) {
+        console.error('crearEntidad:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al crear la entidad.' });
+    }
+};
+
+const toggleEntidad = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { recibirPagosPos } = req.body;
+        const [updated] = await Entidades.update(
+            { recibirPagosPos: recibirPagosPos === true || recibirPagosPos === 'true' },
+            { where: { idEntidad: id } }
+        );
+        if (!updated) return res.status(404).json({ success: false, mensaje: 'Entidad no encontrada.' });
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('toggleEntidad:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al actualizar.' });
+    }
+};
+
+const verDetallesEntidad = async (req, res) => {
+    try {
+        const { idEntidad } = req.params;
+        const entidad = await Entidades.findByPk(idEntidad, { raw: true });
+        if (!entidad) return res.status(404).send('Entidad no encontrada');
+        return res.render('./administrador/bankentities/detallesEntidad', {
+            pagina: entidad.nombreEntidad,
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            entidad,
+        });
+    } catch (e) {
+        console.error('verDetallesEntidad:', e);
+        return res.status(500).send('Error al cargar entidad');
+    }
+};
+
+const editarEntidad = async (req, res) => {
+    try {
+        const { idEntidad } = req.params;
+        const { nombreEntidad, tipoEntidad, recibirPagosPos } = req.body;
+        const tiposValidos = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+        if (!nombreEntidad?.trim() || !tiposValidos.includes(tipoEntidad))
+            return res.status(422).json({ success: false, mensaje: 'Datos inválidos.' });
+
+        const [updated] = await Entidades.update(
+            {
+                nombreEntidad: nombreEntidad.trim(),
+                tipoEntidad,
+                recibirPagosPos: recibirPagosPos === true || recibirPagosPos === 'true',
+            },
+            { where: { idEntidad } }
+        );
+        if (!updated) return res.status(404).json({ success: false, mensaje: 'Entidad no encontrada.' });
+        return res.json({ success: true, mensaje: 'Entidad actualizada correctamente.' });
+    } catch (e) {
+        console.error('editarEntidad:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al actualizar la entidad.' });
+    }
+};
+
+const getTransaccionesEntidad = async (req, res) => {
+    try {
+        const { idEntidad } = req.params;
+        const { pagina = 1, exportar, desde, hasta, referencia } = req.query;
+        const limit = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+        const offset = (parseInt(pagina) - 1) * limit;
+
+        let dateFilter = '';
+        const replacements = { idEntidad };
+
+        if (desde) { dateFilter += ' AND fc.fechaEmision >= :desde'; replacements.desde = desde; }
+        if (hasta) { dateFilter += ' AND fc.fechaEmision <= :hasta'; replacements.hasta = hasta; }
+        if (referencia) { dateFilter += ' AND dpf.nroReferencia LIKE :referencia'; replacements.referencia = `%${referencia}%`; }
+
+        const countSql = `
+            SELECT COUNT(*) as total
+            FROM DETALLES_PAGOS_FACTURA dpf
+            INNER JOIN FACTURA_CLIENTES fc ON dpf.idFacturaCliente = fc.idFacturaCliente
+            WHERE dpf.idEntidad = :idEntidad${dateFilter}
+        `;
+
+        const dataSql = `
+            SELECT
+                CONCAT(COALESCE(fc.prefijo,''), fc.numeroFactura) AS nroFactura,
+                pdv.nombreComercial AS tienda,
+                fc.fechaEmision,
+                fc.horaEmision,
+                dpf.valor,
+                dpf.nroReferencia
+            FROM DETALLES_PAGOS_FACTURA dpf
+            INNER JOIN FACTURA_CLIENTES fc ON dpf.idFacturaCliente = fc.idFacturaCliente
+            INNER JOIN PUNTO_DE_VENTA pdv ON fc.idPuntoDeVenta = pdv.idPuntoDeVenta
+            WHERE dpf.idEntidad = :idEntidad${dateFilter}
+            ORDER BY fc.fechaEmision DESC, fc.horaEmision DESC
+            ${exportar === '1' ? '' : 'LIMIT :limit OFFSET :offset'}
+        `;
+
+        const countResult = await db.query(countSql, { replacements, type: db.QueryTypes.SELECT });
+        const total = countResult[0]?.total || 0;
+
+        if (exportar !== '1') { replacements.limit = limit; replacements.offset = offset; }
+        const transacciones = await db.query(dataSql, { replacements, type: db.QueryTypes.SELECT });
+
+        return res.json({
+            success: true,
+            transacciones,
+            total,
+            totalPaginas: Math.ceil(total / limit),
+            paginaActual: parseInt(pagina),
+        });
+    } catch (e) {
+        console.error('getTransaccionesEntidad:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al obtener transacciones.' });
+    }
+};
+
 const jsonPermisosRecursos = async (req, res) => {
     try {
         const { tipo } = req.params;
@@ -2771,4 +2919,5 @@ export {
     jsonPermisosAcciones,
     verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
     getPagosHoyPorMetodo,
+    listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
 }
