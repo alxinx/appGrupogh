@@ -1,15 +1,20 @@
 div(class="tarjetaBase")
-    p(class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1")
+    p(class="text-sm font-medium text-slate-500 mb-1")
         i.fi-rr-daily-calendar
-        |Ventas del mes 
-        div(class="flex items-baseline space-x-2")
-            h3.h2.mt-2 $24.023.500
-        span(class="text-xs text-slate-400  ") en los últumos 26 días
+        | Ventas del mes
+    div(class="flex items-baseline space-x-2")
+        h3#stat-ventas-mes(class="h2 mt-2" data-val="0") $0
+    span#stat-ventas-mes-dias(class="text-xs text-slate-400") en los últimos 0 días
+    div(class="relative")
+        div#tooltip-mes(class="absolute -top-9 left-1/2 -translate-x-1/2 pointer-events-none hidden z-20")
+            div(class="text-white text-[10px] font-semibold px-2 py-1 rounded-lg whitespace-nowrap shadow-lg" style="background-color:#E24C95")
+                span#tooltip-mes-texto
+            div(class="w-2 h-2 rotate-45 mx-auto -mt-1" style="background-color:#E24C95")
         div(class="flex mt-3 space-x-1 items-end h-8")
-            div(class="w-full bg-gh-primary/30 rounded-t-sm h-1/2")
-            div(class="w-full bg-gh-primary/20 rounded-t-sm h-2/3")
-            div(class="w-full bg-gh-primary/40 rounded-t-sm h-3/4")
-            div(class="w-full bg-gh-primary/20 rounded-t-sm h-2/3")
-            div(class="w-full bg-gh-primary/60 rounded-t-sm h-full")
-            div(class="w-full bg-gh-primary/30 rounded-t-sm h-1/2")
-            div(class="w-full bg-gh-primary rounded-t-sm h-4/5")
+            div#bar-dia-0(class="w-full rounded-t-sm cursor-pointer" style="height:8%;background-color:rgba(236,95,163,0.2)")
+            div#bar-dia-1(class="w-full rounded-t-sm cursor-pointer" style="height:8%;background-color:rgba(236,95,163,0.2)")
+            div#bar-dia-2(class="w-full rounded-t-sm cursor-pointer" style="height:8%;background-color:rgba(236,95,163,0.2)")
+            div#bar-dia-3(class="w-full rounded-t-sm cursor-pointer" style="height:8%;background-color:rgba(236,95,163,0.2)")
+            div#bar-dia-4(class="w-full rounded-t-sm cursor-pointer" style="height:8%;background-color:rgba(236,95,163,0.2)")
+            div#bar-dia-5(class="w-full rounded-t-sm cursor-pointer" style="height:8%;background-color:rgba(236,95,163,0.2)")
+            div#bar-dia-6(class="w-full rounded-t-sm cursor-pointer" style="height:8%;background-color:rgba(236,95,163,0.2)")

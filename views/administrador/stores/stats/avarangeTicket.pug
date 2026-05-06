@@ -1,9 +1,9 @@
 div(class="tarjetaBase")
-    p(class="text-sm font-medium text-slate-500  mb-1")
+    p(class="text-sm font-medium text-slate-500 mb-1")
         i.fi-rr-point-of-sale-bill.text-2xl.mr-2.mt-1
-        |Ticket Promedio
-        div(class="flex items-baseline space-x-2")
-            h3(class="text-3xl font-bold text-slate-800 ") $ 320.000
-                div(class="mt-4 flex items-center space-x-2 text-xs font-medium text-amber-500 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg")
-                    span(class="material-icons-round text-base")     info
-                    span 2.4% Menos que el mismo día hace una semana
+        | Ticket Promedio
+    div(class="flex items-baseline space-x-2")
+        h3#stat-ticket-promedio(class="text-3xl font-bold text-slate-800" data-val="0") $0
+    div#stat-ticket-promedio-trend(class="mt-4 flex items-center space-x-2 text-xs font-medium p-2 rounded-lg hidden")
+        span.material-icons-round.text-base(id="stat-ticket-promedio-icon") info
+        span#stat-ticket-promedio-label

@@ -1,0 +1,86 @@
+-
+  var fmtCOP = function(n) {
+    return '$' + Math.round(n).toLocaleString('es-CO');
+  }
+
+if vendedores && vendedores.length > 0
+  - var top = vendedores[0]
+  - var runners = vendedores.slice(1)
+
+  //- ── VENDEDOR DEL MES ─────────────────────────────────────────────────────
+  div(class="bg-gray-50 rounded-2xl border border-slate-100 shadow-sm overflow-hidden")
+
+    //- Cabecera con gradiente
+    div(class="bg-gradient-to-br from-gh-primary to-gh-primaryHover px-4 pt-5 pb-10 text-center relative")
+      div(class="text-[10px] font-bold text-white/70 uppercase tracking-widest mb-3")
+        i.fi-rr-trophy.mr-1
+        | Vendedor del mes
+
+      //- Foto
+      div(class="relative inline-block")
+        if top.fotoUrl
+          img(
+            src=top.fotoUrl
+            alt=`${top.PrimerNombre} ${top.PrimerApellido}`
+            class="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg mx-auto"
+          )
+        else
+          div(class="w-20 h-20 rounded-full bg-white/30 border-4 border-white shadow-lg mx-auto flex items-center justify-center")
+            span(class="text-3xl font-bold text-white") #{top.PrimerNombre.charAt(0)}#{top.PrimerApellido.charAt(0)}
+
+        //- Badge corona
+        div(class="absolute -top-2 -right-1 w-7 h-7 bg-amber-400 rounded-full flex items-center justify-center shadow border-2 border-white text-sm")
+          | 🥇
+
+      p(class="text-white font-bold text-base mt-3") #{top.PrimerNombre} #{top.PrimerApellido}
+
+    //- Stat ventas — solapado sobre el gradiente
+    div(class="-mt-6 mx-4 bg-white rounded-xl shadow-md px-4 py-3 flex items-center justify-between border border-slate-100")
+      div(class="text-center")
+        p(class="text-[10px] text-slate-400 uppercase tracking-widest font-bold") Total vendido
+        p(class="text-lg font-bold text-gh-primaryHover") #{fmtCOP(top.totalVendido)}
+      div(class="w-px h-8 bg-slate-100")
+      div(class="text-center")
+        p(class="text-[10px] text-slate-400 uppercase tracking-widest font-bold") Facturas
+        p(class="text-lg font-bold text-slate-700") #{top.nroFacturas}
+
+    //- Top productos
+    if topProductos && topProductos.length > 0
+      div(class="px-4 pt-4 pb-3")
+        p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2")
+          i.fi-rr-box.mr-1
+          | Productos más vendidos
+        ul(class="flex flex-col gap-1.5")
+          each prod, idx in topProductos
+            li(class="flex items-center gap-2")
+              span(class=`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${idx === 0 ? 'bg-amber-100 text-amber-600' : idx === 1 ? 'bg-slate-100 text-slate-500' : 'bg-orange-50 text-orange-400'}`)
+                | #{idx + 1}
+              p(class="text-xs text-slate-700 font-medium truncate flex-1") #{prod.nombreProducto}
+              span(class="text-[10px] text-slate-400 flex-shrink-0") #{Math.round(prod.unidades)} uds
+
+  //- ── RUNNERS-UP ───────────────────────────────────────────────────────────
+  if runners && runners.length > 0
+    div(class="grid grid-cols-2 gap-3 mt-3")
+      each v, idx in runners
+        div(class="bg-gray-50 rounded-2xl border border-slate-100 shadow-sm p-3 flex flex-col items-center text-center")
+          //- Foto pequeña
+          if v.fotoUrl
+            img(
+              src=v.fotoUrl
+              alt=`${v.PrimerNombre} ${v.PrimerApellido}`
+              class="w-12 h-12 rounded-full object-cover border-2 border-white shadow mb-2"
+            )
+          else
+            div(class="w-12 h-12 rounded-full bg-slate-100 border-2 border-white shadow mb-2 flex items-center justify-center")
+              span(class="text-base font-bold text-slate-500") #{v.PrimerNombre.charAt(0)}#{v.PrimerApellido.charAt(0)}
+
+          span(class="text-[10px] font-bold mb-0.5") #{idx === 0 ? '🥈' : '🥉'}
+          p(class="text-xs font-bold text-slate-700 leading-tight") #{v.PrimerNombre}
+          p(class="text-xs text-slate-400 leading-tight") #{v.PrimerApellido}
+          p(class="text-xs font-bold text-gh-primaryHover mt-1") #{fmtCOP(v.totalVendido)}
+          p(class="text-[10px] text-slate-400") #{v.nroFacturas} facturas
+
+else
+  div(class="bg-gray-50 rounded-2xl border border-slate-100 shadow-sm p-6 text-center")
+    i.fi-rr-trophy.text-3xl.text-slate-200.block.mb-2
+    p(class="text-sm text-slate-400") Sin ventas registradas este mes

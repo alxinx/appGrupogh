@@ -708,14 +708,78 @@ const dashboardCustomers = async (req, res) => {
 
 //HOME
 const dashboardEmployees = async (req, res) => {
-    return res.status(201).render('./administrador/employeers/homeEmployees', {
-        pagina: "Empleados",
-        subPagina: 'Dashboard Empleados',
-        subPath: 'dashboard',
-        csrfToken: req.csrfToken(),
-        currentPath: req.path,
+    try {
+        const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
+        const r2 = process.env.R2_PUBLIC_URL || '';
 
-    })
+        // Top 3 vendedores del mes (solo usuarios con rol STORE)
+        const topVendedores = await db.query(`
+            SELECT
+                e.idEmpleado,
+                e.PrimerNombre,
+                e.PrimerApellido,
+                e.imagen,
+                SUM(df.total)                       AS totalVendido,
+                COUNT(DISTINCT fc.idFacturaCliente) AS nroFacturas
+            FROM FACTURA_CLIENTES fc
+            INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+            INNER JOIN EMPLEADOS e          ON e.idEmpleado = fc.idEmpleado
+            INNER JOIN USUARIOS u           ON u.idUsuario  = e.idUsuario
+            WHERE fc.createdAt >= :inicioMes
+              AND fc.idEmpleado IS NOT NULL
+              AND e.deletedAt  IS NULL
+              AND u.permisos   = 'STORE'
+            GROUP BY e.idEmpleado, e.PrimerNombre, e.PrimerApellido, e.imagen
+            ORDER BY totalVendido DESC
+            LIMIT 3
+        `, { replacements: { inicioMes }, type: Sequelize.QueryTypes.SELECT });
+
+        // Top productos del vendedor #1
+        let topProductos = [];
+        if (topVendedores.length > 0) {
+            topProductos = await db.query(`
+                SELECT
+                    p.nombreProducto,
+                    SUM(df.cantidad) AS unidades
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                INNER JOIN PRODUCTOS p          ON p.idProducto = df.idProducto
+                WHERE fc.createdAt  >= :inicioMes
+                  AND fc.idEmpleado  = :idEmpleado
+                GROUP BY p.idProducto, p.nombreProducto
+                ORDER BY unidades DESC
+                LIMIT 3
+            `, { replacements: { inicioMes, idEmpleado: topVendedores[0].idEmpleado }, type: Sequelize.QueryTypes.SELECT });
+        }
+
+        // Construir URLs de imagen
+        const vendedores = topVendedores.map(v => ({
+            ...v,
+            totalVendido: Math.round(parseFloat(v.totalVendido || 0)),
+            fotoUrl: v.imagen ? `${r2}/${v.imagen}` : null,
+        }));
+
+        return res.render('./administrador/employeers/homeEmployees', {
+            pagina: 'Empleados',
+            subPagina: 'Dashboard Empleados',
+            subPath: 'dashboard',
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            vendedores,
+            topProductos,
+        });
+    } catch (e) {
+        console.error('dashboardEmployees:', e);
+        return res.render('./administrador/employeers/homeEmployees', {
+            pagina: 'Empleados',
+            subPagina: 'Dashboard Empleados',
+            subPath: 'dashboard',
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            vendedores: [],
+            topProductos: [],
+        });
+    }
 }
 
 
@@ -2330,6 +2394,65 @@ const getTiendasStatsHoy = async (req, res) => {
 
         const ventasGlobalesHoy = Math.round(Object.values(ventaMap).reduce((a, b) => a + b, 0));
 
+        // Ticket promedio hoy
+        const totalFacturasHoy   = facturasHoy.length;
+        const ticketPromedioHoy  = totalFacturasHoy > 0 ? Math.round(ventasGlobalesHoy / totalFacturasHoy) : 0;
+
+        // Mismo día hace 7 días
+        const hace7dias    = new Date(); hace7dias.setDate(hace7dias.getDate() - 7); hace7dias.setHours(0, 0, 0, 0);
+        const hace7diasFin = new Date(hace7dias); hace7diasFin.setHours(23, 59, 59, 999);
+
+        const facturasHace7dias = await FacturaClientes.findAll({
+            attributes: ['idFacturaCliente'],
+            where: { createdAt: { [Op.between]: [hace7dias, hace7diasFin] } },
+            raw: true
+        });
+
+        let ticketPromedioAnterior = 0;
+        if (facturasHace7dias.length) {
+            const factIds7   = facturasHace7dias.map(f => f.idFacturaCliente);
+            const detalles7  = await DetallesFactura.findAll({
+                attributes: [[fn('SUM', col('total')), 'suma']],
+                where: { idFacturaCliente: { [Op.in]: factIds7 } },
+                raw: true
+            });
+            const total7 = parseFloat(detalles7[0]?.suma || 0);
+            ticketPromedioAnterior = facturasHace7dias.length > 0 ? Math.round(total7 / facturasHace7dias.length) : 0;
+        }
+
+        const ticketPct = ticketPromedioAnterior > 0
+            ? Math.round(((ticketPromedioHoy - ticketPromedioAnterior) / ticketPromedioAnterior) * 100)
+            : null;
+
+        // Ventas del mes actual por día
+        const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
+        const diasTranscurridos = new Date().getDate();
+
+        const ventasPorDia = await db.query(`
+            SELECT DATE(fc.createdAt) AS dia, SUM(df.total) AS suma
+            FROM FACTURA_CLIENTES fc
+            INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+            WHERE fc.createdAt >= :inicioMes
+            GROUP BY DATE(fc.createdAt)
+            ORDER BY dia ASC
+        `, { replacements: { inicioMes }, type: Sequelize.QueryTypes.SELECT });
+
+        const ventasMes = Math.round(ventasPorDia.reduce((a, r) => a + parseFloat(r.suma || 0), 0));
+
+        // Últimos 7 días (con días sin ventas = 0)
+        const hoyDate = new Date();
+        const ultimos7 = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(hoyDate);
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            const found = ventasPorDia.find(r => {
+                const diaStr = r.dia instanceof Date ? r.dia.toISOString().slice(0, 10) : String(r.dia).slice(0, 10);
+                return diaStr === key;
+            });
+            ultimos7.push(found ? Math.round(parseFloat(found.suma)) : 0);
+        }
+
         // Totales globales por método de pago
         let pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0 };
         if (facturasHoy.length) {
@@ -2349,7 +2472,7 @@ const getTiendasStatsHoy = async (req, res) => {
             }
         }
 
-        return res.json({ success: true, stats, ventasGlobalesHoy, pagosGlobales });
+        return res.json({ success: true, stats, ventasGlobalesHoy, pagosGlobales, ticketPromedio: ticketPromedioHoy, ticketPct, ventasMes, diasTranscurridos, ultimos7 });
     } catch (e) {
         console.error('getTiendasStatsHoy:', e);
         return res.status(500).json({ success: false });
@@ -2831,11 +2954,11 @@ const getTransaccionesEntidad = async (req, res) => {
             ${exportar === '1' ? '' : 'LIMIT :limit OFFSET :offset'}
         `;
 
-        const countResult = await db.query(countSql, { replacements, type: db.QueryTypes.SELECT });
+        const countResult = await db.query(countSql, { replacements, type: Sequelize.QueryTypes.SELECT });
         const total = countResult[0]?.total || 0;
 
         if (exportar !== '1') { replacements.limit = limit; replacements.offset = offset; }
-        const transacciones = await db.query(dataSql, { replacements, type: db.QueryTypes.SELECT });
+        const transacciones = await db.query(dataSql, { replacements, type: Sequelize.QueryTypes.SELECT });
 
         return res.json({
             success: true,
@@ -2847,6 +2970,59 @@ const getTransaccionesEntidad = async (req, res) => {
     } catch (e) {
         console.error('getTransaccionesEntidad:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al obtener transacciones.' });
+    }
+};
+
+const getStatsVendedorMes = async (req, res) => {
+    try {
+        const { idEmpleado } = req.params;
+        const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
+
+        const [resumen, topProductos] = await Promise.all([
+            db.query(`
+                SELECT
+                    COUNT(DISTINCT fc.idFacturaCliente) AS nroFacturas,
+                    COALESCE(SUM(df.total), 0)          AS totalVendido
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                WHERE fc.idEmpleado = :idEmpleado
+                  AND fc.createdAt >= :inicioMes
+            `, { replacements: { idEmpleado, inicioMes }, type: Sequelize.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT
+                    p.nombreProducto,
+                    SUM(df.cantidad) AS unidades,
+                    SUM(df.total)    AS totalProducto
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                INNER JOIN PRODUCTOS p          ON p.idProducto = df.idProducto
+                WHERE fc.idEmpleado = :idEmpleado
+                  AND fc.createdAt >= :inicioMes
+                GROUP BY p.idProducto, p.nombreProducto
+                ORDER BY unidades DESC
+                LIMIT 5
+            `, { replacements: { idEmpleado, inicioMes }, type: Sequelize.QueryTypes.SELECT }),
+        ]);
+
+        const nroFacturas    = parseInt(resumen[0]?.nroFacturas   || 0);
+        const totalVendido   = Math.round(parseFloat(resumen[0]?.totalVendido || 0));
+        const ticketPromedio = nroFacturas > 0 ? Math.round(totalVendido / nroFacturas) : 0;
+
+        return res.json({
+            success: true,
+            nroFacturas,
+            totalVendido,
+            ticketPromedio,
+            topProductos: topProductos.map(p => ({
+                nombreProducto: p.nombreProducto,
+                unidades:       Math.round(parseFloat(p.unidades      || 0)),
+                totalProducto:  Math.round(parseFloat(p.totalProducto || 0)),
+            })),
+        });
+    } catch (e) {
+        console.error('getStatsVendedorMes:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al calcular estadísticas.' });
     }
 };
 
@@ -2920,4 +3096,5 @@ export {
     verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
     getPagosHoyPorMetodo,
     listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
+    getStatsVendedorMes,
 }

@@ -124,6 +124,104 @@
         }
     };
 
+    // ─── VENTAS DEL MES ──────────────────────────────────────────────────────
+    const actualizarVentasMes = (total, dias, ultimos7) => {
+        const el = document.getElementById('stat-ventas-mes');
+        if (el) {
+            const from = parseFloat(el.dataset.val || '0');
+            const to   = Math.round(parseFloat(total) || 0);
+            if (from !== to) {
+                el.dataset.val = to;
+                const duration = 900;
+                const start    = performance.now();
+                const step = (ts) => {
+                    const progress = Math.min((ts - start) / duration, 1);
+                    const eased    = 1 - Math.pow(1 - progress, 3);
+                    el.textContent = fmtCOP(from + (to - from) * eased);
+                    if (progress < 1) requestAnimationFrame(step);
+                    else el.textContent = fmtCOP(to);
+                };
+                requestAnimationFrame(step);
+            }
+        }
+
+        const elDias = document.getElementById('stat-ventas-mes-dias');
+        if (elDias) elDias.textContent = `en los últimos ${dias} días`;
+
+        if (!Array.isArray(ultimos7) || ultimos7.length !== 7) return;
+
+        const DIAS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const hoyRef  = new Date();
+        const max     = Math.max(...ultimos7, 1);
+        const tooltip = document.getElementById('tooltip-mes');
+        const tooltipTxt = document.getElementById('tooltip-mes-texto');
+
+        ultimos7.forEach((valor, i) => {
+            const bar = document.getElementById(`bar-dia-${i}`);
+            if (!bar) return;
+
+            const ratio  = valor / max;
+            const height = Math.max(ratio * 100, 8);
+            const alpha  = valor === 0 ? 0.12 : 0.25 + 0.75 * ratio;
+            bar.style.height          = `${height}%`;
+            bar.style.backgroundColor = `rgba(236,95,163,${alpha.toFixed(2)})`;
+            bar.style.transition      = 'height 0.6s cubic-bezier(.4,0,.2,1), background-color 0.6s';
+
+            // etiqueta del día correspondiente
+            const d = new Date(hoyRef);
+            d.setDate(d.getDate() - (6 - i));
+            const label = `${DIAS_ES[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+            bar.dataset.label = label;
+            bar.dataset.valor = valor;
+
+            bar.addEventListener('mouseenter', () => {
+                if (!tooltip || !tooltipTxt) return;
+                tooltipTxt.textContent = `${bar.dataset.label} · ${fmtCOP(bar.dataset.valor)}`;
+                // posicionar centrado sobre la barra
+                const barRect     = bar.getBoundingClientRect();
+                const parentRect  = bar.parentElement.getBoundingClientRect();
+                tooltip.style.left = `${barRect.left - parentRect.left + barRect.width / 2}px`;
+                tooltip.classList.remove('hidden');
+            });
+            bar.addEventListener('mouseleave', () => {
+                if (tooltip) tooltip.classList.add('hidden');
+            });
+        });
+    };
+
+    // ─── TICKET PROMEDIO ──────────────────────────────────────────────────────
+    const actualizarTicketPromedio = (valor, pct) => {
+        const el = document.getElementById('stat-ticket-promedio');
+        if (!el) return;
+
+        const from = parseFloat(el.dataset.val || '0');
+        const to   = Math.round(parseFloat(valor) || 0);
+        if (from !== to) {
+            el.dataset.val = to;
+            const duration = 800;
+            const start    = performance.now();
+            const step = (ts) => {
+                const progress = Math.min((ts - start) / duration, 1);
+                const eased    = 1 - Math.pow(1 - progress, 3);
+                el.textContent = fmtCOP(from + (to - from) * eased);
+                if (progress < 1) requestAnimationFrame(step);
+                else el.textContent = fmtCOP(to);
+            };
+            requestAnimationFrame(step);
+        }
+
+        const trend = document.getElementById('stat-ticket-promedio-trend');
+        const icon  = document.getElementById('stat-ticket-promedio-icon');
+        const label = document.getElementById('stat-ticket-promedio-label');
+        if (!trend || pct === null || pct === undefined) return;
+
+        const sube = pct >= 0;
+        trend.className = `mt-4 flex items-center space-x-2 text-xs font-medium p-2 rounded-lg ${sube ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'}`;
+        icon.textContent  = sube ? 'trending_up' : 'trending_down';
+        label.textContent = `${Math.abs(pct)}% ${sube ? 'Más' : 'Menos'} que el mismo día hace una semana`;
+        trend.classList.remove('hidden');
+    };
+
     // ─── STAT GLOBAL ─────────────────────────────────────────────────────────
     const elGlobal    = document.getElementById('stat-ventas-globales');
     const elGlobalBar = document.getElementById('stat-ventas-globales-bar');
@@ -175,6 +273,8 @@
             }
             if (json.ventasGlobalesHoy !== undefined) actualizarGlobal(json.ventasGlobalesHoy);
             if (json.pagosGlobales)                  actualizarPagos(json.pagosGlobales);
+            if (json.ticketPromedio   !== undefined) actualizarTicketPromedio(json.ticketPromedio, json.ticketPct ?? null);
+            if (json.ventasMes        !== undefined) actualizarVentasMes(json.ventasMes, json.diasTranscurridos, json.ultimos7);
         } catch (_) {}
     };
 

@@ -273,11 +273,37 @@ form(action="", method="post" id="formularioEmpleado" enctype="multipart/form-da
 
             //- Panel: Estadísticas (solo vendedores)
             if empleado && empleado.cargo === 'vendedor'
-                div(class="p-6 min-h-64" id="panelStatsEmp" style="display:none")
-                    div(class="flex flex-col items-center justify-center h-40 text-gray-300 gap-2")
-                        i.fi-rr-chart-histogram(style="font-size:2.5rem")
-                        p(class="text-sm font-medium") Estadísticas de #{empleado.PrimerNombre}
-                        p(class="text-xs") Próximamente
+                div(class="p-6" id="panelStatsEmp" style="display:none")
+
+                    //- Fila de 3 stat cards
+                    div(class="grid grid-cols-3 gap-3 mb-4")
+
+                        div(class="bg-gh-primarySoft rounded-2xl p-4 flex flex-col gap-1")
+                            p(class="text-[10px] font-bold text-gh-primaryHover uppercase tracking-widest")
+                                i.fi-rr-coins.mr-1
+                                | Ventas del mes
+                            p#stat-emp-ventas(class="text-2xl font-bold text-gh-primaryHover") —
+
+                        div(class="bg-slate-50 rounded-2xl p-4 flex flex-col gap-1")
+                            p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest")
+                                i.fi-rr-receipt.mr-1
+                                | Facturas
+                            p#stat-emp-facturas(class="text-2xl font-bold text-slate-700") —
+
+                        div(class="bg-slate-50 rounded-2xl p-4 flex flex-col gap-1")
+                            p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest")
+                                i.fi-rr-calculator.mr-1
+                                | Ticket promedio
+                            p#stat-emp-ticket(class="text-2xl font-bold text-slate-700") —
+
+                    //- Top 5 productos
+                    div(class="bg-gray-50 rounded-2xl border border-slate-100 p-4")
+                        p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3")
+                            i.fi-rr-box-alt.mr-1
+                            | Top 5 productos más vendidos este mes
+                        div#stat-emp-productos(class="flex flex-col gap-2")
+                            //- Se rellena por JS
+                            p(class="text-xs text-slate-300 text-center py-4") Cargando...
 
     //- COLUMNA DERECHA
     div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")

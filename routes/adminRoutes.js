@@ -8,7 +8,8 @@ adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
 getPagosHoyPorMetodo,
-listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad } from "../controller/adminControllers.js"
+listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
+getStatsVendedorMes } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -161,6 +162,7 @@ routes.get('/sse', adminSseConnect);
 
 // Stats tiendas hoy
 routes.get('/api/tiendas/stats-hoy', getTiendasStatsHoy);
+routes.get('/api/personal/:idEmpleado/stats-mes', getStatsVendedorMes);
 routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', getTiendaStatsHoyDetalle);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', getFacturasJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/pagos-hoy/:metodoPago', getPagosHoyPorMetodo);

@@ -630,6 +630,60 @@
     // Tab switching for employee edit form
     const tabBtns = document.querySelectorAll('.tab-emp-btn');
     if (tabBtns.length) {
+        let statsLoaded = false;
+
+        const cargarStatsEmpleado = async () => {
+            if (statsLoaded) return;
+            const form = document.getElementById('formularioEmpleado');
+            const idEmpleado = form?.dataset.empleadoId;
+            if (!idEmpleado) return;
+
+            const fmtCOP = n => '$' + Math.round(n).toLocaleString('es-CO');
+
+            try {
+                const r    = await fetch(`/admin/api/personal/${idEmpleado}/stats-mes`);
+                const data = await r.json();
+                if (!data.success) return;
+
+                const elVentas   = document.getElementById('stat-emp-ventas');
+                const elFacturas = document.getElementById('stat-emp-facturas');
+                const elTicket   = document.getElementById('stat-emp-ticket');
+                const elProds    = document.getElementById('stat-emp-productos');
+
+                if (elVentas)   elVentas.textContent   = fmtCOP(data.totalVendido);
+                if (elFacturas) elFacturas.textContent  = data.nroFacturas;
+                if (elTicket)   elTicket.textContent    = fmtCOP(data.ticketPromedio);
+
+                if (elProds) {
+                    if (!data.topProductos.length) {
+                        elProds.innerHTML = '<p class="text-xs text-slate-300 text-center py-4">Sin ventas este mes.</p>';
+                    } else {
+                        const maxUnidades = Math.max(...data.topProductos.map(p => p.unidades), 1);
+                        elProds.innerHTML = data.topProductos.map((p, i) => {
+                            const pct = Math.round((p.unidades / maxUnidades) * 100);
+                            const medals = ['🥇','🥈','🥉','4','5'];
+                            return `
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm w-5 text-center flex-shrink-0">${medals[i]}</span>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs font-semibold text-slate-700 truncate">${p.nombreProducto}</p>
+                                    <div class="mt-0.5 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-700" style="width:${pct}%;background-color:#EC5FA3"></div>
+                                    </div>
+                                </div>
+                                <span class="text-[10px] text-slate-400 flex-shrink-0 text-right">
+                                    ${p.unidades} uds<br>
+                                    <span class="text-gh-primaryHover font-bold">${fmtCOP(p.totalProducto)}</span>
+                                </span>
+                            </div>`;
+                        }).join('');
+                    }
+                }
+
+                statsLoaded = true;
+            } catch (_) {}
+        };
+
         tabBtns.forEach(btn => {
             btn.addEventListener('click', function () {
                 const target = this.dataset.tab;
@@ -641,6 +695,7 @@
                 this.classList.remove('border-transparent', 'text-gray-400', 'font-medium');
                 document.getElementById('panelDatosEmp').style.display = target === 'datos' ? '' : 'none';
                 document.getElementById('panelStatsEmp').style.display = target === 'stats' ? '' : 'none';
+                if (target === 'stats') cargarStatsEmpleado();
             });
         });
     }
