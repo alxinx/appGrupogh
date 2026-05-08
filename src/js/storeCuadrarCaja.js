@@ -8,6 +8,29 @@
         inp.value = raw === 0 ? '' : Math.round(raw).toLocaleString('es-CO');
     };
 
+    // Formatea mientras el usuario escribe preservando la posición del cursor
+    const formatInputLive = (inp) => {
+        const oldVal = inp.value;
+        const start  = inp.selectionStart;
+
+        // Contar dígitos antes del cursor en el valor actual
+        const digitsAntes = oldVal.slice(0, start).replace(/[^0-9]/g, '').length;
+
+        const raw    = parse(oldVal);
+        const newVal = raw === 0 ? '' : Math.round(raw).toLocaleString('es-CO');
+        if (newVal === oldVal) return;
+        inp.value = newVal;
+
+        // Restaurar cursor: avanzar hasta haber contado los mismos dígitos
+        let cnt = 0, newPos = newVal.length;
+        for (let i = 0; i < newVal.length; i++) {
+            if (/\d/.test(newVal[i])) cnt++;
+            if (cnt === digitsAntes) { newPos = i + 1; break; }
+        }
+        if (digitsAntes === 0) newPos = 0;
+        inp.setSelectionRange(newPos, newPos);
+    };
+
     // ── Estado ───────────────────────────────────────────────────────────────
     let dataSistema  = null;
     let empleadoId   = null;
@@ -154,14 +177,14 @@
         }
     };
 
-    // Inputs: formateo al blur y comparación al input
+    // Inputs: formateo en tiempo real + comparación
     [oBase, oEgresos, oEfectivo, oMedios, oCredito].forEach(inp => {
         inp.addEventListener('keydown', (e) => {
             const ok = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter','Home','End'];
             if (!ok.includes(e.key) && !/^\d$/.test(e.key)) e.preventDefault();
         });
-        inp.addEventListener('input', comparar);
-        inp.addEventListener('blur', () => { formatInput(inp); comparar(); });
+        inp.addEventListener('input', () => { formatInputLive(inp); comparar(); });
+        inp.addEventListener('blur',  () => { formatInput(inp);     comparar(); });
     });
 
     // ── Validar empleado ──────────────────────────────────────────────────────
@@ -210,7 +233,7 @@
         const oCr = parse(oCredito.value);
         const oB  = parse(oBase.value);
 
-        const { result } = await Swal.fire({
+        const swalResult = await Swal.fire({
             icon: 'question',
             title: '¿Cerrar esta caja?',
             html: `
@@ -238,7 +261,7 @@
             width: '480px'
         });
 
-        if (!result.isConfirmed) return;
+        if (!swalResult.isConfirmed) return;
 
         btnCerrar.disabled = true;
         btnCerrar.querySelector('span').textContent = 'Cerrando...';
@@ -246,12 +269,13 @@
         // Abrir ventana ANTES del await para evitar el popup-blocker
         const pdfWin = window.open('about:blank', '_blank');
 
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const csrf = document.getElementById('csrf-token')?.value || '';
         try {
             const r = await fetch('/store/storebehivors/caja/cerrar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
                 body: JSON.stringify({
+                    idCajaTienda:         dataSistema.caja.idCajaTienda,
                     codigoEmpleado:       codEmpleado.value.trim().toUpperCase(),
                     operadorEgresos:      oE,
                     operadorEfectivo:     oEf,
@@ -263,6 +287,19 @@
             });
 
             const d = await r.json().catch(() => ({}));
+
+            if (r.status === 403) {
+                pdfWin.close();
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Sin permiso',
+                    text: d.mensaje || 'No tienes permiso para cerrar la caja.',
+                    confirmButtonColor: '#EC5FA3'
+                });
+                btnCerrar.disabled = false;
+                btnCerrar.querySelector('span').textContent = 'Cerrar e imprimir cuadre de caja';
+                return;
+            }
 
             if (!r.ok || !d.success) {
                 pdfWin.close();

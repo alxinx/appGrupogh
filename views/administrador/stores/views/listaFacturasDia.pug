@@ -1,6 +1,6 @@
 - const pdv = idPuntoDeVenta
 
-//- Filtro + botón exportar
+//- Filtro + botón exportar + botones cuadre
 div(class="flex flex-wrap items-end gap-3 mb-4 px-1")
     div(class="space-y-1")
         label(for="billing-fecha" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Fecha
@@ -15,6 +15,9 @@ div(class="flex flex-wrap items-end gap-3 mb-4 px-1")
     )
         i(class="fi fi-rr-file-spreadsheet text-emerald-600")
         | Exportar a Excel
+
+    //- Botones "Ver cuadre" — se inyectan dinámicamente por adminStoreBilling.js
+    div#billing-cuadre-btns(class="flex flex-wrap gap-2")
 
 //- Tabla
 div(class="overflow-x-auto")

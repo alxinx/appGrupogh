@@ -17,6 +17,7 @@ import contratosLaborales from '../src/json/contratosLaborales.json' with {type:
 import { limpiarPrecio, sanitizarHTML, getAvailability } from '../helpers/helpers.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col } from "sequelize";
+import { _generarPDFCuadre } from './storeControllers.js';
 
 
 dotenv.config();
@@ -2146,7 +2147,7 @@ const filterStoreInventoryJson = async (req, res) => {
             AND (p.nombreProducto LIKE :search OR p.sku LIKE :search)
             GROUP BY s.idProducto
 
-            ORDER BY nombreProducto ASC
+            ORDER BY CASE WHEN cantidad <= 0 THEN 1 ELSE 0 END ASC, nombreProducto ASC
             LIMIT :limit OFFSET :offset`;
 
         const inventory = await db.query(dataQuery, {
@@ -2828,7 +2829,7 @@ const cambiarEstadoEmpleado = async (req, res) => {
 // ─── ENTIDADES BANCARIAS ──────────────────────────────────────────────────────
 const listarEntidades = async (req, res) => {
     try {
-        const entidades = await Entidades.findAll({ order: [['nombreEntidad', 'ASC']], raw: true });
+        const entidades = await Entidades.findAll({ order: [['recibirPagosPos', 'DESC'], ['nombreEntidad', 'ASC']], raw: true });
         return res.render('./administrador/bankentities/listado', {
             pagina: 'Entidades Bancarias',
             csrfToken: req.csrfToken(),
@@ -2879,8 +2880,9 @@ const toggleEntidad = async (req, res) => {
 const verDetallesEntidad = async (req, res) => {
     try {
         const { idEntidad } = req.params;
-        const entidad = await Entidades.findByPk(idEntidad, { raw: true });
-        if (!entidad) return res.status(404).send('Entidad no encontrada');
+        const entidadInst = await Entidades.findByPk(idEntidad);
+        if (!entidadInst) return res.status(404).send('Entidad no encontrada');
+        const entidad = entidadInst.toJSON();
         return res.render('./administrador/bankentities/detallesEntidad', {
             pagina: entidad.nombreEntidad,
             csrfToken: req.csrfToken(),
@@ -3052,6 +3054,101 @@ const jsonPermisosAcciones = async (req, res) => {
     }
 };
 
+// ── Cajas cerradas de una fecha para admin ────────────────────────────────────
+const getCajasCerradasAdmin = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    const { fecha } = req.query;
+
+    try {
+        const _hoy = new Date();
+        const fechaFiltro = fecha || `${_hoy.getFullYear()}-${String(_hoy.getMonth()+1).padStart(2,'0')}-${String(_hoy.getDate()).padStart(2,'0')}`;
+
+        const inicio = new Date(`${fechaFiltro}T00:00:00`);
+        const fin    = new Date(`${fechaFiltro}T23:59:59`);
+
+        const cajas = await CajaTienda.findAll({
+            where: {
+                idPuntoDeVenta,
+                estado: 'cerrado',
+                fechaApertura: { [Op.between]: [inicio, fin] }
+            },
+            include: [
+                { model: Empleados, as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
+                { model: Empleados, as: 'empleadoCierre',   attributes: ['PrimerNombre', 'PrimerApellido'] }
+            ],
+            order: [['fechaApertura', 'ASC']]
+        });
+
+        return res.json({
+            success: true,
+            cajas: cajas.map(c => ({
+                idCajaTienda:    c.idCajaTienda,
+                apertura:        c.fechaApertura,
+                cierre:          c.fechaCierre,
+                empleadoApertura: `${c.empleadoApertura?.PrimerNombre || ''} ${c.empleadoApertura?.PrimerApellido || ''}`.trim(),
+                empleadoCierre:   `${c.empleadoCierre?.PrimerNombre  || ''} ${c.empleadoCierre?.PrimerApellido  || ''}`.trim()
+            }))
+        });
+    } catch (e) {
+        console.error('getCajasCerradasAdmin:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ── PDF cuadre de caja desde admin ───────────────────────────────────────────
+const getAdminCuadrePDF = async (req, res) => {
+    const { idPuntoDeVenta, idCajaTienda } = req.params;
+
+    try {
+        const caja = await CajaTienda.findOne({
+            where: { idCajaTienda, idPuntoDeVenta, estado: 'cerrado' },
+            include: [
+                { model: Empleados,    as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
+                { model: Empleados,    as: 'empleadoCierre',   attributes: ['PrimerNombre', 'PrimerApellido'] },
+                { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial'] }
+            ]
+        });
+        if (!caja) return res.status(404).send('Caja no encontrada.');
+
+        const fecha  = new Date(caja.fechaCierre);
+        const inicio = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 0, 0, 0);
+        const fin    = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 23, 59, 59);
+
+        const [egresosRows, facturas] = await Promise.all([
+            Egresos.findAll({
+                where: { idPuntoDeVenta, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['referencia', 'descripcion', 'valorEgreso'], raw: true
+            }),
+            FacturaClientes.findAll({
+                where: { idPuntoDeVenta, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
+                attributes: ['prefijo', 'numeroFactura'],
+                include: [{ model: DetallesPagosFactura, as: 'pagos', include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }]
+            })
+        ]);
+
+        const txEgresos = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
+        const txElectronicos = [], txCredito = [];
+        for (const f of facturas) {
+            for (const p of f.pagos) {
+                const val = Math.round(parseFloat(p.valor) || 0);
+                if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago))
+                    txElectronicos.push({ entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
+                else if (p.metodoPago === 'Entidad Crediticia')
+                    txCredito.push({ entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
+            }
+        }
+
+        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, fecha);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="cuadre-${fecha.toISOString().slice(0,10)}.pdf"`);
+        res.setHeader('Content-Length', buf.length);
+        return res.send(buf);
+    } catch (e) {
+        console.error('getAdminCuadrePDF:', e);
+        return res.status(500).send('Error al generar el PDF.');
+    }
+};
+
 export {
     dashboard,
     dashboardStores,
@@ -3097,4 +3194,6 @@ export {
     getPagosHoyPorMetodo,
     listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
     getStatsVendedorMes,
+    getCajasCerradasAdmin,
+    getAdminCuadrePDF,
 }

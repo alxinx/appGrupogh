@@ -29,7 +29,8 @@ export default {
         adminTiendasLive    : '/src/js/adminTiendasLive.js',
         adminStoreStats     : '/src/js/adminStoreStats.js',
         adminStoreBilling   : '/src/js/adminStoreBilling.js',
-        storeCuadrarCaja    : '/src/js/storeCuadrarCaja.js'
+        storeCuadrarCaja    : '/src/js/storeCuadrarCaja.js',
+        storeSales          : '/src/js/storeSales.js'
     },
     output: {
         filename: '[name].js',

@@ -147,6 +147,38 @@
         }
     };
 
+    // ─── BOTONES VER CUADRE ───────────────────────────────────────────────────
+    const fmtHora = (iso) => {
+        if (!iso) return '';
+        return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+    };
+
+    const cargarBotonesCuadre = async () => {
+        const cont = document.getElementById('billing-cuadre-btns');
+        if (!cont) return;
+        cont.innerHTML = '';
+
+        try {
+            const res  = await fetch(`/admin/api/tiendas/${pdvId}/cajas-cerradas?fecha=${fechaActual}`);
+            const json = await res.json();
+            if (!json.success || !json.cajas.length) return;
+
+            json.cajas.forEach((c, i) => {
+                const label = json.cajas.length > 1
+                    ? `Ver cuadre #${i + 1} (${fmtHora(c.apertura)} – ${fmtHora(c.cierre)})`
+                    : `Ver cuadre (${fmtHora(c.apertura)} – ${fmtHora(c.cierre)})`;
+
+                const a = document.createElement('a');
+                a.href   = `/admin/tiendas/${pdvId}/cuadre/${c.idCajaTienda}/pdf`;
+                a.target = '_blank';
+                a.className = 'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all active:scale-95';
+                a.style.background = '#EC5FA3';
+                a.innerHTML = `<i class="fi fi-rr-print"></i> ${label}`;
+                cont.appendChild(a);
+            });
+        } catch (_) {}
+    };
+
     // ─── INICIALIZAR (llamado cuando el tab se carga en el DOM) ───────────────
     const initBilling = () => {
         pdvId = document.getElementById('billing-pdv-id')?.value;
@@ -174,6 +206,7 @@
                 fechaActual = e.target.value;
                 actualizarNombreTab(fechaActual);
                 cargarFacturas(1);
+                cargarBotonesCuadre();
             });
         }
 
@@ -182,6 +215,7 @@
         if (btnExport) btnExport.addEventListener('click', exportarExcel);
 
         cargarFacturas(1);
+        cargarBotonesCuadre();
     };
 
     // ─── ESCUCHAR EVENTO DE TAB CARGADO ──────────────────────────────────────

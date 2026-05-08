@@ -34,7 +34,10 @@ import {
     cuadrarCajaPage,
     getCuadreCajaDatos,
     cerrarCajaAPI,
-    getCuadrePDF
+    getCuadrePDF,
+    getSalesPage,
+    getVentasMes,
+    getDetalleDia
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
@@ -111,5 +114,10 @@ routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
 routes.get('/storebehivors/expenses/json', getEgresosJSON);
 routes.get('/storebehivors/expenses/:idEgreso/pdf', getEgresoComprobantePDF);
 routes.post('/storebehivors/expenses/crear', csrfProtection, crearEgreso);
+
+// Storebehivors — ventas del mes
+routes.get('/storebehivors/sales', csrfProtection, getSalesPage);
+routes.get('/storebehivors/sales/mes', getVentasMes);
+routes.get('/storebehivors/sales/dia', getDetalleDia);
 
 export default routes;

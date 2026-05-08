@@ -8,11 +8,29 @@
         return isNaN(num) ? '0' : num.toLocaleString('es-CO');
     };
 
-    // ─── FORMATEAR VALOR AL ESCRIBIR ─────────────────────────────────────────
+    // ─── FORMATEAR VALOR AL ESCRIBIR (preserva cursor) ───────────────────────
     const inputValor = document.getElementById('egr-valor');
+    inputValor.addEventListener('keydown', (e) => {
+        const ok = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter','Home','End'];
+        if (!ok.includes(e.key) && !/^\d$/.test(e.key)) e.preventDefault();
+    });
     inputValor.addEventListener('input', () => {
-        const raw = inputValor.value.replace(/\D/g, '');
-        inputValor.value = raw ? parseInt(raw, 10).toLocaleString('es-CO') : '';
+        const oldVal = inputValor.value;
+        const start  = inputValor.selectionStart;
+        const digitsAntes = oldVal.slice(0, start).replace(/[^0-9]/g, '').length;
+
+        const raw    = parseInt(oldVal.replace(/\D/g, ''), 10);
+        const newVal = raw ? raw.toLocaleString('es-CO') : '';
+        if (newVal === oldVal) return;
+        inputValor.value = newVal;
+
+        let cnt = 0, newPos = newVal.length;
+        for (let i = 0; i < newVal.length; i++) {
+            if (/\d/.test(newVal[i])) cnt++;
+            if (cnt === digitsAntes) { newPos = i + 1; break; }
+        }
+        if (digitsAntes === 0) newPos = 0;
+        inputValor.setSelectionRange(newPos, newPos);
     });
 
     // ─── LOOKUP DE EMPLEADO ───────────────────────────────────────────────────

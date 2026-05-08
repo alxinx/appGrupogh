@@ -9,7 +9,9 @@ jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
 getPagosHoyPorMetodo,
 listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
-getStatsVendedorMes } from "../controller/adminControllers.js"
+getStatsVendedorMes,
+getCajasCerradasAdmin,
+getAdminCuadrePDF } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -165,6 +167,8 @@ routes.get('/api/tiendas/stats-hoy', getTiendasStatsHoy);
 routes.get('/api/personal/:idEmpleado/stats-mes', getStatsVendedorMes);
 routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', getTiendaStatsHoyDetalle);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', getFacturasJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/cajas-cerradas', getCajasCerradasAdmin);
+routes.get('/tiendas/:idPuntoDeVenta/cuadre/:idCajaTienda/pdf', getAdminCuadrePDF);
 routes.get('/api/tiendas/:idPuntoDeVenta/pagos-hoy/:metodoPago', getPagosHoyPorMetodo);
 routes.get('/api/factura/:id/tirilla', getTirillaPDF);
 

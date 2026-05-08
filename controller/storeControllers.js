@@ -7,7 +7,7 @@ import {
     Atributos, VariacionesProducto, Entidades,
     FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente,
     DetallesPagosFactura, RegimenFacturacion, Egresos,
-    CajaTienda
+    CajaTienda, UserPermisos, PermisosAcciones, PermisosRecursos
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import PDFDocument from 'pdfkit';
@@ -396,10 +396,15 @@ const getInventarioJSON = async (req, res) => {
                 } : {})
             };
 
+            const zeroStockIds = productIdsTienda.filter(id => (mapTienda[id] || 0) <= 0);
+            const stockOrderClause = zeroStockIds.length
+                ? [[literal(`CASE WHEN \`Productos\`.\`idProducto\` IN (${zeroStockIds.map(id => `'${id}'`).join(',')}) THEN 1 ELSE 0 END`), 'ASC']]
+                : [];
+
             const result = await Productos.findAndCountAll({
                 where: whereProd,
                 include: [{ model: Imagenes, as: 'imagenes', where: { tipo: 'principal' }, required: false }],
-                order: [['nombreProducto', 'ASC']],
+                order: [...stockOrderClause, ['nombreProducto', 'ASC']],
                 limit: limite,
                 offset,
                 distinct: true
@@ -1794,14 +1799,30 @@ const cerrarCajaAPI = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
 
-    const { codigoEmpleado, operadorEgresos, operadorEfectivo, operadorElectronicos, operadorCredito, operadorBase, nota } = req.body;
+    const { idCajaTienda, codigoEmpleado, operadorEgresos, operadorEfectivo, operadorElectronicos, operadorCredito, operadorBase, nota } = req.body;
+
+    if (!idCajaTienda) return res.status(400).json({ success: false, mensaje: 'idCajaTienda requerido.' });
 
     try {
-        const hoy    = new Date();
-        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0);
-        const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59);
+        // ── Verificar permiso: "Caja y ventas" / EDIT ─────────────────────────
+        const [recursoPermiso, accionPermiso] = await Promise.all([
+            PermisosRecursos.findOne({ where: { nombreRecurso: 'Caja y ventas' }, attributes: ['idRecurso'], raw: true }),
+            PermisosAcciones.findOne({ where: { nombreAccion: 'EDIT' }, attributes: ['idAccion'], raw: true })
+        ]);
+        if (!recursoPermiso || !accionPermiso)
+            return res.status(500).json({ success: false, mensaje: 'Configuración de permisos no encontrada.' });
 
-        // Validar empleado de la tienda
+        const tienePermiso = await UserPermisos.findOne({
+            where: {
+                idUsuario: req.usuario.idUsuario,
+                idRecurso: recursoPermiso.idRecurso,
+                idAccion:  accionPermiso.idAccion
+            }
+        });
+        if (!tienePermiso)
+            return res.status(403).json({ success: false, mensaje: 'No tienes permiso para cerrar la caja.' });
+
+        // ── Validar empleado de la tienda ──────────────────────────────────────
         const codigo = String(codigoEmpleado || '').trim().toUpperCase();
         if (!codigo) return res.status(400).json({ success: false, mensaje: 'Código de empleado requerido.' });
         const empleadoCierre = await Empleados.findOne({
@@ -1810,17 +1831,17 @@ const cerrarCajaAPI = async (req, res) => {
         });
         if (!empleadoCierre) return res.status(400).json({ success: false, mensaje: 'Empleado no pertenece a esta tienda.' });
 
+        const hoy    = new Date();
+        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0);
+        const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59);
+
+        // ── Buscar la caja por idCajaTienda + idPuntoDeVenta + estado abierto ──
         const caja = await CajaTienda.findOne({
-            where: {
-                idPuntoDeVenta: idPdv,
-                estado: 'abierto',
-                fechaApertura: { [Op.gte]: inicio },
-                fechaCierre: null
-            },
+            where: { idCajaTienda, idPuntoDeVenta: idPdv, estado: 'abierto' },
             include: [{ model: Empleados, as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
                       { model: PuntosDeVenta, as: 'puntoDeVenta', attributes: ['nombreComercial', 'footerBill'] }]
         });
-        if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta.' });
+        if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta con ese ID.' });
 
         // Datos sistema
         const [egresosRows, facturas] = await Promise.all([
@@ -1909,6 +1930,7 @@ const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fec
 
     const hr  = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.3).stroke(); doc.moveDown(0.3); };
     const fmt = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const fmtHora = (d) => d ? new Date(d).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
     const fechaStr = fecha.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
 
     try {
@@ -1924,8 +1946,8 @@ const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fec
     const nomApertura = `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim();
     const nomCierre   = `${caja.empleadoCierre?.PrimerNombre || ''} ${caja.empleadoCierre?.PrimerApellido || ''}`.trim();
     doc.font('Helvetica').fontSize(6.5);
-    doc.text(`Apertura: ${nomApertura}`, MARGIN, doc.y, { width: CW });
-    doc.text(`Cierre:   ${nomCierre}`,   MARGIN, doc.y, { width: CW });
+    doc.text(`Apertura: ${nomApertura}  ${fmtHora(caja.fechaApertura)}`, MARGIN, doc.y, { width: CW });
+    doc.text(`Cierre:   ${nomCierre}  ${fmtHora(caja.fechaCierre)}`,     MARGIN, doc.y, { width: CW });
     doc.moveDown(0.3); hr();
 
     const sEfectivo = Math.round(parseFloat(caja.ventasEfectivo)                    || 0);
@@ -1967,9 +1989,13 @@ const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fec
         for (const e of txEgresos) {
             const y = doc.y; doc.font('Helvetica').fontSize(6);
             doc.text(e.referencia,  MARGIN,       y, { width: 50 });
+            const y1 = doc.y;
             doc.y = y; doc.text(e.descripcion, MARGIN + 53,  y, { width: 60 });
+            const y2 = doc.y;
             doc.y = y; doc.text(fmt(e.valor),  MARGIN + 116, y, { width: 37, align: 'right' });
-            doc.moveDown(0.15);
+            const y3 = doc.y;
+            doc.y = Math.max(y1, y2, y3);
+            doc.moveDown(0.3);
         }
         hr();
     }
@@ -2371,6 +2397,207 @@ const verificarTrasladosExpirados = async () => {
     }
 };
 
+// ─── MÓDULO: VENTAS DEL MES ─────────────────────────────────────────────────
+
+const getSalesPage = async (req, res) => {
+    return res.render('./tienda/storebehivors/sales', {
+        pagina: 'Mis Ventas',
+        csrfToken: req.csrfToken(),
+        currentPath: '/storebehivors/sales'
+    });
+};
+
+const _toDateStr = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const getVentasMes = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    try {
+        const now = new Date();
+        const hoyStr = _toDateStr(now);
+
+        let { fechaA, fechaB } = req.query;
+        if (!fechaA) fechaA = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        if (!fechaB) fechaB = hoyStr;
+
+        const fechas = [];
+        const cur = new Date(fechaA + 'T00:00:00');
+        const endDate = new Date(fechaB + 'T00:00:00');
+        while (cur <= endDate) {
+            fechas.push(_toDateStr(cur));
+            cur.setDate(cur.getDate() + 1);
+        }
+        fechas.reverse();
+
+        const resultado = [];
+
+        for (const fecha of fechas) {
+            const inicio = new Date(fecha + 'T00:00:00');
+            const fin    = new Date(fecha + 'T23:59:59');
+
+            if (fecha === hoyStr) {
+                const [facturas, egresos] = await Promise.all([
+                    FacturaClientes.findAll({
+                        where: { idPuntoDeVenta: idPdv, createdAt: { [Op.between]: [inicio, fin] } },
+                        include: [{ model: DetallesPagosFactura, as: 'pagos', attributes: ['metodoPago', 'valor'] }]
+                    }),
+                    Egresos.findAll({
+                        where: { idPuntoDeVenta: idPdv, createdAt: { [Op.between]: [inicio, fin] } },
+                        attributes: ['valorEgreso'],
+                        raw: true
+                    })
+                ]);
+
+                let efectivo = 0, electronico = 0, credito = 0;
+                for (const f of facturas) {
+                    for (const p of f.pagos) {
+                        const val = parseFloat(p.valor) || 0;
+                        if (p.metodoPago === 'Efectivo') efectivo += val;
+                        else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) electronico += val;
+                        else if (p.metodoPago === 'Entidad Crediticia') credito += val;
+                    }
+                }
+                const egrTotal = egresos.reduce((s, e) => s + (parseFloat(e.valorEgreso) || 0), 0);
+
+                resultado.push({
+                    fecha, esHoy: true, estadoCaja: 'abierto',
+                    efectivo: Math.round(efectivo), electronico: Math.round(electronico),
+                    credito: Math.round(credito), egresos: Math.round(egrTotal),
+                    total: Math.round(efectivo + electronico + credito)
+                });
+            } else {
+                const caja = await CajaTienda.findOne({
+                    where: { idPuntoDeVenta: idPdv, fechaApertura: { [Op.between]: [inicio, fin] } },
+                    attributes: ['ventasEfectivo', 'ventasMediosElectronicos', 'ventasCredito', 'egresosTotales', 'ventasTotales', 'estado'],
+                    raw: true
+                });
+                if (caja) {
+                    resultado.push({
+                        fecha, esHoy: false, estadoCaja: caja.estado,
+                        efectivo:   Math.round(parseFloat(caja.ventasEfectivo)            || 0),
+                        electronico: Math.round(parseFloat(caja.ventasMediosElectronicos) || 0),
+                        credito:    Math.round(parseFloat(caja.ventasCredito)             || 0),
+                        egresos:    Math.round(parseFloat(caja.egresosTotales)            || 0),
+                        total:      Math.round(parseFloat(caja.ventasTotales)             || 0)
+                    });
+                }
+            }
+        }
+
+        return res.json({ success: true, ventas: resultado, hoy: hoyStr });
+    } catch (e) {
+        console.error('getVentasMes:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const getDetalleDia = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    const now    = new Date();
+    const hoyStr = _toDateStr(now);
+    const fecha  = req.query.fecha || hoyStr;
+    const esHoy  = fecha === hoyStr;
+    const page   = Math.max(1, parseInt(req.query.page) || 1);
+    const LIMIT  = 10;
+    const offset = (page - 1) * LIMIT;
+
+    try {
+        const inicio = new Date(fecha + 'T00:00:00');
+        const fin    = new Date(fecha + 'T23:59:59');
+
+        let resumen = { efectivo: 0, electronico: 0, credito: 0, egresos: 0, total: 0 };
+        let idCajaTiendaResult = null;
+
+        if (esHoy) {
+            const [facturas, egresos] = await Promise.all([
+                FacturaClientes.findAll({
+                    where: { idPuntoDeVenta: idPdv, createdAt: { [Op.between]: [inicio, fin] } },
+                    include: [{ model: DetallesPagosFactura, as: 'pagos', attributes: ['metodoPago', 'valor'] }]
+                }),
+                Egresos.findAll({
+                    where: { idPuntoDeVenta: idPdv, createdAt: { [Op.between]: [inicio, fin] } },
+                    attributes: ['valorEgreso'],
+                    raw: true
+                })
+            ]);
+            let efectivo = 0, electronico = 0, credito = 0;
+            for (const f of facturas) {
+                for (const p of f.pagos) {
+                    const val = parseFloat(p.valor) || 0;
+                    if (p.metodoPago === 'Efectivo') efectivo += val;
+                    else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) electronico += val;
+                    else if (p.metodoPago === 'Entidad Crediticia') credito += val;
+                }
+            }
+            const egrTotal = egresos.reduce((s, e) => s + (parseFloat(e.valorEgreso) || 0), 0);
+            resumen = {
+                efectivo: Math.round(efectivo), electronico: Math.round(electronico),
+                credito: Math.round(credito), egresos: Math.round(egrTotal),
+                total: Math.round(efectivo + electronico + credito)
+            };
+        } else {
+            const caja = await CajaTienda.findOne({
+                where: { idPuntoDeVenta: idPdv, fechaApertura: { [Op.between]: [inicio, fin] } },
+                attributes: ['idCajaTienda', 'ventasEfectivo', 'ventasMediosElectronicos', 'ventasCredito', 'egresosTotales', 'ventasTotales', 'estado'],
+                raw: true
+            });
+            if (caja) {
+                idCajaTiendaResult = caja.estado === 'cerrado' ? caja.idCajaTienda : null;
+                resumen = {
+                    efectivo:    Math.round(parseFloat(caja.ventasEfectivo)            || 0),
+                    electronico: Math.round(parseFloat(caja.ventasMediosElectronicos)  || 0),
+                    credito:     Math.round(parseFloat(caja.ventasCredito)             || 0),
+                    egresos:     Math.round(parseFloat(caja.egresosTotales)            || 0),
+                    total:       Math.round(parseFloat(caja.ventasTotales)             || 0)
+                };
+            }
+        }
+
+        const whereFactura = esHoy
+            ? { idPuntoDeVenta: idPdv, createdAt: { [Op.between]: [inicio, fin] } }
+            : { idPuntoDeVenta: idPdv, fechaEmision: fecha };
+
+        const { count, rows } = await FacturaClientes.findAndCountAll({
+            where: whereFactura,
+            include: [
+                { model: Clientes, as: 'cliente', attributes: ['primer_nombre', 'primer_apellido', 'razon_social', 'tipo_persona'] },
+                { model: DetallesPagosFactura, as: 'pagos', attributes: ['valor', 'metodoPago'] }
+            ],
+            order: [['createdAt', 'DESC']],
+            limit: LIMIT,
+            offset
+        });
+
+        const facturas = rows.map(f => {
+            const totalFact = f.pagos.reduce((s, p) => s + (parseFloat(p.valor) || 0), 0);
+            const c = f.cliente;
+            const nombre = c?.tipo_persona === 'J'
+                ? (c?.razon_social || 'Sin nombre')
+                : (`${c?.primer_nombre || ''} ${c?.primer_apellido || ''}`).trim() || 'Consumidor Final';
+            return {
+                idFacturaCliente: f.idFacturaCliente,
+                nroFactura: `${f.prefijo || ''}${f.numeroFactura || ''}`,
+                cliente: nombre,
+                total: Math.round(totalFact)
+            };
+        });
+
+        return res.json({
+            success: true, fecha, esHoy, resumen, facturas,
+            totalFacturas: count, page,
+            totalPages: Math.ceil(count / LIMIT),
+            idCajaTienda: idCajaTiendaResult
+        });
+    } catch (e) {
+        console.error('getDetalleDia:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 const abrirCajaAPI = async (req, res) => {
     const idPuntoDeVenta = req.idPuntoDeVenta;
     if (!idPuntoDeVenta)
@@ -2459,5 +2686,9 @@ export {
     cuadrarCajaPage,
     getCuadreCajaDatos,
     cerrarCajaAPI,
-    getCuadrePDF
+    getCuadrePDF,
+    _generarPDFCuadre,
+    getSalesPage,
+    getVentasMes,
+    getDetalleDia
 };

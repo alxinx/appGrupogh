@@ -1,0 +1,134 @@
+extends ../../layout/index
+
+block contenedor
+    div(class="fixed inset-0 flex" style="background:#F4E8FF")
+        include ../partials/leftMenu
+
+        div(class="flex-1 flex flex-col min-w-0 overflow-y-auto")
+            include ../../partials/header
+
+            main(class="flex-1 p-4 pb-10")
+
+                //- ── ENCABEZADO ────────────────────────────────────────────────
+                div(class="flex items-center gap-4 mb-5 bg-white/70 backdrop-blur-md rounded-2xl p-5 shadow-sm")
+                    div(class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md shadow-pink-200" style="background:linear-gradient(135deg,#EC5FA3,#d44a8a)")
+                        i(class="fi fi-rr-chart-line-up text-white text-2xl")
+                    div
+                        h1(class="text-xl font-bold text-slate-800") Ventas del Mes
+                        p(class="text-xs text-slate-400 mt-0.5") Resumen diario de ventas del punto de venta
+
+                //- ── GRID PRINCIPAL ────────────────────────────────────────────
+                div(class="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-5 items-start m-5")
+
+                    //- ── COLUMNA IZQUIERDA: Tabla ──────────────────────────────
+                    div(class="cards cardWhite flex flex-col overflow-hidden !p-0 !m-0")
+
+                        //- Header: filtro fechas
+                        div(class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-b border-slate-100")
+                            h2(class="font-bold text-slate-700 text-sm uppercase tracking-wide flex items-center gap-2")
+                                i(class="fi fi-rr-calendar-lines text-pink-400")
+                                | Ventas del Mes
+                            div(class="flex items-center gap-2 flex-wrap")
+                                div(class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2")
+                                    i(class="fi fi-rr-calendar text-slate-400 text-xs")
+                                    input#sv-fecha-a(
+                                        type="date"
+                                        class="bg-transparent text-xs text-slate-600 focus:outline-none"
+                                    )
+                                span(class="text-slate-300 text-xs") —
+                                div(class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2")
+                                    i(class="fi fi-rr-calendar text-slate-400 text-xs")
+                                    input#sv-fecha-b(
+                                        type="date"
+                                        class="bg-transparent text-xs text-slate-600 focus:outline-none"
+                                    )
+                                button#sv-btn-filtrar(
+                                    type="button"
+                                    class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-xs font-bold transition-all active:scale-95"
+                                    style="background:#EC5FA3"
+                                )
+                                    i(class="fi fi-rr-search")
+                                    | Filtrar
+
+                        //- Tabla
+                        div(class="overflow-x-auto")
+                            table(class="w-full text-left")
+                                thead(class="bg-slate-50 border-b border-slate-100")
+                                    tr
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide") Fecha
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide") Estado
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right") Efectivo
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right") Electrónicos
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right") Crédito
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right") Egresos
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right") Total
+                                        th(class="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-center") Ver
+                                tbody#sv-tbody
+                                    tr
+                                        td(colspan="8" class="px-4 py-10 text-center text-slate-400 text-sm")
+                                            i(class="fi fi-rr-spinner animate-spin mr-2")
+                                            | Cargando ventas...
+
+                    //- ── COLUMNA DERECHA: Panel detalle ────────────────────────
+                    div(class="space-y-4")
+
+                        //- 4 cards pequeñas
+                        div(class="grid grid-cols-2 gap-3")
+                            div(class="cards cardWhite flex flex-col !m-0")
+                                p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Efectivo
+                                p#sv-r-efectivo(class="text-xl font-bold text-slate-800") —
+                                div(class="h-0.5 rounded-full mt-1" style="background:#22c55e")
+                            div(class="cards cardWhite flex flex-col !m-0")
+                                p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Electrónico
+                                p#sv-r-electronico(class="text-xl font-bold text-slate-800") —
+                                div(class="h-0.5 rounded-full mt-1" style="background:#3b82f6")
+                            div(class="cards cardWhite flex flex-col !m-0")
+                                p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Crédito
+                                p#sv-r-credito(class="text-xl font-bold text-slate-800") —
+                                div(class="h-0.5 rounded-full mt-1" style="background:#a855f7")
+                            div(class="cards cardWhite flex flex-col !m-0")
+                                p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Egresos
+                                p#sv-r-egresos(class="text-xl font-bold text-slate-800") —
+                                div(class="h-0.5 rounded-full mt-1" style="background:#f97316")
+
+                        //- Card total grande
+                        div(class="rounded-2xl p-5 relative overflow-hidden shadow-sm" style="background:linear-gradient(135deg,#EC5FA3,#d44a8a)")
+                            div(class="absolute right-3 bottom-2 opacity-10 text-[80px] leading-none select-none pointer-events-none")
+                                i(class="fi fi-rr-store-alt text-white")
+                            p(class="text-[10px] font-bold text-pink-100 uppercase tracking-widest mb-1") Total Ventas del Día
+                            p#sv-r-total(class="text-3xl font-extrabold text-white tracking-tight") —
+                            p#sv-r-fecha-tag(class="text-xs text-pink-200 mt-2") —
+
+                        //- Botón imprimir cierre (solo días pasados con caja cerrada)
+                        a#sv-btn-imprimir(
+                            href="#"
+                            target="_blank"
+                            class="hidden flex items-center justify-center gap-2 w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 cards cardWhite !m-0 text-slate-700 hover:border-pink-300 hover:text-pink-600"
+                        )
+                            i(class="fi fi-rr-print")
+                            | Imprimir Cierre de Caja
+
+                        //- Movimientos del día
+                        div(class="cards cardWhite flex flex-col overflow-hidden !p-0 !m-0")
+                            div(class="px-5 py-4 border-b border-slate-100")
+                                p(class="text-xs font-bold text-slate-700 uppercase tracking-widest") Movimientos del día
+                                p#sv-r-fecha-label(class="text-xs text-pink-500 font-semibold mt-0.5") —
+
+                            div#sv-lista-facturas(class="divide-y divide-slate-50 max-h-[380px] overflow-y-auto")
+                                div(class="flex items-center justify-center py-10 text-slate-400 text-sm")
+                                    i(class="fi fi-rr-spinner animate-spin mr-2")
+                                    | Cargando...
+
+                            //- Cargar más
+                            div(class="px-5 py-3 border-t border-slate-100 text-center")
+                                button#sv-btn-mas(
+                                    type="button"
+                                    class="hidden text-[11px] font-bold text-slate-500 uppercase tracking-widest hover:text-pink-500 transition-colors"
+                                )
+                                    i(class="fi fi-rr-refresh mr-1")
+                                    | Cargar más movimientos
+
+    input#csrf-token(type="hidden" value=csrfToken)
+    script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+    script(src="/js/helpers.js")
+    script(src="/js/storeSales.js")
