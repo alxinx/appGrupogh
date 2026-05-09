@@ -37,7 +37,9 @@ import {
     getCuadrePDF,
     getSalesPage,
     getVentasMes,
-    getDetalleDia
+    getDetalleDia,
+    validarEmpleadoTraslado,
+    trasladarDesdePerfil
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
@@ -114,6 +116,10 @@ routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
 routes.get('/storebehivors/expenses/json', getEgresosJSON);
 routes.get('/storebehivors/expenses/:idEgreso/pdf', getEgresoComprobantePDF);
 routes.post('/storebehivors/expenses/crear', csrfProtection, crearEgreso);
+
+// Inventario — traslado desde perfil de producto
+routes.get('/inventario/json/empleado-traslado', validarEmpleadoTraslado);
+routes.post('/inventario/traslado-producto', csrfProtection, trasladarDesdePerfil);
 
 // Storebehivors — ventas del mes
 routes.get('/storebehivors/sales', csrfProtection, getSalesPage);

@@ -479,15 +479,15 @@
 
         employeeLookupTimer = setTimeout(async () => {
             try {
-                const r = await fetch(`/store/json/personal/codigo/${encodeURIComponent(code.toUpperCase())}`);
+                const r = await fetch(`/store/inventario/json/empleado-traslado?codigo=${encodeURIComponent(code.toUpperCase())}&accion=EDIT`);
                 const d = await r.json();
                 if (d.success) {
-                    empleadoValidado = { idEmpleado: d.idEmpleado, nombre: d.nombre };
+                    empleadoValidado = { nombre: d.nombre };
                     lbFeedback.innerHTML = `<span class="text-emerald-600 font-semibold text-xs">
                         <i class="fi fi-rr-check mr-1"></i>${d.nombre}</span>`;
                 } else {
                     lbFeedback.innerHTML = `<span class="text-red-500 text-xs">
-                        <i class="fi fi-rr-cross-circle mr-1"></i>No encontrado</span>`;
+                        <i class="fi fi-rr-cross-circle mr-1"></i>${d.mensaje || 'Sin permiso'}</span>`;
                 }
             } catch {
                 lbFeedback.innerHTML = `<span class="text-red-500 text-xs">Error al buscar</span>`;
@@ -834,13 +834,13 @@
             feedbackEmp.innerHTML = `<span class="text-slate-400"><i class="fi fi-rr-spinner animate-spin mr-1"></i>Buscando...</span>`;
             ntEmpTimer = setTimeout(async () => {
                 try {
-                    const r = await fetch(`/store/json/personal/codigo/${encodeURIComponent(code.toUpperCase())}`);
+                    const r = await fetch(`/store/inventario/json/empleado-traslado?codigo=${encodeURIComponent(code.toUpperCase())}&accion=CREATE`);
                     const d = await r.json();
                     if (d.success) {
-                        ntEmpleado = { idEmpleado: d.idEmpleado, nombre: d.nombre };
+                        ntEmpleado = { nombre: d.nombre };
                         feedbackEmp.innerHTML = `<span class="text-emerald-600 font-semibold"><i class="fi fi-rr-check mr-1"></i>${d.nombre}</span>`;
                     } else {
-                        feedbackEmp.innerHTML = `<span class="text-red-500"><i class="fi fi-rr-cross-circle mr-1"></i>No encontrado</span>`;
+                        feedbackEmp.innerHTML = `<span class="text-red-500"><i class="fi fi-rr-cross-circle mr-1"></i>${d.mensaje || 'Sin permiso'}</span>`;
                     }
                 } catch {
                     feedbackEmp.innerHTML = `<span class="text-red-400">Error al buscar</span>`;

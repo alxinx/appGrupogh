@@ -78,7 +78,19 @@
 
         sseSource.addEventListener('new_traslado', (e) => {
             const { codigo, pendientes } = JSON.parse(e.data);
-            showToast(`📦 Nuevo traslado entrante: <strong>${codigo}</strong>`, 'info', 10000);
+
+            // Notificación prominente con Swal
+            Swal.fire({
+                icon:              'info',
+                title:             '📦 ¡Nuevo traslado!',
+                html:              `Acaban de generarte un traslado <strong>${codigo}</strong>.<br><a href="/store/traslados/get" style="color:#EC5FA3;font-weight:bold;text-decoration:underline;">Ver traslados →</a>`,
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#EC5FA3',
+                timer:             15000,
+                timerProgressBar:  true,
+                position:          'top-end',
+                toast:             false
+            });
 
             const badge = document.getElementById('badge-pendientes');
             if (badge) badge.textContent = pendientes;

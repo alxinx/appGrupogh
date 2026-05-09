@@ -345,3 +345,112 @@
     document.addEventListener('DOMContentLoaded', loadInventario);
 
 })();
+
+// ─── FORMULARIO TRASLADO EN PERFIL DE PRODUCTO ───────────────────────────────
+(function () {
+    const csrfToken   = document.getElementById('csrf-token')?.value || '';
+    const btnSubmit   = document.getElementById('ptp-submit');
+    const inputEmp    = document.getElementById('ptp-empleado');
+    const feedbackEmp = document.getElementById('ptp-feedback-emp');
+
+    if (!btnSubmit) return; // Solo ejecutar en perfilProducto
+
+    let empleadoValido = false;
+    let empTimer = null;
+
+    const setFeedback = (msg, ok) => {
+        if (!feedbackEmp) return;
+        feedbackEmp.textContent = msg;
+        feedbackEmp.className = `text-xs h-4 ml-1 transition-colors ${ok ? 'text-green-600 font-semibold' : 'text-rose-500'}`;
+    };
+
+    const checkBtn = () => {
+        const cantidad  = parseInt(document.getElementById('ptp-cantidad')?.value) || 0;
+        const destino   = document.getElementById('ptp-destino')?.value || '';
+        if (btnSubmit) btnSubmit.disabled = !(empleadoValido && cantidad >= 1 && destino);
+    };
+
+    inputEmp?.addEventListener('input', () => {
+        clearTimeout(empTimer);
+        empleadoValido = false;
+        checkBtn();
+        const code = inputEmp.value.trim();
+        if (!code) { setFeedback('', false); return; }
+
+        setFeedback('Verificando...', false);
+        empTimer = setTimeout(async () => {
+            try {
+                const r = await fetch(`/store/inventario/json/empleado-traslado?codigo=${encodeURIComponent(code.toUpperCase())}`);
+                const d = await r.json();
+                if (d.success) {
+                    empleadoValido = true;
+                    setFeedback(`✓ ${d.nombre}`, true);
+                } else {
+                    empleadoValido = false;
+                    setFeedback(d.mensaje || 'Sin permiso.', false);
+                }
+            } catch {
+                setFeedback('Error de conexión.', false);
+            }
+            checkBtn();
+        }, 500);
+    });
+
+    document.getElementById('ptp-cantidad')?.addEventListener('input', checkBtn);
+    document.getElementById('ptp-destino')?.addEventListener('change', checkBtn);
+
+    btnSubmit?.addEventListener('click', async () => {
+        const idProducto     = document.getElementById('ptp-id-producto')?.value;
+        const cantidad       = parseInt(document.getElementById('ptp-cantidad')?.value);
+        const idDestino      = document.getElementById('ptp-destino')?.value;
+        const codigoEmpleado = inputEmp?.value?.trim().toUpperCase();
+        const notas          = document.getElementById('ptp-notas')?.value?.trim() || '';
+
+        if (!idProducto || !cantidad || !idDestino || !codigoEmpleado) return;
+
+        const { isConfirmed } = await Swal.fire({
+            title:             'Confirmar traslado',
+            html:              `<p class="text-sm text-gray-600">¿Trasladar <strong>${cantidad}</strong> unidad(es) al destino seleccionado?</p>`,
+            icon:              'question',
+            showCancelButton:  true,
+            confirmButtonText: 'Sí, trasladar',
+            cancelButtonText:  'Cancelar',
+            confirmButtonColor: '#EC5FA3'
+        });
+        if (!isConfirmed) return;
+
+        btnSubmit.disabled   = true;
+        btnSubmit.innerHTML  = '<i class="fi fi-rr-spinner animate-spin mr-2"></i>Procesando...';
+
+        try {
+            const r = await fetch('/store/inventario/traslado-producto', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body:    JSON.stringify({ idProducto, cantidad, idDestino, codigoEmpleado, notas })
+            });
+            const data = await r.json();
+
+            if (data.success) {
+                await Swal.fire({
+                    icon:              'success',
+                    title:             `Traslado ${data.codigo}`,
+                    text:              'Traslado creado correctamente.',
+                    confirmButtonColor: '#EC5FA3'
+                });
+                if (data.idTraslado) {
+                    window.open(`/store/traslados/comprobante/${data.idTraslado}`, '_blank');
+                }
+                // Recargar para actualizar stock
+                window.location.reload();
+            } else {
+                Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje || 'Error al crear el traslado.', confirmButtonColor: '#EC5FA3' });
+                btnSubmit.disabled  = false;
+                btnSubmit.innerHTML = '<i class="fi fi-rr-paper-plane mr-2"></i>Hacer Traslado';
+            }
+        } catch {
+            Swal.fire({ icon: 'error', title: 'Error de conexión', confirmButtonColor: '#EC5FA3' });
+            btnSubmit.disabled  = false;
+            btnSubmit.innerHTML = '<i class="fi fi-rr-paper-plane mr-2"></i>Hacer Traslado';
+        }
+    });
+})();

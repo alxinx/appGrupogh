@@ -225,6 +225,29 @@ const getDetalleTrasladoJSON = async (req, res) => {
     }
 };
 
+// ─── HELPER: verificar permiso de traslado ────────────────────────────────────
+const _checkPermisoTraslado = async (codigoEmpleado, nombreAccion) => {
+    const empleado = await Empleados.findOne({
+        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
+        attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido', 'idUsuario']
+    });
+    if (!empleado) return { ok: false, mensaje: 'Código de empleado no encontrado.' };
+    if (!empleado.idUsuario) return { ok: false, mensaje: 'El empleado no tiene cuenta de usuario.' };
+
+    const [recurso, accion] = await Promise.all([
+        PermisosRecursos.findOne({ where: { nombreRecurso: 'Traslados', tipo: 'vendedor' }, attributes: ['idRecurso'], raw: true }),
+        PermisosAcciones.findOne({ where: { nombreAccion: nombreAccion }, attributes: ['idAccion'], raw: true })
+    ]);
+    if (!recurso || !accion) return { ok: false, mensaje: 'Configuración de permisos inválida.' };
+
+    const permiso = await UserPermisos.findOne({
+        where: { idUsuario: empleado.idUsuario, idRecurso: recurso.idRecurso, idAccion: accion.idAccion }
+    });
+    if (!permiso) return { ok: false, mensaje: `El empleado no tiene permiso (${nombreAccion}) para traslados.` };
+
+    return { ok: true, empleado };
+};
+
 // ─── ACEPTAR TRASLADO ────────────────────────────────────────────────────────
 
 const aceptarTrasladoAPI = async (req, res) => {
@@ -235,14 +258,10 @@ const aceptarTrasladoAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    // Validar empleado
-    const empleado = await Empleados.findOne({
-        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado']
-    });
-    if (!empleado) {
-        return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
-    }
+    // Validar empleado + permiso EDIT
+    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT');
+    if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
+    const empleado = check.empleado;
 
     const traslado = await Traslados.findByPk(idTraslado);
     if (!traslado) return res.status(404).json({ success: false, mensaje: 'Traslado no encontrado.' });
@@ -583,13 +602,10 @@ const resolverControversiaAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    const empleado = await Empleados.findOne({
-        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido']
-    });
-    if (!empleado) {
-        return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
-    }
+    // Validar empleado + permiso EDIT
+    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT');
+    if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
+    const empleado = check.empleado;
 
     const traslado = await Traslados.findByPk(idTraslado);
     if (!traslado || traslado.estado !== 'EN_CONTROVERSIA') {
@@ -726,12 +742,24 @@ const getPerfilProducto = async (req, res) => {
             }))
             .sort((a, b) => b.esTiendaActual - a.esTiendaActual);
 
+        const cantidadActual = parseInt(stockRows.find(r => r.idPuntoVenta === idPdv)?.total) || 0;
+
+        const BODEGA_VIRTUAL_ID = '00000000-0000-0000-0000-000000000000';
+        const destinos = idPdv ? await PuntosDeVenta.findAll({
+            where: { idPuntoDeVenta: { [Op.notIn]: [idPdv, BODEGA_VIRTUAL_ID] } },
+            attributes: ['idPuntoDeVenta', 'nombreComercial'],
+            order: [['nombreComercial', 'ASC']],
+            raw: true
+        }) : [];
+
         return res.render('./tienda/inventario/perfilProducto', {
             pagina:         producto.nombreProducto,
             csrfToken:      req.csrfToken(),
             currentPath:    '/inventario/lista',
             producto:       producto.toJSON(),
             stockPorTienda,
+            cantidadActual,
+            destinos,
             r2Url:          `${process.env.R2_PUBLIC_URL}/productos/`
         });
     } catch (e) {
@@ -1610,11 +1638,10 @@ const crearTrasladoSueltos = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    const empleado = await Empleados.findOne({
-        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado']
-    });
-    if (!empleado) return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
+    // Validar empleado + permiso CREATE
+    const check = await _checkPermisoTraslado(codigoEmpleado, 'CREATE');
+    if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
+    const empleado = check.empleado;
 
     const t = await db.transaction();
     try {
@@ -2397,6 +2424,38 @@ const verificarTrasladosExpirados = async () => {
     }
 };
 
+// ─── TRASLADO DESDE PERFIL DE PRODUCTO ──────────────────────────────────────
+
+const validarEmpleadoTraslado = async (req, res) => {
+    const { codigo, accion = 'CREATE' } = req.query;
+    if (!codigo) return res.status(400).json({ success: false });
+
+    try {
+        const check = await _checkPermisoTraslado(codigo, accion);
+        if (!check.ok) return res.json({ success: false, mensaje: check.mensaje });
+        const { empleado } = check;
+        return res.json({ success: true, nombre: `${empleado.PrimerNombre} ${empleado.PrimerApellido}` });
+    } catch (e) {
+        console.error('validarEmpleadoTraslado:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const trasladarDesdePerfil = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
+
+    const { idProducto, cantidad, idDestino, codigoEmpleado, notas } = req.body;
+
+    if (!idProducto || !cantidad || !idDestino || !codigoEmpleado) {
+        return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
+    }
+
+    // Delega a crearTrasladoSueltos que ya valida permiso CREATE
+    req.body.items = [{ idProducto, cantidad: parseInt(cantidad) }];
+    return crearTrasladoSueltos(req, res);
+};
+
 // ─── MÓDULO: VENTAS DEL MES ─────────────────────────────────────────────────
 
 const getSalesPage = async (req, res) => {
@@ -2690,5 +2749,7 @@ export {
     _generarPDFCuadre,
     getSalesPage,
     getVentasMes,
-    getDetalleDia
+    getDetalleDia,
+    validarEmpleadoTraslado,
+    trasladarDesdePerfil
 };

@@ -70,31 +70,122 @@ block contenedor
                                     p(class="text-sm text-slate-600")= producto.descripcion
 
                     //- ── STOCK POR TIENDA ─────────────────────────────────────
-                    div(class="col-span-12 cards p-6")
+                    div(class="col-span-12 cards flex flex-col p-6")
                         h3(class="h3 mb-4")
                             i(class="fi fi-rr-shop mr-2")
                             | Stock por ubicación
 
-                        if stockPorTienda.length
-                            div(class="overflow-x-auto")
-                                table(class="w-full text-left border-collapse")
-                                    thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
-                                        tr
-                                            th(class="p-4 text-sm font-semibold text-gray-600") Tienda / Ubicación
-                                            th(class="p-4 text-sm font-semibold text-gray-600") Tipo
-                                            th(class="p-4 text-sm font-semibold text-gray-600 text-center") Stock disponible
-                                    tbody
-                                        each s in stockPorTienda
-                                            tr(class=`border-b border-gray-100 transition-colors ${s.esTiendaActual ? 'bg-purple-50/60' : 'hover:bg-gray-50'}`)
-                                                td(class="p-4")
-                                                    div(class="flex items-center gap-2")
-                                                        if s.esTiendaActual
-                                                            span(class="text-xs font-bold bg-purple-500 text-white px-2 py-0.5 rounded-full") Esta tienda
-                                                        span(class="font-semibold text-slate-700")= s.nombreComercial
-                                                td(class="p-4 text-sm text-slate-500 capitalize")= s.tipo
-                                                td(class="p-4 text-center")
-                                                    span(class=`font-bold text-lg ${s.total > 0 ? 'text-green-600' : 'text-red-400'}`)= s.total
-                        else
-                            div(class="flex flex-col items-center justify-center py-10 text-gray-400 gap-2")
-                                i(class="fi fi-rr-box-open-full text-3xl")
-                                p(class="text-sm") Sin stock registrado en ninguna ubicación
+                        div(class="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-6")
+
+                            //- Tabla de stock
+                            div(class="bg-gray-50 rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                if stockPorTienda.length
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left text-2xs border-collapse")
+                                            thead
+                                                tr(class="border-b border-gh-primaryHover text-sm transition-colors")
+                                                    th(class="px-6 py-4 text-gray-600") Tienda / Ubicación
+                                                    th(class="px-4 py-4 text-center text-gray-600") Tipo
+                                                    th(class="px-4 py-4 text-center text-gray-600") Stock disponible
+                                            tbody(class="divide-y divide-slate-100")
+                                                each s in stockPorTienda
+                                                    tr(class=`transition-colors ${s.esTiendaActual ? 'bg-purple-50/60' : 'hover:bg-gray-50'}`)
+                                                        td(class="px-6 py-4")
+                                                            div(class="flex items-center gap-2")
+                                                                if s.esTiendaActual
+                                                                    span(class="text-xs font-bold bg-purple-500 text-white px-2 py-0.5 rounded-full") Esta tienda
+                                                                span(class="font-semibold text-slate-700")= s.nombreComercial
+                                                        td(class="px-4 py-4 text-sm text-slate-500 capitalize text-center")= s.tipo
+                                                        td(class="px-4 py-4 text-center")
+                                                            span(class=`font-bold text-lg ${s.total > 0 ? 'text-green-600' : 'text-red-400'}`)= s.total
+                                else
+                                    div(class="flex flex-col items-center justify-center py-10 text-gray-400 gap-2")
+                                        i(class="fi fi-rr-box-open-full text-3xl")
+                                        p(class="text-sm") Sin stock registrado en ninguna ubicación
+
+                            //- Formulario de traslado
+                            if cantidadActual > 0 && destinos && destinos.length
+                                div(class="bg-slate-50 rounded-2xl p-5 border border-slate-200 space-y-4")
+                                    div(class="flex items-center gap-2 mb-2")
+                                        div(class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style="background:linear-gradient(135deg,#EC5FA3,#d44a8a)")
+                                            i(class="fi fi-rr-convert-shapes text-white text-sm")
+                                        h4(class="font-bold text-slate-700 text-sm uppercase tracking-wide") Trasladar desde esta tienda
+
+                                    //- Producto (readonly)
+                                    div(class="space-y-1")
+                                        label(class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block") Producto
+                                        input(
+                                            type="text"
+                                            value=producto.nombreProducto
+                                            readonly
+                                            class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none cursor-default"
+                                        )
+
+                                    //- Cantidad
+                                    div(class="space-y-1")
+                                        label(for="ptp-cantidad" class="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between")
+                                            span Cantidad
+                                            span(class="text-pink-500 font-semibold normal-case") Máx: #{cantidadActual}
+                                        input#ptp-cantidad(
+                                            type="number"
+                                            min="1"
+                                            max=cantidadActual
+                                            value="1"
+                                            class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                        )
+
+                                    //- Destino
+                                    div(class="space-y-1")
+                                        label(for="ptp-destino" class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block") Destino
+                                        select#ptp-destino(
+                                            class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                        )
+                                            option(value="") Selecciona destino...
+                                            each d in destinos
+                                                option(value=d.idPuntoDeVenta)= d.nombreComercial
+
+                                    //- Código empleado
+                                    div(class="space-y-1")
+                                        label(for="ptp-empleado" class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block") Código de empleado
+                                        div(class="relative")
+                                            i(class="fi fi-rr-key absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none")
+                                            input#ptp-empleado(
+                                                type="text"
+                                                maxlength="10"
+                                                autocomplete="off"
+                                                placeholder="Ej: 00123"
+                                                class="w-full pl-8 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                            )
+                                        p#ptp-feedback-emp(class="text-xs h-4 ml-1 transition-colors")
+
+                                    //- Notas
+                                    div(class="space-y-1")
+                                        label(for="ptp-notas" class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block") Notas (opcional)
+                                        textarea#ptp-notas(
+                                            rows="2"
+                                            maxlength="255"
+                                            placeholder="Observaciones del traslado..."
+                                            class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                        )
+
+                                    //- Submit
+                                    button#ptp-submit(
+                                        type="button"
+                                        disabled
+                                        class="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        style="background:#EC5FA3"
+                                    )
+                                        i(class="fi fi-rr-paper-plane")
+                                        | Hacer Traslado
+
+                                    input#ptp-id-producto(type="hidden" value=producto.idProducto)
+
+                            else if cantidadActual === 0
+                                div(class="flex flex-col items-center justify-center py-10 text-slate-400 gap-3")
+                                    i(class="fi fi-rr-convert-shapes text-3xl")
+                                    p(class="text-sm text-center") No hay stock disponible en esta tienda para trasladar
+
+    input#csrf-token(type="hidden" value=csrfToken)
+    script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+    script(src="/js/helpers.js")
+    script(src="/js/storeInventario.js")

@@ -167,10 +167,24 @@
     const cart = new Map(); // idProducto → item
     const WHOLESALE_MIN = parseInt(document.getElementById('drop-zone')?.dataset.wholesaleMin) || 6;
 
-    const cartList  = document.getElementById('cart-list');
-    const cartCount = document.getElementById('cart-count');
-    const cartBadge = document.getElementById('cart-modo-badge');
-    const dropZone  = document.getElementById('drop-zone');
+    const cartList      = document.getElementById('cart-list');
+    const cartCount     = document.getElementById('cart-count');
+    const cartBadge     = document.getElementById('cart-modo-badge');
+    const dropZone      = document.getElementById('drop-zone');
+    const cartScrollHint = document.getElementById('cart-scroll-hint');
+
+    // ── Indicador "más productos abajo" ──────────────────────────────────────
+    const actualizarScrollHint = () => {
+        if (!cartList || !cartScrollHint) return;
+        const hayMas = cartList.scrollHeight - cartList.scrollTop - cartList.clientHeight > 10;
+        cartScrollHint.classList.toggle('hidden', !hayMas);
+    };
+
+    cartList?.addEventListener('scroll', actualizarScrollHint);
+
+    cartScrollHint?.addEventListener('click', () => {
+        cartList?.scrollBy({ top: cartList.clientHeight * 0.6, behavior: 'smooth' });
+    });
 
     const fmt = (n) => Math.round(n).toLocaleString('es-CO');
     const totalQtyEnOrden = () => [...cart.values()].reduce((s, i) => s + i.cantidad, 0);
@@ -326,7 +340,7 @@
             return;
         }
 
-        cartList.innerHTML = items.map(renderItemCarrito).join('');
+        cartList.innerHTML = [...items].reverse().map(renderItemCarrito).join('');
 
         // Bind eventos (después del render)
         cartList.querySelectorAll('.btn-qty-minus').forEach(btn =>
@@ -342,6 +356,8 @@
         // Resumen
         const subtotal = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
         renderResumen(subtotal);
+
+        actualizarScrollHint();
     };
 
     const renderResumen = (subtotal) => {
@@ -1530,7 +1546,7 @@
                 window.open(`/store/facturas/${data.idFacturaCliente}/tirilla`, '_blank');
                 cerrarFV();
                 cart.clear();
-                renderCart?.();
+                renderCarrito();
                 Swal.fire({
                     icon: 'success', title: '¡Venta registrada!',
                     text: 'La factura fue generada correctamente.',

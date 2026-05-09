@@ -515,6 +515,94 @@ const stockTotalProducto = async (req, res) => {
     }
 }
 
+const unidadesVendidasProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    try {
+        const ahora   = new Date();
+        const hace30  = new Date(ahora); hace30.setDate(ahora.getDate() - 30);
+        const hace60  = new Date(ahora); hace60.setDate(ahora.getDate() - 60);
+
+        const sumar = async (desde, hasta) => {
+            const filas = await DetallesFactura.findAll({
+                attributes: [[fn('SUM', col('DETALLES_FACTURA.cantidad')), 'total']],
+                where: { idProducto },
+                include: [{
+                    model: FacturaClientes,
+                    as: 'factura',
+                    attributes: [],
+                    where: { fechaEmision: { [Op.between]: [desde, hasta] } },
+                    required: true
+                }],
+                raw: true
+            });
+            return parseInt(filas[0]?.total) || 0;
+        };
+
+        const [actual, anterior] = await Promise.all([
+            sumar(hace30, ahora),
+            sumar(hace60, hace30)
+        ]);
+
+        const variacion = anterior === 0
+            ? (actual > 0 ? 100 : 0)
+            : Math.round(((actual - anterior) / anterior) * 100);
+
+        const tendencia = actual > anterior ? 'up' : actual < anterior ? 'down' : 'equal';
+
+        return res.json({ success: true, actual, anterior, variacion, tendencia });
+    } catch (error) {
+        console.error('unidadesVendidasProducto:', error);
+        return res.status(500).json({ success: false });
+    }
+}
+
+const diasInventarioProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    const DIAS = 14;
+
+    try {
+        const desde = new Date();
+        desde.setDate(desde.getDate() - DIAS);
+
+        // 1. Ponderado diario: unidades vendidas en los últimos 14 días / 14
+        const filasVentas = await DetallesFactura.findAll({
+            attributes: [[fn('SUM', col('DETALLES_FACTURA.cantidad')), 'total']],
+            where: { idProducto },
+            include: [{
+                model: FacturaClientes,
+                as: 'factura',
+                attributes: [],
+                where: { fechaEmision: { [Op.gte]: desde } },
+                required: true
+            }],
+            raw: true
+        });
+        const vendidos14d    = parseInt(filasVentas[0]?.total) || 0;
+        const ponderadoDiario = vendidos14d / DIAS;
+
+        // 2. Stock actual
+        const stockActual = await Stock.sum('cantidadExistente', {
+            where: { idProducto, cantidadExistente: { [Op.gt]: 0 } }
+        }) || 0;
+
+        // 3. Días de inventario
+        const dias = ponderadoDiario > 0
+            ? Math.round(stockActual / ponderadoDiario)
+            : stockActual > 0 ? 999 : 0;
+
+        // 4. Estado
+        let estado, mensaje;
+        if (dias <= 10)       { estado = 'critico';    mensaje = 'URGE REPONER INVENTARIO'; }
+        else if (dias <= 20)  { estado = 'alerta';     mensaje = 'Te recomiendo hacer reposición'; }
+        else                  { estado = 'suficiente'; mensaje = 'Hay suficiente inventario'; }
+
+        return res.json({ success: true, dias, estado, mensaje, stockActual, ponderadoDiario: Math.round(ponderadoDiario * 10) / 10 });
+    } catch (error) {
+        console.error('diasInventarioProducto:', error);
+        return res.status(500).json({ success: false });
+    }
+}
+
 
 
 const editarProducto = async (req, res) => {
@@ -3162,7 +3250,7 @@ export {
     storeInventory,
     storeEmployers,
     storeDocuments,
-    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, newProduct,
+    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, newProduct,
     batchBuyOrder,
     dosificar,
     dashboardSupplier,

@@ -1,19 +1,15 @@
-div(class="tarjetaBase")
+div#inv-days-card(class="tarjetaBase transition-colors duration-500")
     div(class="flex justify-between items-start")
-        div(class="flex h-12 w-12 items-center justify-center rounded-lg bg-red-700  text-gray-100 group-hover:scale-110 transition-transform")
+        div#inv-days-icon-wrap(class="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-400 group-hover:scale-110 transition-transform")
             i.fi-rr-time-quarter-past.text-2xl
-        div(class='px-2 py-1 bg-red-600 rounded-full')
-            span(class="text-white text-[10px] font-black tracking-tighter uppercase") CRÍTICO
- 
+        div#inv-days-badge-wrap(class='px-2 py-1 bg-slate-100 rounded-full')
+            span#inv-days-badge(class="text-slate-400 text-[10px] font-black tracking-tighter uppercase") —
+
     div(class="flex flex-col gap-1 text-center")
-        p(class="text-red-800  dark:text-gh-primary/50 text-sm font-semibold uppercase tracking-wider") Días de inventario
-        h2.h2.text-6xl.font-bold 14 Días
+        p#inv-days-label(class="text-slate-400 text-sm font-semibold uppercase tracking-wider") Días de inventario
+        h2#inv-days-valor.h2.text-6xl.font-bold —
 
     div(class="flex items-center gap-2 pt-2 border-t border-primary/5")
-        span(class="text-red-600 text-xs font-bold flex items-center")
-            i.fi-rr-triangle-warning.text-xl
-        p(class="text-[#9b4b65] dark:text-gh-primary/40 text-[13px] font-normal leading-normal")
-        | Te recomiendo hacer reposición
-
-
-
+        span#inv-days-icon-footer(class="text-slate-400 text-xs font-bold flex items-center")
+            i#inv-days-icon-footer-i.fi-rr-time-quarter-past.text-xl
+        p#inv-days-mensaje(class="text-slate-400 text-[13px] font-normal leading-normal") Calculando...
