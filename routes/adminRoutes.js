@@ -11,7 +11,8 @@ getPagosHoyPorMetodo,
 listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
 getStatsVendedorMes,
 getCajasCerradasAdmin,
-getAdminCuadrePDF } from "../controller/adminControllers.js"
+getAdminCuadrePDF,
+getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -181,6 +182,11 @@ routes.get('/api/inventario/:idProducto/stock-por-tienda', stockPorTiendaProduct
 routes.get('/api/inventario/:idProducto/ventas-historico', ventasHistoricoProducto);
 routes.get('/api/inventario/:idProducto/ventas-por-tienda', ventasPorTiendaProducto);
 
+
+// DASHBOARD PRINCIPAL
+routes.get('/api/dashboard/stock-bajo-global',    getStockBajoGlobal);
+routes.get('/api/dashboard/stock-bajo-por-tienda', getStockBajoPorTienda);
+routes.get('/api/dashboard/ventas-pdv-30d',        getVentasPdv30d);
 
 routes.get('/api/dosificaciones/stats-global', widgetGlobales);
 routes.get('/api/pack/:idPack/historial', historialPack);

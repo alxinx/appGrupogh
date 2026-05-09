@@ -37,13 +37,37 @@ const baseFrondend = async (req, res) => {
     })
 }
 const dashboard = async (req, res) => {
+    const listaPuntosDeVenta = await PuntosDeVenta.findAll({
+        raw: true,
+        attributes: ['idPuntoDeVenta', 'nombreComercial', 'taxId']
+    });
+
+    const hoyInicio = new Date(); hoyInicio.setHours(0, 0, 0, 0);
+    const hoyFin    = new Date(); hoyFin.setHours(23, 59, 59, 999);
+
+    const cajasHoy = await CajaTienda.findAll({
+        raw: true,
+        attributes: ['idPuntoDeVenta', 'estado', 'fechaApertura', 'fechaCierre'],
+        where: { fechaApertura: { [Op.between]: [hoyInicio, hoyFin] } }
+    });
+
+    const cajasMap = {};
+    for (const c of cajasHoy) cajasMap[c.idPuntoDeVenta] = c;
+
+    const tiendas = listaPuntosDeVenta.map(t => {
+        const caja = cajasMap[t.idPuntoDeVenta];
+        let estadoCaja = 'cerrada';
+        if (caja && caja.estado === 'abierto' && !caja.fechaCierre) estadoCaja = 'abierta';
+        else if (caja && caja.fechaCierre) estadoCaja = 'cuadrada';
+        return { ...t, estadoCaja };
+    });
 
     return res.status(201).render('./administrador/layout', {
-        pagina: "Pagina Principal",
+        pagina: "Dashboard",
         csrfToken: req.csrfToken(),
-        currentPath: req.path
-
-    })
+        currentPath: req.path,
+        listaPuntosDeVenta: tiendas
+    });
 }
 
 
@@ -3322,6 +3346,114 @@ const getAdminCuadrePDF = async (req, res) => {
     }
 };
 
+// ─── DASHBOARD: STOCK BAJO GLOBAL ────────────────────────────────────────────
+const getStockBajoGlobal = async (req, res) => {
+    try {
+        const filas = await db.query(`
+            SELECT p.nombreProducto, p.sku, SUM(s.cantidadExistente) AS total
+            FROM STOCKS s
+            INNER JOIN PRODUCTOS p ON s.idProducto = p.idProducto
+            WHERE s.idProducto IS NOT NULL
+            GROUP BY s.idProducto, p.nombreProducto, p.sku
+            HAVING total > 0
+            ORDER BY total ASC
+            LIMIT 10
+        `, { type: db.QueryTypes.SELECT });
+
+        const productos = filas.map(r => ({
+            nombre: r.nombreProducto,
+            sku:    r.sku,
+            total:  parseInt(r.total) || 0
+        }));
+        return res.json({ success: true, productos });
+    } catch (e) {
+        console.error('getStockBajoGlobal:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── DASHBOARD: STOCK BAJO POR TIENDA ────────────────────────────────────────
+const getStockBajoPorTienda = async (req, res) => {
+    try {
+        const filas = await db.query(`
+            SELECT pdv.idPuntoDeVenta, pdv.nombreComercial,
+                   p.nombreProducto, p.sku,
+                   SUM(s.cantidadExistente) AS total
+            FROM STOCKS s
+            INNER JOIN PRODUCTOS p   ON s.idProducto  = p.idProducto
+            INNER JOIN PUNTO_DE_VENTA pdv ON s.idPuntoVenta = pdv.idPuntoDeVenta
+            WHERE s.idProducto IS NOT NULL AND s.cantidadExistente > 0
+            GROUP BY s.idPuntoVenta, s.idProducto,
+                     pdv.idPuntoDeVenta, pdv.nombreComercial,
+                     p.nombreProducto, p.sku
+            ORDER BY pdv.idPuntoDeVenta, total ASC
+        `, { type: db.QueryTypes.SELECT });
+
+        const tiendaMap = new Map();
+        for (const r of filas) {
+            if (!tiendaMap.has(r.idPuntoDeVenta))
+                tiendaMap.set(r.idPuntoDeVenta, { nombre: r.nombreComercial, productos: [] });
+            const t = tiendaMap.get(r.idPuntoDeVenta);
+            if (t.productos.length < 4)
+                t.productos.push({ nombre: r.nombreProducto, sku: r.sku, total: parseInt(r.total) || 0 });
+        }
+
+        const tiendas = [...tiendaMap.values()].filter(t => t.productos.length > 0);
+        return res.json({ success: true, tiendas });
+    } catch (e) {
+        console.error('getStockBajoPorTienda:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── DASHBOARD: VENTAS POR PDV ÚLTIMOS 30D ───────────────────────────────────
+const getVentasPdv30d = async (req, res) => {
+    try {
+        const desde = new Date();
+        desde.setDate(desde.getDate() - 29);
+        desde.setHours(0, 0, 0, 0);
+
+        const filas = await db.query(`
+            SELECT fc.idPuntoDeVenta, pdv.nombreComercial AS tienda,
+                   DATE(fc.createdAt) AS dia, SUM(df.total) AS suma
+            FROM FACTURA_CLIENTES fc
+            INNER JOIN DETALLES_FACTURA df  ON df.idFacturaCliente = fc.idFacturaCliente
+            INNER JOIN PUNTO_DE_VENTA   pdv ON pdv.idPuntoDeVenta  = fc.idPuntoDeVenta
+            WHERE fc.createdAt >= :desde
+            GROUP BY fc.idPuntoDeVenta, pdv.nombreComercial, DATE(fc.createdAt)
+            ORDER BY dia ASC
+        `, { replacements: { desde }, type: db.QueryTypes.SELECT });
+
+        const hoy = new Date();
+        const fechas = [];
+        for (let i = 29; i >= 0; i--) {
+            const d = new Date(hoy);
+            d.setDate(d.getDate() - i);
+            fechas.push(d.toISOString().slice(0, 10));
+        }
+
+        const pdvMap = new Map();
+        for (const r of filas) {
+            if (!pdvMap.has(r.idPuntoDeVenta))
+                pdvMap.set(r.idPuntoDeVenta, { nombre: r.tienda, datos: {} });
+            const diaStr = r.dia instanceof Date
+                ? r.dia.toISOString().slice(0, 10)
+                : String(r.dia).slice(0, 10);
+            pdvMap.get(r.idPuntoDeVenta).datos[diaStr] = Math.round(parseFloat(r.suma || 0));
+        }
+
+        const series = [...pdvMap.values()].map(p => ({
+            nombre:  p.nombre,
+            valores: fechas.map(f => p.datos[f] || 0)
+        }));
+
+        return res.json({ success: true, fechas, series });
+    } catch (e) {
+        console.error('getVentasPdv30d:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 export {
     dashboard,
     dashboardStores,
@@ -3369,4 +3501,7 @@ export {
     getStatsVendedorMes,
     getCajasCerradasAdmin,
     getAdminCuadrePDF,
+    getStockBajoGlobal,
+    getStockBajoPorTienda,
+    getVentasPdv30d,
 }

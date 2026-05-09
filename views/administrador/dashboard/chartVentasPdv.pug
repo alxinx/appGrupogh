@@ -1,0 +1,8 @@
+div(class="bg-white/50 backdrop-blur-xl border border-white shadow-xl rounded-2xl p-6")
+    div(class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4")
+        div
+            h3(class="text-base font-bold text-slate-800") Ventas por Punto de Venta
+            p(class="text-xs text-slate-400 mt-0.5") Últimos 30 días · comportamiento comparativo por tienda
+        div#chart-pdv-leyenda(class="flex flex-wrap gap-3 items-center")
+    div(class="relative h-72")
+        canvas#chart-ventas-pdv

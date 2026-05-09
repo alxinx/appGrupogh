@@ -4,9 +4,41 @@ block contenedor
         main(class="flex-1 overflow-y-auto")
             div(class="flex min-h-screen")
                 include ../partials/leftMenu
+
                 div(class="flex-1 flex flex-col")
                     include ../partials/header
                     main(class="flex-1 overflow-y-auto md:p-4")
-                        div(class="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg grid grid-cols-12 gap-6 items-start")
-                    
-                    //******************[CUERPO PANELES]*********************//
+                        div(class="mainDashboard")
+
+                            //- ── HEADER ─────────────────────────────────────────
+                            div(class="col-span-12 flex items-center justify-between bg-white/70 backdrop-blur-md rounded-2xl px-6 py-4")
+                                div
+                                    h1(class="h2 text-slate-800") Dashboard General
+                                    p(class="text-xs text-slate-400 mt-0.5") Vista global de operaciones en tiempo real
+                                span(class="flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full")
+                                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block")
+                                    | EN VIVO
+
+                            //- ── GRUPO 1: Ventas del día + métodos de pago ───────
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4")
+                                include ./stores/stats/globalSales.pug
+                                include ./stores/stats/payMethod.pug
+                                include ./stores/stats/saleOfMount.pug
+                                include ./stores/stats/avarangeTicket.pug
+
+                            //- ── GRUPO 2: Alertas de stock bajo ─────────────────
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4")
+                                include ./dashboard/stockBajoGlobal.pug
+                                include ./dashboard/stockBajoPorTienda.pug
+
+                            //- ── GRUPO 3: Gráfica ventas por PDV 30d ────────────
+                            div(class="col-span-12")
+                                include ./dashboard/chartVentasPdv.pug
+
+                            //- ── GRUPO 4: Estado actual de tiendas ──────────────
+                            div(class="col-span-12")
+                                include ./stores/views/listaTiendas.pug
+
+                script(src="/js/dropdownBtn.js")
+                script(src="/js/adminTiendasLive.js")
+                script(src="/js/adminDashboard.js")
