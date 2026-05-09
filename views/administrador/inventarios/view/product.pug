@@ -1,64 +1,57 @@
-form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards") 
 
-    // Card container
-    table(class="w-full")
-        thead
-        tr(class="bg-[#F6F3FF] text-[#6B5FA7] text-sm font-medium")
-            th(class="px-6 py-5 text-left")
-            div(class="flex items-center gap-2")
-                span Punto de venta
-                i(class="fi fi-rr-angle-small-down text-xs")
+//- ── GRÁFICAS DE VENTAS ──────────────────────────────────────────────────────
+div(class="col-span-12 grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 mt-2 cards")
+    //- Línea: comportamiento histórico
+    div(class="bg-white/50 backdrop-blur-xl border border-white shadow-xl rounded-2xl p-6 flex flex-col gap-4")
+        div(class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3")
+            div
+                h3(class="text-lg font-bold text-slate-800") Comportamiento de Ventas
+                p(class="text-xs text-slate-400 mt-0.5") Unidades vendidas en el periodo seleccionado
+            div(class="flex items-center gap-2 flex-wrap")
+                input#graf-desde(
+                    type="date"
+                    class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/30"
+                )
+                span(class="text-xs text-slate-400") —
+                input#graf-hasta(
+                    type="date"
+                    class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/30"
+                )
+                button#graf-filtrar(
+                    class="text-xs font-semibold px-3 py-1.5 rounded-lg text-white cursor-pointer transition-opacity hover:opacity-80"
+                    style="background:#EC5FA3"
+                ) Filtrar
+        div(class="relative h-64")
+            canvas#graf-linea
+    //- Dona: participación por tienda
+    div(class="bg-white/50 backdrop-blur-xl border border-white shadow-xl rounded-2xl p-6 flex flex-col gap-4")
+        div
+            h3(class="text-lg font-bold text-slate-800") Participación por Tienda
+            p(class="text-xs text-slate-400 mt-0.5") Distribución de ventas (%)
+        div(class="relative flex items-center justify-center" style="height:180px")
+            canvas#graf-dona
+            div(class="absolute flex flex-col items-center pointer-events-none")
+                span#graf-dona-total(class="text-2xl font-black text-slate-800") —
+                span(class="text-[10px] font-bold text-slate-400 uppercase tracking-wider") Total
+        ul#graf-dona-leyenda(class="space-y-2 mt-2")
 
-            th(class="px-6 py-5 text-center") Stock actual
-            th(class="px-6 py-5 text-center") Stock mínimo
-            th(class="px-6 py-5 text-center") Estado
-            th(class="px-6 py-5 text-center") Acción
-
-        tbody(class="divide-y divide-purple-200/40")
-        // Row 1
-        tr(class="bg-white/30")
-            td(class="px-6 py-6 text-left")
-            span(class="text-2xl font-semibold text-[#2D275B]") Tienda
-            span(class="text-2xl text-[#2D275B]")  Centro
-
-            td(class="px-6 py-6 text-center text-2xl text-[#2D275B]") 15
-            td(class="px-6 py-6 text-center text-2xl text-[#2D275B]") 5
-            td(class="px-6 py-6 text-center")
-            span(class="inline-flex items-center justify-center px-6 py-2 rounded-full bg-green-100 text-green-700 text-lg border border-green-200")
-                | Disponible
-            td(class="px-6 py-6 text-center")
-            button(class="px-8 py-3 rounded-2xl border border-purple-200 bg-white/60 text-[#6B5FA7] text-lg font-medium hover:bg-white transition")
-                | Trasladar
-
-        // Row 2
-        tr(class="bg-white/30")
-            td(class="px-6 py-6 text-left")
-            span(class="text-2xl font-semibold text-[#2D275B]") Tienda
-            span(class="text-2xl text-[#2D275B]")  Norte
-
-            td(class="px-6 py-6 text-center text-2xl text-[#2D275B]") 3
-            td(class="px-6 py-6 text-center text-2xl text-[#2D275B]") 5
-            td(class="px-6 py-6 text-center")
-            span(class="inline-flex items-center justify-center px-6 py-2 rounded-full bg-amber-100 text-amber-700 text-lg border border-amber-200")
-                | Bajo stock
-            td(class="px-6 py-6 text-center")
-            button(class="px-8 py-3 rounded-2xl border border-purple-200 bg-white/60 text-[#6B5FA7] text-lg font-medium hover:bg-white transition")
-                | Trasladar
-
-        // Row 3
-        tr(class="bg-white/30")
-            td(class="px-6 py-6 text-left")
-            span(class="text-2xl text-[#2D275B]") Bodega Principal
-
-            td(class="px-6 py-6 text-center text-2xl text-[#2D275B]") 60
-            td(class="px-6 py-6 text-center text-2xl text-[#2D275B]") —
-            td(class="px-6 py-6 text-center")
-            span(class="inline-flex items-center justify-center px-6 py-2 rounded-full bg-green-100 text-green-700 text-lg border border-green-200")
-                | Disponible
-            td(class="px-6 py-6 text-center text-2xl text-[#2D275B]") —
-
-    // Footer link
-    div(class="px-6 py-5 bg-white/30 border-t border-purple-200/40")
-        a(href="#" class="inline-flex items-center gap-3 text-xl text-[#6B5FA7] hover:text-[#2D275B] transition")
-        span Ver historial de movimientos
-        i(class="fi fi-rr-angle-small-right")
+//- ── STOCK POR PUNTO DE VENTA ────────────────────────────────────────────────
+div(class="col-span-12 bg-white/50 backdrop-blur-xl border border-white shadow-xl rounded-2xl overflow-hidden mt-2")
+    div(class="flex items-center justify-between px-6 py-4 border-b border-slate-100")
+        div
+            h3(class="text-base font-bold text-slate-800") Stock por punto de venta
+            p(class="text-xs text-slate-400 mt-0.5") Existencias actuales del producto por ubicación
+        span#stock-tiendas-total(class="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full") —
+    div(class="overflow-x-auto")
+        table(class="w-full text-sm text-left")
+            thead
+                tr(class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider border-b border-slate-100")
+                    th(class="px-6 py-3") Punto de venta
+                    th(class="px-6 py-3") Tipo
+                    th(class="px-6 py-3 text-center") Unidades
+                    th(class="px-6 py-3 text-center") Estado
+            tbody#stock-tiendas-body(class="divide-y divide-slate-100")
+                tr
+                    td(colspan="4" class="px-6 py-8 text-center text-slate-400 text-sm")
+                        i(class="fi fi-rr-spinner animate-spin mr-2")
+                        | Cargando...

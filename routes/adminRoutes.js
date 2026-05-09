@@ -2,7 +2,7 @@ import express from "express";
 import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
 jsonPermisosRecursos, jsonPermisosAcciones,
@@ -177,6 +177,9 @@ routes.get('/api/check-nit/:nit', checkNitSupplier);
 routes.get('/api/inventario/:idProducto/stock-total', stockTotalProducto);
 routes.get('/api/inventario/:idProducto/unidades-vendidas', unidadesVendidasProducto);
 routes.get('/api/inventario/:idProducto/dias-inventario', diasInventarioProducto);
+routes.get('/api/inventario/:idProducto/stock-por-tienda', stockPorTiendaProducto);
+routes.get('/api/inventario/:idProducto/ventas-historico', ventasHistoricoProducto);
+routes.get('/api/inventario/:idProducto/ventas-por-tienda', ventasPorTiendaProducto);
 
 
 routes.get('/api/dosificaciones/stats-global', widgetGlobales);

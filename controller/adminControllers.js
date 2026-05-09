@@ -603,6 +603,91 @@ const diasInventarioProducto = async (req, res) => {
     }
 }
 
+const stockPorTiendaProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    const UMBRAL_BAJO = 5;
+    try {
+        const filas = await db.query(`
+            SELECT pdv.nombreComercial AS nombre, pdv.tipo AS tipo, SUM(s.cantidadExistente) AS total
+            FROM STOCKS s
+            INNER JOIN PUNTO_DE_VENTA pdv ON s.idPuntoVenta = pdv.idPuntoDeVenta
+            WHERE s.idProducto = :idProducto AND s.cantidadExistente > 0
+            GROUP BY s.idPuntoVenta, pdv.nombreComercial, pdv.tipo
+            ORDER BY total DESC
+        `, { replacements: { idProducto }, type: db.QueryTypes.SELECT });
+
+        const datos = filas.map(r => ({
+            nombre: r.nombre,
+            tipo:   r.tipo,
+            total:  parseInt(r.total) || 0,
+            bajo:   (parseInt(r.total) || 0) <= UMBRAL_BAJO
+        }));
+
+        return res.json({ success: true, datos, umbral: UMBRAL_BAJO });
+    } catch (e) {
+        console.error('stockPorTiendaProducto:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const ventasHistoricoProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    try {
+        const fechaHasta = req.query.hasta ? new Date(req.query.hasta) : new Date();
+        const fechaDesde = req.query.desde ? new Date(req.query.desde) : new Date(fechaHasta.getTime() - 30 * 24 * 60 * 60 * 1000);
+        fechaHasta.setHours(23, 59, 59, 999);
+        fechaDesde.setHours(0, 0, 0, 0);
+
+        const datos = await db.query(`
+            SELECT DATE(fc.fechaEmision) AS fecha, SUM(df.cantidad) AS unidades
+            FROM DETALLES_FACTURA df
+            INNER JOIN FACTURA_CLIENTES fc ON df.idFacturaCliente = fc.idFacturaCliente
+            WHERE df.idProducto = :idProducto
+              AND fc.fechaEmision BETWEEN :desde AND :hasta
+            GROUP BY DATE(fc.fechaEmision)
+            ORDER BY fecha ASC
+        `, { replacements: { idProducto, desde: fechaDesde, hasta: fechaHasta }, type: db.QueryTypes.SELECT });
+
+        return res.json({ success: true, datos: datos.map(r => ({ fecha: r.fecha, unidades: parseInt(r.unidades) || 0 })) });
+    } catch (e) {
+        console.error('ventasHistoricoProducto:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const ventasPorTiendaProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    try {
+        const fechaHasta = req.query.hasta ? new Date(req.query.hasta) : new Date();
+        const fechaDesde = req.query.desde ? new Date(req.query.desde) : new Date(fechaHasta.getTime() - 30 * 24 * 60 * 60 * 1000);
+        fechaHasta.setHours(23, 59, 59, 999);
+        fechaDesde.setHours(0, 0, 0, 0);
+
+        const filas = await db.query(`
+            SELECT pdv.nombreComercial AS nombre, SUM(df.cantidad) AS unidades
+            FROM DETALLES_FACTURA df
+            INNER JOIN FACTURA_CLIENTES fc ON df.idFacturaCliente = fc.idFacturaCliente
+            INNER JOIN PUNTO_DE_VENTA pdv ON fc.idPuntoDeVenta = pdv.idPuntoDeVenta
+            WHERE df.idProducto = :idProducto
+              AND fc.fechaEmision BETWEEN :desde AND :hasta
+            GROUP BY fc.idPuntoDeVenta, pdv.nombreComercial
+            ORDER BY unidades DESC
+        `, { replacements: { idProducto, desde: fechaDesde, hasta: fechaHasta }, type: db.QueryTypes.SELECT });
+
+        const total = filas.reduce((s, r) => s + (parseInt(r.unidades) || 0), 0);
+        const tiendas = filas.map(r => ({
+            nombre:   r.nombre,
+            unidades: parseInt(r.unidades) || 0,
+            pct:      total > 0 ? Math.round((parseInt(r.unidades) / total) * 1000) / 10 : 0
+        }));
+
+        return res.json({ success: true, tiendas, total });
+    } catch (e) {
+        console.error('ventasPorTiendaProducto:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 
 
 const editarProducto = async (req, res) => {
@@ -3250,7 +3335,7 @@ export {
     storeInventory,
     storeEmployers,
     storeDocuments,
-    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, newProduct,
+    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, newProduct,
     batchBuyOrder,
     dosificar,
     dashboardSupplier,

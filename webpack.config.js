@@ -30,7 +30,8 @@ export default {
         adminStoreStats     : '/src/js/adminStoreStats.js',
         adminStoreBilling   : '/src/js/adminStoreBilling.js',
         storeCuadrarCaja    : '/src/js/storeCuadrarCaja.js',
-        storeSales          : '/src/js/storeSales.js'
+        storeSales          : '/src/js/storeSales.js',
+        adminProductoView   : '/src/js/adminProductoView.js'
     },
     output: {
         filename: '[name].js',
