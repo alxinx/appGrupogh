@@ -1,0 +1,13 @@
+div(class="tarjetaBase")
+    div(class="flex items-start justify-between gap-4")
+        div(class="flex-1 min-w-0")
+            p(class="text-sm font-medium text-slate-500 mb-3")
+                | Ticket Promedio
+            h3#stat-cli-ticket(class="text-3xl font-bold text-slate-800") —
+            p(class="text-xs text-slate-400 mt-1") Gasto promedio · último mes
+        div(class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style="background:rgba(236,95,163,0.1)")
+            i(class="fi fi-rr-receipt text-xl" style="color:#EC5FA3")
+
+    div#stat-cli-ticket-trend(class="mt-4 hidden items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg")
+        i#stat-cli-ticket-icon
+        span#stat-cli-ticket-pct

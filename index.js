@@ -43,7 +43,14 @@ const csrfMiddleware = csrf({ cookie: true });
 // Aplicación Global con Excepción para la ruta de imágenes
 app.use((req, res, next) => {
     // Excluimos SOLO el POST de inventario, provedores y personal para que el middleware uploadImages/Mixed actué primero
-    if ((req.path === '/admin/inventario/ingreso' || req.path === '/admin/provedores/new' || req.path === '/admin/personal/new' || req.path.startsWith('/admin/personal/ver/')) && req.method === 'POST') {
+    if ((req.path === '/admin/inventario/ingreso' || req.path === '/admin/provedores/new' || req.path === '/admin/personal/new' || req.path.startsWith('/admin/personal/ver/') || req.path === '/admin/clientes/nuevo' || req.path.match(/^\/admin\/clientes\/editar\/.+$/) || req.path === '/admin/inventario/batch') && req.method === 'POST') {
+        return next();
+    }
+    // Excluimos endpoints de API JSON autenticados (usan JWT + verificación de permisos propia)
+    if (req.path.match(/^\/admin\/api\/clientes\/.+\/credito$/) && req.method === 'POST') {
+        return next();
+    }
+    if (req.path.match(/^\/admin\/api\/clientes\/archivos\/.+\/eliminar$/) && req.method === 'POST') {
         return next();
     }
     // Para todos los demás (Login, Tiendas, GET de inventario), se aplica aquí

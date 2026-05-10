@@ -1,0 +1,36 @@
+div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+    h2.h2.text-gh-primaryHover
+        i.fi-rr-users-alt
+        |  Clientes Registrados
+    p(class="text-sm text-slate-400") Directorio completo de clientes
+
+    //- Buscador
+    div(class="pt-4 pb-2")
+        div.input-group
+            i.fi-rr-search.input-icon.input-icon-left
+            input.input.input-has-icon-left(
+                type="text"
+                id="busquedaCliente"
+                placeholder="Buscar por nombre o identificación..."
+            )
+
+    div(class="overflow-x-auto pt-2")
+        table(class="w-full text-left text-2xs border-collapse")
+            thead
+                tr(class="border-b border-gh-primaryHover text-sm transition-colors")
+                    th(class="px-6 py-4 text-gray-600") Cliente
+                    th(class="px-4 py-4 text-center text-gray-600") Identificación
+                    th(class="px-4 py-4 text-center text-gray-600") Última Compra
+                    th(class="px-4 py-4 text-center text-gray-600") Vendedor
+                    th(class="px-4 py-4 text-center text-gray-600")
+
+            tbody#contenedor-clientes(class="divide-y divide-slate-100")
+                tr
+                    td(colspan="5" class="px-6 py-8 text-center text-gray-400 text-sm")
+                        i.fi-rr-spinner.animate-spin.mr-2
+                        | Cargando clientes...
+
+    //- Footer / Paginación
+    div(class="px-4 py-4 bg-slate-50/30 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-2")
+        p#resumenClientes(class="text-xs text-slate-400") Cargando...
+        div#paginacionClientes

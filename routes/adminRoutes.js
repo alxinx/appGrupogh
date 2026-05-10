@@ -2,7 +2,7 @@ import express from "express";
 import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
 jsonPermisosRecursos, jsonPermisosAcciones,
@@ -12,7 +12,8 @@ listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad,
 getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
-getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d } from "../controller/adminControllers.js"
+getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d,
+getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -51,6 +52,11 @@ routes.get('/inventario/listado', listaProductos);
 routes.get('/inventario/ver/:idProducto', verProducto)
 routes.get('/inventario/editar/:idProducto', editarProducto)
 routes.get('/inventario/batch/', batchBuyOrder)
+routes.post('/inventario/batch/',
+    uploadMixed.fields([{ name: 'facturas', maxCount: 5 }]),
+    csrfProtection,
+    saveBatchOrder
+)
 routes.get('/inventario/etiqueta-sku/:idProducto', imprimirEtiquetaSKU)
 
 
@@ -86,6 +92,18 @@ routes.post('/personal/estado/:idEmpleado', csrfProtection, cambiarEstadoEmplead
 
 
 routes.get('/clientes', dashboardCustomers);
+routes.get('/clientes/nuevo', newCliente);
+routes.post('/clientes/nuevo', uploadMixed.fields([{ name: 'documentos', maxCount: 10 }]), saveCliente);
+routes.get('/clientes/editar/:idCliente', editarClienteForm);
+routes.post('/clientes/editar/:idCliente', uploadMixed.fields([{ name: 'documentos', maxCount: 10 }]), updateCliente);
+routes.get('/api/clientes/stats', getClientesStats);
+routes.get('/api/clientes/check-doc/:numero', checkDocumentoCliente);
+routes.get('/json/clientes/lista', filterClientesListJson);
+routes.get('/api/clientes/:idCliente/perfil',    getClientePerfil);
+routes.get('/api/clientes/:idCliente/historial', getClienteHistorial);
+routes.get('/api/clientes/:idCliente/archivos',  getClienteArchivos);
+routes.post('/api/clientes/archivos/:idDocumento/eliminar', eliminarDocumentoCliente);
+routes.post('/api/clientes/:idCliente/credito', activarCreditoCliente);
 
 routes.get('/pedidos', dashboardOrders);
 routes.get('/configuracion', dashboardSettings);

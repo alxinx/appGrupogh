@@ -1,0 +1,107 @@
+div#panel-cliente(class="bg-gray-50 rounded-2xl border border-slate-100 shadow-sm overflow-hidden min-h-64 flex flex-col")
+
+    //- Estado vacío
+    div#panel-vacio(class="flex flex-col items-center justify-center flex-1 py-16 text-center px-6")
+        div(class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4")
+            i(class="fi fi-rr-user text-3xl text-slate-300")
+        p(class="text-sm font-semibold text-slate-400") Selecciona un cliente
+        p(class="text-xs text-slate-300 mt-1") Clic en "Ver más" para ver el perfil
+
+    //- Panel con datos (oculto por defecto)
+    div#panel-contenido(class="hidden flex-col")
+
+        //- ── HEADER ───────────────────────────────────────────────────────────
+        div(class="bg-gradient-to-br from-gh-primary to-gh-primaryHover px-5 pt-5 pb-4 text-center relative")
+            div(class="relative inline-block mb-2")
+                div#panel-avatar(class="w-12 h-12 rounded-full border-[3px] border-white/40 shadow-lg mx-auto flex items-center justify-center text-white font-black text-base" style="background:rgba(255,255,255,0.25)")
+                    span#panel-iniciales —
+            p#panel-nombre(class="text-white font-bold text-sm leading-tight") —
+            p#panel-doc(class="text-white/70 text-[11px] mt-0.5") —
+            span#panel-vip(class="hidden absolute top-3 right-3 items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full")
+                i(class="fi fi-rr-star text-amber-400")
+                | VIP
+
+        //- ── ACCIONES ─────────────────────────────────────────────────────────
+        div(class="-mt-0 mx-4 bg-white rounded-xl shadow-md border border-slate-100 grid grid-cols-4 divide-x divide-slate-100")
+            a#panel-btn-editar(href="#" class="flex flex-col items-center gap-1.5 py-3 px-1 hover:bg-slate-50 transition-colors rounded-l-xl")
+                i(class="fi fi-rr-edit text-lg text-slate-500")
+                span(class="text-[10px] text-slate-500 font-medium leading-tight text-center") Editar datos
+            button#panel-btn-credito(class="flex flex-col items-center gap-1.5 py-3 px-1 transition-colors w-full" disabled)
+                i#panel-credito-icon(class="fi fi-rr-hand-holding-usd text-lg text-slate-400")
+                span#panel-credito-label(class="text-[10px] text-slate-400 font-medium leading-tight text-center") Activar crédito
+            a#panel-btn-wsp(href="#" target="_blank" rel="noopener" class="flex flex-col items-center gap-1.5 py-3 px-1 hover:bg-slate-50 transition-colors")
+                i(class="fi fi-brands-whatsapp text-lg text-emerald-500")
+                span(class="text-[10px] text-slate-500 font-medium leading-tight text-center") WhatsApp
+            button(class="flex flex-col items-center gap-1.5 py-3 px-1 hover:bg-slate-50 transition-colors rounded-r-xl w-full")
+                i(class="fi fi-rr-menu-dots text-lg text-slate-500")
+                span(class="text-[10px] text-slate-500 font-medium leading-tight text-center") Más acciones
+
+        //- ── TABS ─────────────────────────────────────────────────────────────
+        div(class="flex border-b border-slate-100 mt-4")
+            button.panel-tab(data-tab="resumen"   class="flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors" style="border-color:#EC5FA3;color:#EC5FA3") Resumen
+            button.panel-tab(data-tab="historial" class="flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-600 transition-colors") Historial
+            button.panel-tab(data-tab="archivos"  class="flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-600 transition-colors") Archivos
+
+        //- ── TAB: RESUMEN ─────────────────────────────────────────────────────
+        div#tab-resumen(class="px-5 py-4")
+            ul(class="space-y-3")
+                li(class="flex items-center justify-between text-sm")
+                    span(class="text-slate-400 font-medium") Teléfono
+                    span(class="flex items-center gap-2 text-slate-700 font-semibold")
+                        span#panel-telefono —
+                        i(class="fi fi-rr-phone-call text-slate-300")
+                li(class="flex items-center justify-between text-sm")
+                    span(class="text-slate-400 font-medium") Email
+                    span(class="flex items-center gap-2 text-slate-700")
+                        span#panel-email —
+                        i(class="fi fi-rr-envelope text-slate-300")
+                li(class="flex items-center justify-between text-sm")
+                    span(class="text-slate-400 font-medium") Dirección
+                    span(class="flex items-center gap-2 text-slate-700 text-right max-w-[60%]")
+                        span#panel-direccion —
+                        i(class="fi fi-rr-marker text-slate-300 flex-shrink-0")
+                li(class="flex items-center justify-between text-sm")
+                    span(class="text-slate-400 font-medium") Vendedor
+                    span(class="flex items-center gap-2 text-slate-700")
+                        span#panel-vendedor —
+                        i(class="fi fi-rr-user text-slate-300")
+                li(class="flex items-center justify-between text-sm")
+                    span(class="text-slate-400 font-medium") Última compra
+                    span(class="flex items-center gap-2 text-slate-700")
+                        span#panel-ultima-compra —
+                        i(class="fi fi-rr-calendar text-slate-300")
+
+            div(class="mt-4 pt-4 border-t border-slate-100 space-y-2")
+                div(class="flex items-center justify-between")
+                    span(class="text-sm text-slate-400 font-medium") Total comprado
+                    span#panel-total-comprado(class="text-base font-black text-slate-800") —
+                div(class="flex items-center justify-between")
+                    span(class="text-sm text-slate-400 font-medium") Total en cartera
+                    span#panel-cartera(class="text-base font-black text-emerald-600") —
+
+        //- ── TAB: HISTORIAL ───────────────────────────────────────────────────
+        div#tab-historial(class="hidden px-5 py-4")
+            ul#panel-historial-list(class="space-y-2")
+                li(class="text-center py-6 text-xs text-slate-400")
+                    i(class="fi fi-rr-spinner animate-spin mr-1")
+                    | Cargando...
+            div#panel-historial-pag(class="mt-3 flex justify-center gap-1")
+
+        //- ── TAB: ARCHIVOS ────────────────────────────────────────────────────
+        div#tab-archivos(class="hidden px-5 py-4")
+            ul#panel-archivos-list(class="space-y-2")
+                li(class="text-center py-6 text-xs text-slate-400")
+                    i(class="fi fi-rr-spinner animate-spin mr-1")
+                    | Cargando...
+
+//- ── MODAL CONFIRMAR CRÉDITO ──────────────────────────────────────────────────
+div#modal-credito(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4")
+    div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="cerrarModalCredito()")
+    div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 text-center")
+        div(class="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-3")
+            i(class="fi fi-rr-hand-holding-usd text-2xl text-emerald-500")
+        p(class="font-bold text-slate-800 text-sm") ¿Activar crédito?
+        p#modal-credito-nombre(class="text-xs text-slate-400 mt-1 mb-4") Este cliente podrá comprar a crédito.
+        div(class="flex gap-2")
+            button(onclick="cerrarModalCredito()" class="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors") Cancelar
+            button#modal-credito-confirm(class="flex-1 py-2 rounded-xl text-xs font-bold text-white transition-colors" style="background:#EC5FA3" onclick="confirmarCredito()") Sí, activar

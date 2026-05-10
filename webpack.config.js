@@ -32,7 +32,10 @@ export default {
         storeCuadrarCaja    : '/src/js/storeCuadrarCaja.js',
         storeSales          : '/src/js/storeSales.js',
         adminProductoView   : '/src/js/adminProductoView.js',
-        adminDashboard      : '/src/js/adminDashboard.js'
+        adminDashboard      : '/src/js/adminDashboard.js',
+        adminClientes       : '/src/js/adminClientes.js',
+        dataCliente         : '/src/js/dataCliente.js',
+        batchOrder          : '/src/js/batchOrder.js'
     },
     output: {
         filename: '[name].js',

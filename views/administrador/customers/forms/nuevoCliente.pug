@@ -1,0 +1,239 @@
+form#form-nuevo-cliente(method="post" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+
+    //- Campos ocultos de modo edición
+    input(type="hidden" id="tipo-inicial" value= modoEdicion ? cliente.tipo_persona : 'N')
+    input(type="hidden" id="form-action" value= modoEdicion ? `/admin/clientes/editar/${cliente.idCliente}` : '/admin/clientes/nuevo')
+    if modoEdicion
+        input(type="hidden" name="idCliente" id="input-id-cliente" value= cliente.idCliente)
+
+    //- ─── SELECTOR TIPO PERSONA ───────────────────────────────────────────────
+    div(class="col-span-12 grid grid-cols-2 gap-3")
+        label#card-natural(class="cursor-pointer rounded-2xl border-2 border-pink-400 bg-pink-50 p-4 flex items-center gap-3 transition-all")
+            input(type="radio" name="tipo_persona" value="N" checked class="hidden" id="tipo-N")
+            div(class="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center flex-shrink-0")
+                i(class="fi fi-rr-user text-xl text-pink-500")
+            div
+                p(class="font-bold text-slate-800 text-sm") Persona Natural
+                p(class="text-xs text-slate-400") CC, CE, TI o Pasaporte
+
+        label#card-empresa(class="cursor-pointer rounded-2xl border-2 border-transparent bg-white p-4 flex items-center gap-3 transition-all hover:border-slate-200")
+            input(type="radio" name="tipo_persona" value="J" class="hidden" id="tipo-J")
+            div(class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0")
+                i(class="fi fi-rr-building text-xl text-slate-400")
+            div
+                p(class="font-bold text-slate-800 text-sm") Empresa / Jurídica
+                p(class="text-xs text-slate-400") NIT, Razón social
+
+    //- ─── COLUMNA IZQUIERDA — tarjeta única ──────────────────────────────────
+    div(class="col-span-12 md:col-span-8")
+        div(class="cards cardsWhite grid-cols-1")
+            div(class="grid grid-cols-12 gap-x-4 gap-y-3 p-6")
+
+                //- ── Sección: Datos básicos ───────────────────────────────────
+                div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100")
+                    div(class="flex items-center gap-2 px-6")
+                        i(class="fi fi-rr-id-card text-pink-400")
+                        h2(class="font-bold text-slate-700 text-sm") Datos básicos
+
+                //- PERSONA NATURAL
+                div#seccion-natural(class="col-span-12 grid grid-cols-12 gap-x-4 gap-y-3")
+                    div(class="col-span-12 md:col-span-6")
+                        label.label Primer nombre *
+                            input.field-text(type="text" name="primer_nombre" id="primer_nombre" placeholder="Juan" value= modoEdicion ? (cliente.primer_nombre || '') : '')
+                    div(class="col-span-12 md:col-span-6")
+                        label.label Segundo nombre
+                            input.field-text(type="text" name="segundo_nombre" placeholder="Carlos" value= modoEdicion ? (cliente.segundo_nombre || '') : '')
+                    div(class="col-span-12 md:col-span-6")
+                        label.label Primer apellido *
+                            input.field-text(type="text" name="primer_apellido" id="primer_apellido" placeholder="García" value= modoEdicion ? (cliente.primer_apellido || '') : '')
+                    div(class="col-span-12 md:col-span-6")
+                        label.label Segundo apellido
+                            input.field-text(type="text" name="segundo_apellido" placeholder="López" value= modoEdicion ? (cliente.segundo_apellido || '') : '')
+                    div(class="col-span-12 md:col-span-4")
+                        label.label Tipo documento *
+                            div(class="select-wrapper")
+                                select.field-text(name="tipo_documento" id="tipo_documento_natural")
+                                    option(value="CC" selected= modoEdicion && cliente.tipo_documento === 'CC') Cédula de Ciudadanía
+                                    option(value="CE" selected= modoEdicion && cliente.tipo_documento === 'CE') Cédula de Extranjería
+                                    option(value="TI" selected= modoEdicion && cliente.tipo_documento === 'TI') Tarjeta de Identidad
+                                    option(value="PP" selected= modoEdicion && cliente.tipo_documento === 'PP') Pasaporte
+                                span.select-icon
+                                    i.fi-rr-chevron-double-down
+                    div(class="col-span-12 md:col-span-4")
+                        label.label Número de documento *
+                            input.field-text(type="text" name="numero_doc" id="numero_doc_natural" placeholder="1234567890" value= modoEdicion ? (cliente.numero_doc || '') : '')
+                    div(class="col-span-12 md:col-span-4")
+                        label.label Género
+                            div(class="select-wrapper")
+                                select.field-text(name="genero")
+                                    option(value="" selected= !modoEdicion || !cliente.genero) Sin especificar
+                                    option(value="M" selected= modoEdicion && cliente.genero === 'M') Masculino
+                                    option(value="F" selected= modoEdicion && cliente.genero === 'F') Femenino
+                                    option(value="O" selected= modoEdicion && cliente.genero === 'O') Otro
+                                span.select-icon
+                                    i.fi-rr-chevron-double-down
+
+                //- EMPRESA / JURÍDICA
+                div#seccion-empresa(class="col-span-12 grid grid-cols-12 gap-x-4 gap-y-3 hidden")
+                    div(class="col-span-12")
+                        label.label Razón social *
+                            input.field-text(type="text" name="razon_social" id="razon_social" placeholder="Mi Empresa S.A.S." value= modoEdicion ? (cliente.razon_social || '') : '')
+                    div(class="col-span-12 md:col-span-6")
+                        label.label NIT *
+                            input.field-text(type="text" name="numero_doc_empresa" id="numero_doc_empresa" placeholder="900123456" maxlength="15" value= modoEdicion ? (cliente.numero_doc || '') : '')
+                    div(class="col-span-12 md:col-span-6")
+                        label.label Dígito verificador
+                            input.field-text(type="text" name="digito_verif" id="digito_verif" placeholder="0" maxlength="1" value= modoEdicion ? (cliente.digito_verif || '') : '')
+
+                //- CONTACTO (compartido)
+                div(class="col-span-12 grid grid-cols-12 gap-x-4 gap-y-3")
+                    div(class="col-span-12 md:col-span-6")
+                        label.label Teléfono / Celular
+                            input.field-text(type="tel" name="telefono" placeholder="300 123 4567" value= modoEdicion ? (cliente.telefono || '') : '')
+                    div(class="col-span-12 md:col-span-6")
+                        label.label Correo electrónico
+                            input.field-text(type="email" name="email" placeholder="cliente@email.com" value= modoEdicion ? (cliente.email || '') : '')
+
+                //- ── Sección: Datos tributarios ───────────────────────────────
+                div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
+                    div(class="flex items-center gap-2 px-6")
+                        i(class="fi fi-rr-receipt text-pink-400")
+                        h2(class="font-bold text-slate-700 text-sm") Datos tributarios
+
+                - const regimenActual = modoEdicion ? (tributario && tributario.regimen_fiscal ? tributario.regimen_fiscal : '49') : '48'
+                div(class="col-span-12")
+                    p(class="text-xs font-semibold text-slate-500 mb-2") Régimen fiscal *
+                    div(class="flex gap-3")
+                        label(class=`flex items-center gap-2 cursor-pointer px-4 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${regimenActual === '48' ? 'border-pink-400 bg-pink-50 text-pink-600' : 'border-slate-200 bg-white text-slate-500 font-semibold'}` id="lbl-48")
+                            input(type="radio" name="regimen_fiscal" value="48" checked=regimenActual === '48' class="hidden")
+                            i(class=`fi ${regimenActual === '48' ? 'fi-rr-check-circle' : 'fi-rr-circle'}`)
+                            | Responsable de IVA
+                        label(class=`flex items-center gap-2 cursor-pointer px-4 py-2.5 rounded-xl border-2 text-xs transition-all ${regimenActual === '49' ? 'border-pink-400 bg-pink-50 text-pink-600 font-bold' : 'border-slate-200 bg-white text-slate-500 font-semibold'}` id="lbl-49")
+                            input(type="radio" name="regimen_fiscal" value="49" checked=regimenActual === '49' class="hidden")
+                            i(class=`fi ${regimenActual === '49' ? 'fi-rr-check-circle' : 'fi-rr-circle'}`)
+                            | No responsable de IVA
+
+                div(class="col-span-12 grid grid-cols-2 gap-x-6 gap-y-3")
+                    label(class="flex items-center gap-3 cursor-pointer")
+                        input(type="radio" class="sr-only condicion-trib" name="condicion_tributaria" value="gran_contribuyente" checked= modoEdicion && condicion_tributaria === 'gran_contribuyente')
+                        span.switch
+                            span.switch-thumb
+                        span(class="text-xs text-slate-600 font-medium") Gran contribuyente
+                    label(class="flex items-center gap-3 cursor-pointer")
+                        input(type="radio" class="sr-only condicion-trib" name="condicion_tributaria" value="autorretenedor" checked= modoEdicion && condicion_tributaria === 'autorretenedor')
+                        span.switch
+                            span.switch-thumb
+                        span(class="text-xs text-slate-600 font-medium") Autorretenedor
+                    label(class="flex items-center gap-3 cursor-pointer")
+                        input(type="radio" class="sr-only condicion-trib" name="condicion_tributaria" value="agente_retencion" checked= modoEdicion && condicion_tributaria === 'agente_retencion')
+                        span.switch
+                            span.switch-thumb
+                        span(class="text-xs text-slate-600 font-medium") Agente de retención
+                    label(class="flex items-center gap-3 cursor-pointer")
+                        input(type="radio" class="sr-only condicion-trib" name="condicion_tributaria" value="obligado_aduanero" checked= modoEdicion && condicion_tributaria === 'obligado_aduanero')
+                        span.switch
+                            span.switch-thumb
+                        span(class="text-xs text-slate-600 font-medium") Obligado aduanero
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Código CIIU
+                        input.field-text(type="text" name="ciiu" placeholder="4771" maxlength="10" value= modoEdicion ? (tributario && tributario.ciiu || '') : '')
+                div(class="col-span-12 md:col-span-6")
+                    label.label Descripción actividad económica
+                        input.field-text(type="text" name="descripcion_ciiu" placeholder="Comercio al por menor de prendas de vestir" value= modoEdicion ? (tributario && tributario.descripcion_ciiu || '') : '')
+                div(class="col-span-12 md:col-span-3")
+                    label.label Fecha RUT
+                        - const fechaRut = modoEdicion && tributario && tributario.fecha_rut ? String(tributario.fecha_rut).slice(0,10) : ''
+                        input.field-text(type="date" name="fecha_rut" value= fechaRut)
+
+                //- ── Sección: Ubicación ───────────────────────────────────────
+                div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
+                    div(class="flex items-center gap-2 px-6")
+                        i(class="fi fi-rr-marker text-pink-400")
+                        h2(class="font-bold text-slate-700 text-sm") Ubicación
+
+                div(class="col-span-12 md:col-span-6")
+                    label.label Departamento
+                        div(class="select-wrapper")
+                            select.field-text(name="idDepartamento" id="departamentoSelect")
+                                option(value="" selected= !modoEdicion || !ubicacion.idDepartamento) Selecciona el departamento
+                                each depto in departamentos
+                                    option(value=depto.id selected= modoEdicion && String(ubicacion.idDepartamento) === String(depto.id))= depto.nombre
+                            span.select-icon
+                                i.fi-rr-chevron-double-down
+
+                div(class="col-span-12 md:col-span-6")
+                    label.label Municipio
+                        div(class="select-wrapper")
+                            - const munDisabled = !modoEdicion || !municipios || !municipios.length
+                            select.field-text(name="idMunicipio" id="municipioSelect" disabled=munDisabled)
+                                if modoEdicion && municipios && municipios.length
+                                    option(value="" selected= !ubicacion.idMunicipio) Selecciona el municipio
+                                    each mun in municipios
+                                        option(value=mun.id selected= String(ubicacion.idMunicipio) === String(mun.id))= mun.nombre
+                                else
+                                    option(value="") Selecciona el municipio
+                            span.select-icon
+                                i.fi-rr-chevron-double-down
+
+                div(class="col-span-12 md:col-span-8")
+                    label.label Dirección
+                        input.field-text(type="text" name="direccion" placeholder="Calle 10 # 20 - 30" value= modoEdicion ? (ubicacion.direccion || '') : '')
+
+                div(class="col-span-12 md:col-span-4")
+                    label.label Código postal
+                        input.field-text(type="text" name="codigo_postal" placeholder="110111" maxlength="10" value= modoEdicion ? (ubicacion.codigo_postal || '') : '')
+
+    //- ─── COLUMNA DERECHA — tarjeta única ────────────────────────────────────
+    div(class="col-span-12 md:col-span-4")
+        div(class="cards cardsWhite grid-cols-1 p-6 flex flex-col gap-5")
+
+            //- Documentos (solo empresa — mostrado/ocultado por JS)
+            div#seccion-docs(class="flex flex-col gap-3 pb-5 border-b border-slate-100 hidden")
+                div(class="flex items-center gap-2")
+                    i(class="fi fi-rr-folder-open text-pink-400")
+                    h2(class="font-bold text-slate-700 text-sm") Documentos requeridos
+
+                p(class="text-xs text-slate-400 -mt-1") RUT, Cámara de comercio u otros documentos.
+
+                //- Lista de docs existentes (modo edición)
+                ul#docs-existentes(class="space-y-1.5")
+
+                //- Upload
+                div(class="relative group")
+                    input(
+                        type="file"
+                        multiple
+                        name="documentos"
+                        id="upload-docs"
+                        accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx"
+                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    )
+                    div(class="inputUpload")
+                        div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-pink-400")
+                            i.fi-rr-file-add.text-2xl
+                        span(class="text-sm font-bold text-gray-600") Sube o arrastra archivos
+                        span(class="text-xs text-gray-400 mt-1") PDF, Word, Imágenes — máx. 10
+
+                div#preview-docs(class="flex flex-wrap gap-2")
+
+            //- Resumen
+            div(class="flex flex-col gap-3")
+                div(class="flex items-center gap-2 pb-3 border-b border-slate-100")
+                    i(class="fi fi-rr-info text-pink-400")
+                    h2(class="font-bold text-slate-700 text-sm") Resumen
+
+                div(class="space-y-2 text-xs text-slate-500")
+                    div(class="flex justify-between items-center")
+                        span Tipo de cliente
+                        span#resumen-tipo(class="font-semibold text-slate-700")= modoEdicion ? (cliente.tipo_persona === 'J' ? 'Empresa / Jurídica' : 'Persona Natural') : 'Persona Natural'
+                    div(class="flex justify-between items-center")
+                        span Régimen fiscal
+                        span#resumen-regimen(class="font-semibold text-slate-700")= regimenActual === '48' ? 'Responsable IVA' : 'No responsable IVA'
+                    div(class="flex justify-between items-center")
+                        span Documentos nuevos
+                        span#resumen-docs(class="font-semibold text-slate-700") 0 archivos
+
+                button#btn-guardar(type="submit" class="btn btn-primary w-full mt-1")
+                    i(class="fi fi-rr-disk")
+                    | #{modoEdicion ? 'Actualizar cliente' : 'Guardar cliente'}

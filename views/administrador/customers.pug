@@ -10,3 +10,27 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         div(class="mainDashboard")
                             //******************[CUERPO PANELES]*********************//
+
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                include ./customers/headerClientes.pug
+
+                            //- STATS
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4")
+                                include ./customers/stats/clientesNuevos.pug
+                                include ./customers/stats/clientesRecurrentes.pug
+                                include ./customers/stats/ticketPromedio.pug
+                                include ./customers/stats/clientesVip.pug
+
+                            //- LISTA + PANEL LATERAL
+                            div(class="col-span-12 grid grid-cols-12 items-start gap-4")
+                                //- 70% — Lista de clientes
+                                div(class="col-span-12 md:col-span-8 grid grid-cols-1 gap-4 cards cardsWhite p-6")
+                                    include ./customers/views/listaClientes.pug
+
+                                //- 30% — Panel de perfil del cliente
+                                div(class="col-span-12 md:col-span-4 grid grid-cols-1 gap-4")
+                                    include ./customers/views/perfilCliente.pug
+
+                script(src="/js/paginador.js")
+                script(src="/js/adminClientes.js")

@@ -13,7 +13,7 @@ const Clientes = db.define('CLIENTES', {
         comment: 'N=Natural, J=Jurídica'
     },
     tipo_documento: {
-        type: DataTypes.STRING(2),
+        type: DataTypes.STRING(5),
         allowNull: false,
         comment: 'CC, CE, TI, NIT, PP, etc.'
     },
@@ -65,6 +65,11 @@ const Clientes = db.define('CLIENTES', {
     activo: {
         type: DataTypes.BOOLEAN,
         defaultValue: true
+    },
+    credito: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull : false
     }
 }, {
     tableName: 'CLIENTES',

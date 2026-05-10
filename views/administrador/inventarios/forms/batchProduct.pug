@@ -1,54 +1,219 @@
-form(action="", method="post" id="formularioProducto" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+form(action="" method="post" id="formBatchOrder" class="col-span-12 grid grid-cols-12 gap-6 items-start")
+    input(type="hidden" name="_csrf" id="csrfBatch" value=csrfToken)
 
+    div(class="col-span-12 cards cardsWhite grid-cols-1")
+        div(class="grid grid-cols-12 gap-x-4 gap-y-4 p-6")
 
-    //- COLUMNA IZQUIERDA
-    input(type="hidden", name="_csrf" value = csrfToken)
-    input(type="hidden", name="idProducto" value=producto ? producto.idProducto : '')
-    
+            //- === FILA PRINCIPAL ===
+            div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100")
+                h2(class="pl-6 text-base font-semibold text-gray-700 flex items-center gap-2")
+                    i.fi-rr-document
+                    | Datos de la Orden
 
-    div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
-        
-        //- Nombre del Producto
-        //- SEPARADOR 100% (ATRIBUTOS)
-        div(class="col-span-12 -mx-6 mt-4")
-            
-            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
-                i.fi-rr-features.pr-2
-                | Datos Básicos
+            //- AUTOCOMPLETE PROVEEDOR
+            div(class="col-span-12 md:col-span-4")
+                label.label Proveedor
+                    div(class="relative")
+                        input(
+                            class="field-text"
+                            type="text"
+                            id="proveedorInput"
+                            placeholder="Buscar por nombre o NIT..."
+                            autocomplete="off"
+                        )
+                        input(type="hidden" id="idProveedorSel" name="idProveedor")
+                        div(id="proveedorDropdown" class="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg hidden max-h-60 overflow-y-auto")
 
-        div(class="col-span-12")
-            
+            //- PUNTO DE VENTA DESTINO
+            div(class="col-span-12 md:col-span-2")
+                label.label Destino
+                    div(class="relative")
+                        select(class="field-text" id="idPuntoVentaDestino" name="idPuntoVentaDestino")
+                            option(value="") -- Selecciona --
+                            each pdv in puntosDeVenta
+                                option(value=pdv.idPuntoDeVenta)= pdv.nombreComercial
+                        span.select-icon
+                            i.fi-rr-chevron-double-down
 
+            //- NRO FACTURA
+            div(class="col-span-12 md:col-span-2")
+                label.label Nro. Factura (Proveedor)
+                    input(class="field-text" type="text" id="nroFactura" name="nroFactura" placeholder="FAC-001")
 
+            //- FECHA FACTURA
+            div(class="col-span-12 md:col-span-2")
+                label.label Fecha Factura
+                    input(class="field-text" type="date" id="fechaFactura" name="fechaFactura")
 
+            //- SWITCH A CRÉDITO
+            div(class="col-span-12 md:col-span-2 flex items-end pb-2")
+                label(class="flex items-center gap-3 cursor-pointer select-none")
+                    input(type="checkbox" id="switchCredito" name="esCredito" class="hidden")
+                    div(class="switch")
+                        div(class="switch-thumb")
+                    span(class="text-sm font-semibold text-gray-600 whitespace-nowrap") A crédito
 
+            //- CAMPOS CRÉDITO
+            div(id="camposCredito" class="col-span-12 grid grid-cols-12 gap-x-4 gap-y-4 hidden")
+                div(class="col-span-12 md:col-span-5")
+                    label.label Fecha de Pago
+                        input(class="field-text" type="date" id="fechaPago" name="fechaPago")
+                div(class="col-span-12 md:col-span-4")
+                    label.label Valor Abonando
+                        input(class="field-text" type="text" id="valorAbono" name="valorAbono" value="0" inputmode="numeric")
 
-       
+            //- === UPLOAD FACTURAS ===
+            div(class="col-span-12")
+                label.label Adjuntar Factura(s) del Proveedor
+                    div(class="relative group mt-1")
+                        input(
+                            type="file"
+                            multiple
+                            id="uploadFacturas"
+                            name="facturas"
+                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            accept=".jpg,.jpeg,.png,.webp,.pdf"
+                        )
+                        div(class="inputUpload")
+                            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-3 text-purple-500")
+                                i.fi-rr-file-add.text-2xl
+                            span(class="text-sm font-bold text-gray-600") Sube o arrastra la(s) factura(s)
+                            span(class="text-xs text-gray-400 mt-1") PDF o imágenes — máx 5 archivos, 5 MB c/u
+                    div(id="preview-facturas" class="flex flex-wrap gap-2 mt-3")
 
+            //- === PRODUCTOS ===
+            div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
+                h2(class="pl-6 text-base font-semibold text-gray-700 flex items-center gap-2")
+                    i.fi-rr-box-alt
+                    | Productos Comprados
 
+            div(class="col-span-12 overflow-x-auto")
+                table(class="w-full text-sm table-fixed")
+                    thead
+                        tr(class="bg-gray-50 text-gray-500 uppercase text-xs")
+                            th(class="py-3 px-3 text-left rounded-tl-lg" style="width:15%") SKU
+                            th(class="py-3 px-3 text-left" style="width:40%") Nombre Producto
+                            th(class="py-3 px-3 text-center" style="width:10%") Cantidad
+                            th(class="py-3 px-3 text-right" style="width:10%") Valor Unidad
+                            th(class="py-3 px-3 text-right" style="width:13%") Impuestos
+                            th(class="py-3 px-3 text-right rounded-tr-lg" style="width:10%") Subtotal
+                            th(class="py-3 px-2" style="width:2%")
+                    tbody(id="tablaProductos")
 
+            div(class="col-span-12")
+                button(type="button" id="btnAgregarFila" class="btn btn-secondary flex items-center gap-2 text-sm")
+                    i.fi-rr-plus-small
+                    | Agregar producto
 
+            //- TOTALES
+            div(class="col-span-12")
+                div(class="flex justify-end items-end gap-8 py-5 border-t border-gray-100 mt-1")
+                    div(class="flex flex-col items-end gap-1")
+                        span(class="text-xs text-gray-400 uppercase font-semibold tracking-wide") Total Unidades
+                        span(id="totalUnidades" class="text-2xl font-bold text-gray-800") 0
+                    div(class="w-px h-10 bg-gray-200")
+                    div(class="flex flex-col items-end gap-1")
+                        span(class="text-xs text-gray-400 uppercase font-semibold tracking-wide") Subtotal
+                        span(id="totalSubtotal" class="text-2xl font-bold text-gray-800") $0
+                    div(class="w-px h-10 bg-gray-200")
+                    div(class="flex flex-col items-end gap-1")
+                        span(class="text-xs text-gray-400 uppercase font-semibold tracking-wide") Total Impuestos
+                        span(id="totalImpuestos" class="text-2xl font-bold text-gray-500") $0
+                    div(class="w-px h-10 bg-gray-200")
+                    div(class="flex flex-col items-end gap-1")
+                        span(class="text-xs text-gray-400 uppercase font-semibold tracking-wide") Total
+                        span(id="totalFinal" class="text-3xl font-bold text-pink-500") $0
 
+            //- GUARDAR
+            div(class="col-span-12 pt-2")
+                button(class="btn btn-primary w-full" type="submit" id="btnGuardar")
+                    i.fi-rr-disk
+                    |  Guardar Orden de Compra
 
-                            
-    //- COLUMNA DERECHA
-    div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")
+//- MODAL NUEVO PROVEEDOR
+div(id="modalNuevoProvedor" class="fixed inset-0 z-50 hidden items-start justify-center pt-10 px-4 bg-black/50")
+    div(class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto")
+        div(class="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10")
+            h3(class="text-lg font-bold text-gray-800") Nuevo Proveedor
+            button(type="button" id="btnCerrarModal" class="text-gray-400 hover:text-gray-600 text-2xl leading-none")
+                i.fi-rr-cross-small
+
         div(class="p-6")
-            h1.h1
-                i.fi-rr-features.pr-2
-                |Documentos de la factura.
-            //- Contenedor Flex para ponerlos uno al lado del otro
-            
+            div(class="grid grid-cols-12 gap-3")
 
-    div(class="col-span-12")
-        div(class="flex  justify-center")
-            button(class="btn btn-primary w-full"  type="submit" id="guardar" )
+                div(class="col-span-12 md:col-span-6")
+                    label.label Razón Social
+                        input(class="field-text" type="text" id="modal-razonSocial" placeholder="Nombre del proveedor")
+
+                div(class="col-span-12 md:col-span-6")
+                    label.label NIT / Identificación
+                        input(class="field-text" type="text" id="modal-nit" placeholder="NIT o Cédula")
+
+                div(class="col-span-12 md:col-span-4")
+                    label.label Departamento
+                        div(class="relative")
+                            select(class="field-text" id="modal-departamento")
+                                option(value="") -- Selecciona --
+                                each depto in departamentos
+                                    option(value=depto.id)= depto.nombre
+                            span.select-icon
+                                i.fi-rr-chevron-double-down
+
+                div(class="col-span-12 md:col-span-4")
+                    label.label Ciudad
+                        div(class="relative")
+                            select(class="field-text" id="modal-ciudad")
+                                option(value="") -- Selecciona depto primero --
+                            span.select-icon
+                                i.fi-rr-chevron-double-down
+
+                div(class="col-span-12 md:col-span-4")
+                    label.label Dirección
+                        input(class="field-text" type="text" id="modal-direccion" placeholder="Calle 10 # 20-30")
+
+                div(class="col-span-12 md:col-span-6")
+                    label.label Email
+                        input(class="field-text" type="email" id="modal-email" placeholder="ventas@proveedor.com")
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Nombre Contacto
+                        input(class="field-text" type="text" id="modal-nombreContacto" placeholder="Juan Pérez")
+
+                div(class="col-span-12 md:col-span-3")
+                    label.label Teléfono
+                        input(class="field-text" type="text" id="modal-telefono" placeholder="444-44-44")
+
+                div(class="col-span-12")
+                    label.label Categorías que nos vende
+                        div(class="flex flex-wrap gap-2 mt-2")
+                            each cat in categoriasProvedores
+                                label(class="subItems")
+                                    input(type="checkbox" class="cat-modal-checkbox checkbox" value=cat.idCategoria)
+                                    span(class="text-xs font-bold text-gray-700 uppercase")= cat.nombre
+
+                div(class="col-span-12")
+                    label.label Documentos del Proveedor (opcional)
+                        div(class="relative group mt-1")
+                            input(
+                                type="file"
+                                multiple
+                                id="modal-documentos"
+                                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                accept=".jpg,.jpeg,.png,.webp,.pdf,.xls,.xlsx,.doc,.docx"
+                            )
+                            div(class="inputUpload")
+                                div(class="w-10 h-10 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-purple-500")
+                                    i.fi-rr-file-add.text-xl
+                                span(class="text-sm font-bold text-gray-600") Sube o arrastra los documentos
+                                span(class="text-xs text-gray-400 mt-1") PDF, imágenes, Excel, Word — máx 10 archivos
+                        div(id="modal-preview-docs" class="flex flex-wrap gap-2 mt-2")
+
+        div(class="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 sticky bottom-0 bg-white")
+            button(type="button" id="btnCancelarModal" class="btn") Cancelar
+            button(type="button" id="btnGuardarProveedor" class="btn btn-primary")
                 i.fi-rr-disk
-                | #{btnName}
+                |  Guardar Proveedor
 
-script.
-    // Inyectamos el array de IDs de categorías y subcategorías que procesamos en el controlador
-    const categoriasSeleccionadas = !{JSON.stringify(categoriasSeleccionadas)};
-
-
-script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           
+script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+script(src="/js/helpers.js")
+script(src="/js/batchOrder.js")

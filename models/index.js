@@ -12,6 +12,8 @@ import Provedores from './Provedores.js'; import CategoriasDeProvedores from './
 import Traslados from './Traslados.js'; import DetalleTraslados from './DetalleTraslados.js'
 import InsidenciaTraslado from './InsidenciasTraslados.js'
 import Egresos from './Egresos.js'
+import DetallesFacturaProvedores from './DetallesFacturaProvedores.js'
+import CuentasPorPagar from './CuentasPorPagar.js'
 import PermisosRecursos from './PermisosRecursos.js'
 import PermisosAcciones from './PermisosAcciones.js'
 import UserPermisos from './UserPermisos.js'
@@ -186,6 +188,17 @@ UserPermisos.belongsTo(PermisosRecursos, { foreignKey: 'idRecurso', as: 'recurso
 PermisosAcciones.hasMany(UserPermisos, { foreignKey: 'idAccion', as: 'permisos' });
 UserPermisos.belongsTo(PermisosAcciones, { foreignKey: 'idAccion', as: 'accion' });
 
+// ─── Detalles Factura Proveedores ─────────────────────────────────────────────
+FacturaProveedores.hasMany(DetallesFacturaProvedores, { foreignKey: 'idFacturaPro', as: 'detalles' });
+DetallesFacturaProvedores.belongsTo(FacturaProveedores, { foreignKey: 'idFacturaPro', as: 'factura' });
+
+DetallesFacturaProvedores.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
+Productos.hasMany(DetallesFacturaProvedores, { foreignKey: 'idProducto', as: 'detallesCompra' });
+
+// ─── Cuentas por Pagar ────────────────────────────────────────────────────────
+FacturaProveedores.hasMany(CuentasPorPagar, { foreignKey: 'idFacturaPro', as: 'cuentasPorPagar' });
+CuentasPorPagar.belongsTo(FacturaProveedores, { foreignKey: 'idFacturaPro', as: 'factura' });
+
 // ─── Egresos ─────────────────────────────────────────────────────────────────
 PuntosDeVenta.hasMany(Egresos, { foreignKey: 'idPuntoDeVenta', as: 'egresos' });
 Egresos.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'puntoDeVenta' });
@@ -209,4 +222,5 @@ export {
   FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura,
   Egresos,
   PermisosRecursos, PermisosAcciones, UserPermisos,
+  DetallesFacturaProvedores, CuentasPorPagar,
 }

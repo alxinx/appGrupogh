@@ -1484,6 +1484,7 @@ const getTirillaPDF = async (req, res) => {
         if (pdv?.direccionPrincipal) doc.text(pdv.direccionPrincipal, MARGIN, doc.y, { width: CW, align: 'center' });
         if (municipio?.nombre) doc.text(municipio.nombre, MARGIN, doc.y, { width: CW, align: 'center' });
         if (reg?.responsabilidades) doc.text(reg.responsabilidades, MARGIN, doc.y, { width: CW, align: 'center' });
+        if (reg?.resolucionFacturacion) doc.text(`Resolución de facturación Nro. ${reg.resolucionFacturacion} desde el ${reg.nroInicio} hasta el ${reg.nroFin}`, MARGIN, doc.y, { width: CW, align: 'center' });
 
         doc.moveDown(0.3); hr();
 
@@ -1499,10 +1500,14 @@ const getTirillaPDF = async (req, res) => {
         if (factura.idCliente === '0') {
             doc.font('Helvetica-Bold').fontSize(7).text('Cliente: Consumidor Final', MARGIN, doc.y, { width: CW });
         } else if (cli) {
-            const nomCli = [cli.primer_nombre, cli.segundo_nombre, cli.primer_apellido, cli.segundo_apellido].filter(Boolean).join(' ');
+            const nomCli = cli.tipo_persona === 'J'
+                ? (cli.razon_social || '')
+                : [cli.primer_nombre, cli.segundo_nombre, cli.primer_apellido, cli.segundo_apellido].filter(Boolean).join(' ');
             const docCli = `${cli.tipo_documento || ''} ${cli.numero_doc || ''}${cli.digito_verif ? '-' + cli.digito_verif : ''}`.trim();
             doc.font('Helvetica-Bold').fontSize(7).text(`Cliente: ${nomCli}`, MARGIN, doc.y, { width: CW });
             doc.font('Helvetica').fontSize(7).text(`Doc: ${docCli}`, MARGIN, doc.y, { width: CW });
+            if (cli.telefono) doc.text(`Tel: ${cli.telefono}`, MARGIN, doc.y, { width: CW });
+            if (cli.email)    doc.text(`Email: ${cli.email}`,  MARGIN, doc.y, { width: CW });
             if (clienteUbicacion) {
                 const dir = [clienteUbicacion.direccion, clienteUbicacion.nombreMunicipio, clienteUbicacion.nombreDepartamento].filter(Boolean).join(', ');
                 doc.text(`Dir: ${dir}`, MARGIN, doc.y, { width: CW });

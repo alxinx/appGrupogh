@@ -7,7 +7,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
@@ -803,14 +803,183 @@ const dosificar = async (req, res) => {
 
 // -> Guardo las facturas/ ordenes de compra y las pongo en el inventario global. 
 const batchBuyOrder = async (req, res) => {
+    const [categoriasProvedores, departamentos, puntosDeVenta] = await Promise.all([
+        CategoriasDeProvedores.findAll({ raw: true }),
+        Departamentos.findAll({ raw: true }),
+        PuntosDeVenta.findAll({ attributes: ['idPuntoDeVenta', 'nombreComercial'], raw: true })
+    ]);
     return res.status(201).render('./administrador/inventarios/batch', {
-        pagina: "Ingreso de Productos a Inventario General",
-        subPagina: "Ingreso de Productos a Inventario General",
+        pagina: "Orden de Compra",
+        subPagina: "Nueva Orden de Compra",
         csrfToken: req.csrfToken(),
         currentPath: '/inventario',
         subPath: 'batch',
-        btnName: 'Guardar Factura'
-    })
+        btnName: 'Guardar Orden de Compra',
+        categoriasProvedores,
+        departamentos,
+        puntosDeVenta
+    });
+}
+
+const saveBatchOrder = async (req, res) => {
+    const { idProveedor, nroFactura, fechaFactura, esCredito, fechaPago, valorAbono, idPuntoVentaDestino, productos } = req.body;
+
+    // ── Validaciones backend ──────────────────────────────────
+    if (!idProveedor || !nroFactura || !fechaFactura || !idPuntoVentaDestino) {
+        return res.status(400).json({ success: false, mensaje: 'Faltan datos requeridos: proveedor, nro factura, fecha o destino.' });
+    }
+
+    const creditoBool  = esCredito === 'true' || esCredito === true;
+    const valorAbonoN  = parseFloat(valorAbono) || 0;
+    const hoy          = new Date().toISOString().split('T')[0];
+
+    if (creditoBool) {
+        if (!fechaPago || fechaPago <= hoy) {
+            return res.status(400).json({ success: false, mensaje: 'La fecha de pago debe ser posterior a hoy.' });
+        }
+        if (valorAbonoN < 0) {
+            return res.status(400).json({ success: false, mensaje: 'El valor abonado no puede ser negativo.' });
+        }
+    }
+
+    let productosArr = [];
+    try { productosArr = JSON.parse(productos || '[]'); } catch { productosArr = []; }
+    if (!Array.isArray(productosArr) || productosArr.length === 0) {
+        return res.status(400).json({ success: false, mensaje: 'Debes agregar al menos un producto.' });
+    }
+    for (const p of productosArr) {
+        if (!p.idProducto) return res.status(400).json({ success: false, mensaje: `Producto sin idProducto: ${p.sku || ''}` });
+        if (!p.cantidad || parseInt(p.cantidad) <= 0) return res.status(400).json({ success: false, mensaje: `Cantidad inválida en "${p.nombre || p.sku}"` });
+        if (!p.valorUnidad || parseFloat(p.valorUnidad) <= 0) return res.status(400).json({ success: false, mensaje: `Valor unitario inválido en "${p.nombre || p.sku}"` });
+    }
+
+    const archivos     = req.files?.facturas || [];
+    const extsPermitidas = ['pdf','jpg','jpeg','png','gif','xls','xlsx'];
+    for (const file of archivos) {
+        const ext = file.originalname.split('.').pop().toLowerCase();
+        if (!extsPermitidas.includes(ext)) {
+            return res.status(400).json({ success: false, mensaje: `Archivo "${file.originalname}" no permitido. Solo: PDF, JPG, PNG, GIF, XLS.` });
+        }
+    }
+
+    // ── Cálculos ──────────────────────────────────────────────
+    const valorNeto      = productosArr.reduce((acc, p) => acc + (parseFloat(p.valorUnidad) || 0) * (parseInt(p.cantidad) || 0), 0);
+    const valorImpuestos = productosArr.reduce((acc, p) => acc + (parseFloat(p.impuestos)   || 0), 0);
+    const valorTotal     = valorNeto + valorImpuestos;
+
+    if (creditoBool && valorAbonoN >= valorTotal) {
+        return res.status(400).json({ success: false, mensaje: 'El valor abonado debe ser menor al total de la factura.' });
+    }
+
+    const uploadedKeys = [];
+    const t = await db.transaction();
+
+    try {
+        // ── FACTURA_PROVEEDORES ───────────────────────────────
+        const factura = await FacturaProveedores.create({
+            idProveedor,
+            nroFactura,
+            fechaFactura,
+            esCredito: creditoBool,
+            fechaVencimiento: creditoBool && fechaPago ? fechaPago : null,
+            idPuntoVentaDestino,
+            valorNeto,
+            valorImpuestos,
+            valorTotal,
+            estado: creditoBool ? 'Pendiente' : 'Pagada',
+            notas: creditoBool && valorAbonoN > 0 ? `Abono inicial: ${valorAbonoN}` : null
+        }, { transaction: t });
+
+        // ── DETALLES_FACTURA_PROVEEDORES + STOCKS ─────────────
+        for (const prod of productosArr) {
+            const cantidad    = parseInt(prod.cantidad) || 0;
+            const valorUnidad = parseFloat(prod.valorUnidad) || 0;
+            const impuestos   = parseFloat(prod.impuestos) || 0;
+            const subtotal    = cantidad * valorUnidad;
+            const total       = subtotal + impuestos;
+
+            await DetallesFacturaProvedores.create({
+                idFacturaPro: factura.idFacturaPro,
+                idProducto:   prod.idProducto,
+                cantidad,
+                valorUnidad,
+                impuestos,
+                tipoImpuesto: prod.tipoImpuesto === 'porcentaje' ? 'porcentaje' : 'valor',
+                subtotal,
+                total
+            }, { transaction: t });
+
+            await Stock.create({
+                idPuntoVenta:      idPuntoVentaDestino,
+                idFacturaPro:      factura.idFacturaPro,
+                idProducto:        prod.idProducto,
+                cantidadExistente: cantidad,
+                cantidadOriginal:  cantidad,
+                valorUnidad:       cantidad > 0 ? total / cantidad : 0,
+                estadoInterno:     'SUELTO'
+            }, { transaction: t });
+        }
+
+        // ── CUENTAS_POR_PAGAR ─────────────────────────────────
+        if (creditoBool && valorAbonoN > 0) {
+            await CuentasPorPagar.create({
+                idFacturaPro:  factura.idFacturaPro,
+                fechaAbono:    new Date(),
+                totalFactura:  valorTotal,
+                valorAbono:    valorAbonoN,
+                valorPorPagar: valorTotal - valorAbonoN
+            }, { transaction: t });
+        }
+
+        // ── ARCHIVOS → R2 ─────────────────────────────────────
+        if (archivos.length > 0) {
+            const docsData = await Promise.all(archivos.map(async (file, idx) => {
+                const isImage = file.mimetype.startsWith('image/');
+                const ext = file.originalname.split('.').pop().toLowerCase();
+                const safeName = nroFactura.replace(/[^a-zA-Z0-9]/g, '-');
+                const r2Key = `documentacion/facturas-proveedor/${safeName}-${Date.now()}-${idx}.${isImage ? 'webp' : ext}`;
+
+                let bufferToUpload = file.buffer;
+                let contentType    = file.mimetype;
+                if (isImage) {
+                    bufferToUpload = await sharp(file.buffer)
+                        .resize(2000, 2000, { fit: 'inside', withoutEnlargement: true })
+                        .webp({ quality: 85 })
+                        .toBuffer();
+                    contentType = 'image/webp';
+                }
+
+                await new Upload({
+                    client: s3Client,
+                    params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: bufferToUpload, ContentType: contentType }
+                }).done();
+                uploadedKeys.push(r2Key);
+
+                return {
+                    idPropietario:   factura.idFacturaPro,
+                    nombreDocumento: file.originalname,
+                    keyName:         r2Key,
+                    formato:         isImage ? 'WEBP' : ext.toUpperCase(),
+                    pertenece:       'orden_compra'
+                };
+            }));
+
+            await Documentacion.bulkCreate(docsData, { transaction: t });
+        }
+
+        await t.commit();
+        return res.json({ success: true, mensaje: 'Orden de compra registrada correctamente.', idFactura: factura.idFacturaPro });
+
+    } catch (error) {
+        await t.rollback();
+        if (uploadedKeys.length > 0) {
+            await Promise.allSettled(uploadedKeys.map(key =>
+                s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }))
+            ));
+        }
+        console.error('Error en saveBatchOrder:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error interno al guardar la orden de compra.' });
+    }
 }
 
 
@@ -896,9 +1065,732 @@ const dashboardCustomers = async (req, res) => {
         pagina: "Clientes",
         csrfToken: req.csrfToken(),
         currentPath: req.path
+    });
+};
 
-    })
-}
+// ─── NUEVO CLIENTE — FORMULARIO ───────────────────────────────────────────────
+const newCliente = async (req, res) => {
+    try {
+        const departamentos = await Departamentos.findAll({ raw: true, order: [['nombre', 'ASC']] });
+        return res.render('./administrador/customers/new', {
+            pagina: 'Clientes',
+            subPagina: 'Nuevo Cliente',
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            departamentos
+        });
+    } catch (e) {
+        console.error('newCliente:', e);
+        return res.redirect('/admin/clientes');
+    }
+};
+
+// ─── NUEVO CLIENTE — GUARDAR ──────────────────────────────────────────────────
+const saveCliente = async (req, res) => {
+    const {
+        tipo_persona, tipo_documento, numero_doc, digito_verif,
+        primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
+        razon_social, email, telefono, genero,
+        regimen_fiscal, condicion_tributaria,
+        ciiu, descripcion_ciiu, fecha_rut,
+        idDepartamento, idMunicipio, direccion, codigo_postal
+    } = req.body;
+
+    // Validación mínima
+    const esEmpresa = tipo_persona === 'J';
+    if (esEmpresa && !razon_social?.trim())
+        return res.status(400).json({ success: false, mensaje: 'La razón social es requerida.' });
+    if (!esEmpresa && !primer_nombre?.trim())
+        return res.status(400).json({ success: false, mensaje: 'El primer nombre es requerido.' });
+    if (!numero_doc?.trim())
+        return res.status(400).json({ success: false, mensaje: 'El número de documento es requerido.' });
+
+    try {
+        // Unicidad de numero_doc (guard previo a la transacción)
+        const existe = await Clientes.findOne({ where: { numero_doc: numero_doc.trim() } });
+        if (existe) return res.status(400).json({ success: false, mensaje: `El documento ${numero_doc.trim()} ya está registrado para otro cliente.` });
+    } catch (e) {
+        console.error('saveCliente – check unicidad:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al validar el documento.' });
+    }
+
+    const toPascal = (str) => str
+        ? str.trim().replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        : null;
+
+    let t = null;
+    const uploadedKeys = [];
+
+    try {
+        t = await db.transaction();
+
+        // 1. Crear cliente
+        const cliente = await Clientes.create({
+            tipo_persona:     tipo_persona || 'N',
+            tipo_documento:   esEmpresa ? 'NIT' : (tipo_documento || 'CC'),
+            numero_doc:       numero_doc.trim(),
+            digito_verif:     esEmpresa ? (digito_verif?.trim() || null) : null,
+            razon_social:     esEmpresa ? toPascal(razon_social) : null,
+            primer_nombre:    !esEmpresa ? toPascal(primer_nombre) : null,
+            segundo_nombre:   !esEmpresa ? toPascal(segundo_nombre) : null,
+            primer_apellido:  !esEmpresa ? toPascal(primer_apellido) : null,
+            segundo_apellido: !esEmpresa ? toPascal(segundo_apellido) : null,
+            email:            email?.trim().toLowerCase() || null,
+            telefono:         telefono?.trim() || null,
+            genero:           !esEmpresa ? (genero || null) : null,
+            activo:           true,
+            credito:          false
+        }, { transaction: t });
+
+        const idCliente = cliente.idCliente;
+
+        // 2. Datos tributarios
+        await ClientesTributario.create({
+            idCliente,
+            regimen_fiscal:     regimen_fiscal || '49',
+            gran_contribuyente: condicion_tributaria === 'gran_contribuyente',
+            autorretenedor:     condicion_tributaria === 'autorretenedor',
+            agente_retencion:   condicion_tributaria === 'agente_retencion',
+            obligado_aduanero:  condicion_tributaria === 'obligado_aduanero',
+            ciiu:               ciiu?.trim() || null,
+            descripcion_ciiu:   toPascal(descripcion_ciiu),
+            fecha_rut:          fecha_rut || null
+        }, { transaction: t });
+
+        // 3. Ubicación
+        if (idDepartamento || direccion?.trim()) {
+            const [deptoRow, munRow] = await Promise.all([
+                idDepartamento ? Departamentos.findOne({ where: { id: idDepartamento }, raw: true }) : null,
+                idMunicipio    ? Municipios.findOne({ where: { id: idMunicipio }, raw: true })        : null
+            ]);
+            await ClientesUbicacion.create({
+                idCliente,
+                idDepartamento:     idDepartamento || null,
+                nombreDepartamento: deptoRow?.nombre || null,
+                idMunicipio:        idMunicipio || null,
+                nombreMunicipio:    munRow?.nombre || null,
+                direccion:          toPascal(direccion),
+                codigo_postal:      codigo_postal?.trim() || null,
+                es_principal:       true
+            }, { transaction: t });
+        }
+
+        // 4. Documentos (solo si vienen archivos)
+        const archivos = req.files?.documentos || [];
+        if (archivos.length > 0) {
+            const docsData = [];
+            await Promise.all(archivos.map(async (file, idx) => {
+                const ext           = file.originalname.split('.').pop().toLowerCase();
+                const isImg         = file.mimetype.startsWith('image/');
+                const nombreArchivo = `cli-${idCliente}-${Date.now()}-${idx}.${isImg ? 'webp' : ext}`;
+                const r2Key         = `documentacion/clientes/${nombreArchivo}`;
+
+                let bufferToUpload = file.buffer;
+                let contentType    = file.mimetype;
+                if (isImg) {
+                    bufferToUpload = await sharp(file.buffer)
+                        .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
+                        .webp({ quality: 80 })
+                        .toBuffer();
+                    contentType = 'image/webp';
+                }
+
+                await new Upload({
+                    client: s3Client,
+                    params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: bufferToUpload, ContentType: contentType }
+                }).done();
+
+                uploadedKeys.push(r2Key);
+                docsData.push({
+                    idPropietario:   idCliente,
+                    nombreDocumento: file.originalname,
+                    keyName:         r2Key,
+                    formato:         isImg ? 'WEBP' : ext.toUpperCase(),
+                    pertenece:       'cliente'
+                });
+            }));
+            await Documentacion.bulkCreate(docsData, { transaction: t });
+        }
+
+        await t.commit();
+        return res.json({ success: true, idCliente });
+
+    } catch (e) {
+        if (t) await t.rollback().catch(() => {});
+        if (uploadedKeys.length > 0) {
+            await Promise.allSettled(uploadedKeys.map(key =>
+                s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }))
+            ));
+        }
+        console.error('saveCliente:', e.message, e.stack);
+        return res.status(500).json({ success: false, mensaje: e.message || 'Error al guardar el cliente.' });
+    }
+};
+
+// ─── EDITAR CLIENTE — FORMULARIO ─────────────────────────────────────────────
+const editarClienteForm = async (req, res) => {
+    const { idCliente } = req.params;
+    try {
+        const [cliente, tributario, ubicacion, departamentos] = await Promise.all([
+            Clientes.findByPk(idCliente, { raw: true }),
+            ClientesTributario.findOne({ where: { idCliente }, raw: true }),
+            ClientesUbicacion.findOne({ where: { idCliente, es_principal: true }, raw: true }),
+            Departamentos.findAll({ raw: true, order: [['nombre', 'ASC']] })
+        ]);
+        if (!cliente) return res.redirect('/admin/clientes');
+
+        let municipios = [];
+        if (ubicacion?.idDepartamento) {
+            municipios = await Municipios.findAll({ where: { departamento_id: ubicacion.idDepartamento }, raw: true });
+        }
+
+        let condicion_tributaria = null;
+        if (tributario) {
+            if (tributario.gran_contribuyente)  condicion_tributaria = 'gran_contribuyente';
+            else if (tributario.autorretenedor)  condicion_tributaria = 'autorretenedor';
+            else if (tributario.agente_retencion) condicion_tributaria = 'agente_retencion';
+            else if (tributario.obligado_aduanero) condicion_tributaria = 'obligado_aduanero';
+        }
+
+        return res.render('./administrador/customers/new', {
+            pagina: 'Clientes',
+            subPagina: 'Editar Cliente',
+            currentPath: req.path,
+            modoEdicion: true,
+            cliente,
+            tributario: tributario || {},
+            ubicacion: ubicacion || {},
+            municipios,
+            condicion_tributaria,
+            departamentos
+        });
+    } catch (e) {
+        console.error('editarClienteForm:', e);
+        return res.redirect('/admin/clientes');
+    }
+};
+
+// ─── EDITAR CLIENTE — GUARDAR ─────────────────────────────────────────────────
+const updateCliente = async (req, res) => {
+    const { idCliente } = req.params;
+    const {
+        tipo_persona, tipo_documento, numero_doc, digito_verif,
+        primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
+        razon_social, email, telefono, genero,
+        regimen_fiscal, condicion_tributaria,
+        ciiu, descripcion_ciiu, fecha_rut,
+        idDepartamento, idMunicipio, direccion, codigo_postal
+    } = req.body;
+
+    const esEmpresa = tipo_persona === 'J';
+    if (esEmpresa && !razon_social?.trim())
+        return res.status(400).json({ success: false, mensaje: 'La razón social es requerida.' });
+    if (!esEmpresa && !primer_nombre?.trim())
+        return res.status(400).json({ success: false, mensaje: 'El primer nombre es requerido.' });
+    if (!numero_doc?.trim())
+        return res.status(400).json({ success: false, mensaje: 'El número de documento es requerido.' });
+
+    try {
+        const existe = await Clientes.findOne({ where: { numero_doc: numero_doc.trim(), idCliente: { [Op.ne]: idCliente } } });
+        if (existe) return res.status(400).json({ success: false, mensaje: `El documento ${numero_doc.trim()} ya está registrado para otro cliente.` });
+    } catch (e) {
+        console.error('updateCliente – check unicidad:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al validar el documento.' });
+    }
+
+    const toPascal = (str) => str
+        ? str.trim().replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        : null;
+
+    let t = null;
+    const uploadedKeys = [];
+
+    try {
+        t = await db.transaction();
+
+        await Clientes.update({
+            tipo_persona:     tipo_persona || 'N',
+            tipo_documento:   esEmpresa ? 'NIT' : (tipo_documento || 'CC'),
+            numero_doc:       numero_doc.trim(),
+            digito_verif:     esEmpresa ? (digito_verif?.trim() || null) : null,
+            razon_social:     esEmpresa ? toPascal(razon_social) : null,
+            primer_nombre:    !esEmpresa ? toPascal(primer_nombre) : null,
+            segundo_nombre:   !esEmpresa ? toPascal(segundo_nombre) : null,
+            primer_apellido:  !esEmpresa ? toPascal(primer_apellido) : null,
+            segundo_apellido: !esEmpresa ? toPascal(segundo_apellido) : null,
+            email:            email?.trim().toLowerCase() || null,
+            telefono:         telefono?.trim() || null,
+            genero:           !esEmpresa ? (genero || null) : null
+        }, { where: { idCliente }, transaction: t });
+
+        const trib = await ClientesTributario.findOne({ where: { idCliente } });
+        const tributarioData = {
+            idCliente,
+            regimen_fiscal:     regimen_fiscal || '49',
+            gran_contribuyente: condicion_tributaria === 'gran_contribuyente',
+            autorretenedor:     condicion_tributaria === 'autorretenedor',
+            agente_retencion:   condicion_tributaria === 'agente_retencion',
+            obligado_aduanero:  condicion_tributaria === 'obligado_aduanero',
+            ciiu:               ciiu?.trim() || null,
+            descripcion_ciiu:   toPascal(descripcion_ciiu),
+            fecha_rut:          fecha_rut || null
+        };
+        if (trib) {
+            await trib.update(tributarioData, { transaction: t });
+        } else {
+            await ClientesTributario.create(tributarioData, { transaction: t });
+        }
+
+        if (idDepartamento || direccion?.trim()) {
+            const [deptoRow, munRow] = await Promise.all([
+                idDepartamento ? Departamentos.findOne({ where: { id: idDepartamento }, raw: true }) : null,
+                idMunicipio    ? Municipios.findOne({ where: { id: idMunicipio }, raw: true })        : null
+            ]);
+            const ubicData = {
+                idCliente,
+                idDepartamento:     idDepartamento || null,
+                nombreDepartamento: deptoRow?.nombre || null,
+                idMunicipio:        idMunicipio || null,
+                nombreMunicipio:    munRow?.nombre || null,
+                direccion:          toPascal(direccion),
+                codigo_postal:      codigo_postal?.trim() || null,
+                es_principal:       true
+            };
+            const ubic = await ClientesUbicacion.findOne({ where: { idCliente, es_principal: true } });
+            if (ubic) {
+                await ubic.update(ubicData, { transaction: t });
+            } else {
+                await ClientesUbicacion.create(ubicData, { transaction: t });
+            }
+        }
+
+        const archivos = req.files?.documentos || [];
+        if (archivos.length > 0) {
+            const docsData = [];
+            await Promise.all(archivos.map(async (file, idx) => {
+                const ext           = file.originalname.split('.').pop().toLowerCase();
+                const isImg         = file.mimetype.startsWith('image/');
+                const nombreArchivo = `cli-${idCliente}-${Date.now()}-${idx}.${isImg ? 'webp' : ext}`;
+                const r2Key         = `documentacion/clientes/${nombreArchivo}`;
+
+                let bufferToUpload = file.buffer;
+                let contentType    = file.mimetype;
+                if (isImg) {
+                    bufferToUpload = await sharp(file.buffer)
+                        .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
+                        .webp({ quality: 80 })
+                        .toBuffer();
+                    contentType = 'image/webp';
+                }
+
+                await new Upload({
+                    client: s3Client,
+                    params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: bufferToUpload, ContentType: contentType }
+                }).done();
+
+                uploadedKeys.push(r2Key);
+                docsData.push({
+                    idPropietario:   idCliente,
+                    nombreDocumento: file.originalname,
+                    keyName:         r2Key,
+                    formato:         isImg ? 'WEBP' : ext.toUpperCase(),
+                    pertenece:       'cliente'
+                });
+            }));
+            await Documentacion.bulkCreate(docsData, { transaction: t });
+        }
+
+        await t.commit();
+        return res.json({ success: true, idCliente });
+
+    } catch (e) {
+        if (t) await t.rollback().catch(() => {});
+        if (uploadedKeys.length > 0) {
+            await Promise.allSettled(uploadedKeys.map(key =>
+                s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }))
+            ));
+        }
+        console.error('updateCliente:', e.message, e.stack);
+        return res.status(500).json({ success: false, mensaje: e.message || 'Error al actualizar el cliente.' });
+    }
+};
+
+// ─── STATS CLIENTES ───────────────────────────────────────────────────────────
+const getClientesStats = async (req, res) => {
+    try {
+        const ahora  = new Date();
+        const hace7  = new Date(ahora); hace7.setDate(ahora.getDate() - 7);   hace7.setHours(0, 0, 0, 0);
+        const hace14 = new Date(ahora); hace14.setDate(ahora.getDate() - 14); hace14.setHours(0, 0, 0, 0);
+        const hace30 = new Date(ahora); hace30.setDate(ahora.getDate() - 30); hace30.setHours(0, 0, 0, 0);
+        const hace60 = new Date(ahora); hace60.setDate(ahora.getDate() - 60); hace60.setHours(0, 0, 0, 0);
+
+        const [
+            nuevosActual,
+            nuevosAnterior,
+            recurrentesRows,
+            ticketActualRows,
+            ticketAnteriorRows,
+            vipRows
+        ] = await Promise.all([
+            Clientes.count({ where: { idCliente: { [Op.ne]: '0' }, createdAt: { [Op.gte]: hace7 } } }),
+            Clientes.count({ where: { idCliente: { [Op.ne]: '0' }, createdAt: { [Op.between]: [hace14, hace7] } } }),
+
+            db.query(`
+                SELECT COUNT(*) AS total FROM (
+                    SELECT idCliente FROM FACTURA_CLIENTES
+                    WHERE createdAt >= :hace14 AND idCliente != '0'
+                    GROUP BY idCliente
+                    HAVING COUNT(*) > 1
+                ) sub
+            `, { replacements: { hace14 }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT COALESCE(SUM(df.total) / NULLIF(COUNT(DISTINCT fc.idFacturaCliente), 0), 0) AS ticket
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                WHERE fc.createdAt >= :hace30 AND fc.idCliente != '0'
+            `, { replacements: { hace30 }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT COALESCE(SUM(df.total) / NULLIF(COUNT(DISTINCT fc.idFacturaCliente), 0), 0) AS ticket
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                WHERE fc.createdAt >= :hace60 AND fc.createdAt < :hace30 AND fc.idCliente != '0'
+            `, { replacements: { hace60, hace30 }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT COUNT(DISTINCT idCliente) AS total FROM (
+                    SELECT idCliente FROM FACTURA_CLIENTES
+                    WHERE createdAt >= :hace14 AND idCliente != '0'
+                    GROUP BY idCliente
+                    HAVING COUNT(*) > 5
+
+                    UNION
+
+                    SELECT fc.idCliente
+                    FROM FACTURA_CLIENTES fc
+                    INNER JOIN (
+                        SELECT idFacturaCliente, SUM(total) AS totalFactura
+                        FROM DETALLES_FACTURA
+                        GROUP BY idFacturaCliente
+                    ) df ON df.idFacturaCliente = fc.idFacturaCliente
+                    WHERE fc.createdAt >= :hace30 AND df.totalFactura >= 1000000
+                          AND fc.idCliente != '0'
+                    GROUP BY fc.idCliente
+                    HAVING COUNT(*) >= 3
+                ) vip
+            `, { replacements: { hace14, hace30 }, type: db.QueryTypes.SELECT })
+        ]);
+
+        const totalNuevos = nuevosActual || 0;
+        const pctNuevos   = nuevosAnterior > 0
+            ? Math.round(((totalNuevos - nuevosAnterior) / nuevosAnterior) * 100)
+            : null;
+
+        const ticketAct = Math.round(parseFloat(ticketActualRows[0]?.ticket)  || 0);
+        const ticketAnt = Math.round(parseFloat(ticketAnteriorRows[0]?.ticket) || 0);
+        const pctTicket = ticketAnt > 0
+            ? Math.round(((ticketAct - ticketAnt) / ticketAnt) * 100)
+            : null;
+
+        return res.json({
+            success: true,
+            nuevos:      { total: totalNuevos, pct: pctNuevos },
+            recurrentes: { total: parseInt(recurrentesRows[0]?.total) || 0 },
+            ticket:      { valor: ticketAct, pct: pctTicket },
+            vip:         { total: parseInt(vipRows[0]?.total) || 0 }
+        });
+    } catch (e) {
+        console.error('getClientesStats:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── PERFIL CLIENTE ───────────────────────────────────────────────────────────
+const getClientePerfil = async (req, res) => {
+    const { idCliente } = req.params;
+    try {
+        const hace14 = new Date(); hace14.setDate(hace14.getDate() - 14); hace14.setHours(0,0,0,0);
+        const hace30 = new Date(); hace30.setDate(hace30.getDate() - 30); hace30.setHours(0,0,0,0);
+
+        const [cliente, ubicacion, statsRows, vendedorRows, vip5, vip3] = await Promise.all([
+            Clientes.findOne({
+                where: { idCliente },
+                raw: true,
+                attributes: ['idCliente','tipo_persona','tipo_documento','numero_doc',
+                             'primer_nombre','primer_apellido','razon_social',
+                             'email','telefono','genero','activo','credito']
+            }),
+
+            db.query(`
+                SELECT direccion, nombreMunicipio, nombreDepartamento
+                FROM CLIENTES_UBICACION
+                WHERE idCliente = :idCliente AND es_principal = 1
+                LIMIT 1
+            `, { replacements: { idCliente }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT MAX(fc.fechaEmision) AS ultimaCompra,
+                       COALESCE(SUM(df.total), 0) AS totalComprado,
+                       COALESCE(SUM(CASE WHEN fc.estado = 'pendiente' THEN df.total ELSE 0 END), 0) AS cartera
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                WHERE fc.idCliente = :idCliente
+            `, { replacements: { idCliente }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT TRIM(CONCAT(COALESCE(e.PrimerNombre,''), ' ', COALESCE(e.PrimerApellido,''))) AS vendedor
+                FROM FACTURA_CLIENTES fc
+                LEFT JOIN EMPLEADOS e ON e.idEmpleado = fc.idEmpleado
+                WHERE fc.idCliente = :idCliente AND fc.idEmpleado IS NOT NULL
+                ORDER BY fc.createdAt DESC LIMIT 1
+            `, { replacements: { idCliente }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT COUNT(*) AS cnt FROM FACTURA_CLIENTES
+                WHERE idCliente = :idCliente AND createdAt >= :hace14
+            `, { replacements: { idCliente, hace14 }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT COUNT(*) AS cnt
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN (SELECT idFacturaCliente, SUM(total) AS totalFactura FROM DETALLES_FACTURA GROUP BY idFacturaCliente) df
+                    ON df.idFacturaCliente = fc.idFacturaCliente
+                WHERE fc.idCliente = :idCliente AND fc.createdAt >= :hace30 AND df.totalFactura >= 1000000
+            `, { replacements: { idCliente, hace30 }, type: db.QueryTypes.SELECT })
+        ]);
+
+        if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado' });
+
+        const st  = statsRows[0] || {};
+        const ubi = ubicacion[0] || {};
+        const esVip = parseInt(vip5[0]?.cnt) > 5 || parseInt(vip3[0]?.cnt) >= 3;
+        const puedeActivarCredito = await _tienePermisoCredito(req.usuario);
+
+        return res.json({
+            success: true,
+            cliente,
+            ubicacion: ubi,
+            stats: {
+                ultimaCompra:  st.ultimaCompra || null,
+                totalComprado: parseFloat(st.totalComprado) || 0,
+                cartera:       parseFloat(st.cartera)       || 0,
+                vendedor:      vendedorRows[0]?.vendedor?.trim() || null
+            },
+            esVip,
+            puedeActivarCredito
+        });
+    } catch (e) {
+        console.error('getClientePerfil:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── ARCHIVOS DEL CLIENTE ────────────────────────────────────────────────────
+const getClienteArchivos = async (req, res) => {
+    const { idCliente } = req.params;
+    try {
+        const docs = await Documentacion.findAll({
+            where: { idPropietario: idCliente, pertenece: 'cliente' },
+            order: [['createdAt', 'DESC']],
+            raw: true
+        });
+        const r2Base = process.env.R2_PUBLIC_URL;
+        const archivos = docs.map(d => ({
+            idDocumento:    d.idDocumento,
+            nombreDocumento: d.nombreDocumento,
+            formato:        d.formato,
+            url:            `${r2Base}/${d.keyName}`,
+            createdAt:      d.createdAt
+        }));
+        return res.json({ success: true, archivos });
+    } catch (e) {
+        console.error('getClienteArchivos:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── ELIMINAR DOCUMENTO DE CLIENTE ───────────────────────────────────────────
+const eliminarDocumentoCliente = async (req, res) => {
+    const { idDocumento } = req.params;
+    try {
+        const doc = await Documentacion.findOne({ where: { idDocumento, pertenece: 'cliente' } });
+        if (!doc) return res.status(404).json({ success: false, mensaje: 'Documento no encontrado' });
+        await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: doc.keyName })).catch(() => {});
+        await doc.destroy();
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('eliminarDocumentoCliente:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al eliminar el documento' });
+    }
+};
+
+// ─── HISTORIAL DE COMPRAS DEL CLIENTE ────────────────────────────────────────
+const getClienteHistorial = async (req, res) => {
+    const { idCliente } = req.params;
+    const { pagina = 1 } = req.query;
+    const limite = 6;
+    const offset = (parseInt(pagina) - 1) * limite;
+    try {
+        const [rows, countRows] = await Promise.all([
+            db.query(`
+                SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura,
+                       fc.fechaEmision, fc.estado,
+                       SUM(df.total) AS total,
+                       TRIM(CONCAT(COALESCE(e.PrimerNombre,''), ' ', COALESCE(e.PrimerApellido,''))) AS vendedor
+                FROM FACTURA_CLIENTES fc
+                INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                LEFT JOIN EMPLEADOS e ON e.idEmpleado = fc.idEmpleado
+                WHERE fc.idCliente = :idCliente
+                GROUP BY fc.idFacturaCliente, fc.prefijo, fc.numeroFactura,
+                         fc.fechaEmision, fc.estado, e.PrimerNombre, e.PrimerApellido
+                ORDER BY fc.createdAt DESC
+                LIMIT :limite OFFSET :offset
+            `, { replacements: { idCliente, limite, offset }, type: db.QueryTypes.SELECT }),
+
+            db.query(`SELECT COUNT(*) AS total FROM FACTURA_CLIENTES WHERE idCliente = :idCliente`,
+                { replacements: { idCliente }, type: db.QueryTypes.SELECT })
+        ]);
+
+        const total = parseInt(countRows[0]?.total) || 0;
+        return res.json({
+            success:        true,
+            facturas:       rows,
+            totalPaginas:   Math.ceil(total / limite),
+            paginaActual:   parseInt(pagina),
+            totalRegistros: total
+        });
+    } catch (e) {
+        console.error('getClienteHistorial:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── CHECK UNICIDAD DOCUMENTO CLIENTE ────────────────────────────────────────
+const checkDocumentoCliente = async (req, res) => {
+    const { numero } = req.params;
+    const { exclude } = req.query;
+    try {
+        const where = { numero_doc: numero.trim() };
+        if (exclude) where.idCliente = { [Op.ne]: exclude };
+        const cliente = await Clientes.findOne({ where });
+        return res.json({ exists: !!cliente });
+    } catch (e) {
+        console.error('checkDocumentoCliente:', e);
+        return res.status(500).json({ exists: false });
+    }
+};
+
+// ─── HELPER PERMISO CRÉDITO ──────────────────────────────────────────────────
+const _tienePermisoCredito = async (usuario) => {
+    if (!usuario) return false;
+
+    const [recurso, acciones] = await Promise.all([
+        PermisosRecursos.findOne({
+            where: { nombreRecurso: 'Autorización de créditos' },
+            raw: true
+        }),
+        PermisosAcciones.findAll({
+            where: { nombreAccion: { [Op.in]: ['CREATE', 'EDIT'] } },
+            attributes: ['idAccion'],
+            raw: true
+        })
+    ]);
+
+    if (!recurso || !acciones.length) return false;
+
+    const accionIds = acciones.map(a => a.idAccion);
+    const permiso = await UserPermisos.findOne({
+        where: {
+            idUsuario: usuario.idUsuario,
+            idRecurso: recurso.idRecurso,
+            idAccion:  { [Op.in]: accionIds }
+        }
+    });
+    return !!permiso;
+};
+
+// ─── ACTIVAR CRÉDITO DE CLIENTE ──────────────────────────────────────────────
+const activarCreditoCliente = async (req, res) => {
+    const { idCliente } = req.params;
+    try {
+        if (!(await _tienePermisoCredito(req.usuario)))
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para activar créditos' });
+
+        const cliente = await Clientes.findByPk(idCliente);
+        if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado' });
+
+        await cliente.update({ credito: true });
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('activarCreditoCliente:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── LISTA CLIENTES PAGINADA ──────────────────────────────────────────────────
+const filterClientesListJson = async (req, res) => {
+    try {
+        const { busqueda = '', pagina = 1 } = req.query;
+        const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+        const offset = (parseInt(pagina) - 1) * limite;
+        const term   = busqueda.trim();
+        const termLike = term ? `%${term}%` : null;
+
+        const whereClause = termLike
+            ? `AND (c.primer_nombre LIKE :term OR c.primer_apellido LIKE :term
+                    OR c.razon_social LIKE :term OR c.numero_doc LIKE :term)`
+            : '';
+
+        const [rows, countRows] = await Promise.all([
+            db.query(`
+                SELECT
+                    c.idCliente,
+                    c.primer_nombre, c.primer_apellido, c.razon_social,
+                    c.tipo_documento, c.numero_doc,
+                    uf.fechaEmision AS ultimaCompra,
+                    TRIM(CONCAT(COALESCE(e.PrimerNombre,''), ' ', COALESCE(e.PrimerApellido,''))) AS vendedor
+                FROM CLIENTES c
+                LEFT JOIN (
+                    SELECT fc.idCliente,
+                           ANY_VALUE(fc.fechaEmision) AS fechaEmision,
+                           ANY_VALUE(fc.idEmpleado)   AS idEmpleado
+                    FROM FACTURA_CLIENTES fc
+                    INNER JOIN (
+                        SELECT idCliente, MAX(createdAt) AS maxFecha
+                        FROM FACTURA_CLIENTES
+                        WHERE idCliente != '0'
+                        GROUP BY idCliente
+                    ) lf ON lf.idCliente = fc.idCliente AND fc.createdAt = lf.maxFecha
+                    GROUP BY fc.idCliente
+                ) uf ON uf.idCliente = c.idCliente
+                LEFT JOIN EMPLEADOS e ON e.idEmpleado = uf.idEmpleado
+                WHERE c.idCliente != '0' ${whereClause}
+                ORDER BY c.createdAt DESC
+                LIMIT :limite OFFSET :offset
+            `, { replacements: { term: termLike, limite, offset }, type: db.QueryTypes.SELECT }),
+
+            db.query(`
+                SELECT COUNT(*) AS total
+                FROM CLIENTES c
+                WHERE c.idCliente != '0' ${whereClause}
+            `, { replacements: { term: termLike }, type: db.QueryTypes.SELECT })
+        ]);
+
+        const total = parseInt(countRows[0]?.total) || 0;
+
+        return res.json({
+            success:        true,
+            clientes:       rows,
+            totalPaginas:   Math.ceil(total / limite),
+            paginaActual:   parseInt(pagina),
+            totalRegistros: total,
+        });
+    } catch (e) {
+        console.error('filterClientesListJson:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al cargar clientes' });
+    }
+};
 
 
 
@@ -2129,6 +3021,16 @@ const saveSupplier = async (req, res) => {
         }
 
         // 4. Procesar Documentos (Upload to R2)
+        const extsPermitidas = ['pdf','jpg','jpeg','png','webp','gif','xls','xlsx','doc','docx'];
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                const ext = file.originalname.split('.').pop().toLowerCase();
+                if (!extsPermitidas.includes(ext)) {
+                    await t.rollback();
+                    return res.status(400).json({ success: false, mensaje: `Archivo "${file.originalname}" no permitido. Solo: PDF, JPG, PNG, GIF, XLS, DOC.` });
+                }
+            }
+        }
         if (req.files && req.files.length > 0) {
             // Usamos un loop para subir secuencialmente y poder hacer track o map async
             // Preferimos map async para velocidad, pero hay que capturar r2Key
@@ -2182,7 +3084,7 @@ const saveSupplier = async (req, res) => {
         }
 
         await t.commit();
-        res.json({ success: true, mensaje: 'Provedor guardado con éxito' });
+        res.json({ success: true, mensaje: 'Provedor guardado con éxito', idProveedor: nuevoProvedor.idProveedor, razonSocial: nuevoProvedor.razonSocial });
 
     } catch (error) {
         await t.rollback();
@@ -3468,12 +4370,12 @@ export {
     storeEmployers,
     storeDocuments,
     saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, newProduct,
-    batchBuyOrder,
+    batchBuyOrder, saveBatchOrder,
     dosificar,
     dashboardSupplier,
     newSupplier,
     saveSupplier, checkNitSupplier,
-    dashboardCustomers,
+    dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
 
     dashboardOrders,
