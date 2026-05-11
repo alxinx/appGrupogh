@@ -124,8 +124,8 @@ export const listaCenefas = async (req, res) => {
 
 export const crearCenefa = async (req, res) => {
     try {
-        const { texto, link, colorFondo, colorTexto } = req.body;
-        await CenefasWeb.create({ texto, link, colorFondo: colorFondo || '#EC5FA3', colorTexto: colorTexto || '#FFFFFF' });
+        const { texto, link, colorFondo, colorTexto, animacion } = req.body;
+        await CenefasWeb.create({ texto, link, colorFondo: colorFondo || '#EC5FA3', colorTexto: colorTexto || '#FFFFFF', animacion: animacion || 'ninguna' });
         return res.json({ success: true, mensaje: 'Cenefa creada correctamente.' });
     } catch (e) {
         console.error('crearCenefa:', e);
@@ -138,8 +138,8 @@ export const actualizarCenefa = async (req, res) => {
         const { idCenefa } = req.params;
         const cenefa = await CenefasWeb.findByPk(idCenefa);
         if (!cenefa) return res.status(404).json({ success: false, mensaje: 'Cenefa no encontrada.' });
-        const { texto, link, colorFondo, colorTexto, activo } = req.body;
-        await cenefa.update({ texto, link, colorFondo, colorTexto, activo: activo === 'true' || activo === true });
+        const { texto, link, colorFondo, colorTexto, activo, animacion } = req.body;
+        await cenefa.update({ texto, link, colorFondo, colorTexto, activo: activo === 'true' || activo === true, animacion: animacion || 'ninguna' });
         return res.json({ success: true, mensaje: 'Cenefa actualizada correctamente.' });
     } catch (e) {
         console.error('actualizarCenefa:', e);

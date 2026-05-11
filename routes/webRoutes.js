@@ -1,14 +1,10 @@
-import express, { Router } from "express";
+import express from "express";
 const routes = express.Router();
-import {homePage, producto, listadoProductos} from '../controller/webControllers.js'
-
-
+import { homePage, productoDetalle, listadoProductos, catalogoCategoria } from '../controller/webControllers.js';
 
 routes.get("/", homePage);
-routes.get("/producto/vestido-aurora", producto);
+routes.get("/catalogo/:idCategoria", catalogoCategoria);
+routes.get("/producto/:slug", productoDetalle);
 routes.get("/colecciones", listadoProductos);
 
-//routes.get("/")
-
-
- export default routes
+export default routes;

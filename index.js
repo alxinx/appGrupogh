@@ -7,6 +7,7 @@ import adminRoutes from "./routes/adminRoutes.js"
 import storeRoutes from "./routes/storeRoutes.js"
 import webRouters from "./routes/webRoutes.js"
 import webAdminRoutes from "./routes/webAdminRoutes.js"
+import webPublicRoutes from "./routes/webPublicRoutes.js"
 import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
@@ -63,6 +64,7 @@ app.use((req, res, next) => {
 
 // 4. Rutas
 app.use("/pagina", webRouters)
+app.use("/api/web", webPublicRoutes)
 app.use("/", loginRoutes); // LOGIN
 app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes); // ADMINISTRADOR
 app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), webAdminRoutes); // CMS E-COMMERCE

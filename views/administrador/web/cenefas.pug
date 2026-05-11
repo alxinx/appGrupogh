@@ -35,14 +35,23 @@ block contenedor
                                     div(class="space-y-3")
                                         each c in cenefas
                                             div(class="rounded-xl border border-slate-100 overflow-hidden")
-                                                //- Preview de la cenefa
-                                                div(class="px-4 py-2.5 text-center text-sm font-semibold" style=`background:${c.colorFondo};color:${c.colorTexto}`)
-                                                    = c.texto
+                                                //- Preview animado de la cenefa
+                                                div(class="px-4 py-2.5 text-center text-sm font-semibold overflow-hidden" style=`background:${c.colorFondo};color:${c.colorTexto}`)
+                                                    if c.animacion === 'scroll-izq' || c.animacion === 'scroll-der'
+                                                        span(class=`cenefa-anim-${c.animacion}` style="display:inline-block;white-space:nowrap")
+                                                            = c.texto
+                                                    else
+                                                        span(class=`${c.animacion !== 'ninguna' ? `cenefa-anim-${c.animacion}` : ''}` style="display:inline-block")
+                                                            = c.texto
                                                 //- Controles
                                                 div(class="flex items-center justify-between px-4 py-3 bg-slate-50")
-                                                    div(class="flex items-center gap-2")
+                                                    div(class="flex items-center gap-2 flex-wrap")
                                                         span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.activo ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`)
                                                             = c.activo ? 'Activa' : 'Inactiva'
+                                                        if c.animacion && c.animacion !== 'ninguna'
+                                                            span(class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-600")
+                                                                i(class="fi fi-rr-play-alt")
+                                                                |  #{c.animacion}
                                                         if c.link
                                                             span(class="text-[10px] text-slate-400") → #{c.link}
                                                     div(class="flex items-center gap-2")
@@ -73,8 +82,9 @@ block contenedor
                                         input#cenefa-id(type="hidden")
 
                                         //- Preview en vivo
-                                        div#cenefa-preview(class="px-4 py-2.5 text-center text-sm font-semibold rounded-lg transition-colors" style="background:#EC5FA3;color:#FFFFFF")
-                                            | Vista previa de la cenefa
+                                        div#cenefa-preview-wrap(class="overflow-hidden rounded-lg h-10 flex items-center justify-center" style="background:#EC5FA3")
+                                            span#cenefa-preview(class="text-sm font-semibold text-center px-4" style="color:#FFFFFF;display:inline-block;white-space:nowrap")
+                                                | Vista previa de la cenefa
 
                                         div
                                             label.label Texto de la cenefa
@@ -87,6 +97,18 @@ block contenedor
                                             div
                                                 label.label Color texto
                                                     input.field-text#cenefa-colorTexto(type="color" name="colorTexto" value="#FFFFFF" class="h-10 cursor-pointer")
+
+                                        //- Animación
+                                        div
+                                            label.label Animación
+                                                select.field-text#cenefa-animacion(name="animacion")
+                                                    option(value="ninguna") Sin animación
+                                                    option(value="scroll-izq") ← Desplazar  (der → izq)
+                                                    option(value="scroll-der") → Desplazar  (izq → der)
+                                                    option(value="zoom-in") 🔍 Zoom In
+                                                    option(value="zoom-out") 🔎 Zoom Out
+                                                    option(value="parpadeo") ✦ Parpadeo
+                                                    option(value="rebote") ↕ Rebote
 
                                         div
                                             label.label Link (opcional)
@@ -102,33 +124,78 @@ block contenedor
                                                 i(class="fi fi-rr-disk")
                                                 | Guardar
 
+        style.
+            /* ── Keyframes de animaciones de cenefas ── */
+            @keyframes cenefa-scroll-izq {
+                0%   { transform: translateX(60%); }
+                100% { transform: translateX(-110%); }
+            }
+            @keyframes cenefa-scroll-der {
+                0%   { transform: translateX(-110%); }
+                100% { transform: translateX(60%); }
+            }
+            @keyframes cenefa-zoom-in {
+                0%, 100% { transform: scale(1); }
+                50%       { transform: scale(1.12); }
+            }
+            @keyframes cenefa-zoom-out {
+                0%, 100% { transform: scale(1.12); }
+                50%       { transform: scale(1); }
+            }
+            @keyframes cenefa-parpadeo {
+                0%, 100% { opacity: 1; }
+                50%       { opacity: 0.25; }
+            }
+            @keyframes cenefa-rebote {
+                0%, 100% { transform: translateY(0); }
+                30%       { transform: translateY(-6px); }
+                60%       { transform: translateY(-2px); }
+            }
+            .cenefa-anim-scroll-izq { animation: cenefa-scroll-izq 10s linear infinite; }
+            .cenefa-anim-scroll-der { animation: cenefa-scroll-der 10s linear infinite; }
+            .cenefa-anim-zoom-in    { animation: cenefa-zoom-in 2.5s ease-in-out infinite; }
+            .cenefa-anim-zoom-out   { animation: cenefa-zoom-out 2.5s ease-in-out infinite; }
+            .cenefa-anim-parpadeo   { animation: cenefa-parpadeo 1.8s ease-in-out infinite; }
+            .cenefa-anim-rebote     { animation: cenefa-rebote 1.2s ease-in-out infinite; }
+
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
             const modal = document.getElementById('modal-cenefa');
             const form  = document.getElementById('form-cenefa');
 
             function actualizarPreview() {
-                const prev = document.getElementById('cenefa-preview');
-                const texto = document.getElementById('cenefa-texto').value || 'Vista previa de la cenefa';
-                const bg = document.getElementById('cenefa-colorFondo').value;
-                const color = document.getElementById('cenefa-colorTexto').value;
+                const wrap    = document.getElementById('cenefa-preview-wrap');
+                const prev    = document.getElementById('cenefa-preview');
+                const texto   = document.getElementById('cenefa-texto').value || 'Vista previa de la cenefa';
+                const bg      = document.getElementById('cenefa-colorFondo').value;
+                const color   = document.getElementById('cenefa-colorTexto').value;
+                const anim    = document.getElementById('cenefa-animacion').value;
+
                 prev.textContent = texto;
-                prev.style.background = bg;
+                wrap.style.background = bg;
                 prev.style.color = color;
+
+                // Quitar clases de animacion anteriores
+                prev.className = prev.className.replace(/cenefa-anim-[\w-]+/g, '').trim();
+
+                if (anim !== 'ninguna') {
+                    prev.classList.add('cenefa-anim-' + anim);
+                }
             }
 
-            ['cenefa-texto', 'cenefa-colorFondo', 'cenefa-colorTexto'].forEach(id => {
+            ['cenefa-texto', 'cenefa-colorFondo', 'cenefa-colorTexto', 'cenefa-animacion'].forEach(id => {
                 document.getElementById(id).addEventListener('input', actualizarPreview);
             });
 
             function abrirModal(datos) {
                 document.getElementById('modal-cenefa-title').textContent = datos ? 'Editar cenefa' : 'Nueva cenefa';
-                document.getElementById('cenefa-id').value = datos?.idCenefa || '';
-                document.getElementById('cenefa-texto').value = datos?.texto || '';
+                document.getElementById('cenefa-id').value        = datos?.idCenefa  || '';
+                document.getElementById('cenefa-texto').value     = datos?.texto     || '';
                 document.getElementById('cenefa-colorFondo').value = datos?.colorFondo || '#EC5FA3';
                 document.getElementById('cenefa-colorTexto').value = datos?.colorTexto || '#FFFFFF';
-                document.getElementById('cenefa-link').value = datos?.link || '';
-                document.getElementById('cenefa-activo').checked = datos ? datos.activo : true;
+                document.getElementById('cenefa-link').value      = datos?.link      || '';
+                document.getElementById('cenefa-activo').checked  = datos ? datos.activo : true;
+                document.getElementById('cenefa-animacion').value = datos?.animacion || 'ninguna';
                 actualizarPreview();
                 modal.classList.remove('hidden');
             }
@@ -157,15 +224,16 @@ block contenedor
                 e.preventDefault();
                 const btn = document.getElementById('btn-guardar-cenefa');
                 btn.disabled = true;
-                const id = document.getElementById('cenefa-id').value;
+                const id  = document.getElementById('cenefa-id').value;
                 const url = id ? `/admin/web/cenefas/editar/${id}` : '/admin/web/cenefas/crear';
                 const body = {
-                    _csrf: document.querySelector('[name=_csrf]').value,
-                    texto: document.getElementById('cenefa-texto').value,
+                    _csrf:      document.querySelector('[name=_csrf]').value,
+                    texto:      document.getElementById('cenefa-texto').value,
                     colorFondo: document.getElementById('cenefa-colorFondo').value,
                     colorTexto: document.getElementById('cenefa-colorTexto').value,
-                    link: document.getElementById('cenefa-link').value,
-                    activo: document.getElementById('cenefa-activo').checked ? 'true' : 'false'
+                    link:       document.getElementById('cenefa-link').value,
+                    animacion:  document.getElementById('cenefa-animacion').value,
+                    activo:     document.getElementById('cenefa-activo').checked ? 'true' : 'false'
                 };
                 try {
                     const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

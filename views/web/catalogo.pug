@@ -1,0 +1,251 @@
+doctype html
+html(lang="es")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    title #{pagina} - Grupo GH
+
+    link(rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap")
+    link(rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap")
+    script(src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries")
+    script.
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#db5a7c",
+              secondary: "#fdf2f4",
+              "background-light": "#fffafb",
+              "background-dark": "#121212",
+            },
+            fontFamily: {
+              display: ["Playfair Display", "serif"],
+              sans: ["Inter", "sans-serif"],
+            },
+            borderRadius: { DEFAULT: "4px", lg: "8px" },
+          },
+        },
+      };
+
+    style(type="text/tailwindcss").
+      body { font-family: 'Inter', sans-serif; }
+      h1, h2, h3, .font-display { font-family: 'Playfair Display', serif; }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        font-size: 20px;
+      }
+
+  body(class="bg-background-light dark:bg-background-dark text-gray-800 dark:text-gray-200 transition-colors duration-300")
+
+    nav(class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800")
+      div(class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8")
+        div(class="flex justify-between items-center h-20")
+
+          div(id="nav-categorias" class="hidden md:flex space-x-8")
+            span(class="text-sm text-gray-400") Cargando...
+
+          div(class="flex-shrink-0 flex items-center")
+            a(href="/pagina/" class="text-2xl font-display font-bold tracking-tighter italic") Grupo GH
+
+          div(class="flex items-center space-x-5")
+            button(class="p-1 hover:text-primary transition-colors")
+              span.material-symbols-outlined search
+            button(class="p-1 hover:text-primary transition-colors")
+              span.material-symbols-outlined favorite
+            button(class="p-1 hover:text-primary transition-colors")
+              span.material-symbols-outlined shopping_bag
+
+    main(class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8")
+
+      div(class="flex flex-col md:flex-row md:items-end justify-between mb-8")
+        div
+          nav(aria-label="Breadcrumb" class="flex mb-4 text-xs uppercase tracking-widest text-gray-500")
+            ol(class="flex items-center space-x-2")
+              li
+                a(class="hover:text-primary transition-colors" href="/pagina/") Inicio
+              li(class="flex items-center")
+                span.material-symbols-outlined(class="text-xs mx-1") chevron_right
+                span(class="text-primary font-medium") #{pagina}
+
+          h1(class="text-4xl font-display italic text-gray-900 dark:text-white") #{pagina}
+          p(id="info-count" class="text-sm text-gray-500 mt-2 font-light") Cargando productos...
+
+        div(class="mt-6 md:mt-0 flex items-center space-x-4")
+          span(class="text-xs uppercase tracking-widest text-gray-400") Ordenar por:
+          div(class="relative inline-block text-left")
+            select(id="selector-orden" class="appearance-none bg-transparent border-none text-sm font-medium pr-8 focus:ring-0 cursor-pointer")
+              option(value="nombre_asc") Nombre A-Z
+              option(value="nombre_desc") Nombre Z-A
+              option(value="precio_asc") Precio: Menor a Mayor
+              option(value="precio_desc") Precio: Mayor a Menor
+              option(value="nuevo") Novedades
+            span.material-symbols-outlined(class="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400") expand_more
+
+      div(class="flex-grow")
+        div(id="productos-grid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-8 gap-y-12")
+          div(class="col-span-3 text-center py-16")
+            p(class="text-gray-400") Cargando productos...
+
+        div(class="mt-20 flex flex-col items-center")
+          p(id="info-progreso" class="text-xs text-gray-500 mb-6 uppercase tracking-widest hidden")
+          div(class="w-64 h-px bg-gray-100 relative mb-12 hidden" id="barra-progreso-wrap")
+            div(id="progreso-bar" class="absolute inset-y-0 left-0 bg-primary" style="width:0%")
+          button(
+            id="btn-mas"
+            class="hidden px-12 py-4 border border-gray-900 dark:border-white text-xs font-bold uppercase tracking-[0.3em] hover:bg-gray-900 hover:text-white dark:hover:bg-white dark:hover:text-gray-900 transition-all duration-300"
+          ) Cargar más productos
+
+    footer(class="bg-gray-50 dark:bg-gray-900/50 mt-20 py-12 border-t border-gray-100 dark:border-gray-800")
+      div(class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8")
+        div(class="grid grid-cols-2 md:grid-cols-4 gap-8")
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") local_shipping
+            h4(class="text-xs font-semibold uppercase tracking-widest") Envío rápido
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") sync_alt
+            h4(class="text-xs font-semibold uppercase tracking-widest") Cambios fáciles
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") lock
+            h4(class="text-xs font-semibold uppercase tracking-widest") Pago Seguro
+          div(class="flex flex-col items-center text-center space-y-3")
+            span.material-symbols-outlined(class="text-3xl text-primary") auto_awesome
+            h4(class="text-xs font-semibold uppercase tracking-widest") Diseño Exclusivo
+        div(class="mt-12 pt-8 border-t border-gray-200 dark:border-gray-800 text-center")
+          p(class="text-xs text-gray-400 uppercase tracking-widest") © 2024 Grupo GH. Todos los derechos reservados.
+
+    button(
+      class="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center shadow-xl z-[100] hover:scale-110 transition-transform"
+      onclick="document.documentElement.classList.toggle('dark')"
+    )
+      span.material-symbols-outlined(class="block dark:hidden") dark_mode
+      span.material-symbols-outlined(class="hidden dark:block") light_mode
+
+    script.
+      const CATALOGO = !{JSON.stringify(categoria)};
+      let paginaActual = 1;
+      let totalGlobal = 0;
+      let paginasTotal = 0;
+      let cargando = false;
+
+      function formatPrecio(n) {
+        return '$' + Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+      }
+
+      function tarjetaHTML(p) {
+        const imgHtml = p.imagen
+          ? `<img alt="${p.nombreProducto}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" src="${p.imagen}">`
+          : `<div class="w-full h-full flex items-center justify-center"><span class="text-gray-400 text-sm">Sin imagen</span></div>`;
+        return `
+          <div class="group relative flex flex-col">
+            <a href="/pagina/producto/${p.slug}" class="relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 mb-4 block">
+              ${imgHtml}
+            </a>
+            <h3 class="font-display italic text-xl text-gray-900 dark:text-white mb-1">
+              <a href="/pagina/producto/${p.slug}">${p.nombreProducto}</a>
+            </h3>
+            <p class="text-primary font-medium tracking-tight">${formatPrecio(p.precio)}</p>
+          </div>`;
+      }
+
+      async function cargarCategorias() {
+        try {
+          const res = await fetch('/api/web/categorias');
+          const data = await res.json();
+          if (!data.success) return;
+          const nav = document.getElementById('nav-categorias');
+          if (!nav) return;
+          nav.innerHTML = data.categorias.map(cat => {
+            const activa = cat.nombreCategoria === CATALOGO.nombreCategoria;
+            return `<a class="text-sm uppercase tracking-widest hover:text-primary transition-colors${activa ? ' border-b-2 border-primary text-primary' : ''}"
+                       href="/pagina/catalogo/${cat.idCategoria}">${cat.nombreCategoria}</a>`;
+          }).join('');
+        } catch(e) {
+          console.error('Nav categorias:', e);
+        }
+      }
+
+      async function cargarProductos(pagina) {
+        if (cargando) return;
+        cargando = true;
+        const grid = document.getElementById('productos-grid');
+        const orden = document.getElementById('selector-orden')?.value || 'nombre_asc';
+
+        if (pagina === 1) {
+          grid.innerHTML = '<div class="col-span-3 text-center py-16"><p class="text-gray-400">Cargando productos...</p></div>';
+        }
+
+        try {
+          const params = new URLSearchParams({
+            categoria: CATALOGO.idCategoria,
+            pagina,
+            limite: 12,
+            orden
+          });
+          const res = await fetch(`/api/web/productos?${params}`);
+          const data = await res.json();
+
+          if (!data.success || data.productos.length === 0) {
+            if (pagina === 1) {
+              grid.innerHTML = '<div class="col-span-3 text-center py-16"><p class="text-gray-400 text-sm">No hay productos disponibles en esta categoría.</p></div>';
+            }
+            document.getElementById('btn-mas')?.classList.add('hidden');
+            document.getElementById('info-count').textContent = '0 productos';
+            return;
+          }
+
+          const tarjetas = data.productos.map(tarjetaHTML).join('');
+          if (pagina === 1) {
+            grid.innerHTML = tarjetas;
+          } else {
+            grid.insertAdjacentHTML('beforeend', tarjetas);
+          }
+
+          paginaActual = data.paginaActual;
+          totalGlobal = data.total;
+          paginasTotal = data.paginas;
+
+          const mostrados = grid.querySelectorAll('.group').length;
+          document.getElementById('info-count').textContent =
+            `Viendo ${mostrados} de ${totalGlobal} productos`;
+
+          const btnMas = document.getElementById('btn-mas');
+          const barraWrap = document.getElementById('barra-progreso-wrap');
+          const progresoBar = document.getElementById('progreso-bar');
+          const infoProgreso = document.getElementById('info-progreso');
+
+          if (paginaActual >= paginasTotal) {
+            btnMas?.classList.add('hidden');
+          } else {
+            btnMas?.classList.remove('hidden');
+          }
+
+          if (paginasTotal > 1) {
+            barraWrap?.classList.remove('hidden');
+            infoProgreso?.classList.remove('hidden');
+            if (progresoBar) progresoBar.style.width = `${Math.round((paginaActual / paginasTotal) * 100)}%`;
+          }
+
+        } catch(e) {
+          console.error('Cargar productos:', e);
+          if (pagina === 1) {
+            grid.innerHTML = '<div class="col-span-3 text-center py-16 text-red-400"><p>Error al cargar productos.</p></div>';
+          }
+        } finally {
+          cargando = false;
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        cargarCategorias();
+        cargarProductos(1);
+
+        document.getElementById('btn-mas')?.addEventListener('click', () => {
+          cargarProductos(paginaActual + 1);
+        });
+
+        document.getElementById('selector-orden')?.addEventListener('change', () => {
+          paginaActual = 1;
+          cargarProductos(1);
+        });
+      });

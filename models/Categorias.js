@@ -18,6 +18,11 @@ const Categorias = db.define('CATEGORIAS', {
         allowNull: false,
         defaultValue : 'CATEGORIA'
     },
+    imagen : {
+        type : DataTypes.STRING,
+        allowNull : true
+    },
+    
     idPadre : {
         type: DataTypes.INTEGER,
         allowNull : true,
