@@ -562,7 +562,11 @@ const trasladarDesdeStoreAPI = async (req, res) => {
             estado:             'EN_TRANSITO'
         }, { transaction: t });
 
-        const recordsPacks = await Pack.findAll({ where: { idPack: packs }, transaction: t });
+        const recordsPacks = await Pack.findAll({
+            where: { idPack: packs },
+            include: [{ model: DetallesPack, as: 'DETALLES_PACKs' }],
+            transaction: t
+        });
         for (const pack of recordsPacks) {
             await DetalleTraslados.create({
                 idTraslado: traslado.idTraslado,
@@ -575,6 +579,27 @@ const trasladarDesdeStoreAPI = async (req, res) => {
                 { cantidadExistente: 0, estadoInterno: 'SUELTO' },
                 { where: { idPack: pack.idPack, idPuntoVenta: idPdv }, transaction: t }
             );
+            // Reducir el stock SUELTO de cada producto contenido en el pack en el origen
+            for (const dp of (pack.DETALLES_PACKs || [])) {
+                if (!dp.idProducto) continue;
+                const sueltoRows = await Stock.findAll({
+                    where: { idProducto: dp.idProducto, idPuntoVenta: idPdv, cantidadExistente: { [Op.gt]: 0 } },
+                    order: [['createdAt', 'ASC']],
+                    transaction: t
+                });
+                let restante = parseInt(dp.cantidad);
+                for (const row of sueltoRows) {
+                    if (restante <= 0) break;
+                    const disponible = parseFloat(row.cantidadExistente);
+                    if (disponible <= restante) {
+                        await row.update({ cantidadExistente: 0 }, { transaction: t });
+                        restante -= disponible;
+                    } else {
+                        await row.update({ cantidadExistente: disponible - restante }, { transaction: t });
+                        restante = 0;
+                    }
+                }
+            }
         }
 
         await t.commit();

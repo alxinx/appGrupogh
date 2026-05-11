@@ -1,0 +1,22 @@
+if facturasVencidas > 0
+    div(class="tarjetaBase border-2 border-red-400 bg-red-50 relative overflow-hidden")
+        div(class="absolute inset-0 opacity-5 pointer-events-none" style="background: repeating-linear-gradient(45deg,#ef4444,#ef4444 2px,transparent 2px,transparent 10px)")
+        p(class="relative text-sm font-semibold text-red-600 mb-1 flex items-center gap-2")
+            i.fi-rr-exclamation.text-red-500.animate-pulse
+            | Facturas vencidas
+        div(class="relative flex justify-center items-center mt-1")
+            h3(class="text-5xl font-bold text-red-600 text-center")= facturasVencidas
+        div(class="relative mt-3 flex items-center gap-2 text-xs font-bold text-red-100 bg-red-500 px-3 py-1.5 rounded-lg")
+            i.fi-rr-alarm-exclamation
+            span ¡Requieren atención inmediata!
+else
+    div(class="tarjetaBase border border-green-200 bg-green-50")
+        p(class="text-sm font-semibold text-green-600 mb-1 flex items-center gap-2")
+            i.fi-rr-check-circle.text-green-500
+            | Facturas vencidas
+        div(class="flex items-center gap-3 mt-3")
+            span(class="text-4xl font-bold text-green-500") ✓
+            span(class="text-sm text-green-600 font-medium") Sin facturas vencidas
+        div(class="mt-3 flex items-center gap-2 text-xs font-medium text-green-700 bg-green-100 p-2 rounded-lg")
+            i.fi-rr-shield-check
+            span Todo al día con proveedores

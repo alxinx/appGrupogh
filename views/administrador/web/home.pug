@@ -1,0 +1,106 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- ── HEADER ─────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
+                                div(class="flex items-center gap-4")
+                                    div(class="w-12 h-12 rounded-full bg-gradient-to-br from-pink-200 to-pink-400 flex items-center justify-center flex-shrink-0 shadow-inner shadow-pink-700")
+                                        i(class="fi fi-rr-shop text-white text-xl")
+                                    div
+                                        h1(class="font-bold text-slate-800 text-lg leading-tight") Tienda Web
+                                        p(class="text-xs text-slate-400") Gestión del e-commerce y contenido visual
+
+                            //- ── STATS ───────────────────────────────────────────────────────────────
+                            div(class="col-span-12 grid grid-cols-2 md:grid-cols-4 gap-4")
+
+                                a(href="/admin/web/banners" class="tarjetaBase border border-slate-100 hover:border-pink-200 transition-colors group")
+                                    p(class="text-sm font-semibold text-slate-500 mb-1 flex items-center gap-2")
+                                        i(class="fi fi-rr-picture text-pink-400")
+                                        | Banners
+                                    div(class="flex justify-center items-center mt-1")
+                                        h3(class="text-5xl font-bold text-slate-700 text-center group-hover:text-pink-500 transition-colors")= banners
+                                    div(class="mt-3 flex items-center gap-2 text-xs font-medium text-slate-400 bg-slate-50 p-2 rounded-lg")
+                                        i(class="fi fi-rr-arrow-right")
+                                        span Gestionar banners hero
+
+                                a(href="/admin/web/cenefas" class="tarjetaBase border border-slate-100 hover:border-pink-200 transition-colors group")
+                                    p(class="text-sm font-semibold text-slate-500 mb-1 flex items-center gap-2")
+                                        i(class="fi fi-rr-rectangle-horizontal text-pink-400")
+                                        | Cenefas activas
+                                    div(class="flex justify-center items-center mt-1")
+                                        h3(class="text-5xl font-bold text-slate-700 text-center group-hover:text-pink-500 transition-colors")= cenefas
+                                    div(class="mt-3 flex items-center gap-2 text-xs font-medium text-slate-400 bg-slate-50 p-2 rounded-lg")
+                                        i(class="fi fi-rr-arrow-right")
+                                        span Gestionar barras de anuncio
+
+                                a(href="/admin/web/secciones" class="tarjetaBase border border-slate-100 hover:border-pink-200 transition-colors group")
+                                    p(class="text-sm font-semibold text-slate-500 mb-1 flex items-center gap-2")
+                                        i(class="fi fi-rr-apps text-pink-400")
+                                        | Secciones activas
+                                    div(class="flex justify-center items-center mt-1")
+                                        h3(class="text-5xl font-bold text-slate-700 text-center group-hover:text-pink-500 transition-colors")= secciones
+                                    div(class="mt-3 flex items-center gap-2 text-xs font-medium text-slate-400 bg-slate-50 p-2 rounded-lg")
+                                        i(class="fi fi-rr-arrow-right")
+                                        span Secciones destacadas
+
+                                a(href="/admin/web/popup" class="tarjetaBase border border-slate-100 hover:border-pink-200 transition-colors group")
+                                    p(class="text-sm font-semibold text-slate-500 mb-1 flex items-center gap-2")
+                                        i(class="fi fi-rr-browser text-pink-400")
+                                        | Pop-up
+                                    div(class="flex justify-center items-center mt-1 py-2")
+                                        if popup
+                                            span(class="text-sm font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full") Activo
+                                        else
+                                            span(class="text-sm font-bold text-slate-400 bg-slate-50 px-3 py-1 rounded-full") Inactivo
+                                    div(class="mt-3 flex items-center gap-2 text-xs font-medium text-slate-400 bg-slate-50 p-2 rounded-lg")
+                                        i(class="fi fi-rr-arrow-right")
+                                        span Configurar modal de bienvenida
+
+                            //- ── ACCESOS RÁPIDOS ─────────────────────────────────────────────────────
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4")
+
+                                //- Categorías
+                                div(class="cards cardsWhite p-5")
+                                    div(class="flex items-center justify-between mb-4")
+                                        div(class="flex items-center gap-2")
+                                            i(class="fi fi-rr-tags text-pink-400")
+                                            h2(class="font-bold text-slate-700 text-sm") Categorías en web
+                                        a(href="/admin/web/categorias" class="btn btn-primary text-xs py-1 px-3")
+                                            i(class="fi fi-rr-edit")
+                                            | Gestionar
+                                    div(class="flex items-center gap-3")
+                                        div(class="flex flex-col items-center justify-center w-20 h-20 rounded-2xl bg-pink-50 border border-pink-100")
+                                            span(class="text-3xl font-black text-pink-500")= categoriasActivas
+                                            span(class="text-[10px] text-pink-400 font-semibold uppercase tracking-wide") activas
+                                        p(class="text-xs text-slate-500 leading-relaxed") Los productos de estas categorías aparecen automáticamente en el catálogo web cuando tienen stock disponible.
+
+                                //- Navegación rápida
+                                div(class="cards cardsWhite p-5")
+                                    div(class="flex items-center gap-2 mb-4")
+                                        i(class="fi fi-rr-link text-pink-400")
+                                        h2(class="font-bold text-slate-700 text-sm") Accesos rápidos
+                                    div(class="grid grid-cols-2 gap-2")
+                                        a(href="/admin/web/banners" class="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-pink-50 transition-colors text-xs font-semibold text-slate-600 hover:text-pink-600")
+                                            i(class="fi fi-rr-picture")
+                                            | Banners
+                                        a(href="/admin/web/cenefas" class="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-pink-50 transition-colors text-xs font-semibold text-slate-600 hover:text-pink-600")
+                                            i(class="fi fi-rr-rectangle-horizontal")
+                                            | Cenefas
+                                        a(href="/admin/web/secciones" class="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-pink-50 transition-colors text-xs font-semibold text-slate-600 hover:text-pink-600")
+                                            i(class="fi fi-rr-apps")
+                                            | Secciones
+                                        a(href="/admin/web/popup" class="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-pink-50 transition-colors text-xs font-semibold text-slate-600 hover:text-pink-600")
+                                            i(class="fi fi-rr-browser")
+                                            | Pop-up
+                                        a(href="/admin/web/categorias" class="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-pink-50 transition-colors text-xs font-semibold text-slate-600 hover:text-pink-600")
+                                            i(class="fi fi-rr-tags")
+                                            | Categorías

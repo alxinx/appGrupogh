@@ -38,6 +38,10 @@ import FacturaClientes from './FacturaClientes.js'
 import DetallesFactura from './DetallesFactura.js'
 import DetallesImpuestosFacturaCliente from './DetallesImpuestosFacturaCliente.js'
 import DetallesPagosFactura from './DetallesPagosFactura.js'
+import BannersWeb from './BannersWeb.js'
+import CenefasWeb from './CenefasWeb.js'
+import SeccionesWeb from './SeccionesWeb.js'
+import PopupWeb from './PopupWeb.js'
 //ASOCIACIONES
 
 
@@ -188,6 +192,10 @@ UserPermisos.belongsTo(PermisosRecursos, { foreignKey: 'idRecurso', as: 'recurso
 PermisosAcciones.hasMany(UserPermisos, { foreignKey: 'idAccion', as: 'permisos' });
 UserPermisos.belongsTo(PermisosAcciones, { foreignKey: 'idAccion', as: 'accion' });
 
+// ─── Provedores ↔ FacturaProveedores ─────────────────────────────────────────
+Provedores.hasMany(FacturaProveedores, { foreignKey: 'idProveedor', as: 'facturas' });
+FacturaProveedores.belongsTo(Provedores, { foreignKey: 'idProveedor', as: 'proveedor' });
+
 // ─── Detalles Factura Proveedores ─────────────────────────────────────────────
 FacturaProveedores.hasMany(DetallesFacturaProvedores, { foreignKey: 'idFacturaPro', as: 'detalles' });
 DetallesFacturaProvedores.belongsTo(FacturaProveedores, { foreignKey: 'idFacturaPro', as: 'factura' });
@@ -206,6 +214,10 @@ Egresos.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'puntoDeVen
 Empleados.hasMany(Egresos, { foreignKey: 'idEmpleado', as: 'egresos' });
 Egresos.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 
+// ─── Web e-commerce ──────────────────────────────────────────────────────────
+SeccionesWeb.belongsTo(Categorias, { foreignKey: 'idCategoria', as: 'categoria' });
+Categorias.hasMany(SeccionesWeb, { foreignKey: 'idCategoria', as: 'seccionesWeb' });
+
 export {
   Usuarios,
   Departamentos,
@@ -223,4 +235,5 @@ export {
   Egresos,
   PermisosRecursos, PermisosAcciones, UserPermisos,
   DetallesFacturaProvedores, CuentasPorPagar,
+  BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb,
 }

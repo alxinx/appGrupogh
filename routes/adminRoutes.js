@@ -3,7 +3,7 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
+checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
@@ -13,7 +13,8 @@ getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
 getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d,
-getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente } from "../controller/adminControllers.js"
+getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
+getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -71,6 +72,12 @@ routes.get('/api/bankentities/:idEntidad/transacciones', getTransaccionesEntidad
 //PROVEDORES
 routes.get('/provedores/', dashboardSupplier);
 routes.get('/provedores/new/', newSupplier);
+routes.get('/provedores/ver/:idProveedor', csrfProtection, verProveedor);
+routes.post('/provedores/editar/:idProveedor', csrfProtection, actualizarProveedor);
+routes.get('/api/provedores/facturas-pendientes', getFacturasPendientesProveedores);
+routes.get('/api/provedores/factura/:idFacturaPro/detalle', getDetalleFacturaPendiente);
+routes.post('/api/provedores/factura/:idFacturaPro/abonar', registrarAbonoProveedor);
+routes.get('/api/provedores/abono/:idCuentaPorPagar/tirilla', getTirillaAbonoProveedor);
 
 
 //EMPLEADOS

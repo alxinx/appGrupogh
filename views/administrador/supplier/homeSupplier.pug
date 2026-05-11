@@ -19,10 +19,10 @@ block contenedor
                             //STATS
                             div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
                                 //- Card 1
-                                include ./stats/supplierTotal.pug 
-                                include ./stats/AccountsPayable.pug 
-                                //- include ./stats/saleOfMount.pug 
-                                //- include ./stats/avarangeTicket.pug    
+                                include ./stats/supplierTotal.pug
+                                include ./stats/AccountsPayable.pug
+                                include ./stats/facturasPorVencer.pug
+                                include ./stats/facturasVencidas.pug
 
                             div(class="col-span-12 grid grid-cols-12 items-start")    
                                 //Columna 1
@@ -36,8 +36,9 @@ block contenedor
 
 
  
-                script(src="/js/dropdownBtn.js") 
-                script(src="/js/paginador.js") 
+                script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+                script(src="/js/dropdownBtn.js")
+                script(src="/js/paginador.js")
                 script(src="/js/helpers.js")
                 script(src="/js/supplierList.js")  
 

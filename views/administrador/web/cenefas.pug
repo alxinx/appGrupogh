@@ -1,0 +1,179 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- ── HEADER ─────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
+                                div(class="flex items-center gap-4")
+                                    a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                        i(class="fi fi-rr-arrow-left text-slate-600")
+                                    div(class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-200 to-pink-400 flex items-center justify-center flex-shrink-0")
+                                        i(class="fi fi-rr-rectangle-horizontal text-white")
+                                    div
+                                        h1(class="font-bold text-slate-800 text-lg leading-tight") Cenefas / Barras de anuncio
+                                        p(class="text-xs text-slate-400") Barras de texto en la parte superior de la tienda web
+                                button#btn-nueva-cenefa(type="button" class="btn btn-primary text-xs py-1.5 px-4")
+                                    i(class="fi fi-rr-add")
+                                    | Nueva cenefa
+
+                            //- ── LISTA ───────────────────────────────────────────────────────────────
+                            div(class="col-span-12 cards cardsWhite p-6")
+                                if cenefas.length === 0
+                                    div(class="flex flex-col items-center justify-center py-16 text-center")
+                                        i(class="fi fi-rr-rectangle-horizontal text-5xl text-slate-200 mb-3")
+                                        p(class="text-sm font-semibold text-slate-400") Sin cenefas registradas
+
+                                else
+                                    div(class="space-y-3")
+                                        each c in cenefas
+                                            div(class="rounded-xl border border-slate-100 overflow-hidden")
+                                                //- Preview de la cenefa
+                                                div(class="px-4 py-2.5 text-center text-sm font-semibold" style=`background:${c.colorFondo};color:${c.colorTexto}`)
+                                                    = c.texto
+                                                //- Controles
+                                                div(class="flex items-center justify-between px-4 py-3 bg-slate-50")
+                                                    div(class="flex items-center gap-2")
+                                                        span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.activo ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`)
+                                                            = c.activo ? 'Activa' : 'Inactiva'
+                                                        if c.link
+                                                            span(class="text-[10px] text-slate-400") → #{c.link}
+                                                    div(class="flex items-center gap-2")
+                                                        button(
+                                                            type="button"
+                                                            class="btn-editar-cenefa text-xs py-1 px-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50 transition-colors font-semibold"
+                                                            data-cenefa=JSON.stringify(c)
+                                                        )
+                                                            i(class="fi fi-rr-edit")
+                                                            |  Editar
+                                                        button(
+                                                            type="button"
+                                                            class="btn-eliminar-cenefa text-xs py-1 px-3 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
+                                                            data-id=c.idCenefa
+                                                        )
+                                                            i(class="fi fi-rr-trash")
+
+                            //- ── MODAL ───────────────────────────────────────────────────────────────
+                            div#modal-cenefa(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4")
+                                div(class="bg-white rounded-2xl w-full max-w-md shadow-2xl")
+                                    div(class="flex items-center justify-between p-5 border-b border-slate-100")
+                                        h2#modal-cenefa-title(class="font-bold text-slate-800") Nueva cenefa
+                                        button#btn-cerrar-modal-cenefa(type="button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100")
+                                            i(class="fi fi-rr-cross text-slate-500 text-sm")
+
+                                    form#form-cenefa(class="p-5 space-y-4")
+                                        input(type="hidden" name="_csrf" value=csrfToken)
+                                        input#cenefa-id(type="hidden")
+
+                                        //- Preview en vivo
+                                        div#cenefa-preview(class="px-4 py-2.5 text-center text-sm font-semibold rounded-lg transition-colors" style="background:#EC5FA3;color:#FFFFFF")
+                                            | Vista previa de la cenefa
+
+                                        div
+                                            label.label Texto de la cenefa
+                                                input.field-text#cenefa-texto(type="text" name="texto" placeholder="¡Envío gratis por compras superiores a $100.000!")
+
+                                        div(class="grid grid-cols-2 gap-4")
+                                            div
+                                                label.label Color fondo
+                                                    input.field-text#cenefa-colorFondo(type="color" name="colorFondo" value="#EC5FA3" class="h-10 cursor-pointer")
+                                            div
+                                                label.label Color texto
+                                                    input.field-text#cenefa-colorTexto(type="color" name="colorTexto" value="#FFFFFF" class="h-10 cursor-pointer")
+
+                                        div
+                                            label.label Link (opcional)
+                                                input.field-text#cenefa-link(type="text" name="link" placeholder="/catalogo")
+
+                                        div(class="flex items-center gap-2")
+                                            input(type="checkbox" name="activo" id="cenefa-activo" value="true" class="checkbox" checked)
+                                            label(for="cenefa-activo" class="text-sm font-semibold text-slate-700 cursor-pointer") Activa
+
+                                        div(class="flex justify-end gap-3 pt-2 border-t border-slate-100")
+                                            button(type="button" id="btn-cancelar-cenefa" class="btn text-sm py-2 px-4 bg-slate-100 text-slate-600 hover:bg-slate-200") Cancelar
+                                            button#btn-guardar-cenefa(type="submit" class="btn btn-primary text-sm py-2 px-4")
+                                                i(class="fi fi-rr-disk")
+                                                | Guardar
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script.
+            const modal = document.getElementById('modal-cenefa');
+            const form  = document.getElementById('form-cenefa');
+
+            function actualizarPreview() {
+                const prev = document.getElementById('cenefa-preview');
+                const texto = document.getElementById('cenefa-texto').value || 'Vista previa de la cenefa';
+                const bg = document.getElementById('cenefa-colorFondo').value;
+                const color = document.getElementById('cenefa-colorTexto').value;
+                prev.textContent = texto;
+                prev.style.background = bg;
+                prev.style.color = color;
+            }
+
+            ['cenefa-texto', 'cenefa-colorFondo', 'cenefa-colorTexto'].forEach(id => {
+                document.getElementById(id).addEventListener('input', actualizarPreview);
+            });
+
+            function abrirModal(datos) {
+                document.getElementById('modal-cenefa-title').textContent = datos ? 'Editar cenefa' : 'Nueva cenefa';
+                document.getElementById('cenefa-id').value = datos?.idCenefa || '';
+                document.getElementById('cenefa-texto').value = datos?.texto || '';
+                document.getElementById('cenefa-colorFondo').value = datos?.colorFondo || '#EC5FA3';
+                document.getElementById('cenefa-colorTexto').value = datos?.colorTexto || '#FFFFFF';
+                document.getElementById('cenefa-link').value = datos?.link || '';
+                document.getElementById('cenefa-activo').checked = datos ? datos.activo : true;
+                actualizarPreview();
+                modal.classList.remove('hidden');
+            }
+
+            document.getElementById('btn-nueva-cenefa').addEventListener('click', () => abrirModal(null));
+            document.getElementById('btn-cerrar-modal-cenefa').addEventListener('click', () => modal.classList.add('hidden'));
+            document.getElementById('btn-cancelar-cenefa').addEventListener('click', () => modal.classList.add('hidden'));
+
+            document.querySelectorAll('.btn-editar-cenefa').forEach(btn => {
+                btn.addEventListener('click', () => abrirModal(JSON.parse(btn.dataset.cenefa)));
+            });
+
+            document.querySelectorAll('.btn-eliminar-cenefa').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const { isConfirmed } = await Swal.fire({ icon: 'warning', title: '¿Eliminar cenefa?', showCancelButton: true, confirmButtonText: 'Sí', cancelButtonText: 'Cancelar', confirmButtonColor: '#ef4444' });
+                    if (!isConfirmed) return;
+                    const csrf = document.querySelector('[name=_csrf]').value;
+                    const resp = await fetch(`/admin/web/cenefas/eliminar/${btn.dataset.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _csrf: csrf }) });
+                    const data = await resp.json();
+                    if (data.success) location.reload();
+                    else Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+                });
+            });
+
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const btn = document.getElementById('btn-guardar-cenefa');
+                btn.disabled = true;
+                const id = document.getElementById('cenefa-id').value;
+                const url = id ? `/admin/web/cenefas/editar/${id}` : '/admin/web/cenefas/crear';
+                const body = {
+                    _csrf: document.querySelector('[name=_csrf]').value,
+                    texto: document.getElementById('cenefa-texto').value,
+                    colorFondo: document.getElementById('cenefa-colorFondo').value,
+                    colorTexto: document.getElementById('cenefa-colorTexto').value,
+                    link: document.getElementById('cenefa-link').value,
+                    activo: document.getElementById('cenefa-activo').checked ? 'true' : 'false'
+                };
+                try {
+                    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                    const data = await resp.json();
+                    if (data.success) {
+                        modal.classList.add('hidden');
+                        Swal.fire({ icon: 'success', title: data.mensaje, timer: 1800, showConfirmButton: false }).then(() => location.reload());
+                    } else Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+                } catch { Swal.fire({ icon: 'error', title: 'Error de red' }); }
+                finally { btn.disabled = false; }
+            });

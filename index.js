@@ -6,6 +6,7 @@ import loginRoutes from "./routes/loginRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js"
 import storeRoutes from "./routes/storeRoutes.js"
 import webRouters from "./routes/webRoutes.js"
+import webAdminRoutes from "./routes/webAdminRoutes.js"
 import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
@@ -43,7 +44,7 @@ const csrfMiddleware = csrf({ cookie: true });
 // Aplicación Global con Excepción para la ruta de imágenes
 app.use((req, res, next) => {
     // Excluimos SOLO el POST de inventario, provedores y personal para que el middleware uploadImages/Mixed actué primero
-    if ((req.path === '/admin/inventario/ingreso' || req.path === '/admin/provedores/new' || req.path === '/admin/personal/new' || req.path.startsWith('/admin/personal/ver/') || req.path === '/admin/clientes/nuevo' || req.path.match(/^\/admin\/clientes\/editar\/.+$/) || req.path === '/admin/inventario/batch') && req.method === 'POST') {
+    if ((req.path === '/admin/inventario/ingreso' || req.path === '/admin/provedores/new' || req.path === '/admin/personal/new' || req.path.startsWith('/admin/personal/ver/') || req.path === '/admin/clientes/nuevo' || req.path.match(/^\/admin\/clientes\/editar\/.+$/) || req.path === '/admin/inventario/batch' || req.path.match(/^\/admin\/web\/(banners|secciones|popup)\/(crear|editar\/.+)$/)) && req.method === 'POST') {
         return next();
     }
     // Excluimos endpoints de API JSON autenticados (usan JWT + verificación de permisos propia)
@@ -51,6 +52,9 @@ app.use((req, res, next) => {
         return next();
     }
     if (req.path.match(/^\/admin\/api\/clientes\/archivos\/.+\/eliminar$/) && req.method === 'POST') {
+        return next();
+    }
+    if (req.path.match(/^\/admin\/api\/provedores\/factura\/.+\/abonar$/) && req.method === 'POST') {
         return next();
     }
     // Para todos los demás (Login, Tiendas, GET de inventario), se aplica aquí
@@ -61,6 +65,7 @@ app.use((req, res, next) => {
 app.use("/pagina", webRouters)
 app.use("/", loginRoutes); // LOGIN
 app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes); // ADMINISTRADOR
+app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), webAdminRoutes); // CMS E-COMMERCE
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS
 
 // 5. CSRF error handler

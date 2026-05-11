@@ -1,0 +1,217 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- ── HEADER ─────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
+                                div(class="flex items-center gap-4")
+                                    a(href="/admin/provedores/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                        i(class="fi fi-rr-arrow-left text-slate-600")
+                                    div(class="w-12 h-12 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                        img(src="/img/avatars/suppliers.webp" alt="Proveedor" class="w-8 h-8 object-contain")
+                                    div
+                                        h1(class="font-bold text-slate-800 text-lg leading-tight")= proveedor.razonSocial
+                                        p(class="text-xs text-slate-400") NIT #{proveedor.taxIdSupplier}
+                                div(class="flex items-center gap-3")
+                                    if proveedor.estado
+                                        span(class="text-xs font-bold px-3 py-1.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1.5")
+                                            i(class="fi fi-rr-check-circle")
+                                            | Activo
+                                    else
+                                        span(class="text-xs font-bold px-3 py-1.5 rounded-full bg-red-100 text-red-600 flex items-center gap-1.5")
+                                            i(class="fi fi-rr-ban")
+                                            | Inactivo
+                                    a(href="/admin/provedores/new/" class="btn btn-primary text-xs py-1.5 px-4")
+                                        i(class="fi fi-rr-add")
+                                        | Nuevo proveedor
+
+                            //- ── BODY ────────────────────────────────────────────────────────────────
+                            div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
+
+                                //- ── COLUMNA IZQUIERDA: Formulario ───────────────────────────────────
+                                div(class="col-span-12 md:col-span-8")
+                                    form#form-proveedor(action=`/admin/provedores/editar/${proveedor.idProveedor}` method="post" class="cards cardsWhite p-6 grid grid-cols-12 gap-x-4 gap-y-3")
+                                        input(type="hidden" name="_csrf" value=csrfToken)
+
+                                        //- ── Datos básicos ───────────────────────────────────────────
+                                        div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100")
+                                            div(class="flex items-center gap-2 px-6")
+                                                i(class="fi fi-rr-id-card text-purple-400")
+                                                h2(class="font-bold text-slate-700 text-sm") Datos básicos
+
+                                        div(class="col-span-12 md:col-span-8")
+                                            label.label Razón social *
+                                                input.field-text(type="text" name="razonSocial" value=proveedor.razonSocial placeholder="Nombre del proveedor")
+
+                                        div(class="col-span-12 md:col-span-4")
+                                            label.label NIT / Identificación
+                                                input.field-text(type="text" value=proveedor.taxIdSupplier disabled class="field-text opacity-60 cursor-not-allowed bg-gray-50")
+                                                p(class="text-[10px] text-gray-400 mt-1 pl-1") El NIT no puede modificarse
+
+                                        //- ── Contacto ────────────────────────────────────────────────
+                                        div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
+                                            div(class="flex items-center gap-2 px-6")
+                                                i(class="fi fi-rr-customer-service text-purple-400")
+                                                h2(class="font-bold text-slate-700 text-sm") Contacto
+
+                                        div(class="col-span-12 md:col-span-6")
+                                            label.label Nombre del contacto
+                                                input.field-text(type="text" name="nombreContacto" value=proveedor.nombreContacto placeholder="Juan Pérez")
+
+                                        div(class="col-span-12 md:col-span-3")
+                                            label.label Teléfono contacto
+                                                input.field-text(type="tel" name="telefonoContacto" value=proveedor.telefonoContacto || '' placeholder="300 123 4567")
+
+                                        div(class="col-span-12 md:col-span-3")
+                                            label.label Teléfono empresa
+                                                input.field-text(type="tel" name="telefonoProvedor" value=proveedor.telefonoProvedor || '' placeholder="(601) 123 4567")
+
+                                        div(class="col-span-12 md:col-span-6")
+                                            label.label Correo electrónico
+                                                input.field-text(type="email" name="emailProvedor" value=proveedor.emailProvedor placeholder="ventas@proveedor.com")
+
+                                        //- ── Ubicación ───────────────────────────────────────────────
+                                        div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
+                                            div(class="flex items-center gap-2 px-6")
+                                                i(class="fi fi-rr-marker text-purple-400")
+                                                h2(class="font-bold text-slate-700 text-sm") Ubicación
+
+                                        div(class="col-span-12 md:col-span-4")
+                                            label.label Departamento
+                                                div(class="select-wrapper")
+                                                    select.field-text(name="departamento" id="departamentoSelect")
+                                                        option(value="") Selecciona el departamento
+                                                        each depto in departamentos
+                                                            option(value=depto.nombre selected=proveedor.departamento === depto.nombre)= depto.nombre
+                                                    span.select-icon
+                                                        i.fi-rr-chevron-double-down
+
+                                        div(class="col-span-12 md:col-span-4")
+                                            label.label Ciudad
+                                                input.field-text(type="text" name="ciudad" value=proveedor.ciudad placeholder="Bogotá")
+
+                                        div(class="col-span-12 md:col-span-4")
+                                            label.label Dirección
+                                                input.field-text(type="text" name="direccionProvedor" value=proveedor.direccionProvedor placeholder="Calle 10 # 20 - 30")
+
+                                        //- ── Categorías ──────────────────────────────────────────────
+                                        div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
+                                            div(class="flex items-center gap-2 px-6")
+                                                i(class="fi fi-rr-tags text-purple-400")
+                                                h2(class="font-bold text-slate-700 text-sm") Categorías que nos vende
+
+                                        div(class="col-span-12")
+                                            div(class="flex flex-wrap gap-2 mt-1")
+                                                each cat in categoriasProvedores
+                                                    label(class="subItems")
+                                                        input(type="checkbox" name="categorias" value=cat.idCategoria
+                                                            checked=categoriasActivas.includes(cat.idCategoria)
+                                                            class="categoria-checkbox checkbox")
+                                                        span(class="text-xs font-bold text-gray-700 uppercase")= cat.nombre
+
+                                        //- ── Guardar ─────────────────────────────────────────────────
+                                        div(class="col-span-12 flex justify-end pt-2 border-t border-gray-100 mt-2")
+                                            button#btn-guardar(type="submit" class="btn btn-primary")
+                                                i(class="fi fi-rr-disk")
+                                                | Guardar cambios
+
+                                //- ── COLUMNA DERECHA: Facturas ───────────────────────────────────────
+                                div(class="col-span-12 md:col-span-4 flex flex-col gap-4")
+
+                                    //- Resumen rápido
+                                    div(class="cards cardsWhite p-5 grid grid-cols-2 gap-3")
+                                        div(class="flex flex-col items-center gap-1 p-3 bg-slate-50 rounded-xl")
+                                            span(class="text-2xl font-black text-slate-800")= facturas.length
+                                            span(class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide") Facturas
+                                        div(class="flex flex-col items-center gap-1 p-3 bg-amber-50 rounded-xl")
+                                            span(class="text-2xl font-black text-amber-600")= facturas.filter(f => f.estado === 'Pendiente').length
+                                            span(class="text-[10px] font-semibold text-amber-400 uppercase tracking-wide") Pendientes
+
+                                    //- Lista facturas
+                                    div(class="cards cardsWhite p-5")
+                                        div(class="flex items-center justify-between mb-4")
+                                            div(class="flex items-center gap-2")
+                                                i(class="fi fi-rr-file-invoice-dollar text-purple-400")
+                                                h2(class="font-bold text-slate-700 text-sm") Historial de facturas
+
+                                        if facturas.length === 0
+                                            div(class="flex flex-col items-center justify-center py-10 text-center")
+                                                i(class="fi fi-rr-file-invoice text-4xl text-slate-200 mb-3")
+                                                p(class="text-sm font-semibold text-slate-400") Sin facturas registradas
+                                                p(class="text-xs text-slate-300 mt-1") Las compras a este proveedor aparecerán aquí
+
+                                        else
+                                            ul(class="space-y-2")
+                                                each f in facturas
+                                                    - const isVencida = f.vencState === 'vencida'
+                                                    - const isProxima = f.vencState === 'proxima'
+                                                    li(class=`rounded-xl p-3 border transition-colors ${isVencida ? 'bg-red-50 border-red-200' : isProxima ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-transparent hover:border-slate-200'}`)
+                                                        //- Fila 1: número + estado
+                                                        div(class="flex items-center justify-between mb-1")
+                                                            span(class="text-xs font-bold text-slate-700 font-mono")= f.nroFactura
+                                                            - const estadoClasses = f.estado === 'Pagada' ? 'bg-green-100 text-green-700' : f.estado === 'Anulada' ? 'bg-gray-100 text-gray-500' : isVencida ? 'bg-red-500 text-white' : 'bg-amber-100 text-amber-700'
+                                                            span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full ${estadoClasses}`)= f.estado
+
+                                                        //- Fila 2: fecha + tienda
+                                                        div(class="flex items-center justify-between text-[10px] text-slate-400 mb-1")
+                                                            span= f.fechaFactura
+                                                            span(class="truncate max-w-[100px] text-right")= f.destino
+
+                                                        //- Fila 3: montos
+                                                        div(class="flex items-center justify-between text-xs mt-1")
+                                                            span(class="text-slate-500") Total: #[strong(class="text-slate-700")= f.valorTotal]
+                                                            if f.saldoPendiente
+                                                                span(class=`font-bold ${isVencida ? 'text-red-600' : 'text-amber-600'}`) #{f.saldoPendiente}
+
+                                                        //- Vencimiento
+                                                        if f.fechaVencimiento && f.estado === 'Pendiente'
+                                                            div(class=`text-[10px] font-semibold mt-1 flex items-center gap-1 ${isVencida ? 'text-red-600' : isProxima ? 'text-amber-600' : 'text-slate-400'}`)
+                                                                i(class=`fi ${isVencida ? 'fi-rr-exclamation' : 'fi-rr-clock'}`)
+                                                                | #{isVencida ? 'Venció:' : 'Vence:'} #{f.fechaVencimiento}
+                                                                if f.nroAbonos > 0
+                                                                    span(class="ml-auto text-slate-400 font-normal") #{f.nroAbonos} abono#{f.nroAbonos !== 1 ? 's' : ''}
+
+                script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+                script.
+                    document.getElementById('form-proveedor').addEventListener('submit', async function(e) {
+                        e.preventDefault();
+                        const btn = document.getElementById('btn-guardar');
+                        btn.disabled = true;
+                        btn.innerHTML = '<i class="fi fi-rr-spinner animate-spin"></i> Guardando...';
+                        try {
+                            const fd = new FormData(this);
+                            const body = {};
+                            fd.forEach((v, k) => {
+                                if (k === 'categorias') {
+                                    if (!body.categorias) body.categorias = [];
+                                    body.categorias.push(v);
+                                } else {
+                                    body[k] = v;
+                                }
+                            });
+                            const resp = await fetch(this.action, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(body)
+                            });
+                            const data = await resp.json();
+                            if (data.success) {
+                                Swal.fire({ icon: 'success', title: data.mensaje, timer: 2000, showConfirmButton: false });
+                            } else {
+                                Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+                            }
+                        } catch {
+                            Swal.fire({ icon: 'error', title: 'Error de red', text: 'No se pudo guardar.' });
+                        } finally {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fi fi-rr-disk"></i> Guardar cambios';
+                        }
+                    });

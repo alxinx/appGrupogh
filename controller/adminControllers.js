@@ -1,3 +1,9 @@
+import { fileURLToPath } from 'url';
+import path from 'path';
+const __filename_admin = fileURLToPath(import.meta.url);
+const __dirname_admin  = path.dirname(__filename_admin);
+const LOGO_PATH_ADMIN  = path.resolve(__dirname_admin, '../public/img/logo.png');
+
 import { validationResult } from "express-validator";
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
@@ -1929,14 +1935,56 @@ const dashboardSettings = async (req, res) => {
 
 const dashboardSupplier = async (req, res) => {
 
-    const categorias = await CategoriasDeProvedores.findAll();
+    const hoySQL       = new Date().toISOString().split('T')[0];
+    const en3DiasSQL   = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
+
+    const [categorias, [[statsCP]], [[statsVencer]], [[statsVencidas]]] = await Promise.all([
+        CategoriasDeProvedores.findAll(),
+        db.query(`
+            SELECT
+                COUNT(*) AS totalFacturas,
+                COALESCE(SUM(
+                    COALESCE(
+                        (SELECT valorPorPagar FROM CUENTAS_POR_PAGAR
+                         WHERE idFacturaPro = fp.idFacturaPro
+                         ORDER BY createdAt DESC LIMIT 1),
+                        fp.valorTotal
+                    )
+                ), 0) AS totalPorPagar
+            FROM FACTURA_PROVEEDORES fp
+            WHERE fp.estado = 'Pendiente'
+        `),
+        db.query(`
+            SELECT COUNT(*) AS total
+            FROM FACTURA_PROVEEDORES
+            WHERE estado = 'Pendiente'
+              AND fechaVencimiento IS NOT NULL
+              AND fechaVencimiento >= :hoy
+              AND fechaVencimiento <= :en3Dias
+        `, { replacements: { hoy: hoySQL, en3Dias: en3DiasSQL } }),
+        db.query(`
+            SELECT COUNT(*) AS total
+            FROM FACTURA_PROVEEDORES
+            WHERE estado = 'Pendiente'
+              AND fechaVencimiento IS NOT NULL
+              AND fechaVencimiento < :hoy
+        `, { replacements: { hoy: hoySQL } })
+    ]);
+
+    const fmtCOP = v => '$' + new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
 
     return res.status(201).render('./administrador/supplier/homeSupplier', {
         pagina: "Provedores",
         subPagina: "Gestión Provedores",
         csrfToken: req.csrfToken(),
         currentPath: req.path,
-        categorias
+        categorias,
+        cuentasPorPagar: {
+            total: parseInt(statsCP.totalFacturas)    || 0,
+            monto: fmtCOP(parseFloat(statsCP.totalPorPagar) || 0)
+        },
+        facturasPorVencer: parseInt(statsVencer.total)  || 0,
+        facturasVencidas:  parseInt(statsVencidas.total) || 0
     })
 
 }
@@ -2964,6 +3012,110 @@ const jsonUnicidad = async (req, res) => {
 
 
 //Verifico nits de provedores. 
+const verProveedor = async (req, res) => {
+    const { idProveedor } = req.params;
+    try {
+        const [proveedor, categoriasProvedores, departamentos] = await Promise.all([
+            Provedores.findOne({
+                where: { idProveedor },
+                include: [{ model: CategoriasDeProvedores, as: 'categorias', through: { attributes: [] } }]
+            }),
+            CategoriasDeProvedores.findAll(),
+            Departamentos.findAll({ raw: true })
+        ]);
+        if (!proveedor) return res.redirect('/admin/provedores/');
+
+        const facturasRaw = await FacturaProveedores.findAll({
+            where: { idProveedor },
+            include: [
+                { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] },
+                { model: CuentasPorPagar, as: 'cuentasPorPagar', attributes: ['valorPorPagar', 'createdAt'], separate: true, order: [['createdAt', 'DESC']] }
+            ],
+            order: [['fechaFactura', 'DESC']]
+        });
+
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const en3Dias = new Date(hoy); en3Dias.setDate(en3Dias.getDate() + 3);
+        const fmtCOP = v => '$' + new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(parseFloat(v) || 0);
+        const fmtFecha = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null;
+
+        const facturas = facturasRaw.map(f => {
+            const abonos = f.cuentasPorPagar || [];
+            const saldo = abonos.length > 0 ? parseFloat(abonos[0].valorPorPagar) : parseFloat(f.valorTotal);
+            const fv = f.fechaVencimiento ? new Date(f.fechaVencimiento + 'T00:00:00') : null;
+            let vencState = 'normal';
+            if (fv && f.estado === 'Pendiente') {
+                if (fv < hoy) vencState = 'vencida';
+                else if (fv <= en3Dias) vencState = 'proxima';
+            }
+            return {
+                idFacturaPro:     f.idFacturaPro,
+                nroFactura:       f.nroFactura,
+                fechaFactura:     fmtFecha(f.fechaFactura),
+                fechaVencimiento: fmtFecha(f.fechaVencimiento),
+                valorTotal:       fmtCOP(f.valorTotal),
+                saldoPendiente:   f.estado === 'Pendiente' ? fmtCOP(saldo) : null,
+                estado:           f.estado,
+                esCredito:        f.esCredito,
+                destino:          f.destino?.nombreComercial || '—',
+                nroAbonos:        abonos.length,
+                vencState
+            };
+        });
+
+        return res.render('./administrador/supplier/ver', {
+            pagina: 'Proveedor',
+            subPagina: proveedor.razonSocial,
+            proveedor: proveedor.toJSON(),
+            categoriasActivas: proveedor.categorias.map(c => c.idCategoria),
+            categoriasProvedores,
+            departamentos,
+            facturas,
+            csrfToken: req.csrfToken(),
+            currentPath: req.path
+        });
+    } catch (error) {
+        console.error('verProveedor:', error);
+        return res.status(500).send('Error al cargar el proveedor.');
+    }
+};
+
+const actualizarProveedor = async (req, res) => {
+    const { idProveedor } = req.params;
+    try {
+        const {
+            razonSocial, taxIdSupplier, emailProvedor, telefonoProvedor, telefonoContacto,
+            nombreContacto, direccionProvedor, ciudad, departamento, categorias
+        } = req.body;
+
+        const proveedor = await Provedores.findOne({ where: { idProveedor } });
+        if (!proveedor) return res.status(404).json({ success: false, mensaje: 'Proveedor no encontrado.' });
+
+        await proveedor.update({
+            razonSocial:       razonSocial?.trim()       || proveedor.razonSocial,
+            emailProvedor:     emailProvedor?.trim()     || proveedor.emailProvedor,
+            telefonoProvedor:  telefonoProvedor?.trim()  || proveedor.telefonoProvedor,
+            telefonoContacto:  telefonoContacto?.trim()  || proveedor.telefonoContacto,
+            nombreContacto:    nombreContacto?.trim()    || proveedor.nombreContacto,
+            direccionProvedor: direccionProvedor?.trim() || proveedor.direccionProvedor,
+            ciudad:            ciudad?.trim()            || proveedor.ciudad,
+            departamento:      departamento?.trim()      || proveedor.departamento,
+        });
+
+        // Actualizar categorías
+        const cats = Array.isArray(categorias) ? categorias : (categorias ? [categorias] : []);
+        const catObjs = cats.length > 0
+            ? await CategoriasDeProvedores.findAll({ where: { idCategoria: cats } })
+            : [];
+        await proveedor.setCategorias(catObjs);
+
+        return res.json({ success: true, mensaje: 'Proveedor actualizado correctamente.' });
+    } catch (error) {
+        console.error('actualizarProveedor:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error al actualizar el proveedor.' });
+    }
+};
+
 const checkNitSupplier = async (req, res) => {
     const { nit } = req.params;
     try {
@@ -4356,6 +4508,281 @@ const getVentasPdv30d = async (req, res) => {
     }
 };
 
+// ─── TIRILLA ABONO PROVEEDOR ──────────────────────────────────────────────────
+const getTirillaAbonoProveedor = async (req, res) => {
+    const { idCuentaPorPagar } = req.params;
+    try {
+        const cuenta = await CuentasPorPagar.findOne({
+            where: { idCuentaPorPagar },
+            include: [{
+                model: FacturaProveedores, as: 'factura',
+                include: [{ model: Provedores, as: 'proveedor', attributes: ['razonSocial', 'taxIdSupplier'] }]
+            }]
+        });
+        if (!cuenta) return res.status(404).json({ success: false, mensaje: 'Registro no encontrado.' });
+
+        const todosLosAbonos = await CuentasPorPagar.findAll({
+            where: { idFacturaPro: cuenta.idFacturaPro },
+            order: [['fechaAbono', 'ASC']],
+            attributes: ['idCuentaPorPagar', 'fechaAbono', 'valorAbono', 'valorPorPagar']
+        });
+
+        const regimen       = await RegimenFacturacion.findOne();
+        const saldoAnterior = parseFloat(cuenta.valorPorPagar) + parseFloat(cuenta.valorAbono);
+        const abono         = parseFloat(cuenta.valorAbono);
+        const saldoActual   = parseFloat(cuenta.valorPorPagar);
+        const totalFactura  = parseFloat(cuenta.totalFactura);
+        const fecha         = new Date(cuenta.fechaAbono);
+
+        const fmtCOP = v => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v);
+        const fmtFecha = d => d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const fmtHora  = d => d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+        const W      = 227;
+        const MARGIN = 10;
+        const CW     = W - MARGIN * 2;
+
+        const docHeight = 480 + Math.max(0, todosLosAbonos.length - 1) * 13;
+        const doc = new PDFDocument({
+            size: [W, docHeight],
+            margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
+            autoFirstPage: true
+        });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        const pdfEnd = new Promise(r => doc.on('end', r));
+
+        const hr = () => {
+            doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#aaa').lineWidth(0.4).stroke();
+            doc.moveDown(0.35);
+        };
+        const hrDot = () => {
+            doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).dash(2, { space: 2 }).strokeColor('#bbb').lineWidth(0.4).stroke().undash();
+            doc.moveDown(0.35);
+        };
+        const rowKV = (label, value, boldValue = false) => {
+            const y = doc.y;
+            doc.font('Helvetica').fontSize(7).text(label, MARGIN, y, { width: CW * 0.58 });
+            doc.font(boldValue ? 'Helvetica-Bold' : 'Helvetica').fontSize(7)
+               .text(value, MARGIN + CW * 0.58, y, { width: CW * 0.42, align: 'right' });
+            doc.y = y + 11;
+        };
+
+        // ── Cabecera ────────────────────────────────────────────
+        const LOGO_SIZE = 50;
+        const logoX = MARGIN + (CW - LOGO_SIZE) / 2;
+        try { doc.image(LOGO_PATH_ADMIN, logoX, MARGIN, { width: LOGO_SIZE, height: LOGO_SIZE }); } catch {}
+        doc.y = MARGIN + LOGO_SIZE + 4;
+
+        doc.font('Helvetica-Bold').fontSize(9).text(regimen?.razonSocial || 'EMPRESA', MARGIN, doc.y, { width: CW, align: 'center' });
+        if (regimen?.taxId) doc.font('Helvetica').fontSize(6.5).text(`NIT: ${regimen.taxId}${regimen.DV ? '-' + regimen.DV : ''}`, MARGIN, doc.y, { width: CW, align: 'center' });
+
+        doc.moveDown(0.4); hr();
+
+        // ── Título ──────────────────────────────────────────────
+        doc.font('Helvetica-Bold').fontSize(8.5).text('COMPROBANTE DE ABONO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.font('Helvetica').fontSize(6.5).text(`${fmtFecha(fecha)}  ${fmtHora(fecha)}`, MARGIN, doc.y, { width: CW, align: 'center' });
+
+        doc.moveDown(0.4); hr();
+
+        // ── Datos factura ───────────────────────────────────────
+        rowKV('Factura No:', cuenta.factura?.nroFactura || '—');
+        rowKV('Proveedor:', cuenta.factura?.proveedor?.razonSocial || '—');
+        if (cuenta.factura?.proveedor?.taxIdSupplier) rowKV('NIT Proveedor:', cuenta.factura.proveedor.taxIdSupplier);
+
+        doc.moveDown(0.2); hr();
+
+        // ── Valores ─────────────────────────────────────────────
+        rowKV('Total Factura:', fmtCOP(totalFactura));
+        doc.moveDown(0.15);
+        hrDot();
+        rowKV('Saldo Anterior:', fmtCOP(saldoAnterior));
+        rowKV('Abono:', fmtCOP(abono), true);
+        doc.moveDown(0.15); hrDot();
+        rowKV('Saldo Actual:', fmtCOP(saldoActual), true);
+
+        doc.moveDown(0.5); hr();
+
+        // ── Historial de abonos ─────────────────────────────────
+        doc.font('Helvetica-Bold').fontSize(7).text('HISTORIAL DE ABONOS', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.3);
+
+        // Cabecera de columnas
+        const colFecha  = CW * 0.38;
+        const colAbono  = CW * 0.32;
+        const colSaldo  = CW * 0.30;
+        const yTh = doc.y;
+        doc.font('Helvetica-Bold').fontSize(6)
+            .text('Fecha',   MARGIN,                    yTh, { width: colFecha })
+            .text('Abono',   MARGIN + colFecha,          yTh, { width: colAbono,  align: 'right' })
+            .text('Saldo',   MARGIN + colFecha + colAbono, yTh, { width: colSaldo, align: 'right' });
+        doc.y = yTh + 9;
+        hrDot();
+
+        todosLosAbonos.forEach(a => {
+            const isActual = a.idCuentaPorPagar === parseInt(idCuentaPorPagar);
+            const font  = isActual ? 'Helvetica-Bold' : 'Helvetica';
+            const yRow  = doc.y;
+            doc.font(font).fontSize(6)
+                .text(new Date(a.fechaAbono).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                      MARGIN, yRow, { width: colFecha })
+                .text(fmtCOP(parseFloat(a.valorAbono)),   MARGIN + colFecha,           yRow, { width: colAbono,  align: 'right' })
+                .text(fmtCOP(parseFloat(a.valorPorPagar)), MARGIN + colFecha + colAbono, yRow, { width: colSaldo, align: 'right' });
+            doc.y = yRow + 11;
+        });
+
+        doc.moveDown(0.4); hr();
+
+        // ── Firma ───────────────────────────────────────────────
+        doc.moveDown(0.4);
+        doc.font('Helvetica').fontSize(6.5).text('Recibe:', MARGIN, doc.y, { width: CW });
+        doc.moveDown(2.5);
+        doc.moveTo(MARGIN + 10, doc.y).lineTo(MARGIN + CW - 10, doc.y).strokeColor('#444').lineWidth(0.5).stroke();
+        doc.moveDown(0.3);
+        doc.font('Helvetica').fontSize(6).text('Firma y nombre de quien recibe', MARGIN, doc.y, { width: CW, align: 'center' });
+
+        doc.end();
+        await pdfEnd;
+
+        const pdfBuffer = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="abono-${cuenta.factura?.nroFactura || idCuentaPorPagar}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('getTirillaAbonoProveedor:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error al generar la tirilla.' });
+    }
+};
+
+// ─── FACTURAS PENDIENTES PROVEEDORES ─────────────────────────────────────────
+const PER_PAGE_FP = 5;
+
+const getFacturasPendientesProveedores = async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    try {
+        const { count, rows: facturas } = await FacturaProveedores.findAndCountAll({
+            where: { estado: 'Pendiente' },
+            include: [{ model: Provedores, as: 'proveedor', attributes: ['razonSocial'] }],
+            order: [['fechaVencimiento', 'ASC']],
+            limit: PER_PAGE_FP,
+            offset: (page - 1) * PER_PAGE_FP,
+            distinct: true
+        });
+
+        const result = await Promise.all(facturas.map(async f => {
+            const ultima = await CuentasPorPagar.findOne({
+                where: { idFacturaPro: f.idFacturaPro },
+                order: [['createdAt', 'DESC']]
+            });
+            return {
+                idFacturaPro:     f.idFacturaPro,
+                nroFactura:       f.nroFactura,
+                fechaFactura:     f.fechaFactura,
+                fechaVencimiento: f.fechaVencimiento,
+                valorTotal:       parseFloat(f.valorTotal),
+                proveedor:        f.proveedor?.razonSocial || 'N/A',
+                valorPorPagar:    ultima ? parseFloat(ultima.valorPorPagar) : parseFloat(f.valorTotal)
+            };
+        }));
+
+        return res.json({ success: true, facturas: result, total: count, paginaActual: page, totalPaginas: Math.ceil(count / PER_PAGE_FP) });
+    } catch (error) {
+        console.error('getFacturasPendientesProveedores:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error al cargar facturas.' });
+    }
+};
+
+const getDetalleFacturaPendiente = async (req, res) => {
+    const { idFacturaPro } = req.params;
+    try {
+        const factura = await FacturaProveedores.findOne({
+            where: { idFacturaPro },
+            include: [{ model: Provedores, as: 'proveedor', attributes: ['razonSocial', 'taxIdSupplier'] }]
+        });
+        if (!factura) return res.status(404).json({ success: false, mensaje: 'Factura no encontrada.' });
+
+        const abonos = await CuentasPorPagar.findAll({
+            where: { idFacturaPro },
+            order: [['createdAt', 'ASC']]
+        });
+
+        const ultima = abonos.length > 0 ? abonos[abonos.length - 1] : null;
+
+        return res.json({
+            success: true,
+            factura: {
+                idFacturaPro:     factura.idFacturaPro,
+                nroFactura:       factura.nroFactura,
+                fechaFactura:     factura.fechaFactura,
+                fechaVencimiento: factura.fechaVencimiento,
+                valorTotal:       parseFloat(factura.valorTotal),
+                valorPorPagar:    ultima ? parseFloat(ultima.valorPorPagar) : parseFloat(factura.valorTotal),
+                proveedor:        factura.proveedor?.razonSocial || 'N/A',
+                nit:              factura.proveedor?.taxIdSupplier || ''
+            },
+            abonos: abonos.map(a => ({
+                fechaAbono:    a.fechaAbono,
+                valorAbono:    parseFloat(a.valorAbono),
+                valorPorPagar: parseFloat(a.valorPorPagar)
+            }))
+        });
+    } catch (error) {
+        console.error('getDetalleFacturaPendiente:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error al cargar detalle.' });
+    }
+};
+
+const registrarAbonoProveedor = async (req, res) => {
+    const { idFacturaPro } = req.params;
+    const valorAbono = parseFloat(req.body.valorAbono) || 0;
+
+    if (valorAbono <= 0) return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
+
+    const t = await db.transaction();
+    try {
+        const factura = await FacturaProveedores.findOne({ where: { idFacturaPro } });
+        if (!factura) { await t.rollback(); return res.status(404).json({ success: false, mensaje: 'Factura no encontrada.' }); }
+
+        const ultima = await CuentasPorPagar.findOne({
+            where: { idFacturaPro },
+            order: [['createdAt', 'DESC']]
+        });
+        const valorPorPagarActual = ultima ? parseFloat(ultima.valorPorPagar) : parseFloat(factura.valorTotal);
+
+        if (valorAbono > valorPorPagarActual) {
+            await t.rollback();
+            return res.status(400).json({ success: false, mensaje: `El abono no puede superar el saldo pendiente.` });
+        }
+
+        const nuevoSaldo = valorPorPagarActual - valorAbono;
+
+        const nuevaCuenta = await CuentasPorPagar.create({
+            idFacturaPro,
+            fechaAbono:    new Date(),
+            totalFactura:  parseFloat(factura.valorTotal),
+            valorAbono,
+            valorPorPagar: nuevoSaldo
+        }, { transaction: t });
+
+        if (nuevoSaldo <= 0) await factura.update({ estado: 'Pagada' }, { transaction: t });
+
+        await t.commit();
+        return res.json({
+            success:          true,
+            mensaje:          nuevoSaldo <= 0 ? 'Factura pagada completamente.' : 'Abono registrado correctamente.',
+            pagada:           nuevoSaldo <= 0,
+            saldoRestante:    nuevoSaldo,
+            idCuentaPorPagar: nuevaCuenta.idCuentaPorPagar
+        });
+    } catch (error) {
+        await t.rollback();
+        console.error('registrarAbonoProveedor:', error);
+        return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono.' });
+    }
+};
+
 export {
     dashboard,
     dashboardStores,
@@ -4374,6 +4801,7 @@ export {
     dosificar,
     dashboardSupplier,
     newSupplier,
+    verProveedor, actualizarProveedor,
     saveSupplier, checkNitSupplier,
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
@@ -4406,4 +4834,5 @@ export {
     getStockBajoGlobal,
     getStockBajoPorTienda,
     getVentasPdv30d,
+    getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 }

@@ -78,6 +78,10 @@ aside(
       i(class="fi fi-rr-truck text-lg")
       span Pedidos y Reparto
 
+    a(href="/admin/web/" class=`menu-item ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
+      i(class="fi fi-rr-shop text-lg")
+      span Tienda Web
+
     a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
       i(class="fi fi-rr-settings text-lg")
       span Settings

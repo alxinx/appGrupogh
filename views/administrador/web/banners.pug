@@ -1,0 +1,174 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- ── HEADER ─────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
+                                div(class="flex items-center gap-4")
+                                    a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                        i(class="fi fi-rr-arrow-left text-slate-600")
+                                    div(class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-200 to-pink-400 flex items-center justify-center flex-shrink-0")
+                                        i(class="fi fi-rr-picture text-white")
+                                    div
+                                        h1(class="font-bold text-slate-800 text-lg leading-tight") Banners Hero
+                                        p(class="text-xs text-slate-400") Imágenes principales del carrusel de la página de inicio
+                                button#btn-nuevo-banner(type="button" class="btn btn-primary text-xs py-1.5 px-4")
+                                    i(class="fi fi-rr-add")
+                                    | Nuevo banner
+
+                            //- ── LISTA BANNERS ───────────────────────────────────────────────────────
+                            div(class="col-span-12 cards cardsWhite p-6")
+                                if banners.length === 0
+                                    div(class="flex flex-col items-center justify-center py-16 text-center")
+                                        i(class="fi fi-rr-picture text-5xl text-slate-200 mb-3")
+                                        p(class="text-sm font-semibold text-slate-400") Sin banners registrados
+                                        p(class="text-xs text-slate-300 mt-1") Crea el primer banner para mostrar en la página de inicio
+
+                                else
+                                    div(class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4")
+                                        each b in banners
+                                            div(class="rounded-xl border border-slate-100 overflow-hidden group")
+                                                //- Imagen
+                                                div(class="relative h-40 bg-slate-100")
+                                                    if b.imagenUrl
+                                                        img(src=b.imagenUrl alt=b.titulo class="w-full h-full object-cover")
+                                                    else
+                                                        div(class="flex items-center justify-center h-full text-slate-300")
+                                                            i(class="fi fi-rr-picture text-4xl")
+                                                    //- Badge estado
+                                                    span(class=`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${b.activo ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`)
+                                                        = b.activo ? 'Activo' : 'Inactivo'
+                                                    //- Orden badge
+                                                    span(class="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/50 text-white") ##{b.orden}
+
+                                                //- Info
+                                                div(class="p-3")
+                                                    p(class="font-bold text-slate-700 text-sm truncate")= b.titulo || '(Sin título)'
+                                                    p(class="text-xs text-slate-400 truncate mt-0.5")= b.subtitulo || ''
+                                                    div(class="flex items-center gap-2 mt-3")
+                                                        button(
+                                                            type="button"
+                                                            class="btn-editar-banner flex-1 text-xs py-1.5 px-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50 transition-colors font-semibold"
+                                                            data-banner=JSON.stringify(b)
+                                                        )
+                                                            i(class="fi fi-rr-edit")
+                                                            |  Editar
+                                                        button(
+                                                            type="button"
+                                                            class="btn-eliminar-banner text-xs py-1.5 px-3 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
+                                                            data-id=b.idBanner
+                                                        )
+                                                            i(class="fi fi-rr-trash")
+
+                            //- ── MODAL CREAR / EDITAR ────────────────────────────────────────────────
+                            div#modal-banner(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4")
+                                div(class="bg-white rounded-2xl w-full max-w-lg shadow-2xl")
+                                    div(class="flex items-center justify-between p-5 border-b border-slate-100")
+                                        h2#modal-banner-title(class="font-bold text-slate-800") Nuevo banner
+                                        button#btn-cerrar-modal-banner(type="button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100")
+                                            i(class="fi fi-rr-cross text-slate-500 text-sm")
+
+                                    form#form-banner(class="p-5 space-y-4" enctype="multipart/form-data")
+                                        input(type="hidden" name="_csrf" value=csrfToken)
+                                        input#banner-id(type="hidden" name="idBanner")
+
+                                        div(class="grid grid-cols-2 gap-4")
+                                            div(class="col-span-2")
+                                                label.label Imagen del banner
+                                                    input.field-text(type="file" name="imagen" accept="image/*" id="banner-imagen")
+                                                p(class="text-[10px] text-slate-400 mt-1") Se convierte automáticamente a WebP. Tamaño recomendado: 1920×600px
+                                            div(class="col-span-2")
+                                                label.label Título
+                                                    input.field-text(type="text" name="titulo" id="banner-titulo" placeholder="¡Nueva colección disponible!")
+                                            div(class="col-span-2")
+                                                label.label Subtítulo
+                                                    input.field-text(type="text" name="subtitulo" id="banner-subtitulo" placeholder="Descubre las últimas tendencias")
+                                            div(class="col-span-2 md:col-span-1")
+                                                label.label Texto del botón
+                                                    input.field-text(type="text" name="textoBoton" id="banner-textoBoton" placeholder="Ver colección")
+                                            div(class="col-span-2 md:col-span-1")
+                                                label.label Link del botón
+                                                    input.field-text(type="text" name="linkBoton" id="banner-linkBoton" placeholder="/catalogo")
+                                            div(class="col-span-2 md:col-span-1")
+                                                label.label Orden
+                                                    input.field-text(type="number" name="orden" id="banner-orden" value="0" min="0")
+                                            div(class="col-span-2 md:col-span-1 flex items-end pb-1")
+                                                label(class="flex items-center gap-2 cursor-pointer")
+                                                    input(type="checkbox" name="activo" id="banner-activo" value="true" class="checkbox" checked)
+                                                    span(class="text-sm font-semibold text-slate-700") Activo
+
+                                        div(class="flex justify-end gap-3 pt-2 border-t border-slate-100")
+                                            button#btn-cancelar-banner(type="button" class="btn text-sm py-2 px-4 bg-slate-100 text-slate-600 hover:bg-slate-200") Cancelar
+                                            button#btn-guardar-banner(type="submit" class="btn btn-primary text-sm py-2 px-4")
+                                                i(class="fi fi-rr-disk")
+                                                | Guardar
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script.
+            const modal    = document.getElementById('modal-banner');
+            const form     = document.getElementById('form-banner');
+            const btnNuevo = document.getElementById('btn-nuevo-banner');
+            const btnCerrar = document.getElementById('btn-cerrar-modal-banner');
+            const btnCancelar = document.getElementById('btn-cancelar-banner');
+            const modalTitle = document.getElementById('modal-banner-title');
+
+            function abrirModal(datos) {
+                modalTitle.textContent = datos ? 'Editar banner' : 'Nuevo banner';
+                document.getElementById('banner-id').value = datos?.idBanner || '';
+                document.getElementById('banner-titulo').value = datos?.titulo || '';
+                document.getElementById('banner-subtitulo').value = datos?.subtitulo || '';
+                document.getElementById('banner-textoBoton').value = datos?.textoBoton || '';
+                document.getElementById('banner-linkBoton').value = datos?.linkBoton || '';
+                document.getElementById('banner-orden').value = datos?.orden ?? 0;
+                document.getElementById('banner-activo').checked = datos ? datos.activo : true;
+                document.getElementById('banner-imagen').value = '';
+                modal.classList.remove('hidden');
+            }
+
+            btnNuevo.addEventListener('click', () => abrirModal(null));
+            btnCerrar.addEventListener('click', () => modal.classList.add('hidden'));
+            btnCancelar.addEventListener('click', () => modal.classList.add('hidden'));
+
+            document.querySelectorAll('.btn-editar-banner').forEach(btn => {
+                btn.addEventListener('click', () => abrirModal(JSON.parse(btn.dataset.banner)));
+            });
+
+            document.querySelectorAll('.btn-eliminar-banner').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const { isConfirmed } = await Swal.fire({ icon: 'warning', title: '¿Eliminar banner?', showCancelButton: true, confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar', confirmButtonColor: '#ef4444' });
+                    if (!isConfirmed) return;
+                    const resp = await fetch(`/admin/web/banners/eliminar/${btn.dataset.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _csrf: document.querySelector('[name=_csrf]').value }) });
+                    const data = await resp.json();
+                    if (data.success) { Swal.fire({ icon: 'success', title: 'Eliminado', timer: 1500, showConfirmButton: false }).then(() => location.reload()); }
+                    else Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+                });
+            });
+
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const btn = document.getElementById('btn-guardar-banner');
+                btn.disabled = true;
+                const id = document.getElementById('banner-id').value;
+                const url = id ? `/admin/web/banners/editar/${id}` : '/admin/web/banners/crear';
+                const fd = new FormData(this);
+                if (!document.getElementById('banner-activo').checked) fd.set('activo', 'false');
+                try {
+                    const resp = await fetch(url, { method: 'POST', body: fd });
+                    const data = await resp.json();
+                    if (data.success) {
+                        modal.classList.add('hidden');
+                        Swal.fire({ icon: 'success', title: data.mensaje, timer: 1800, showConfirmButton: false }).then(() => location.reload());
+                    } else {
+                        Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+                    }
+                } catch { Swal.fire({ icon: 'error', title: 'Error de red' }); }
+                finally { btn.disabled = false; }
+            });

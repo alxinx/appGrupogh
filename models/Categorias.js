@@ -20,11 +20,15 @@ const Categorias = db.define('CATEGORIAS', {
     },
     idPadre : {
         type: DataTypes.INTEGER,
-        allowNull : true, 
+        allowNull : true,
         references : {
             model : 'CATEGORIAS',
             key : 'idCategoria'
         }
+    },
+    webActiva: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
     }
 },
 {
