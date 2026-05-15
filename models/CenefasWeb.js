@@ -24,6 +24,10 @@ const CenefasWeb = db.define('CENEFAS_WEB', {
         type: DataTypes.STRING(20),
         defaultValue: '#FFFFFF'
     },
+    animacion: {
+        type: DataTypes.ENUM('ninguna', 'scroll-izq', 'scroll-der', 'zoom-in', 'zoom-out', 'parpadeo', 'rebote'),
+        defaultValue: 'ninguna'
+    },
     activo: {
         type: DataTypes.BOOLEAN,
         defaultValue: true

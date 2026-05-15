@@ -37,32 +37,78 @@ html(lang="es")
       .dark .glass-card { background: rgba(26, 22, 23, 0.8); }
 
   body(class="bg-background-light dark:bg-background-dark text-slate-800 dark:text-slate-100 transition-colors duration-300")
-    header(class="sticky top-0 z-50 bg-white/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-pink-100 dark:border-pink-900/30")
-      nav(class="container mx-auto px-4 h-20 flex items-center justify-between")
-        button(class="lg:hidden text-slate-600 dark:text-slate-300")
-          span.material-icons-outlined menu
+    header(class="sticky top-0 z-50 bg-white shadow-sm")
+      div(class="h-1 bg-primary")
+      nav(class="container mx-auto px-4 h-16 flex items-center gap-6")
+        a(href="/pagina")
+          img(src="./img/logo.png" width="70" alt="Grupo GH")
 
-        div(class="hidden lg:flex items-center space-x-8 text-sm font-medium tracking-wide uppercase")
-          a(class="border-b-2 border-primary pb-1 text-primary" href="#") Inicio
-          a(class="hover:text-primary transition-colors" href="#") Tienda
-          a(class="hover:text-primary transition-colors" href="pagina/colecciones") Colecciones
-          a(class="text-primary font-bold" href="#") Sale
-          a(class="hover:text-primary transition-colors" href="#") Nosotros
+        div(class="hidden lg:flex items-center gap-5 text-sm font-medium text-slate-700 ml-4")
+          a(class="hover:text-primary transition-colors whitespace-nowrap" href="#") Novedades
 
-        div(class="absolute left-1/2 -translate-x-1/2")
-          img(src="./img/logo.png"  width="70"  alt="")
+          div(class="relative group")
+            button(class="flex items-center gap-0.5 hover:text-primary transition-colors whitespace-nowrap")
+              | Conjuntos
+              span.material-icons-outlined(class="text-base") expand_more
+            div(class="absolute top-full left-0 pt-1 hidden group-hover:block z-20")
+              div(class="bg-white rounded-lg shadow-lg py-2 min-w-[160px] border border-gray-100")
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") 2 piezas
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") 3 piezas
 
+          div(class="relative group")
+            button(class="flex items-center gap-0.5 hover:text-primary transition-colors")
+              | Tops
+              span.material-icons-outlined(class="text-base") expand_more
+            div(class="absolute top-full left-0 pt-1 hidden group-hover:block z-20")
+              div(class="bg-white rounded-lg shadow-lg py-2 min-w-[160px] border border-gray-100")
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") Blusas
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") Camisetas
 
-        div(class="flex items-center space-x-5")
+          div(class="relative group")
+            button(class="flex items-center gap-0.5 hover:text-primary transition-colors")
+              | Inferior
+              span.material-icons-outlined(class="text-base") expand_more
+            div(class="absolute top-full left-0 pt-1 hidden group-hover:block z-20")
+              div(class="bg-white rounded-lg shadow-lg py-2 min-w-[160px] border border-gray-100")
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") Pantalones
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") Faldas
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") Shorts
+
+          div(class="relative group")
+            button(class="flex items-center gap-0.5 hover:text-primary transition-colors")
+              | Enterizos
+              span.material-icons-outlined(class="text-base") expand_more
+            div(class="absolute top-full left-0 pt-1 hidden group-hover:block z-20")
+              div(class="bg-white rounded-lg shadow-lg py-2 min-w-[160px] border border-gray-100")
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") Jumpsuits
+                a(class="block px-4 py-2 text-sm hover:text-primary hover:bg-pink-50 transition-colors" href="#") Overoles
+
+          a(class="hover:text-primary transition-colors whitespace-nowrap" href="#") Accesorios
+
+          a(class="flex items-center gap-1.5 text-primary font-semibold whitespace-nowrap" href="#")
+            | Promociones
+            span(class="bg-primary text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-tight tracking-wide") HOT
+
+        div(class="hidden lg:flex flex-1 max-w-xs ml-auto")
+          label(class="flex items-center w-full bg-gray-100 rounded-full px-4 py-2 gap-2 cursor-text")
+            span.material-icons-outlined(class="text-gray-400 text-lg") search
+            input(
+              class="bg-transparent outline-none text-sm text-gray-600 placeholder-gray-400 w-full"
+              placeholder="Buscar productos..."
+              type="text"
+            )
+
+        div(class="flex items-center gap-5 text-slate-600 ml-4")
           button(class="hover:text-primary transition-colors")
-            span.material-icons-outlined search
+            span.material-icons-outlined person_outline
           button(class="hover:text-primary transition-colors")
             span.material-icons-outlined favorite_border
           button(class="hover:text-primary transition-colors relative")
             span.material-icons-outlined shopping_bag
-            span(class="absolute -top-1 -right-1 bg-primary text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center") 3
-          button(class="hover:text-primary transition-colors")
-            span.material-icons-outlined person_outline
+            span(class="absolute -top-1.5 -right-1.5 bg-primary text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold") 0
+
+        button(class="lg:hidden text-slate-600 ml-auto")
+          span.material-icons-outlined menu
 
     main
       section(class="relative h-[600px] md:h-[750px] overflow-hidden")
@@ -207,21 +253,29 @@ html(lang="es")
             span Ver ofertas
             span.material-icons-outlined chevron_right
 
-      section(class="py-12 bg-pink-50 dark:bg-slate-900 border-y border-pink-100 dark:border-pink-900/20")
+      section(class="py-6 bg-white border-y border-gray-100")
         div(class="container mx-auto px-4")
-          div(class="grid grid-cols-2 md:grid-cols-4 gap-8")
-            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
-              span.material-icons-outlined(class="text-primary text-3xl") local_shipping
-              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Envíos rápidos
-            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
-              span.material-icons-outlined(class="text-primary text-3xl") sync
-              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Cambios fáciles
-            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
-              span.material-icons-outlined(class="text-primary text-3xl") verified_user
-              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Pagos seguros
-            div(class="flex flex-col md:flex-row items-center justify-center space-y-2 md:space-y-0 md:space-x-3 text-center md:text-left")
-              span.material-icons-outlined(class="text-primary text-3xl") auto_awesome
-              p(class="text-sm font-medium text-slate-700 dark:text-slate-300") Diseño exclusivo
+          div(class="grid grid-cols-2 md:grid-cols-4 divide-x divide-gray-200")
+            div(class="flex items-center gap-4 px-6 py-2")
+              span.material-icons-outlined(class="text-primary text-3xl flex-shrink-0") new_releases
+              div
+                p(class="text-sm font-bold text-slate-800") Nuevas colecciones
+                p(class="text-xs text-slate-500") Cada semana
+            div(class="flex items-center gap-4 px-6 py-2")
+              span.material-icons-outlined(class="text-primary text-3xl flex-shrink-0") credit_card
+              div
+                p(class="text-sm font-bold text-slate-800") Paga como prefieras
+                p(class="text-xs text-slate-500") Tarjeta, PSE o Contra entrega
+            div(class="flex items-center gap-4 px-6 py-2")
+              span.material-icons-outlined(class="text-primary text-3xl flex-shrink-0") verified_user
+              div
+                p(class="text-sm font-bold text-slate-800") Compra 100% segura
+                p(class="text-xs text-slate-500") Tus datos están protegidos
+            div(class="flex items-center gap-4 px-6 py-2")
+              span.material-icons-outlined(class="text-primary text-3xl flex-shrink-0") card_giftcard
+              div
+                p(class="text-sm font-bold text-slate-800") Ofertas exclusivas
+                p(class="text-xs text-slate-500") Solo para nuestras clientas
 
       
 

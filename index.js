@@ -7,6 +7,7 @@ import adminRoutes from "./routes/adminRoutes.js"
 import storeRoutes from "./routes/storeRoutes.js"
 import webRouters from "./routes/webRoutes.js"
 import webAdminRoutes from "./routes/webAdminRoutes.js"
+import webApiRoutes from "./routes/webApiRoutes.js"
 import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
@@ -57,6 +58,8 @@ app.use((req, res, next) => {
     if (req.path.match(/^\/admin\/api\/provedores\/factura\/.+\/abonar$/) && req.method === 'POST') {
         return next();
     }
+    // API pública de la tienda web — sin CSRF (solo GET, sin estado)
+    if (req.path.startsWith('/api/web')) return next();
     // Para todos los demás (Login, Tiendas, GET de inventario), se aplica aquí
     csrfMiddleware(req, res, next);
 });
@@ -66,6 +69,7 @@ app.use("/pagina", webRouters)
 app.use("/", loginRoutes); // LOGIN
 app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes); // ADMINISTRADOR
 app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), webAdminRoutes); // CMS E-COMMERCE
+app.use("/api/web", webApiRoutes); // API PÚBLICA TIENDA WEB
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS
 
 // 5. CSRF error handler
