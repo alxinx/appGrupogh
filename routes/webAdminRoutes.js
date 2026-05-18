@@ -9,7 +9,8 @@ import {
     listaBanners, crearBanner, actualizarBanner, eliminarBanner,
     listaCenefas, crearCenefa, actualizarCenefa, eliminarCenefa,
     listaSecciones, crearSeccion, actualizarSeccion, eliminarSeccion,
-    gestionPopup, actualizarPopup
+    gestionPopup, actualizarPopup,
+    listaEtiquetas, crearEtiqueta, actualizarEtiqueta, eliminarEtiqueta
 } from '../controller/webAdminController.js';
 
 import uploadImages from '../middlewares/uploadImages.js';
@@ -42,5 +43,11 @@ routes.post('/secciones/eliminar/:idSeccion', csrfProtection, eliminarSeccion);
 // Popup
 routes.get('/popup', csrfProtection, gestionPopup);
 routes.post('/popup/editar/:idPopup', uploadImages.single('imagen'), csrfProtection, actualizarPopup);
+
+// Tracking y etiquetas
+routes.get('/tracking', csrfProtection, listaEtiquetas);
+routes.post('/tracking/crear', csrfProtection, crearEtiqueta);
+routes.post('/tracking/editar/:idEtiqueta', csrfProtection, actualizarEtiqueta);
+routes.post('/tracking/eliminar/:idEtiqueta', csrfProtection, eliminarEtiqueta);
 
 export default routes;

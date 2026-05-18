@@ -10,155 +10,277 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         div(class="mainDashboard")
 
-                            //- ── HEADER ─────────────────────────────────────────────────────────────
-                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
-                                div(class="flex items-center gap-4")
-                                    a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
-                                        i(class="fi fi-rr-arrow-left text-slate-600")
-                                    div(class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-200 to-pink-400 flex items-center justify-center flex-shrink-0")
-                                        i(class="fi fi-rr-apps text-white")
-                                    div
-                                        h1(class="font-bold text-slate-800 text-lg leading-tight") Secciones destacadas
-                                        p(class="text-xs text-slate-400") Bloques visuales que enlazan a categorías del catálogo
-                                button#btn-nueva-seccion(type="button" class="btn btn-primary text-xs py-1.5 px-4")
-                                    i(class="fi fi-rr-add")
-                                    | Nueva sección
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center gap-4")
+                                a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-slate-600")
+                                div
+                                    h1(class="text-xl font-bold text-slate-800") Secciones destacadas
+                                    p(class="text-xs text-slate-400 mt-0.5") Bloques visuales que enlazan a categorías del catálogo
 
-                            //- ── GRID SECCIONES ──────────────────────────────────────────────────────
-                            div(class="col-span-12 cards cardsWhite p-6")
-                                if secciones.length === 0
-                                    div(class="flex flex-col items-center justify-center py-16 text-center")
-                                        i(class="fi fi-rr-apps text-5xl text-slate-200 mb-3")
-                                        p(class="text-sm font-semibold text-slate-400") Sin secciones registradas
+                            //- CUERPO: dos columnas
+                            div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
 
-                                else
-                                    div(class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4")
-                                        each s in secciones
-                                            div(class="rounded-xl border border-slate-100 overflow-hidden group")
-                                                //- Imagen
-                                                div(class="relative h-36 bg-slate-100")
-                                                    if s.imagenUrl
-                                                        img(src=s.imagenUrl alt=s.titulo class="w-full h-full object-cover")
+                                //- COLUMNA IZQUIERDA — Listado
+                                div(class="col-span-12 md:col-span-8")
+                                    div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                        h2(class="h2 text-gh-primaryHover")
+                                            i.fi-rr-apps
+                                            |  Secciones registradas
+                                        p(class="text-sm text-slate-400") Bloques activos en la tienda web
+
+                                        div(class="overflow-x-auto pt-4")
+                                            table(class="w-full text-left text-2xs border-collapse")
+                                                thead
+                                                    tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                                                        th(class="px-4 py-4 text-gray-600") Imagen
+                                                        th(class="px-4 py-4 text-gray-600") Título / Categoría
+                                                        th(class="px-4 py-4 text-center text-gray-600") Orden
+                                                        th(class="px-4 py-4 text-center text-gray-600") Estado
+                                                        th(class="px-6 py-4 text-center text-gray-600") Acciones
+                                                tbody(class="divide-y divide-slate-100")
+                                                    if secciones.length === 0
+                                                        tr
+                                                            td(colspan="5" class="px-6 py-16 text-center")
+                                                                i(class="fi fi-rr-apps text-4xl text-slate-200 mb-3 block")
+                                                                p(class="text-sm text-slate-400") No hay secciones registradas
+                                                                p(class="text-xs text-slate-300 mt-1") Crea la primera usando el formulario
                                                     else
-                                                        div(class="flex items-center justify-center h-full text-slate-300")
-                                                            i(class="fi fi-rr-apps text-3xl")
-                                                    span(class=`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${s.activo ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`)
-                                                        = s.activo ? 'Activa' : 'Inactiva'
-                                                    span(class="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/50 text-white") ##{s.orden}
-                                                div(class="p-3")
-                                                    p(class="font-bold text-slate-700 text-sm truncate")= s.titulo
-                                                    p(class="text-xs text-slate-400 truncate mt-0.5")= s.categoria ? s.categoria.nombreCategoria : 'Sin categoría'
-                                                    div(class="flex items-center gap-2 mt-2")
-                                                        button(
-                                                            type="button"
-                                                            class="btn-editar-seccion flex-1 text-xs py-1.5 px-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50 transition-colors font-semibold"
-                                                            data-seccion=JSON.stringify({ idSeccion: s.idSeccion, titulo: s.titulo, idCategoria: s.idCategoria, orden: s.orden, activo: s.activo })
-                                                        )
-                                                            i(class="fi fi-rr-edit")
-                                                            |  Editar
-                                                        button(
-                                                            type="button"
-                                                            class="btn-eliminar-seccion text-xs py-1.5 px-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
-                                                            data-id=s.idSeccion
-                                                        )
-                                                            i(class="fi fi-rr-trash")
+                                                        each s in secciones
+                                                            tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+                                                                td(class="px-4 py-3")
+                                                                    if s.imagenUrl
+                                                                        img(src=s.imagenUrl alt=s.titulo class="w-16 h-12 object-cover rounded-lg border border-slate-100")
+                                                                    else
+                                                                        div(class="w-16 h-12 rounded-lg bg-slate-100 flex items-center justify-center")
+                                                                            i(class="fi fi-rr-picture text-slate-300 text-lg")
 
-                            //- ── MODAL ───────────────────────────────────────────────────────────────
-                            div#modal-seccion(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4")
-                                div(class="bg-white rounded-2xl w-full max-w-md shadow-2xl")
-                                    div(class="flex items-center justify-between p-5 border-b border-slate-100")
-                                        h2#modal-seccion-title(class="font-bold text-slate-800") Nueva sección
-                                        button#btn-cerrar-modal-seccion(type="button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100")
-                                            i(class="fi fi-rr-cross text-slate-500 text-sm")
+                                                                td(class="px-4 py-3")
+                                                                    p(class="font-bold text-slate-800 text-xs")= s.titulo
+                                                                    p(class="text-[10px] text-slate-400 mt-0.5")= s.categoria ? s.categoria.nombreCategoria : 'Sin categoría'
 
-                                    form#form-seccion(class="p-5 space-y-4" enctype="multipart/form-data")
+                                                                td(class="px-4 py-3 text-center")
+                                                                    span(class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-slate-600 text-xs font-bold")
+                                                                        = s.orden
+
+                                                                td(class="px-4 py-3 text-center")
+                                                                    if s.activo
+                                                                        span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600")
+                                                                            span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                                            | Activa
+                                                                    else
+                                                                        span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500")
+                                                                            span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                                            | Inactiva
+
+                                                                td(class="px-6 py-3 text-center")
+                                                                    div(class="flex items-center justify-center gap-2")
+                                                                        button(
+                                                                            type="button"
+                                                                            class="btn-editar-seccion btn btn-secondary text-xs"
+                                                                            data-seccion=JSON.stringify({ idSeccion: s.idSeccion, titulo: s.titulo, idCategoria: s.idCategoria, orden: s.orden, activo: s.activo })
+                                                                        )
+                                                                            i(class="fi-rr-edit text-xs")
+                                                                            | Editar
+                                                                        button(
+                                                                            type="button"
+                                                                            class="btn-eliminar-seccion btn btn-secondary text-xs bg-red-50 text-red-500 hover:bg-red-100 border-red-200"
+                                                                            data-id=s.idSeccion
+                                                                            data-titulo=s.titulo
+                                                                        )
+                                                                            i(class="fi-rr-trash text-xs")
+                                                                            | Eliminar
+
+                                        div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between")
+                                            p(class="text-xs text-slate-400")
+                                                | Mostrando
+                                                span(class="font-bold text-slate-600 mx-1")= secciones.length
+                                                | sección(es) registrada(s)
+
+                                //- COLUMNA DERECHA — Formulario
+                                div(class="col-span-12 md:col-span-4 bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                    h2#form-titulo(class="h2 text-gh-primaryHover")
+                                        i#form-icono.fi-rr-add-document
+                                        |  Nueva sección
+                                    p(class="text-sm text-slate-400 mb-4") Configura el bloque visual de la tienda
+
+                                    form#form-seccion(class="flex flex-col gap-4 px-4 pb-4" enctype="multipart/form-data")
                                         input(type="hidden" name="_csrf" value=csrfToken)
-                                        input#seccion-id(type="hidden")
+                                        input#seccion-id(type="hidden" value="")
+
+                                        //- Preview de imagen seleccionada
+                                        div#preview-imagen-wrap(class="hidden")
+                                            img#preview-imagen(class="w-full h-32 object-cover rounded-xl border border-slate-200")
 
                                         div
-                                            label.label Imagen de la sección
-                                                input.field-text(type="file" name="imagen" accept="image/*")
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Imagen
+                                            input#seccion-imagen(
+                                                type="file"
+                                                name="imagen"
+                                                accept="image/*"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-pink-50 file:text-pink-600 hover:file:bg-pink-100"
+                                            )
                                             p(class="text-[10px] text-slate-400 mt-1") Tamaño recomendado: 800×600px
 
                                         div
-                                            label.label Título
-                                                input.field-text#seccion-titulo(type="text" name="titulo" placeholder="Nueva colección")
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Título
+                                            input#seccion-titulo(
+                                                type="text"
+                                                name="titulo"
+                                                placeholder="Nueva colección"
+                                                maxlength="120"
+                                                autocomplete="off"
+                                                required
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
 
                                         div
-                                            label.label Categoría vinculada
-                                                div(class="select-wrapper")
-                                                    select.field-text#seccion-categoria(name="idCategoria")
-                                                        option(value="") Sin categoría
-                                                        each cat in categorias
-                                                            option(value=cat.idCategoria)= cat.nombreCategoria
-                                                    span.select-icon
-                                                        i.fi-rr-chevron-double-down
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Categoría vinculada
+                                            select#seccion-categoria(
+                                                name="idCategoria"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+                                                option(value="") Sin categoría
+                                                each cat in categorias
+                                                    option(value=cat.idCategoria)= cat.nombreCategoria
 
-                                        div(class="grid grid-cols-2 gap-4")
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Orden
+                                            input#seccion-orden(
+                                                type="number"
+                                                name="orden"
+                                                value="0"
+                                                min="0"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+
+                                        div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
                                             div
-                                                label.label Orden
-                                                    input.field-text#seccion-orden(type="number" name="orden" value="0" min="0")
-                                            div(class="flex items-end pb-1")
-                                                label(class="flex items-center gap-2 cursor-pointer")
-                                                    input(type="checkbox" name="activo" id="seccion-activo" value="true" class="checkbox" checked)
-                                                    span(class="text-sm font-semibold text-slate-700") Activa
+                                                p(class="text-xs font-semibold text-slate-700") Activa
+                                                p(class="text-[10px] text-slate-400 mt-0.5") La sección se mostrará en la tienda web
+                                            label(class="flex items-center cursor-pointer")
+                                                input#seccion-activo(type="checkbox" name="activo" value="true" class="sr-only" checked)
+                                                span.switch
+                                                    span.switch-thumb
 
-                                        div(class="flex justify-end gap-3 pt-2 border-t border-slate-100")
-                                            button(type="button" id="btn-cancelar-seccion" class="btn text-sm py-2 px-4 bg-slate-100 text-slate-600 hover:bg-slate-200") Cancelar
-                                            button#btn-guardar-seccion(type="submit" class="btn btn-primary text-sm py-2 px-4")
-                                                i(class="fi fi-rr-disk")
-                                                | Guardar
+                                        div(class="flex gap-2")
+                                            button#btn-cancelar(
+                                                type="button"
+                                                class="hidden flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all active:scale-95 cursor-pointer"
+                                            ) Cancelar
+                                            button#btn-guardar(
+                                                type="submit"
+                                                class="flex-1 py-3 bg-gh-primary text-white rounded-2xl font-bold text-sm hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer"
+                                            ) Guardar sección
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
-            const modal = document.getElementById('modal-seccion');
-            const form  = document.getElementById('form-seccion');
+            const csrfToken = '!{csrfToken}';
+            let editandoId  = null;
 
-            function abrirModal(datos) {
-                document.getElementById('modal-seccion-title').textContent = datos ? 'Editar sección' : 'Nueva sección';
-                document.getElementById('seccion-id').value = datos?.idSeccion || '';
-                document.getElementById('seccion-titulo').value = datos?.titulo || '';
-                document.getElementById('seccion-categoria').value = datos?.idCategoria || '';
-                document.getElementById('seccion-orden').value = datos?.orden ?? 0;
-                document.getElementById('seccion-activo').checked = datos ? datos.activo : true;
-                modal.classList.remove('hidden');
-            }
-
-            document.getElementById('btn-nueva-seccion').addEventListener('click', () => abrirModal(null));
-            document.getElementById('btn-cerrar-modal-seccion').addEventListener('click', () => modal.classList.add('hidden'));
-            document.getElementById('btn-cancelar-seccion').addEventListener('click', () => modal.classList.add('hidden'));
-
-            document.querySelectorAll('.btn-editar-seccion').forEach(btn => {
-                btn.addEventListener('click', () => abrirModal(JSON.parse(btn.dataset.seccion)));
+            // ── Preview imagen local ──────────────────────────────────────────
+            document.getElementById('seccion-imagen').addEventListener('change', function() {
+                const file = this.files[0];
+                if (!file) return;
+                const wrap = document.getElementById('preview-imagen-wrap');
+                const img  = document.getElementById('preview-imagen');
+                img.src = URL.createObjectURL(file);
+                wrap.classList.remove('hidden');
             });
 
-            document.querySelectorAll('.btn-eliminar-seccion').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const { isConfirmed } = await Swal.fire({ icon: 'warning', title: '¿Eliminar sección?', showCancelButton: true, confirmButtonText: 'Sí', cancelButtonText: 'Cancelar', confirmButtonColor: '#ef4444' });
-                    if (!isConfirmed) return;
-                    const csrf = document.querySelector('[name=_csrf]').value;
-                    const resp = await fetch(`/admin/web/secciones/eliminar/${btn.dataset.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _csrf: csrf }) });
-                    const data = await resp.json();
-                    if (data.success) location.reload();
-                    else Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+            // ── Modo edición ─────────────────────────────────────────────────
+            document.querySelectorAll('.btn-editar-seccion').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const s = JSON.parse(btn.dataset.seccion);
+                    editandoId = s.idSeccion;
+                    document.getElementById('seccion-id').value         = s.idSeccion;
+                    document.getElementById('seccion-titulo').value     = s.titulo;
+                    document.getElementById('seccion-categoria').value  = s.idCategoria || '';
+                    document.getElementById('seccion-orden').value      = s.orden ?? 0;
+                    document.getElementById('seccion-activo').checked   = !!s.activo;
+                    document.getElementById('seccion-imagen').value     = '';
+                    document.getElementById('preview-imagen-wrap').classList.add('hidden');
+                    document.getElementById('form-titulo').innerHTML = '<i class="fi-rr-edit"></i> Editar sección';
+                    document.getElementById('btn-cancelar').classList.remove('hidden');
+                    document.getElementById('form-seccion').scrollIntoView({ behavior: 'smooth', block: 'start' });
                 });
             });
 
-            form.addEventListener('submit', async function(e) {
+            // ── Cancelar edición ─────────────────────────────────────────────
+            document.getElementById('btn-cancelar').addEventListener('click', resetForm);
+
+            function resetForm() {
+                editandoId = null;
+                document.getElementById('seccion-id').value         = '';
+                document.getElementById('seccion-titulo').value     = '';
+                document.getElementById('seccion-categoria').value  = '';
+                document.getElementById('seccion-orden').value      = '0';
+                document.getElementById('seccion-activo').checked   = true;
+                document.getElementById('seccion-imagen').value     = '';
+                document.getElementById('preview-imagen-wrap').classList.add('hidden');
+                document.getElementById('form-titulo').innerHTML = '<i class="fi-rr-add-document"></i> Nueva sección';
+                document.getElementById('btn-cancelar').classList.add('hidden');
+            }
+
+            // ── Guardar (crear o editar) ──────────────────────────────────────
+            document.getElementById('form-seccion').addEventListener('submit', async function(e) {
                 e.preventDefault();
-                const btn = document.getElementById('btn-guardar-seccion');
-                btn.disabled = true;
-                const id = document.getElementById('seccion-id').value;
-                const url = id ? `/admin/web/secciones/editar/${id}` : '/admin/web/secciones/crear';
+                const btn = document.getElementById('btn-guardar');
+                btn.disabled    = true;
+                btn.textContent = 'Guardando...';
+
+                const url = editandoId
+                    ? `/admin/web/secciones/editar/${editandoId}`
+                    : '/admin/web/secciones/crear';
+
                 const fd = new FormData(this);
                 if (!document.getElementById('seccion-activo').checked) fd.set('activo', 'false');
+
                 try {
                     const resp = await fetch(url, { method: 'POST', body: fd });
                     const data = await resp.json();
                     if (data.success) {
-                        modal.classList.add('hidden');
-                        Swal.fire({ icon: 'success', title: data.mensaje, timer: 1800, showConfirmButton: false }).then(() => location.reload());
-                    } else Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
-                } catch { Swal.fire({ icon: 'error', title: 'Error de red' }); }
-                finally { btn.disabled = false; }
+                        await Swal.fire({ icon: 'success', title: data.mensaje, timer: 1600, showConfirmButton: false, confirmButtonColor: '#EC5FA3' });
+                        location.reload();
+                    } else {
+                        Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
+                    }
+                } catch {
+                    Swal.fire({ icon: 'error', title: 'Error de red', confirmButtonColor: '#EC5FA3' });
+                } finally {
+                    btn.disabled    = false;
+                    btn.textContent = 'Guardar sección';
+                }
+            });
+
+            // ── Eliminar ─────────────────────────────────────────────────────
+            document.querySelectorAll('.btn-eliminar-seccion').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const { isConfirmed } = await Swal.fire({
+                        title: '¿Eliminar sección?',
+                        text: `"${btn.dataset.titulo}" se eliminará permanentemente.`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, eliminar',
+                        cancelButtonText: 'Cancelar',
+                        confirmButtonColor: '#ef4444',
+                        cancelButtonColor: '#94a3b8'
+                    });
+                    if (!isConfirmed) return;
+
+                    const fd = new FormData();
+                    fd.append('_csrf', csrfToken);
+                    try {
+                        const resp = await fetch(`/admin/web/secciones/eliminar/${btn.dataset.id}`, { method: 'POST', body: fd });
+                        const data = await resp.json();
+                        if (data.success) {
+                            await Swal.fire({ icon: 'success', title: data.mensaje, timer: 1400, showConfirmButton: false, confirmButtonColor: '#EC5FA3' });
+                            location.reload();
+                        } else {
+                            Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
+                        }
+                    } catch {
+                        Swal.fire({ icon: 'error', title: 'Error de red', confirmButtonColor: '#EC5FA3' });
+                    }
+                });
             });

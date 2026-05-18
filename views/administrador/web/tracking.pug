@@ -1,0 +1,282 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center gap-4")
+                                a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-slate-600")
+                                div
+                                    h1(class="text-xl font-bold text-slate-800") Tracking y Etiquetas
+                                    p(class="text-xs text-slate-400 mt-0.5") Scripts de seguimiento, analytics y píxeles de conversión
+
+                            //- CUERPO: dos columnas
+                            div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
+
+                                //- COLUMNA IZQUIERDA — Listado
+                                div(class="col-span-12 md:col-span-8")
+                                    div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                        h2(class="h2 text-gh-primaryHover")
+                                            i.fi-rr-cursor
+                                            |  Etiquetas registradas
+                                        p(class="text-sm text-slate-400") Scripts activos en la tienda web
+
+                                        div(class="overflow-x-auto pt-4")
+                                            table(class="w-full text-left text-2xs border-collapse")
+                                                thead
+                                                    tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                                                        th(class="px-6 py-4 text-gray-600") Nombre
+                                                        th(class="px-4 py-4 text-center text-gray-600") Tipo
+                                                        th(class="px-4 py-4 text-center text-gray-600") Posición
+                                                        th(class="px-4 py-4 text-center text-gray-600") Estado
+                                                        th(class="px-6 py-4 text-center text-gray-600") Acciones
+                                                tbody#lista-etiquetas(class="divide-y divide-slate-100")
+                                                    if etiquetas.length === 0
+                                                        tr
+                                                            td(colspan="5" class="px-6 py-16 text-center")
+                                                                i(class="fi fi-rr-cursor text-4xl text-slate-200 mb-3 block")
+                                                                p(class="text-sm text-slate-400") No hay etiquetas registradas
+                                                                p(class="text-xs text-slate-300 mt-1") Crea la primera usando el formulario
+                                                    else
+                                                        each e in etiquetas
+                                                            tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors" id=`etiqueta-${e.idEtiqueta}`)
+                                                                td(class="px-6 py-5")
+                                                                    p(class="font-bold text-slate-800") #{e.nombre}
+
+                                                                td(class="px-4 py-5 text-center")
+                                                                    span(class=`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${e.tipo === 'google' ? 'bg-blue-100 text-blue-700' : e.tipo === 'meta' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`)
+                                                                        = e.tipo
+
+                                                                td(class="px-4 py-5 text-center")
+                                                                    span(class=`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${(e.posicion || 'body') === 'header' ? 'bg-violet-100 text-violet-700' : (e.posicion || 'body') === 'footer' ? 'bg-orange-100 text-orange-700' : 'bg-cyan-100 text-cyan-700'}`)
+                                                                        = e.posicion || 'body'
+
+                                                                td(class="px-4 py-5 text-center")
+                                                                    if e.activo
+                                                                        span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600")
+                                                                            span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                                            | Activo
+                                                                    else
+                                                                        span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500")
+                                                                            span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                                            | Inactivo
+
+                                                                td(class="px-6 py-5 text-center")
+                                                                    div(class="flex items-center justify-center gap-2")
+                                                                        button(
+                                                                            type="button"
+                                                                            class="btn-edit-tag btn btn-secondary text-xs"
+                                                                            data-id=e.idEtiqueta
+                                                                            data-nombre=e.nombre
+                                                                            data-tipo=e.tipo
+                                                                            data-posicion=e.posicion || 'body'
+                                                                            data-script=e.script || ''
+                                                                            data-activo=String(e.activo)
+                                                                        )
+                                                                            i(class="fi-rr-edit text-xs")
+                                                                            | Editar
+                                                                        button(
+                                                                            type="button"
+                                                                            class="btn-delete-tag btn btn-secondary text-xs bg-red-50 text-red-500 hover:bg-red-100 border-red-200"
+                                                                            data-id=e.idEtiqueta
+                                                                            data-nombre=e.nombre
+                                                                        )
+                                                                            i(class="fi-rr-trash text-xs")
+                                                                            | Eliminar
+
+                                        div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between")
+                                            p(class="text-xs text-slate-400")
+                                                | Mostrando
+                                                span(class="font-bold text-slate-600 mx-1")= etiquetas.length
+                                                | etiqueta(s) registrada(s)
+
+                                //- COLUMNA DERECHA — Formulario
+                                div(class="col-span-12 md:col-span-4 bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                                    h2#form-titulo(class="h2 text-gh-primaryHover")
+                                        i#form-icono.fi-rr-add-document
+                                        |  Nueva etiqueta
+                                    p(class="text-sm text-slate-400 mb-4") Pega el código de tu script de seguimiento
+
+                                    form#form-etiqueta(class="flex flex-col gap-4 px-4 pb-4")
+                                        input(type="hidden" name="_csrf" value=csrfToken)
+                                        input#campo-id(type="hidden" name="idEtiqueta" value="")
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Nombre
+                                            input#campo-nombre(
+                                                type="text"
+                                                name="nombre"
+                                                placeholder="Ej: Google Analytics, Meta Pixel"
+                                                maxlength="120"
+                                                autocomplete="off"
+                                                required
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Tipo
+                                            select#campo-tipo(
+                                                name="tipo"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+                                                option(value="google") Google
+                                                option(value="meta") Meta
+                                                option(value="otro") Otro
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Posición en la página
+                                            select#campo-posicion(
+                                                name="posicion"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+                                                option(value="header") Header — carga antes de la página
+                                                option(value="body" selected) Body — al volverse interactiva
+                                                option(value="footer") Footer — carga diferida al final
+
+                                        div
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Código del script
+                                            p(class="text-[10px] text-slate-400 mb-1.5") Sin las etiquetas &lt;script&gt;&lt;/script&gt;
+                                            textarea#campo-script(
+                                                name="script"
+                                                rows="8"
+                                                placeholder="window.dataLayer = window.dataLayer || [];\nfunction gtag(){dataLayer.push(arguments);}"
+                                                style="font-family: monospace; resize: vertical;"
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+
+                                        div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
+                                            div
+                                                p(class="text-xs font-semibold text-slate-700") Activo
+                                                p(class="text-[10px] text-slate-400 mt-0.5") El script se cargará en la tienda web
+                                            label(class="flex items-center cursor-pointer")
+                                                input#campo-activo(type="checkbox" name="activo" value="true" class="sr-only" checked)
+                                                span.switch
+                                                    span.switch-thumb
+
+                                        div(class="flex gap-2")
+                                            button#btn-cancelar(
+                                                type="button"
+                                                class="hidden flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all active:scale-95 cursor-pointer"
+                                            ) Cancelar
+                                            button#btn-guardar(
+                                                type="submit"
+                                                class="flex-1 py-3 bg-gh-primary text-white rounded-2xl font-bold text-sm hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer"
+                                            ) Guardar etiqueta
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script.
+            const csrfToken = '!{csrfToken}';
+            let editandoId = null;
+
+            // ── Modo edición ─────────────────────────────────────────────────
+            document.querySelectorAll('.btn-edit-tag').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    editandoId = btn.dataset.id;
+                    document.getElementById('campo-id').value      = editandoId;
+                    document.getElementById('campo-nombre').value  = btn.dataset.nombre;
+                    document.getElementById('campo-tipo').value    = btn.dataset.tipo;
+                    document.getElementById('campo-posicion').value = btn.dataset.posicion || 'body';
+                    document.getElementById('campo-script').value  = btn.dataset.script;
+                    document.getElementById('campo-activo').checked = btn.dataset.activo === 'true';
+                    document.getElementById('form-titulo').innerHTML = '<i class="fi-rr-edit"></i> Editar etiqueta';
+                    document.getElementById('btn-cancelar').classList.remove('hidden');
+                    document.getElementById('form-etiqueta').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            });
+
+            // ── Cancelar edición ─────────────────────────────────────────────
+            document.getElementById('btn-cancelar').addEventListener('click', resetForm);
+
+            function resetForm() {
+                editandoId = null;
+                document.getElementById('campo-id').value       = '';
+                document.getElementById('campo-nombre').value   = '';
+                document.getElementById('campo-tipo').value     = 'google';
+                document.getElementById('campo-posicion').value = 'body';
+                document.getElementById('campo-script').value   = '';
+                document.getElementById('campo-activo').checked = true;
+                document.getElementById('form-titulo').innerHTML = '<i class="fi-rr-add-document"></i> Nueva etiqueta';
+                document.getElementById('btn-cancelar').classList.add('hidden');
+            }
+
+            // ── Guardar (crear o editar) ──────────────────────────────────────
+            document.getElementById('form-etiqueta').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const btn = document.getElementById('btn-guardar');
+                btn.disabled    = true;
+                btn.textContent = 'Guardando...';
+
+                const nombre   = document.getElementById('campo-nombre').value.trim();
+                const tipo     = document.getElementById('campo-tipo').value;
+                const posicion = document.getElementById('campo-posicion').value;
+                const script   = document.getElementById('campo-script').value.trim();
+                const activo   = document.getElementById('campo-activo').checked ? 'true' : 'false';
+
+                const url = editandoId
+                    ? `/admin/web/tracking/editar/${editandoId}`
+                    : '/admin/web/tracking/crear';
+
+                try {
+                    const resp = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                        body: JSON.stringify({ nombre, tipo, posicion, script, activo })
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        await Swal.fire({ icon: 'success', title: data.mensaje, timer: 1600, showConfirmButton: false, confirmButtonColor: '#EC5FA3' });
+                        location.reload();
+                    } else {
+                        Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
+                    }
+                } catch {
+                    Swal.fire({ icon: 'error', title: 'Error de red', confirmButtonColor: '#EC5FA3' });
+                } finally {
+                    btn.disabled    = false;
+                    btn.textContent = 'Guardar etiqueta';
+                }
+            });
+
+            // ── Eliminar ─────────────────────────────────────────────────────
+            document.querySelectorAll('.btn-delete-tag').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id     = btn.dataset.id;
+                    const nombre = btn.dataset.nombre;
+                    const { isConfirmed } = await Swal.fire({
+                        title: '¿Eliminar etiqueta?',
+                        text: `"${nombre}" se eliminará permanentemente.`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, eliminar',
+                        cancelButtonText: 'Cancelar',
+                        confirmButtonColor: '#ef4444',
+                        cancelButtonColor: '#94a3b8'
+                    });
+                    if (!isConfirmed) return;
+
+                    try {
+                        const resp = await fetch(`/admin/web/tracking/eliminar/${id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                            body: JSON.stringify({})
+                        });
+                        const data = await resp.json();
+                        if (data.success) {
+                            await Swal.fire({ icon: 'success', title: data.mensaje, timer: 1400, showConfirmButton: false, confirmButtonColor: '#EC5FA3' });
+                            location.reload();
+                        } else {
+                            Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
+                        }
+                    } catch {
+                        Swal.fire({ icon: 'error', title: 'Error de red', confirmButtonColor: '#EC5FA3' });
+                    }
+                });
+            });

@@ -42,6 +42,8 @@ import BannersWeb from './BannersWeb.js'
 import CenefasWeb from './CenefasWeb.js'
 import SeccionesWeb from './SeccionesWeb.js'
 import PopupWeb from './PopupWeb.js'
+import Interesados from './Interesados.js'
+import EtiquetasWeb from './EtiquetasWeb.js'
 //ASOCIACIONES
 
 
@@ -218,6 +220,10 @@ Egresos.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 SeccionesWeb.belongsTo(Categorias, { foreignKey: 'idCategoria', as: 'categoria' });
 Categorias.hasMany(SeccionesWeb, { foreignKey: 'idCategoria', as: 'seccionesWeb' });
 
+// ─── Interesados ─────────────────────────────────────────────────────────────
+Interesados.belongsTo(Productos, { foreignKey: 'producto', as: 'productoDetalle' });
+Productos.hasMany(Interesados, { foreignKey: 'producto', as: 'interesados' });
+
 export {
   Usuarios,
   Departamentos,
@@ -236,4 +242,6 @@ export {
   PermisosRecursos, PermisosAcciones, UserPermisos,
   DetallesFacturaProvedores, CuentasPorPagar,
   BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb,
+  Interesados,
+  EtiquetasWeb,
 }

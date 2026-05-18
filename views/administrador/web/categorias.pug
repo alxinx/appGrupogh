@@ -10,56 +10,78 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         div(class="mainDashboard")
 
-                            //- ── HEADER ─────────────────────────────────────────────────────────────
-                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
-                                div(class="flex items-center gap-4")
-                                    a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
-                                        i(class="fi fi-rr-arrow-left text-slate-600")
-                                    div(class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-200 to-pink-400 flex items-center justify-center flex-shrink-0")
-                                        i(class="fi fi-rr-tags text-white")
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center gap-4")
+                                a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-slate-600")
+                                div
+                                    h1(class="text-xl font-bold text-slate-800") Categorías en web
+                                    p(class="text-xs text-slate-400 mt-0.5") Activa las categorías que quieres mostrar en el catálogo online
+
+                            //- CONTENEDOR PRINCIPAL
+                            div(class="col-span-12 bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+
+                                //- TÍTULO DESCRIPTIVO
+                                div(class="flex items-start gap-3 px-4 pt-3 pb-5 border-b border-slate-100 mb-5")
+                                    i(class="fi fi-rr-tags text-gh-primaryHover text-xl flex-shrink-0 mt-0.5")
                                     div
-                                        h1(class="font-bold text-slate-800 text-lg leading-tight") Categorías en web
-                                        p(class="text-xs text-slate-400") Activa las categorías que quieres mostrar en el catálogo online
+                                        h2(class="font-bold text-slate-700 text-sm") Visibilidad de categorías en el catálogo web
+                                        p(class="text-xs text-slate-400 mt-1 leading-relaxed") Los productos de las categorías activas aparecen en el catálogo web cuando tienen stock disponible. Las subcategorías se activan individualmente.
 
-                            //- ── LISTA ───────────────────────────────────────────────────────────────
-                            div(class="col-span-12 cards cardsWhite p-6")
-                                p(class="text-xs text-slate-400 mb-4") Los productos de las categorías activas aparecen en el catálogo web cuando tienen stock disponible. Las subcategorías se activan individualmente.
+                                //- GRID DE TARJETAS
+                                if categorias.length === 0
+                                    div(class="flex flex-col items-center justify-center py-16 text-center")
+                                        i(class="fi fi-rr-tags text-4xl text-slate-200 mb-3 block")
+                                        p(class="text-sm text-slate-400") No hay categorías registradas
 
-                                div(class="space-y-3")
-                                    each cat in categorias
-                                        div(class="rounded-xl border border-slate-100 overflow-hidden")
-                                            //- Categoría padre
-                                            div(class="flex items-center justify-between p-4 bg-slate-50")
-                                                div(class="flex items-center gap-3")
-                                                    i(class="fi fi-rr-folder text-pink-400")
-                                                    span(class="font-bold text-slate-700 text-sm")= cat.nombreCategoria
-                                                    if cat.Subcategorias && cat.Subcategorias.length > 0
-                                                        span(class="text-[10px] text-slate-400 bg-slate-200 px-2 py-0.5 rounded-full")= `${cat.Subcategorias.length} subcategorías`
-                                                label(class="relative inline-flex items-center cursor-pointer")
-                                                    input(
-                                                        type="checkbox"
-                                                        class="sr-only peer toggle-categoria"
-                                                        data-id=cat.idCategoria
-                                                        checked=cat.webActiva
-                                                    )
-                                                    div(class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500")
+                                else
+                                    div(class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-4 pb-4")
+                                        each cat in categorias
+                                            div(class="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col")
 
-                                            //- Subcategorías
-                                            if cat.Subcategorias && cat.Subcategorias.length > 0
-                                                div(class="divide-y divide-slate-50")
-                                                    each sub in cat.Subcategorias
-                                                        div(class="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50/50 transition-colors")
-                                                            div(class="flex items-center gap-3 pl-4")
-                                                                i(class="fi fi-rr-angle-right text-slate-300 text-xs")
-                                                                span(class="text-sm text-slate-600")= sub.nombreCategoria
-                                                            label(class="relative inline-flex items-center cursor-pointer")
-                                                                input(
-                                                                    type="checkbox"
-                                                                    class="sr-only peer toggle-categoria"
-                                                                    data-id=sub.idCategoria
-                                                                    checked=sub.webActiva
-                                                                )
-                                                                div(class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pink-500")
+                                                //- Categoría padre
+                                                div(class="flex items-center justify-between gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100")
+                                                    div(class="flex items-center gap-2 min-w-0")
+                                                        i(class="fi fi-rr-folder text-pink-400 flex-shrink-0")
+                                                        span(class="font-bold text-slate-700 text-sm truncate")= cat.nombreCategoria
+                                                    label(class="relative inline-flex items-center cursor-pointer flex-shrink-0")
+                                                        input(
+                                                            type="checkbox"
+                                                            class="sr-only peer toggle-categoria"
+                                                            data-id=cat.idCategoria
+                                                            checked=cat.webActiva
+                                                        )
+                                                        div(class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pink-500")
+
+                                                //- Subcategorías
+                                                if cat.Subcategorias && cat.Subcategorias.length > 0
+                                                    div(class="divide-y divide-slate-50 flex-1")
+                                                        each sub in cat.Subcategorias
+                                                            div(class="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-slate-50/60 transition-colors")
+                                                                div(class="flex items-center gap-2 min-w-0")
+                                                                    i(class="fi fi-rr-angle-right text-slate-300 text-xs flex-shrink-0")
+                                                                    span(class="text-xs text-slate-600 truncate")= sub.nombreCategoria
+                                                                label(class="relative inline-flex items-center cursor-pointer flex-shrink-0")
+                                                                    input(
+                                                                        type="checkbox"
+                                                                        class="sr-only peer toggle-categoria"
+                                                                        data-id=sub.idCategoria
+                                                                        checked=sub.webActiva
+                                                                    )
+                                                                    div(class="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-pink-500")
+                                                else
+                                                    div(class="px-4 py-3 flex-1")
+                                                        p(class="text-[10px] text-slate-300 italic") Sin subcategorías
+
+                                //- FOOTER conteo
+                                div(class="px-6 py-4 border-t border-slate-100 flex items-center justify-between mt-1")
+                                    p(class="text-xs text-slate-400")
+                                        | Mostrando
+                                        span(class="font-bold text-slate-600 mx-1")= categorias.length
+                                        | categoría(s) registrada(s)
+                                    p(class="text-xs text-slate-400")
+                                        span(class="font-bold text-gh-primaryHover mx-1")= categorias.filter(c => c.webActiva).length
+                                        | activa(s) en el catálogo web
 
         input(type="hidden" id="csrf-token" value=csrfToken)
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")

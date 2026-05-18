@@ -1,7 +1,8 @@
 import { Op, fn, col, literal } from 'sequelize';
 import {
-    BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb,
-    Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura
+    BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb,
+    Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura,
+    Interesados,
 } from '../models/index.js';
 
 const R2 = () => `${process.env.R2_PUBLIC_URL}/productos/`;
@@ -9,7 +10,7 @@ const R2 = () => `${process.env.R2_PUBLIC_URL}/productos/`;
 // GET /api/web/config
 export const getConfig = async (req, res) => {
     try {
-        const [banners, cenefas, secciones, popup] = await Promise.all([
+        const [banners, cenefas, secciones, popup, etiquetas] = await Promise.all([
             BannersWeb.findAll({
                 where: { activo: true },
                 attributes: ['idBanner', 'titulo', 'subtitulo', 'textoBoton', 'linkBoton', 'imagenUrl', 'orden'],
@@ -34,6 +35,11 @@ export const getConfig = async (req, res) => {
             PopupWeb.findOne({
                 where: { activo: true },
                 attributes: ['idPopup', 'titulo', 'imagenUrl', 'link', 'delaySegundos']
+            }),
+            EtiquetasWeb.findAll({
+                where: { activo: true },
+                attributes: ['idEtiqueta', 'nombre', 'tipo', 'script', 'posicion'],
+                order: [['createdAt', 'ASC']]
             })
         ]);
 
@@ -41,7 +47,10 @@ export const getConfig = async (req, res) => {
             banners,
             cenefas,
             secciones: secciones.map(s => s.toJSON()),
-            popup: popup ? popup.toJSON() : null
+            popup: popup ? popup.toJSON() : null,
+            etiquetas: etiquetas.map(e => e.toJSON()),
+            wholesaleMinQty: parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6,
+            wholesaleGlobal: process.env.WHOLESALE_PRICE_GLOBAL !== 'false'
         });
     } catch (e) {
         console.error('webApi.getConfig:', e);
@@ -394,3 +403,27 @@ export const getProducto = async (req, res) => {
         return res.status(500).json({ error: 'Error al obtener producto' });
     }
 };
+
+// POST /api/web/interesado
+export const postInteresado = async (req, res) => {
+    try {
+        const { nombreCliente, canalContacto, canal, producto } = req.body;
+        if (!nombreCliente?.trim() || !canalContacto || !canal?.trim() || !producto) {
+            return res.status(400).json({ success: false, message: 'Faltan campos obligatorios' });
+        }
+        if (!['whatsapp', 'email'].includes(canalContacto)) {
+            return res.status(400).json({ success: false, message: 'canalContacto inválido' });
+        }
+        await Interesados.create({
+            nombreCliente: nombreCliente.trim(),
+            canalContacto,
+            canal: canal.trim(),
+            producto,
+        });
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('webApi.postInteresado:', e);
+        return res.status(500).json({ success: false, message: 'Error al guardar' });
+    }
+};
+

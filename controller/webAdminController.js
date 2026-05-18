@@ -1,4 +1,4 @@
-import { Categorias, BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb } from '../models/index.js';
+import { Categorias, BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb } from '../models/index.js';
 import s3Client from '../config/r2.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -254,4 +254,48 @@ export const actualizarPopup = async (req, res) => {
         console.error('actualizarPopup:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al actualizar el popup.' });
     }
+};
+
+// ─── TRACKING Y ETIQUETAS ─────────────────────────────────────────────────────
+
+export const listaEtiquetas = async (req, res) => {
+    const currentPath = req.path;
+    const etiquetas = await EtiquetasWeb.findAll({ order: [['createdAt', 'DESC']] });
+    return res.render('./administrador/web/tracking', { currentPath, etiquetas, csrfToken: req.csrfToken() });
+};
+
+export const crearEtiqueta = async (req, res) => {
+    try {
+        const { nombre, tipo, script, activo, posicion } = req.body;
+        if (!nombre?.trim()) return res.status(400).json({ success: false, mensaje: 'El nombre es obligatorio.' });
+        const posicionValida = ['header', 'body', 'footer'].includes(posicion) ? posicion : 'body';
+        await EtiquetasWeb.create({ nombre: nombre.trim(), tipo: tipo || 'otro', script: script || null, activo: activo === 'true' || activo === true, posicion: posicionValida });
+        return res.json({ success: true, mensaje: 'Etiqueta creada correctamente.' });
+    } catch (e) {
+        console.error('crearEtiqueta:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al crear la etiqueta.' });
+    }
+};
+
+export const actualizarEtiqueta = async (req, res) => {
+    try {
+        const { idEtiqueta } = req.params;
+        const etiqueta = await EtiquetasWeb.findByPk(idEtiqueta);
+        if (!etiqueta) return res.status(404).json({ success: false, mensaje: 'Etiqueta no encontrada.' });
+        const { nombre, tipo, script, activo, posicion } = req.body;
+        const posicionValida = ['header', 'body', 'footer'].includes(posicion) ? posicion : 'body';
+        await etiqueta.update({ nombre: nombre.trim(), tipo: tipo || 'otro', script: script || null, activo: activo === 'true' || activo === true, posicion: posicionValida });
+        return res.json({ success: true, mensaje: 'Etiqueta actualizada correctamente.' });
+    } catch (e) {
+        console.error('actualizarEtiqueta:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al actualizar la etiqueta.' });
+    }
+};
+
+export const eliminarEtiqueta = async (req, res) => {
+    const { idEtiqueta } = req.params;
+    const etiqueta = await EtiquetasWeb.findByPk(idEtiqueta);
+    if (!etiqueta) return res.status(404).json({ success: false, mensaje: 'Etiqueta no encontrada.' });
+    await etiqueta.destroy();
+    return res.json({ success: true, mensaje: 'Etiqueta eliminada.' });
 };
