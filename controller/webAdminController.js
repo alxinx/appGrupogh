@@ -1,4 +1,5 @@
-import { Categorias, BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb } from '../models/index.js';
+import { Op } from 'sequelize';
+import { Categorias, BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb, PaginasWeb } from '../models/index.js';
 import s3Client from '../config/r2.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -20,15 +21,16 @@ async function eliminarImagenR2(key) {
 
 export const dashboardWeb = async (req, res) => {
     const currentPath = req.path;
-    const [banners, cenefas, secciones, popup, categoriasActivas] = await Promise.all([
+    const [banners, cenefas, secciones, popup, categoriasActivas, paginas] = await Promise.all([
         BannersWeb.count(),
         CenefasWeb.count({ where: { activo: true } }),
         SeccionesWeb.count({ where: { activo: true } }),
         PopupWeb.findOne({ where: { activo: true } }),
-        Categorias.count({ where: { webActiva: true } })
+        Categorias.count({ where: { webActiva: true } }),
+        PaginasWeb.count({ where: { activa: true } })
     ]);
     return res.render('./administrador/web/home', {
-        currentPath, banners, cenefas, secciones, popup, categoriasActivas
+        currentPath, banners, cenefas, secciones, popup, categoriasActivas, paginas
     });
 };
 
@@ -298,4 +300,81 @@ export const eliminarEtiqueta = async (req, res) => {
     if (!etiqueta) return res.status(404).json({ success: false, mensaje: 'Etiqueta no encontrada.' });
     await etiqueta.destroy();
     return res.json({ success: true, mensaje: 'Etiqueta eliminada.' });
+};
+
+// ─── PÁGINAS SECUNDARIAS ─────────────────────────────────────────────────────
+
+export const listaPaginas = async (req, res) => {
+    const currentPath = req.path;
+    const paginas = await PaginasWeb.findAll({ order: [['nombrePagina', 'ASC']] });
+    return res.render('./administrador/web/paginas', { currentPath, paginas, csrfToken: req.csrfToken() });
+};
+
+export const nuevaPaginaForm = async (req, res) => {
+    return res.render('./administrador/web/paginas-form', {
+        pagina: null, csrfToken: req.csrfToken(), accion: 'crear'
+    });
+};
+
+export const editarPaginaForm = async (req, res) => {
+    const pagina = await PaginasWeb.findByPk(req.params.idPagina);
+    if (!pagina) return res.redirect('/admin/web/paginas');
+    return res.render('./administrador/web/paginas-form', {
+        pagina: pagina.toJSON(), csrfToken: req.csrfToken(), accion: 'editar'
+    });
+};
+
+export const crearPagina = async (req, res) => {
+    try {
+        const { nombrePagina, slug, contenido, tags, activa } = req.body;
+        const slugClean = slug.trim().toLowerCase();
+        const existente = await PaginasWeb.findOne({ where: { slug: slugClean } });
+        if (existente) return res.status(400).json({ success: false, mensaje: 'Ya existe una página con ese slug.' });
+        await PaginasWeb.create({
+            nombrePagina: nombrePagina.trim(),
+            slug: slugClean,
+            contenido: contenido || '',
+            tags: tags?.trim() || null,
+            activa: activa === 'true' || activa === true
+        });
+        return res.json({ success: true, mensaje: 'Página creada correctamente.' });
+    } catch (e) {
+        console.error('crearPagina:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al crear la página.' });
+    }
+};
+
+export const actualizarPagina = async (req, res) => {
+    try {
+        const { idPagina } = req.params;
+        const { nombrePagina, slug, contenido, tags, activa } = req.body;
+        const pagina = await PaginasWeb.findByPk(idPagina);
+        if (!pagina) return res.status(404).json({ success: false, mensaje: 'Página no encontrada.' });
+        const slugClean = slug.trim().toLowerCase();
+        const existente = await PaginasWeb.findOne({ where: { slug: slugClean, idPagina: { [Op.ne]: idPagina } } });
+        if (existente) return res.status(400).json({ success: false, mensaje: 'Ya existe una página con ese slug.' });
+        await pagina.update({
+            nombrePagina: nombrePagina.trim(),
+            slug: slugClean,
+            contenido: contenido || '',
+            tags: tags?.trim() || null,
+            activa: activa === 'true' || activa === true
+        });
+        return res.json({ success: true, mensaje: 'Página actualizada correctamente.' });
+    } catch (e) {
+        console.error('actualizarPagina:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al actualizar la página.' });
+    }
+};
+
+export const eliminarPagina = async (req, res) => {
+    try {
+        const pagina = await PaginasWeb.findByPk(req.params.idPagina);
+        if (!pagina) return res.status(404).json({ success: false, mensaje: 'Página no encontrada.' });
+        await pagina.destroy();
+        return res.json({ success: true, mensaje: 'Página eliminada.' });
+    } catch (e) {
+        console.error('eliminarPagina:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al eliminar la página.' });
+    }
 };

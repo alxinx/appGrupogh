@@ -44,6 +44,7 @@ import SeccionesWeb from './SeccionesWeb.js'
 import PopupWeb from './PopupWeb.js'
 import Interesados from './Interesados.js'
 import EtiquetasWeb from './EtiquetasWeb.js'
+import PaginasWeb from './PaginasWeb.js'
 //ASOCIACIONES
 
 
@@ -244,4 +245,5 @@ export {
   BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb,
   Interesados,
   EtiquetasWeb,
+  PaginasWeb,
 }

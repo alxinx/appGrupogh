@@ -1,0 +1,120 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center justify-between gap-4")
+                                div(class="flex items-center gap-4")
+                                    a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                        i(class="fi fi-rr-arrow-left text-slate-600")
+                                    div
+                                        h1(class="text-xl font-bold text-slate-800") Páginas secundarias
+                                        p(class="text-xs text-slate-400 mt-0.5") Envíos, cambios, términos, política de privacidad y más
+                                a(href="/admin/web/paginas/nueva" class="btn btn-primary flex items-center gap-2 text-sm")
+                                    i(class="fi fi-rr-add-document")
+                                    | Nueva página
+
+                            //- TABLA
+                            div(class="col-span-12")
+                                div(class="bg-gray-50 rounded-t-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left text-2xs border-collapse")
+                                            thead
+                                                tr(class="border-b border-slate-200 bg-white text-sm")
+                                                    th(class="px-6 py-4 text-gray-500 font-semibold") Nombre
+                                                    th(class="px-4 py-4 text-gray-500 font-semibold") Slug / URL
+                                                    th(class="px-4 py-4 text-gray-500 font-semibold") Tags
+                                                    th(class="px-4 py-4 text-center text-gray-500 font-semibold") Estado
+                                                    th(class="px-6 py-4 text-center text-gray-500 font-semibold") Acciones
+                                            tbody(class="divide-y divide-slate-100")
+                                                if paginas.length === 0
+                                                    tr
+                                                        td(colspan="5" class="px-6 py-16 text-center")
+                                                            i(class="fi fi-rr-document text-4xl text-slate-200 mb-3 block")
+                                                            p(class="text-sm text-slate-400") No hay páginas registradas
+                                                            p(class="text-xs text-slate-300 mt-1") Crea la primera con el botón de arriba
+                                                else
+                                                    each p in paginas
+                                                        tr(class="hover:bg-slate-50 transition-colors")
+                                                            td(class="px-6 py-4")
+                                                                p(class="text-sm font-semibold text-slate-800")= p.nombrePagina
+                                                            td(class="px-4 py-4")
+                                                                span(class="inline-flex items-center gap-1 text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg")
+                                                                    | /#{p.slug}
+                                                            td(class="px-4 py-4")
+                                                                if p.tags
+                                                                    span(class="text-xs text-slate-400 truncate max-w-[160px] block")= p.tags
+                                                                else
+                                                                    span(class="text-xs text-slate-300") —
+                                                            td(class="px-4 py-4 text-center")
+                                                                if p.activa
+                                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600")
+                                                                        span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                                        | Activa
+                                                                else
+                                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500")
+                                                                        span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                                        | Inactiva
+                                                            td(class="px-6 py-4 text-center")
+                                                                div(class="flex items-center justify-center gap-2")
+                                                                    a(href=`/admin/web/paginas/${p.idPagina}/editar` class="btn btn-secondary text-xs")
+                                                                        i(class="fi-rr-edit text-xs")
+                                                                        | Editar
+                                                                    button(
+                                                                        type="button"
+                                                                        class="btn-eliminar btn btn-secondary text-xs bg-red-50 text-red-500 hover:bg-red-100 border-red-200"
+                                                                        data-id=p.idPagina
+                                                                        data-nombre=p.nombrePagina
+                                                                    )
+                                                                        i(class="fi-rr-trash text-xs")
+                                                                        | Eliminar
+
+                                    div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between")
+                                        p(class="text-xs text-slate-400")
+                                            | Total:
+                                            span(class="font-bold text-slate-600 mx-1")= paginas.length
+                                            | página(s)
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script.
+            const csrfToken = '!{csrfToken}';
+
+            document.querySelectorAll('.btn-eliminar').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const { isConfirmed } = await Swal.fire({
+                        title: '¿Eliminar página?',
+                        text: `"${btn.dataset.nombre}" se eliminará permanentemente.`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, eliminar',
+                        cancelButtonText: 'Cancelar',
+                        confirmButtonColor: '#ef4444',
+                        cancelButtonColor: '#94a3b8'
+                    });
+                    if (!isConfirmed) return;
+                    try {
+                        const resp = await fetch(`/admin/web/paginas/${btn.dataset.id}/eliminar`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                            body: JSON.stringify({})
+                        });
+                        const data = await resp.json();
+                        if (data.success) {
+                            await Swal.fire({ icon: 'success', title: data.mensaje, timer: 1400, showConfirmButton: false, confirmButtonColor: '#EC5FA3' });
+                            location.reload();
+                        } else {
+                            Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
+                        }
+                    } catch {
+                        Swal.fire({ icon: 'error', title: 'Error de red', confirmButtonColor: '#EC5FA3' });
+                    }
+                });
+            });

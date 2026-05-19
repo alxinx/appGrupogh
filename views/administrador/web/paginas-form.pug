@@ -1,0 +1,221 @@
+extends ../../layout/index
+block contenedor
+    head
+        link(rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jodit@3.24.5/build/jodit.min.css")
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center gap-4")
+                                a(href="/admin/web/paginas" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-slate-600")
+                                div
+                                    if accion === 'editar'
+                                        h1(class="text-xl font-bold text-slate-800") Editar página
+                                        p(class="text-xs text-slate-400 mt-0.5")= pagina.nombrePagina
+                                    else
+                                        h1(class="text-xl font-bold text-slate-800") Nueva página
+                                        p(class="text-xs text-slate-400 mt-0.5") Completa los datos y escribe el contenido
+
+                            //- FORMULARIO
+                            div(class="col-span-12")
+                                form#form-pagina(class="flex flex-col gap-4")
+                                    input(type="hidden" name="_csrf" value=csrfToken)
+
+                                    //- Fila superior: metadatos
+                                    div(class="bg-white rounded-2xl border border-slate-100 p-6 grid grid-cols-1 md:grid-cols-12 gap-4")
+
+                                        div(class="md:col-span-5")
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5") Nombre de la página
+                                            input#inp-nombre(
+                                                type="text"
+                                                name="nombrePagina"
+                                                placeholder="Ej: Cambios y devoluciones"
+                                                required
+                                                autocomplete="off"
+                                                value=pagina ? pagina.nombrePagina : ''
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+
+                                        div(class="md:col-span-4")
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5")
+                                                | Slug
+                                                span(class="ml-2 normal-case text-slate-300 font-normal tracking-normal") — URL de la página en la tienda
+                                            div(class="flex items-center border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-pink-300/40 bg-white")
+                                                span(class="px-3 text-sm text-slate-400 border-r border-slate-200 bg-slate-50 py-2.5 select-none") /
+                                                input#inp-slug(
+                                                    type="text"
+                                                    name="slug"
+                                                    placeholder="cambios-y-devoluciones"
+                                                    required
+                                                    autocomplete="off"
+                                                    value=pagina ? pagina.slug : ''
+                                                    class="flex-1 px-3 py-2.5 text-sm text-slate-800 outline-none font-mono"
+                                                )
+
+                                        div(class="md:col-span-3 flex items-end")
+                                            div(class="w-full flex items-center justify-between px-4 py-3 bg-slate-50 rounded-xl border border-slate-200")
+                                                div
+                                                    p(class="text-xs font-semibold text-slate-700") Página activa
+                                                    p(class="text-[10px] text-slate-400 mt-0.5") Visible en la tienda web
+                                                label(class="flex items-center cursor-pointer")
+                                                    input#inp-activa(
+                                                        type="checkbox"
+                                                        name="activa"
+                                                        value="true"
+                                                        class="sr-only"
+                                                        checked=pagina ? pagina.activa : true
+                                                    )
+                                                    span.switch
+                                                        span.switch-thumb
+
+                                        div(class="md:col-span-12")
+                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5")
+                                                | Tags SEO
+                                                span(class="ml-2 normal-case text-slate-300 font-normal tracking-normal") — separados por coma
+                                            input#inp-tags(
+                                                type="text"
+                                                name="tags"
+                                                placeholder="envíos, entregas, tiempos de entrega"
+                                                autocomplete="off"
+                                                value=pagina ? (pagina.tags || '') : ''
+                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
+                                            )
+
+                                    //- Editor de contenido
+                                    div(class="bg-white rounded-2xl border border-slate-100 p-6")
+                                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-3") Contenido
+
+                                        //- Referencia de estilos disponibles
+                                        div(class="mb-3 flex flex-wrap gap-2 text-[10px] text-slate-400")
+                                            span(class="bg-slate-100 px-2 py-1 rounded-lg") Las tablas heredan automáticamente el estilo de /envios
+                                            span(class="bg-slate-100 px-2 py-1 rounded-lg") Las listas, títulos y negrilla también se estilizan en la tienda
+                                            span(class="bg-pink-50 text-pink-400 px-2 py-1 rounded-lg") El botón &lt;/&gt; permite editar HTML directamente
+
+                                        textarea#editor-contenido(name="contenido")
+                                            if pagina && pagina.contenido
+                                                | !{pagina.contenido}
+
+                                    //- Acciones
+                                    div(class="flex items-center justify-between gap-3")
+                                        a(href="/admin/web/paginas" class="flex items-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all")
+                                            i(class="fi fi-rr-arrow-left text-xs")
+                                            | Cancelar
+                                        div(class="flex items-center gap-3")
+                                            if accion === 'editar'
+                                                a(href=`/${pagina.slug}` target="_blank" class="flex items-center gap-2 px-5 py-3 border border-slate-200 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all")
+                                                    i(class="fi fi-rr-eye text-xs")
+                                                    | Ver en tienda
+                                            button#btn-guardar(
+                                                type="submit"
+                                                class="flex items-center gap-2 px-7 py-3 bg-gh-primary text-white rounded-2xl font-bold text-sm hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer"
+                                            )
+                                                i(class="fi fi-rr-disk text-xs")
+                                                | Guardar página
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="https://cdn.jsdelivr.net/npm/jodit@3.24.5/build/jodit.min.js")
+        script.
+            const csrfToken  = '!{csrfToken}';
+            const accion     = '!{accion}';
+            const idPagina   = '!{pagina ? pagina.idPagina : ""}';
+
+            // ── Jodit ─────────────────────────────────────────────────────────
+            const editor = Jodit.make('#editor-contenido', {
+                height: 520,
+                language: 'es',
+                toolbarAdaptive: false,
+                showCharsCounter: false,
+                showWordsCounter: false,
+                showXPathInStatusbar: false,
+                buttons: [
+                    'bold', 'italic', 'underline', 'strikethrough',
+                    '|',
+                    'ul', 'ol',
+                    '|',
+                    'paragraph', 'font', 'fontsize',
+                    '|',
+                    'table', 'link',
+                    '|',
+                    'align',
+                    '|',
+                    'undo', 'redo',
+                    '|',
+                    'source'
+                ],
+                style: {
+                    fontFamily: 'system-ui, sans-serif',
+                    fontSize: '14px'
+                }
+            });
+
+            // ── Auto-slug desde nombre ────────────────────────────────────────
+            const inpNombre = document.getElementById('inp-nombre');
+            const inpSlug   = document.getElementById('inp-slug');
+            let slugManual  = !!inpSlug.value; // si ya tiene valor, no auto-generar
+
+            function slugify(text) {
+                return text.toLowerCase()
+                    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                    .replace(/[^a-z0-9\s-]/g, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/-+/g, '-')
+                    .trim();
+            }
+
+            inpNombre.addEventListener('input', () => {
+                if (!slugManual) inpSlug.value = slugify(inpNombre.value);
+            });
+            inpSlug.addEventListener('input', () => { slugManual = true; });
+
+            // ── Guardar ───────────────────────────────────────────────────────
+            document.getElementById('form-pagina').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const btn = document.getElementById('btn-guardar');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fi fi-rr-loading"></i> Guardando...';
+
+                const nombrePagina = document.getElementById('inp-nombre').value.trim();
+                const slug         = document.getElementById('inp-slug').value.trim();
+                const tags         = document.getElementById('inp-tags').value.trim();
+                const activa       = document.getElementById('inp-activa').checked ? 'true' : 'false';
+                const contenido    = editor.value;
+
+                if (!nombrePagina || !slug) {
+                    Swal.fire({ icon: 'warning', title: 'Faltan datos', text: 'El nombre y el slug son obligatorios.', confirmButtonColor: '#EC5FA3' });
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fi fi-rr-disk text-xs"></i> Guardar página';
+                    return;
+                }
+
+                const url = accion === 'editar'
+                    ? `/admin/web/paginas/${idPagina}/editar`
+                    : '/admin/web/paginas/crear';
+
+                try {
+                    const resp = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                        body: JSON.stringify({ nombrePagina, slug, contenido, tags, activa })
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        await Swal.fire({ icon: 'success', title: data.mensaje, timer: 1400, showConfirmButton: false, confirmButtonColor: '#EC5FA3' });
+                        window.location.href = '/admin/web/paginas';
+                    } else {
+                        Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
+                    }
+                } catch {
+                    Swal.fire({ icon: 'error', title: 'Error de red', confirmButtonColor: '#EC5FA3' });
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fi fi-rr-disk text-xs"></i> Guardar página';
+                }
+            });

@@ -2,7 +2,7 @@ import { Op, fn, col, literal } from 'sequelize';
 import {
     BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb,
     Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura,
-    Interesados,
+    Interesados, PaginasWeb,
 } from '../models/index.js';
 
 const R2 = () => `${process.env.R2_PUBLIC_URL}/productos/`;
@@ -401,6 +401,22 @@ export const getProducto = async (req, res) => {
     } catch (e) {
         console.error('webApi.getProducto:', e);
         return res.status(500).json({ error: 'Error al obtener producto' });
+    }
+};
+
+// GET /api/web/pagina/:slug
+export const getPaginaBySlug = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const pagina = await PaginasWeb.findOne({
+            where: { slug, activa: true },
+            attributes: ['idPagina', 'nombrePagina', 'slug', 'contenido', 'tags']
+        });
+        if (!pagina) return res.status(404).json({ success: false, mensaje: 'Página no encontrada' });
+        return res.json({ success: true, pagina: pagina.toJSON() });
+    } catch (e) {
+        console.error('webApi.getPaginaBySlug:', e);
+        return res.status(500).json({ error: 'Error al obtener página' });
     }
 };
 

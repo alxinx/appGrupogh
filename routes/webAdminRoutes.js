@@ -10,7 +10,8 @@ import {
     listaCenefas, crearCenefa, actualizarCenefa, eliminarCenefa,
     listaSecciones, crearSeccion, actualizarSeccion, eliminarSeccion,
     gestionPopup, actualizarPopup,
-    listaEtiquetas, crearEtiqueta, actualizarEtiqueta, eliminarEtiqueta
+    listaEtiquetas, crearEtiqueta, actualizarEtiqueta, eliminarEtiqueta,
+    listaPaginas, nuevaPaginaForm, editarPaginaForm, crearPagina, actualizarPagina, eliminarPagina
 } from '../controller/webAdminController.js';
 
 import uploadImages from '../middlewares/uploadImages.js';
@@ -49,5 +50,13 @@ routes.get('/tracking', csrfProtection, listaEtiquetas);
 routes.post('/tracking/crear', csrfProtection, crearEtiqueta);
 routes.post('/tracking/editar/:idEtiqueta', csrfProtection, actualizarEtiqueta);
 routes.post('/tracking/eliminar/:idEtiqueta', csrfProtection, eliminarEtiqueta);
+
+// Páginas secundarias
+routes.get('/paginas', csrfProtection, listaPaginas);
+routes.get('/paginas/nueva', csrfProtection, nuevaPaginaForm);
+routes.get('/paginas/:idPagina/editar', csrfProtection, editarPaginaForm);
+routes.post('/paginas/crear', csrfProtection, crearPagina);
+routes.post('/paginas/:idPagina/editar', csrfProtection, actualizarPagina);
+routes.post('/paginas/:idPagina/eliminar', csrfProtection, eliminarPagina);
 
 export default routes;
