@@ -1924,6 +1924,7 @@ const dashboardOrders = async (req, res) => {
 const dashboardSettings = async (req, res) => {
     return res.status(201).render('./administrador/settings', {
         pagina: "Configuración",
+        subPagina: "Configuración",
         csrfToken: req.csrfToken(),
         currentPath: req.path
     })

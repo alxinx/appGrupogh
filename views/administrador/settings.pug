@@ -10,3 +10,19 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         div(class="mainDashboard")
                             //******************[CUERPO PANELES]*********************//
+
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6")
+                                    div(class="flex justify-center md:items-center gap-4")
+                                        div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                            img(src="/img/avatars/editStore.webp" alt="Configuración" class="w-14 h-14 object-contain")
+                                    div(class="flex flex-col gap-1")
+                                        h1.h1 #{subPagina}
+                                        div(class="flex items-center gap-2 text-sm text-gray-500 mt-1")
+                                            span Ajustes generales del sistema
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(onclick='history.back()')
+                                        button(class="btn btn-outline flex items-center gap-2")
+                                            i(class="fi fi-rr-arrow-left")
+                                            | Volver
