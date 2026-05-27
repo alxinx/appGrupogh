@@ -1,7 +1,8 @@
 
 import path from "path"
 export default {
-    mode: 'development',
+    mode: 'production',
+    devtool: false,
     entry: {
         menu: './src/js/menus.js',
         dataAsync: './src/js/dataAsync.js',
@@ -35,7 +36,9 @@ export default {
         adminDashboard      : '/src/js/adminDashboard.js',
         adminClientes       : '/src/js/adminClientes.js',
         dataCliente         : '/src/js/dataCliente.js',
-        batchOrder          : '/src/js/batchOrder.js'
+        batchOrder          : '/src/js/batchOrder.js',
+        adminCierresCaja    : '/src/js/adminCierresCaja.js',
+        adminTrasladosTienda: '/src/js/adminTrasladosTienda.js'
     },
     output: {
         filename: '[name].js',

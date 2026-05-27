@@ -14,7 +14,9 @@ getCajasCerradasAdmin,
 getAdminCuadrePDF,
 getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d,
 getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
-getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor } from "../controller/adminControllers.js"
+getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
+storeCierresCaja, storeTrasladosTienda,
+getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -41,6 +43,8 @@ routes.get('/tiendas/partials/facturacionHoy/:idPuntoDeVenta', billingToday)
 routes.get('/tiendas/partials/inventario/:idPuntoDeVenta', storeInventory)
 routes.get('/tiendas/partials/empleados/:idPuntoDeVenta', storeEmployers)
 routes.get('/tiendas/partials/documentacion/:idPuntoDeVenta', storeDocuments)
+routes.get('/tiendas/partials/cierresCaja/:idPuntoDeVenta',   storeCierresCaja)
+routes.get('/tiendas/partials/traslados/:idPuntoDeVenta',     storeTrasladosTienda)
 
 //routes.get('/tiendas/nueva',newStore);
 //routes.get('/tiendas/verPunto/:idPuntoDeVenta',verTienda);
@@ -194,6 +198,11 @@ routes.get('/api/personal/:idEmpleado/stats-mes', getStatsVendedorMes);
 routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', getTiendaStatsHoyDetalle);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', getFacturasJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-cerradas', getCajasCerradasAdmin);
+routes.get('/api/tiendas/:idPuntoDeVenta/cierres-lista',  getCierresCajaListaJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/cierre/:idCajaTienda',           getCierreCajaDatosJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/cierre/:idCajaTienda/facturas',  getCierreFacturasJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/cierre/:idCajaTienda/egresos',   getCierreEgresosJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/traslados',      getTrasladosTiendaJSON);
 routes.get('/tiendas/:idPuntoDeVenta/cuadre/:idCajaTienda/pdf', getAdminCuadrePDF);
 routes.get('/api/tiendas/:idPuntoDeVenta/pagos-hoy/:metodoPago', getPagosHoyPorMetodo);
 routes.get('/api/factura/:id/tirilla', getTirillaPDF);

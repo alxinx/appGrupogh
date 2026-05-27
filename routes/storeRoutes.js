@@ -39,7 +39,8 @@ import {
     getVentasMes,
     getDetalleDia,
     validarEmpleadoTraslado,
-    trasladarDesdePerfil
+    trasladarDesdePerfil,
+    getTrasladosAlertaJSON
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
@@ -80,6 +81,7 @@ routes.get('/json/traslados/buscar-sku', buscarProductoPorSKU);
 
 // APIs JSON — traslados
 routes.get('/traslados/pendientes', getPendientesJSON);
+routes.get('/traslados/alerta',    getTrasladosAlertaJSON);
 routes.get('/traslados/historial', getHistorialJSON);
 routes.get('/traslados/detalle/:idTraslado', getDetalleTrasladoJSON);
 routes.get('/traslados/comprobante/:idTraslado', imprimirComprobanteTraslado);

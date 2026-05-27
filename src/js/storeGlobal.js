@@ -293,11 +293,126 @@
         }
     };
 
+    // ─── ALERTA DE TRASLADOS PENDIENTES EN SIDEBAR ───────────────────────────
+    const fmtTiempo = (segundos) => {
+        if (segundos < 60)   return `hace ${segundos}s`;
+        if (segundos < 3600) return `hace ${Math.floor(segundos / 60)}min`;
+        if (segundos < 86400) {
+            const h = Math.floor(segundos / 3600);
+            const m = Math.floor((segundos % 3600) / 60);
+            return m > 0 ? `hace ${h}h ${m}min` : `hace ${h}h`;
+        }
+        const d = Math.floor(segundos / 86400);
+        const h = Math.floor((segundos % 86400) / 3600);
+        return h > 0 ? `hace ${d}d ${h}h` : `hace ${d}d`;
+    };
+
+    const estilosNivel = {
+        verde:   {
+            borde: '#16a34a', fondo: '#f0fdf4', fondoIcono: '#dcfce7',
+            texto: '#15803d', icono: 'fi-rr-truck',           extra: '',
+            label: 'Tienes Traslado'
+        },
+        naranja: {
+            borde: '#ea580c', fondo: '#fff7ed', fondoIcono: '#ffedd5',
+            texto: '#c2410c', icono: 'fi-rr-triangle-warning', extra: '',
+            label: '¡Traslado Próximo a vencer!'
+        },
+        rojo: {
+            borde: '#dc2626', fondo: '#fef2f2', fondoIcono: '#fee2e2',
+            texto: '#b91c1c', icono: 'fi-rr-alarm-exclamation', extra: 'alerta-pulso',
+            label: '¡URGENTE!'
+        }
+    };
+
+    // Inyecta keyframes CSS una sola vez
+    const inyectarCSSpulso = () => {
+        if (document.getElementById('css-alerta-pulso')) return;
+        const style = document.createElement('style');
+        style.id = 'css-alerta-pulso';
+        style.textContent = `
+            @keyframes alertaPulso {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); }
+                55%       { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
+            }
+            .alerta-pulso { animation: alertaPulso 1.3s ease-in-out infinite; }
+        `;
+        document.head.appendChild(style);
+    };
+
+    const renderAlertasTraslado = (traslados) => {
+        const cont = document.getElementById('traslado-alerta-container');
+        if (!cont) return;
+
+        if (!traslados.length) { cont.innerHTML = ''; return; }
+
+        inyectarCSSpulso();
+
+        cont.innerHTML = traslados.map(t => {
+            const e = estilosNivel[t.nivel] || estilosNivel.verde;
+            return `
+                <a href="/store/traslados/get" style="text-decoration:none;display:block;">
+                    <div class="${e.extra}" style="
+                        border: 2px solid ${e.borde};
+                        background: ${e.fondo};
+                        border-radius: 14px;
+                        padding: 12px 14px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                    ">
+                        <!-- Ícono circular grande -->
+                        <div style="
+                            width: 52px; height: 52px; flex-shrink: 0;
+                            border-radius: 50%;
+                            background: ${e.fondoIcono};
+                            border: 2.5px solid ${e.borde};
+                            display: flex; align-items: center; justify-content: center;
+                        ">
+                            <i class="fi ${e.icono}" style="color:${e.borde};font-size:22px;"></i>
+                        </div>
+
+                        <!-- Texto -->
+                        <div style="flex:1;min-width:0;">
+                            <p style="margin:0 0 2px;font-size:13px;font-weight:800;color:${e.texto};
+                                      text-transform:uppercase;letter-spacing:.03em;line-height:1.2;">
+                                ${e.label}
+                            </p>
+                            <p style="margin:0 0 3px;font-size:14px;font-weight:700;color:#1e293b;
+                                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                ${t.origen}
+                            </p>
+                            <p style="margin:0 0 3px;font-size:13px;color:#475569;font-weight:500;">
+                                📦 ${t.totalItems} producto${t.totalItems !== 1 ? 's' : ''}
+                            </p>
+                            <p style="margin:0;font-size:13px;font-weight:600;color:${e.borde};">
+                                ⏱ ${fmtTiempo(t.segundosTranscurridos)}
+                            </p>
+                        </div>
+                    </div>
+                </a>`;
+        }).join('');
+    };
+
+    const pollAlertasTraslado = async () => {
+        try {
+            const r = await fetch('/store/traslados/alerta');
+            if (!r.ok) return;
+            const d = await r.json();
+            if (d.success) renderAlertasTraslado(d.traslados);
+        } catch (_) {}
+    };
+
     document.addEventListener('DOMContentLoaded', () => {
         conectarSSE();
         initAperturaCaja();
         // Mostrar modal si la caja no está abierta
         if (window.__SIN_CAJA__) window.abrirModalCaja();
+
+        // Alerta de traslados: carga inmediata + polling cada 30 s
+        pollAlertasTraslado();
+        setInterval(pollAlertasTraslado, 30_000);
     });
 
 })();

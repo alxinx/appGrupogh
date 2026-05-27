@@ -700,6 +700,11 @@ const imprimirComprobanteTraslado = async (req, res) => {
             include: [
                 {
                     model: PuntosDeVenta,
+                    as: 'origen',
+                    attributes: ['nombreComercial', 'razonSocial']
+                },
+                {
+                    model: PuntosDeVenta,
                     as: 'destino',
                     attributes: ['nombreComercial', 'razonSocial']
                 },
@@ -806,7 +811,8 @@ const imprimirComprobanteTraslado = async (req, res) => {
         campo('Código:', traslado.codigoTraslado);
         campo('Fecha envío:', fmtFechaHora(traslado.fechaEnvio));
         campo('Fecha recibido:', fmtFechaHora(traslado.fechaRecepcion));
-        campo('Origen:', 'PRODUCCION');
+        const origenNombre = traslado.origen?.nombreComercial || traslado.origen?.razonSocial || traslado.idOrigen;
+        campo('Origen:', origenNombre);
         campo('Destino:', destinoNombre);
         campo('Estado:', traslado.estado);
         campo('Despachado por:', nombreDespachador);

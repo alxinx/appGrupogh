@@ -95,7 +95,9 @@ aside(
       i(class="fi fi-rr-settings text-lg")
       span Settings
 
-   
+  //- Alerta de traslados pendientes (inyectado dinámicamente por storeGlobal.js)
+  div#traslado-alerta-container(class="px-3 pb-3 space-y-2")
+
   // Logout
   div(class="p-4 border-t border-gray-300")
     form(action="/logout" method="POST")

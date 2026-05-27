@@ -103,7 +103,7 @@ const _enviarEstado = async (idPdv, res) => {
             where: { idDestino: idPdv, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
         });
         const controversias = await Traslados.count({
-            where: { idDestino: idPdv, estado: 'EN_CONTROVERSIA' }
+            where: { idOrigen: idPdv, estado: 'EN_CONTROVERSIA' }
         });
         sendEvent(res, 'state', { pendientes, controversias });
     } catch (_) {}
@@ -190,6 +190,7 @@ const getDetalleTrasladoJSON = async (req, res) => {
                 [Op.or]: [{ idOrigen: idPdv }, { idDestino: idPdv }]
             },
             include: [
+                { model: PuntosDeVenta, as: 'origen',  attributes: ['nombreComercial'], required: false },
                 { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] },
                 {
                     model: DetalleTraslados, as: 'items',
@@ -226,13 +227,16 @@ const getDetalleTrasladoJSON = async (req, res) => {
 };
 
 // ─── HELPER: verificar permiso de traslado ────────────────────────────────────
-const _checkPermisoTraslado = async (codigoEmpleado, nombreAccion) => {
+const _checkPermisoTraslado = async (codigoEmpleado, nombreAccion, idPdv = null) => {
     const empleado = await Empleados.findOne({
         where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido', 'idUsuario']
+        attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido', 'idUsuario', 'idPuntoDeVenta']
     });
     if (!empleado) return { ok: false, mensaje: 'Código de empleado no encontrado.' };
     if (!empleado.idUsuario) return { ok: false, mensaje: 'El empleado no tiene cuenta de usuario.' };
+    if (idPdv && empleado.idPuntoDeVenta !== idPdv) {
+        return { ok: false, mensaje: 'El empleado no pertenece a esta tienda.' };
+    }
 
     const [recurso, accion] = await Promise.all([
         PermisosRecursos.findOne({ where: { nombreRecurso: 'Traslados', tipo: 'vendedor' }, attributes: ['idRecurso'], raw: true }),
@@ -251,6 +255,7 @@ const _checkPermisoTraslado = async (codigoEmpleado, nombreAccion) => {
 // ─── ACEPTAR TRASLADO ────────────────────────────────────────────────────────
 
 const aceptarTrasladoAPI = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
     const { idTraslado, codigoEmpleado, items } = req.body;
     // items: [{ idDetalleTraslado, idPack, cantidadOriginal, cantidadAceptada, aceptado, razon }]
 
@@ -258,8 +263,8 @@ const aceptarTrasladoAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    // Validar empleado + permiso EDIT
-    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT');
+    // Validar empleado + permiso EDIT + pertenencia a esta tienda
+    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT', idPdv);
     if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
     const empleado = check.empleado;
 
@@ -338,18 +343,23 @@ const aceptarTrasladoAPI = async (req, res) => {
                     estadoInterno:     'SUELTO'
                 }, { transaction: t });
             }
+
         }
 
         await t.commit();
 
-        // Notificar SSE al punto de venta destino
+        // Notificar SSE: pendientes al destino, controversias al origen
         const pendientes = await Traslados.count({
             where: { idDestino: traslado.idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
         });
-        const controversias = await Traslados.count({
-            where: { idDestino: traslado.idDestino, estado: 'EN_CONTROVERSIA' }
-        });
-        broadcast(traslado.idDestino, 'state', { pendientes, controversias });
+        broadcast(traslado.idDestino, 'state', { pendientes });
+
+        if (!['PRODUCCION', 'BODEGA-VIRTUAL'].includes(traslado.idOrigen)) {
+            const controversiasOrigen = await Traslados.count({
+                where: { idOrigen: traslado.idOrigen, estado: 'EN_CONTROVERSIA' }
+            });
+            broadcast(traslado.idOrigen, 'state', { controversias: controversiasOrigen });
+        }
 
         return res.json({ success: true, estado: nuevoEstado });
     } catch (e) {
@@ -543,9 +553,10 @@ const trasladarDesdeStoreAPI = async (req, res) => {
 
     const empleado = await Empleados.findOne({
         where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado']
+        attributes: ['idEmpleado', 'idPuntoDeVenta']
     });
     if (!empleado) return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
+    if (empleado.idPuntoDeVenta !== idPdv) return res.status(403).json({ success: false, mensaje: 'El empleado no pertenece a esta tienda.' });
 
     const t = await db.transaction();
     try {
@@ -579,27 +590,6 @@ const trasladarDesdeStoreAPI = async (req, res) => {
                 { cantidadExistente: 0, estadoInterno: 'SUELTO' },
                 { where: { idPack: pack.idPack, idPuntoVenta: idPdv }, transaction: t }
             );
-            // Reducir el stock SUELTO de cada producto contenido en el pack en el origen
-            for (const dp of (pack.DETALLES_PACKs || [])) {
-                if (!dp.idProducto) continue;
-                const sueltoRows = await Stock.findAll({
-                    where: { idProducto: dp.idProducto, idPuntoVenta: idPdv, cantidadExistente: { [Op.gt]: 0 } },
-                    order: [['createdAt', 'ASC']],
-                    transaction: t
-                });
-                let restante = parseInt(dp.cantidad);
-                for (const row of sueltoRows) {
-                    if (restante <= 0) break;
-                    const disponible = parseFloat(row.cantidadExistente);
-                    if (disponible <= restante) {
-                        await row.update({ cantidadExistente: 0 }, { transaction: t });
-                        restante -= disponible;
-                    } else {
-                        await row.update({ cantidadExistente: disponible - restante }, { transaction: t });
-                        restante = 0;
-                    }
-                }
-            }
         }
 
         await t.commit();
@@ -620,6 +610,7 @@ const trasladarDesdeStoreAPI = async (req, res) => {
 // ─── RESOLVER CONTROVERSIA ───────────────────────────────────────────────────
 
 const resolverControversiaAPI = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
     const { idTraslado, codigoEmpleado, resoluciones } = req.body;
     // resoluciones: [{ idDetalleTraslado, idPack, resolucion: 'RECIBIDO'|'ANULADO' }]
 
@@ -627,8 +618,7 @@ const resolverControversiaAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    // Validar empleado + permiso EDIT
-    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT');
+    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT', idPdv);
     if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
     const empleado = check.empleado;
 
@@ -637,8 +627,13 @@ const resolverControversiaAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Traslado no válido para resolución.' });
     }
 
-    const nombreEmpleado = `${empleado.PrimerNombre} ${empleado.PrimerApellido}`;
+    // Solo el punto de origen puede resolver controversias
     const esDesdeProduccion = traslado.idOrigen === 'PRODUCCION' || traslado.idOrigen === 'BODEGA-VIRTUAL';
+    if (!esDesdeProduccion && traslado.idOrigen !== idPdv) {
+        return res.status(403).json({ success: false, mensaje: 'Solo el punto de origen puede resolver esta controversia.' });
+    }
+
+    const nombreEmpleado = `${empleado.PrimerNombre} ${empleado.PrimerApellido}`;
 
     const t = await db.transaction();
     try {
@@ -646,31 +641,25 @@ const resolverControversiaAPI = async (req, res) => {
             const detalle = await DetalleTraslados.findByPk(item.idDetalleTraslado, { transaction: t });
             if (!detalle) continue;
 
-            // Cantidad real en controversia (puede ser menor que la original)
             const cantControversia = detalle.cantidadControversia ?? detalle.cantidad;
 
             if (item.resolucion === 'RECIBIDO') {
                 await detalle.update({ estado: 'RECIBIDO' }, { transaction: t });
 
                 if (item.idPack) {
-                    const detallesPack = await DetallesPack.findAll({
-                        where: { idPack: item.idPack },
-                        transaction: t
-                    });
-                    const valorPack = detallesPack.reduce(
-                        (sum, dp) => sum + (parseFloat(dp.valorUnidad || 0) * dp.cantidad), 0
-                    );
+                    const dpRec = await DetallesPack.findAll({ where: { idPack: item.idPack }, transaction: t });
+                    const valRec = dpRec.reduce((s, d) => s + (parseFloat(d.valorUnidad || 0) * d.cantidad), 0);
                     await Stock.create({
                         idPuntoVenta:      traslado.idDestino,
                         idPack:            item.idPack,
                         idProducto:        null,
                         cantidadExistente: cantControversia,
                         cantidadOriginal:  cantControversia,
-                        valorUnidad:       valorPack,
+                        valorUnidad:       valRec,
                         estadoInterno:     'CERRADO'
                     }, { transaction: t });
                 } else if (detalle.idProducto) {
-                    const stockRef = await Stock.findOne({
+                    const sRef = await Stock.findOne({
                         where: { idProducto: detalle.idProducto },
                         order: [['createdAt', 'DESC']],
                         transaction: t
@@ -681,7 +670,7 @@ const resolverControversiaAPI = async (req, res) => {
                         idProducto:        detalle.idProducto,
                         cantidadExistente: cantControversia,
                         cantidadOriginal:  cantControversia,
-                        valorUnidad:       stockRef?.valorUnidad || 0,
+                        valorUnidad:       sRef?.valorUnidad || 0,
                         estadoInterno:     'SUELTO'
                     }, { transaction: t });
                 }
@@ -695,11 +684,43 @@ const resolverControversiaAPI = async (req, res) => {
                     );
                 }
 
+                // Devolver unidades al origen ahora que se resuelve como anulado
+                if (!esDesdeProduccion && cantControversia > 0) {
+                    if (item.idPack) {
+                        const dpAnul = await DetallesPack.findAll({ where: { idPack: item.idPack }, transaction: t });
+                        const valAnul = dpAnul.reduce((s, d) => s + (parseFloat(d.valorUnidad || 0) * d.cantidad), 0);
+                        await Stock.create({
+                            idPuntoVenta:      traslado.idOrigen,
+                            idPack:            item.idPack,
+                            idProducto:        null,
+                            cantidadExistente: cantControversia,
+                            cantidadOriginal:  cantControversia,
+                            valorUnidad:       valAnul,
+                            estadoInterno:     'CERRADO'
+                        }, { transaction: t });
+                    } else if (detalle.idProducto) {
+                        const sRef = await Stock.findOne({
+                            where: { idProducto: detalle.idProducto },
+                            order: [['createdAt', 'DESC']],
+                            transaction: t
+                        });
+                        await Stock.create({
+                            idPuntoVenta:      traslado.idOrigen,
+                            idPack:            null,
+                            idProducto:        detalle.idProducto,
+                            cantidadExistente: cantControversia,
+                            cantidadOriginal:  cantControversia,
+                            valorUnidad:       sRef?.valorUnidad || 0,
+                            estadoInterno:     'SUELTO'
+                        }, { transaction: t });
+                    }
+                }
+
                 await InsidenciaTraslado.create({
                     idTraslado,
                     idDetalleTraslado: item.idDetalleTraslado,
                     idEmpleado:        empleado.idEmpleado,
-                    razonInsidencia:   `TRASLADO ANULADO POR ${nombreEmpleado}`,
+                    razonInsidencia:   `ANULADO POR ORIGEN: ${nombreEmpleado}`,
                     cantidadOriginal:  cantControversia,
                     cantidadAceptada:  0,
                     resuelta:          'si'
@@ -707,18 +728,18 @@ const resolverControversiaAPI = async (req, res) => {
             }
         }
 
-        // Si todos los detalles quedaron resueltos (RECIBIDO o con incidencia resuelta), cerrar traslado
         await traslado.update({ estado: 'RECIBIDO' }, { transaction: t });
-
         await t.commit();
 
         const pendientes = await Traslados.count({
             where: { idDestino: traslado.idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
         });
-        const controversias = await Traslados.count({
-            where: { idDestino: traslado.idDestino, estado: 'EN_CONTROVERSIA' }
+        broadcast(traslado.idDestino, 'state', { pendientes });
+
+        const controversiasOrigen = await Traslados.count({
+            where: { idOrigen: idPdv, estado: 'EN_CONTROVERSIA' }
         });
-        broadcast(traslado.idDestino, 'state', { pendientes, controversias });
+        broadcast(idPdv, 'state', { controversias: controversiasOrigen });
 
         return res.json({ success: true });
     } catch (e) {
@@ -739,7 +760,7 @@ const getPerfilProducto = async (req, res) => {
         });
         if (!producto) return res.redirect('/store/inventario/lista');
 
-        // Stock agrupado por tienda
+        // Stock SUELTO agrupado por tienda (registros con idProducto directo)
         const stockRows = await Stock.findAll({
             where: { idProducto },
             attributes: ['idPuntoVenta', [fn('SUM', col('cantidadExistente')), 'total']],
@@ -747,27 +768,65 @@ const getPerfilProducto = async (req, res) => {
             raw: true
         });
 
-        const pdvIds = stockRows.map(r => r.idPuntoVenta).filter(Boolean);
+        // Stock en packs CERRADOS: Stock.idProducto es null, se resuelve via DetallesPack
+        const detallesPorPack = await DetallesPack.findAll({
+            where: { idProducto },
+            attributes: ['idPack', 'cantidad'],
+            raw: true
+        });
+
+        let packStockExtra = {};
+        if (detallesPorPack.length) {
+            const packIdList = [...new Set(detallesPorPack.map(dp => dp.idPack))];
+            const cantPorPack = Object.fromEntries(detallesPorPack.map(dp => [dp.idPack, dp.cantidad]));
+
+            const packStocks = await Stock.findAll({
+                where: { idPack: { [Op.in]: packIdList }, cantidadExistente: { [Op.gt]: 0 } },
+                attributes: ['idPuntoVenta', 'idPack', 'cantidadExistente'],
+                raw: true
+            });
+
+            for (const ps of packStocks) {
+                if (!ps.idPuntoVenta) continue;
+                const units = (parseInt(ps.cantidadExistente) || 0) * (parseInt(cantPorPack[ps.idPack]) || 0);
+                packStockExtra[ps.idPuntoVenta] = (packStockExtra[ps.idPuntoVenta] || 0) + units;
+            }
+        }
+
+        const allPdvIds = [...new Set([
+            ...stockRows.map(r => r.idPuntoVenta),
+            ...Object.keys(packStockExtra)
+        ])].filter(Boolean);
+
         let pdvMap = {};
-        if (pdvIds.length) {
+        if (allPdvIds.length) {
             const pdvs = await PuntosDeVenta.findAll({
-                where: { idPuntoDeVenta: { [Op.in]: pdvIds } },
+                where: { idPuntoDeVenta: { [Op.in]: allPdvIds } },
                 attributes: ['idPuntoDeVenta', 'nombreComercial', 'tipo'],
                 raw: true
             });
             pdvMap = Object.fromEntries(pdvs.map(p => [p.idPuntoDeVenta, p]));
         }
 
-        const stockPorTienda = stockRows
-            .map(r => ({
+        const stockPdvSet = new Set(stockRows.map(r => r.idPuntoVenta));
+        const stockPorTienda = [
+            ...stockRows.map(r => ({
                 nombreComercial: pdvMap[r.idPuntoVenta]?.nombreComercial || '—',
                 tipo:            pdvMap[r.idPuntoVenta]?.tipo            || '—',
-                total:           parseInt(r.total) || 0,
+                total:           (parseInt(r.total) || 0) + (packStockExtra[r.idPuntoVenta] || 0),
                 esTiendaActual:  r.idPuntoVenta === idPdv
-            }))
-            .sort((a, b) => b.esTiendaActual - a.esTiendaActual);
+            })),
+            ...Object.entries(packStockExtra)
+                .filter(([pdvId]) => pdvId && !stockPdvSet.has(pdvId))
+                .map(([pdvId, packTotal]) => ({
+                    nombreComercial: pdvMap[pdvId]?.nombreComercial || '—',
+                    tipo:            pdvMap[pdvId]?.tipo            || '—',
+                    total:           packTotal,
+                    esTiendaActual:  pdvId === idPdv
+                }))
+        ].sort((a, b) => b.esTiendaActual - a.esTiendaActual);
 
-        const cantidadActual = parseInt(stockRows.find(r => r.idPuntoVenta === idPdv)?.total) || 0;
+        const cantidadActual = stockPorTienda.find(r => r.esTiendaActual)?.total || 0;
 
         const BODEGA_VIRTUAL_ID = '00000000-0000-0000-0000-000000000000';
         const destinos = idPdv ? await PuntosDeVenta.findAll({
@@ -1668,8 +1727,8 @@ const crearTrasladoSueltos = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    // Validar empleado + permiso CREATE
-    const check = await _checkPermisoTraslado(codigoEmpleado, 'CREATE');
+    // Validar empleado + permiso CREATE + pertenencia a esta tienda
+    const check = await _checkPermisoTraslado(codigoEmpleado, 'CREATE', idPdv);
     if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
     const empleado = check.empleado;
 
@@ -2457,11 +2516,12 @@ const verificarTrasladosExpirados = async () => {
 // ─── TRASLADO DESDE PERFIL DE PRODUCTO ──────────────────────────────────────
 
 const validarEmpleadoTraslado = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
     const { codigo, accion = 'CREATE' } = req.query;
     if (!codigo) return res.status(400).json({ success: false });
 
     try {
-        const check = await _checkPermisoTraslado(codigo, accion);
+        const check = await _checkPermisoTraslado(codigo, accion, idPdv);
         if (!check.ok) return res.json({ success: false, mensaje: check.mensaje });
         const { empleado } = check;
         return res.json({ success: true, nombre: `${empleado.PrimerNombre} ${empleado.PrimerApellido}` });
@@ -2740,6 +2800,48 @@ const abrirCajaAPI = async (req, res) => {
     }
 };
 
+// ── API: traslados EN_TRANSITO con destino en esta tienda (para alerta sidebar) ──
+const getTrasladosAlertaJSON = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    try {
+        const maxTime = parseInt(process.env.MAX_TRANSFER_TIME) || 259200; // segundos
+
+        const traslados = await Traslados.findAll({
+            where: { idDestino: idPdv, estado: 'EN_TRANSITO' },
+            include: [
+                { model: PuntosDeVenta,    as: 'origen', attributes: ['nombreComercial'], required: false },
+                { model: DetalleTraslados, as: 'items',  attributes: ['cantidad'] }
+            ],
+            order: [['fechaEnvio', 'ASC']]
+        });
+
+        const ahora = Date.now();
+        const datos = traslados.map(t => {
+            const totalItems   = (t.items || []).reduce((s, i) => s + (parseInt(i.cantidad) || 0), 0);
+            const segundosTranscurridos = Math.floor((ahora - new Date(t.fechaEnvio).getTime()) / 1000);
+            const fraccion     = Math.min(segundosTranscurridos / maxTime, 1);
+            const nivel        = fraccion < 1 / 3 ? 'verde' : fraccion < 2 / 3 ? 'naranja' : 'rojo';
+
+            return {
+                idTraslado:   t.idTraslado,
+                codigo:       t.codigoTraslado,
+                origen:       t.origen?.nombreComercial || '—',
+                fechaEnvio:   t.fechaEnvio,
+                segundosTranscurridos,
+                totalItems,
+                nivel
+            };
+        });
+
+        return res.json({ success: true, traslados: datos, maxTime });
+    } catch (e) {
+        console.error('getTrasladosAlertaJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 export {
     dashboardStores,
     getTraslados,
@@ -2781,5 +2883,6 @@ export {
     getVentasMes,
     getDetalleDia,
     validarEmpleadoTraslado,
-    trasladarDesdePerfil
+    trasladarDesdePerfil,
+    getTrasladosAlertaJSON
 };

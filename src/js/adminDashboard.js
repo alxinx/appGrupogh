@@ -10,6 +10,10 @@ import Chart from 'chart.js/auto';
 
     const fmtCOP = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
 
+    // ─── FLAGS de carga ───────────────────────────────────────────────────────
+    let stockCargado = false;
+    let chartCargado = false;
+
     // ─── STOCK BAJO GLOBAL ────────────────────────────────────────────────────
     const renderStockBajoGlobal = (productos) => {
         const list  = document.getElementById('stock-bajo-global-list');
@@ -159,35 +163,65 @@ import Chart from 'chart.js/auto';
         }
     };
 
-    // ─── SSE: actualizar chart en tiempo real al llegar nueva venta ───────────
-    const conectarSSEChart = () => {
-        const sse = new EventSource('/admin/sse');
-        sse.addEventListener('store_stats', () => {
-            fetch('/admin/api/dashboard/ventas-pdv-30d')
-                .then(r => r.json())
-                .then(d => { if (d.success) renderChartPdv(d); })
-                .catch(() => {});
-        });
-        sse.onerror = () => setTimeout(conectarSSEChart, 5000);
-    };
-
-    // ─── CARGA INICIAL Y REFRESH PERIÓDICO ────────────────────────────────────
-    const cargarDashboard = () => {
+    // ─── CARGA POR SECCIÓN ────────────────────────────────────────────────────
+    const cargarStock = () => {
         Promise.all([
             fetch('/admin/api/dashboard/stock-bajo-global').then(r => r.json()),
             fetch('/admin/api/dashboard/stock-bajo-por-tienda').then(r => r.json()),
-            fetch('/admin/api/dashboard/ventas-pdv-30d').then(r => r.json())
-        ]).then(([global, porTienda, chart]) => {
+        ]).then(([global, porTienda]) => {
             if (global.success)    renderStockBajoGlobal(global.productos);
             if (porTienda.success) renderStockBajoPorTienda(porTienda.tiendas);
-            if (chart.success)     renderChartPdv(chart);
+            stockCargado = true;
         }).catch(() => {});
     };
 
+    const cargarChart = () => {
+        fetch('/admin/api/dashboard/ventas-pdv-30d').then(r => r.json())
+            .then(d => { if (d.success) { renderChartPdv(d); chartCargado = true; } })
+            .catch(() => {});
+    };
+
+    // ─── SSE: recarga chart con debounce solo si ya fue cargado ──────────────
+    const conectarSSEChart = () => {
+        let chartDebounce = null;
+        const recargarChart = () => {
+            if (!chartCargado) return;
+            clearTimeout(chartDebounce);
+            chartDebounce = setTimeout(cargarChart, 5000);
+        };
+
+        if (window.__adminSSE) {
+            window.__adminSSE.addEventListener('store_stats', recargarChart);
+            return;
+        }
+        const sse = new EventSource('/admin/sse');
+        window.__adminSSE = sse;
+        sse.addEventListener('store_stats', recargarChart);
+        sse.onerror = () => {
+            window.__adminSSE = null;
+            setTimeout(conectarSSEChart, 5000);
+        };
+    };
+
+    // ─── LAZY LOAD CON IntersectionObserver ───────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => {
-        cargarDashboard();
+        const observer = new IntersectionObserver((entries, obs) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                obs.unobserve(entry.target);
+                const seccion = entry.target.dataset.lazy;
+                if (seccion === 'stock') cargarStock();
+                if (seccion === 'chart') cargarChart();
+            });
+        }, { rootMargin: '150px' });
+
+        document.querySelectorAll('[data-lazy]').forEach(el => observer.observe(el));
+
         conectarSSEChart();
+
+        // Refresco periódico de stock solo si ya fue cargado al menos una vez
         setInterval(() => {
+            if (!stockCargado) return;
             fetch('/admin/api/dashboard/stock-bajo-global').then(r => r.json())
                 .then(d => { if (d.success) renderStockBajoGlobal(d.productos); }).catch(() => {});
             fetch('/admin/api/dashboard/stock-bajo-por-tienda').then(r => r.json())

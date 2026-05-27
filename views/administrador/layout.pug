@@ -27,12 +27,12 @@ block contenedor
                                 include ./stores/stats/avarangeTicket.pug
 
                             //- ── GRUPO 2: Alertas de stock bajo ─────────────────
-                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4")
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4" data-lazy="stock")
                                 include ./dashboard/stockBajoGlobal.pug
                                 include ./dashboard/stockBajoPorTienda.pug
 
                             //- ── GRUPO 3: Gráfica ventas por PDV 30d ────────────
-                            div(class="col-span-12")
+                            div(class="col-span-12" data-lazy="chart")
                                 include ./dashboard/chartVentasPdv.pug
 
                             //- ── GRUPO 4: Estado actual de tiendas ──────────────

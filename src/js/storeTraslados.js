@@ -7,6 +7,7 @@
     let employeeLookupTimer = null;
     let paginaHistorial = 1;
     let busquedaHistorial = '';
+    let miPdvId = null;
 
     // ─── HELPERS ─────────────────────────────────────────────────────────────
     const BADGE = {
@@ -53,6 +54,7 @@
             const res = await fetch('/store/traslados/pendientes');
             const { success, traslados, idPdv } = await res.json();
             if (!success) throw new Error();
+            if (idPdv) miPdvId = idPdv;
 
             if (!traslados.length) {
                 tbody.innerHTML = `<tr>
@@ -110,6 +112,7 @@
 
             const { traslados, totalPaginas, paginaActual, total, idPdv: myPdv } = data;
             data.idPdv = myPdv;
+            if (myPdv) miPdvId = myPdv;
 
             if (!traslados.length) {
                 tbody.innerHTML = `<tr>
@@ -121,20 +124,23 @@
             }
 
             tbody.innerHTML = traslados.map(t => {
-                const esControversia = t.estado === 'EN_CONTROVERSIA';
-                const esDevuelto     = t.estado === 'DEVUELTO';
-                const soyDestino     = t.idDestino === data.idPdv;
-                const contraparte    = soyDestino
+                const esControversia   = t.estado === 'EN_CONTROVERSIA';
+                const esDevuelto       = t.estado === 'DEVUELTO';
+                const soyDestino       = t.idDestino === data.idPdv;
+                const soyOrigenCtv     = esControversia && t.idOrigen === data.idPdv;
+                const contraparte      = soyDestino
                     ? (t.origen?.nombreComercial  || t.idOrigen)
                     : (t.destino?.nombreComercial || t.idDestino);
                 const dirTag = soyDestino
                     ? `<span class="badge badge-info badge-xs ml-1">Recibido</span>`
                     : `<span class="badge badge-ghost badge-xs ml-1">Enviado</span>`;
-                const rowCls = esControversia
-                    ? 'bg-red-50 border-l-2 border-red-400'
-                    : esDevuelto
-                        ? 'bg-orange-50 border-l-2 border-orange-400'
-                        : 'hover:bg-slate-50';
+                const rowCls = soyOrigenCtv
+                    ? 'bg-orange-50 border-l-2 border-orange-500'
+                    : esControversia
+                        ? 'bg-red-50 border-l-2 border-red-400'
+                        : esDevuelto
+                            ? 'bg-orange-50 border-l-2 border-orange-400'
+                            : 'hover:bg-slate-50';
                 return `
                 <tr class="${rowCls} transition-colors">
                     <td class="px-4 py-3 font-mono font-bold text-slate-700 text-xs">${t.codigoTraslado}</td>
@@ -142,10 +148,15 @@
                     <td class="px-4 py-3 text-slate-500 text-xs">${fmtFecha(t.fechaEnvio)}</td>
                     <td class="px-4 py-3 text-center">${estadoBadge(t.estado)}</td>
                     <td class="px-4 py-3 text-right flex gap-1 justify-end">
+                        ${soyOrigenCtv ? `
+                        <button class="btn btn-xs btn-warning cursor-pointer" title="Resolver controversia"
+                            onclick="window._abrirLightbox('${t.idTraslado}')">
+                            <i class="fi fi-rr-wrench text-xs mr-1"></i>Resolver
+                        </button>` : `
                         <button class="btn btn-xs btn-ghost cursor-pointer" title="Ver detalle"
                             onclick="window._abrirLightbox('${t.idTraslado}')">
                             <i class="fi fi-rr-eye text-xs"></i>
-                        </button>
+                        </button>`}
                         <a href="/store/traslados/comprobante/${t.idTraslado}" target="_blank"
                             class="btn btn-xs btn-ghost cursor-pointer" title="Imprimir comprobante">
                             <i class="fi fi-rr-print text-xs"></i>
@@ -240,7 +251,8 @@
     const renderLightbox = (traslado) => {
         const esPendiente    = ['PENDIENTE', 'EN_TRANSITO'].includes(traslado.estado);
         const esControvTras  = traslado.estado === 'EN_CONTROVERSIA';
-        const esInteractivo  = esPendiente || esControvTras;
+        const soyOrigen      = traslado.idOrigen === miPdvId;
+        const esInteractivo  = esPendiente || (esControvTras && soyOrigen);
 
         lbTitulo.textContent    = `Traslado ${traslado.codigoTraslado}`;
         lbSubtitulo.textContent = fmtFecha(traslado.fechaEnvio);
@@ -276,15 +288,15 @@
 
                 let iconHtml;
                 if (esControvTras && esControversia) {
-                    // Select para resolver controversia
-                    iconHtml = `<select class="item-resolucion select select-xs w-28 text-xs"
-                        data-index="${i}"
-                        data-id="${item.idDetalleTraslado}"
-                        data-pack="${item.idPack || ''}">
-                        <option value="">Resolver...</option>
-                        <option value="RECIBIDO">RECIBIDO</option>
-                        <option value="ANULADO">ANULADO</option>
-                    </select>`;
+                    if (soyOrigen) {
+                        iconHtml = `<span class="badge badge-warning text-xs item-resolucion"
+                            data-index="${i}"
+                            data-id="${item.idDetalleTraslado}"
+                            data-pack="${item.idPack || ''}"
+                            data-resolucion="RECIBIDO">Se recibirá</span>`;
+                    } else {
+                        iconHtml = `<span class="badge badge-error text-xs">En controversia</span>`;
+                    }
                 } else if (yaRecibido || esPendiente) {
                     iconHtml = `<i class="fi fi-rr-check text-emerald-500 text-sm"></i>`;
                 } else {
@@ -304,12 +316,12 @@
                     </td>
                     <td class="px-3 py-2.5">
                         <div class="text-sm text-slate-700">${nombre}</div>
-                        ${detalle ? `<div class="text-xs text-slate-400 mt-0.5">${detalle}</div>` : ''}
-                        ${esControversia ? `<div class="text-xs text-orange-500 font-medium mt-0.5">En controversia: ${cantMostrar} uds.</div>` : ''}
+                        ${detalle ? `<div class="text-sm text-slate-400 mt-0.5">${detalle}</div>` : ''}
+                        ${esControversia ? `<div class="text-sm text-orange-500 font-medium mt-0.5">En controversia: ${cantMostrar} uds.</div>` : ''}
                     </td>
                     <td class="px-3 py-2.5 text-center">
                         <input type="number"
-                            class="item-qty input input-xs w-20 text-center font-mono"
+                            class="item-qty input input-sm w-24 text-center font-mono"
                             value="${cantMostrar}"
                             min="0" max="${cantMostrar}"
                             data-original="${cantMostrar}"
@@ -345,13 +357,19 @@
             btnCancelar.textContent = esInteractivo ? 'Cancelar' : 'Cerrar';
         }
         if (btnAceptar) {
-            btnAceptar.disabled = false;
             if (esControvTras) {
-                btnAceptar.dataset.modo = 'resolver';
-                btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+                if (soyOrigen) {
+                    btnAceptar.disabled = false;
+                    btnAceptar.dataset.modo = 'resolver';
+                    btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+                } else {
+                    btnAceptar.disabled = true;
+                    btnAceptar.dataset.modo = '';
+                    btnAceptar.innerHTML = '<i class="fi fi-rr-clock mr-2"></i>Esperando resolución del origen';
+                }
             } else {
-                btnAceptar.dataset.modo = 'aceptar';
                 btnAceptar.disabled = !esPendiente;
+                btnAceptar.dataset.modo = 'aceptar';
                 btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Aceptar Traslado';
             }
         }
@@ -429,7 +447,7 @@
 
         lbRazones.innerHTML = `
             <div class="border border-red-200 rounded-2xl p-3 bg-red-50">
-                <p class="text-xs font-bold text-red-600 uppercase tracking-wider mb-2">
+                <p class="text-sm font-bold text-red-600 uppercase tracking-wider mb-2">
                     <i class="fi fi-rr-triangle-warning mr-1"></i>Incidencias registradas
                 </p>
                 ${insidencias.map(ins => {
@@ -437,7 +455,7 @@
                         || ins.detalle?.producto?.sku
                         || `#${ins.idDetalleTraslado}`;
                     return `
-                    <div class="text-xs text-slate-700 border-b border-red-100 last:border-0 pb-1.5 mb-1.5 last:mb-0">
+                    <div class="text-sm text-slate-700 border-b border-red-100 last:border-0 pb-1.5 mb-1.5 last:mb-0">
                         <span class="font-semibold">Ítem ${codigo}:</span>
                         Recibido <strong>${ins.cantidadAceptada}</strong>/${ins.cantidadOriginal} —
                         <span class="italic text-slate-500">${ins.razonInsidencia}</span>
@@ -587,20 +605,18 @@
             return;
         }
 
-        // Recopilar resoluciones de los selects de controversia
+        // Recopilar ítems en controversia (todos se aceptan como RECIBIDO)
         const resoluciones = [];
-        document.querySelectorAll('.item-resolucion').forEach(sel => {
+        document.querySelectorAll('.item-resolucion').forEach(el => {
             resoluciones.push({
-                idDetalleTraslado: parseInt(sel.dataset.id),
-                idPack:            sel.dataset.pack || null,
-                resolucion:        sel.value
+                idDetalleTraslado: parseInt(el.dataset.id),
+                idPack:            el.dataset.pack || null,
+                resolucion:        'RECIBIDO'
             });
         });
 
-        // Validar que todos los items en controversia tengan una resolución seleccionada
-        const sinResolver = resoluciones.filter(r => !r.resolucion);
-        if (sinResolver.length) {
-            window.showToast?.(`Debes seleccionar una resolución para todos los ítems en controversia.`, 'warning');
+        if (!resoluciones.length) {
+            window.showToast?.('No hay ítems en controversia por resolver.', 'warning');
             return;
         }
 

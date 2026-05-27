@@ -13,7 +13,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
@@ -481,6 +481,252 @@ const storeDocuments = async (req, res) => {
     `);
 }
 
+// ── CIERRE DE CAJA: renderiza el partial ─────────────────────────────────────
+const storeCierresCaja = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    return res.render('./administrador/stores/views/cierresCaja', { idPuntoDeVenta });
+};
+
+// ── TRASLADOS TIENDA: renderiza el partial ────────────────────────────────────
+const storeTrasladosTienda = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    return res.render('./administrador/stores/views/trasladosTienda', { idPuntoDeVenta });
+};
+
+// ── API: lista de cierres de caja de un PDV ──────────────────────────────────
+const getCierresCajaListaJSON = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    try {
+        const cierres = await CajaTienda.findAll({
+            where: { idPuntoDeVenta, estado: 'cerrado' },
+            attributes: ['idCajaTienda', 'fechaApertura', 'fechaCierre'],
+            order: [['fechaCierre', 'DESC']],
+            limit: 90
+        });
+        return res.json({
+            success: true,
+            cierres: cierres.map(c => ({
+                idCajaTienda: c.idCajaTienda,
+                fechaApertura: c.fechaApertura,
+                fechaCierre:   c.fechaCierre
+            }))
+        });
+    } catch (e) {
+        console.error('getCierresCajaListaJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ── API: datos de un cierre específico (stats + desglose de medios de pago) ──
+const getCierreCajaDatosJSON = async (req, res) => {
+    const { idPuntoDeVenta, idCajaTienda } = req.params;
+    try {
+        const caja = await CajaTienda.findOne({
+            where: { idCajaTienda, idPuntoDeVenta },
+            include: [
+                { model: Empleados, as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
+                { model: Empleados, as: 'empleadoCierre',   attributes: ['PrimerNombre', 'PrimerApellido'] }
+            ]
+        });
+        if (!caja) return res.status(404).json({ success: false, mensaje: 'Caja no encontrada.' });
+
+        const inicio = caja.fechaApertura ? new Date(caja.fechaApertura) : (() => {
+            const d = new Date(caja.fechaCierre);
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+        })();
+        const fin = caja.fechaCierre ? new Date(caja.fechaCierre) : new Date();
+
+        const facturas = await FacturaClientes.findAll({
+            where: { idPuntoDeVenta, createdAt: { [Op.between]: [inicio, fin] } },
+            attributes: ['idFacturaCliente'],
+            include: [{
+                model: DetallesPagosFactura, as: 'pagos',
+                attributes: ['metodoPago', 'valor'],
+                include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
+            }]
+        });
+
+        const mediosMap = {};
+        for (const f of facturas) {
+            for (const p of f.pagos) {
+                if (p.metodoPago === 'Efectivo') continue;
+                const metodo  = p.metodoPago;
+                const entidad = p.entidad?.nombreEntidad || metodo;
+                if (!mediosMap[metodo]) mediosMap[metodo] = {};
+                mediosMap[metodo][entidad] = (mediosMap[metodo][entidad] || 0) + (parseFloat(p.valor) || 0);
+            }
+        }
+        const mediosPago = Object.entries(mediosMap).map(([metodo, ents]) => ({
+            metodo,
+            entidades: Object.entries(ents).map(([nombre, valor]) => ({ nombre, valor: Math.round(valor) }))
+        }));
+
+        return res.json({
+            success: true,
+            caja: {
+                idCajaTienda:              caja.idCajaTienda,
+                fechaApertura:             caja.fechaApertura,
+                fechaCierre:               caja.fechaCierre,
+                empleadoApertura: `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim() || '—',
+                empleadoCierre:   `${caja.empleadoCierre?.PrimerNombre   || ''} ${caja.empleadoCierre?.PrimerApellido   || ''}`.trim() || '—',
+                ventasTotales:             Math.round(parseFloat(caja.ventasTotales)             || 0),
+                egresosTotales:            Math.round(parseFloat(caja.egresosTotales)            || 0),
+                ventasEfectivo:            Math.round(parseFloat(caja.ventasEfectivo)            || 0),
+                ventasMediosElectronicos:  Math.round(parseFloat(caja.ventasMediosElectronicos)  || 0),
+                estado: caja.estado
+            },
+            mediosPago
+        });
+    } catch (e) {
+        console.error('getCierreCajaDatosJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ── API: facturas del período de un cierre ────────────────────────────────────
+const getCierreFacturasJSON = async (req, res) => {
+    const { idPuntoDeVenta, idCajaTienda } = req.params;
+    const { pagina = 1 } = req.query;
+    try {
+        const caja = await CajaTienda.findOne({
+            where: { idCajaTienda, idPuntoDeVenta },
+            attributes: ['fechaApertura', 'fechaCierre']
+        });
+        if (!caja) return res.status(404).json({ success: false });
+
+        const inicio = caja.fechaApertura ? new Date(caja.fechaApertura) : (() => {
+            const d = new Date(caja.fechaCierre);
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+        })();
+        const fin    = caja.fechaCierre ? new Date(caja.fechaCierre) : new Date();
+        const limite = parseInt(process.env.LIMIT_PER_PAGE) || 15;
+        const offset = (parseInt(pagina) - 1) * limite;
+
+        const { count, rows } = await FacturaClientes.findAndCountAll({
+            where: { idPuntoDeVenta, createdAt: { [Op.between]: [inicio, fin] } },
+            include: [
+                { model: Clientes,              as: 'cliente',  attributes: ['razon_social', 'primer_nombre', 'primer_apellido'], required: false },
+                { model: DetallesFactura,        as: 'detalles', attributes: ['total'], required: false },
+                { model: DetallesPagosFactura,   as: 'pagos',
+                    attributes: ['metodoPago', 'valor'],
+                    required: false,
+                    include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
+                }
+            ],
+            order: [['createdAt', 'ASC']],
+            limit: limite, offset, distinct: true
+        });
+
+        const facturas = rows.map(f => {
+            const totalVenta    = f.detalles.reduce((s, d) => s + parseFloat(d.total || 0), 0);
+            const cli           = f.cliente;
+            const nombreCliente = f.idCliente === '0'
+                ? 'Consumidor Final'
+                : (cli?.razon_social || `${cli?.primer_nombre || ''} ${cli?.primer_apellido || ''}`.trim() || 'N/A');
+            const metodos = [...new Set(f.pagos.map(p => p.entidad?.nombreEntidad || p.metodoPago))].join(', ');
+            return {
+                idFacturaCliente: f.idFacturaCliente,
+                nroFactura:  `${f.prefijo || ''}${f.numeroFactura}`,
+                cliente:     nombreCliente,
+                hora:        f.horaEmision || '',
+                total:       Math.round(totalVenta),
+                metodos
+            };
+        });
+
+        return res.json({
+            success: true, facturas,
+            totalPaginas: Math.ceil(count / limite),
+            paginaActual: parseInt(pagina), total: count
+        });
+    } catch (e) {
+        console.error('getCierreFacturasJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ── API: egresos del período de un cierre ─────────────────────────────────────
+const getCierreEgresosJSON = async (req, res) => {
+    const { idPuntoDeVenta, idCajaTienda } = req.params;
+    try {
+        const caja = await CajaTienda.findOne({
+            where: { idCajaTienda, idPuntoDeVenta },
+            attributes: ['fechaApertura', 'fechaCierre']
+        });
+        if (!caja) return res.status(404).json({ success: false });
+
+        const inicio = caja.fechaApertura ? new Date(caja.fechaApertura) : (() => {
+            const d = new Date(caja.fechaCierre);
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+        })();
+        const fin = caja.fechaCierre ? new Date(caja.fechaCierre) : new Date();
+
+        const egresos = await Egresos.findAll({
+            where: { idPuntoDeVenta, createdAt: { [Op.between]: [inicio, fin] } },
+            include: [{ model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'] }],
+            order: [['createdAt', 'ASC']]
+        });
+
+        return res.json({
+            success: true,
+            egresos: egresos.map(e => ({
+                idEgreso:    e.idEgreso,
+                referencia:  e.referencia  || '—',
+                descripcion: e.descripcion || '—',
+                empleado:    e.empleado ? `${e.empleado.PrimerNombre} ${e.empleado.PrimerApellido}` : '—',
+                valor:       Math.round(parseFloat(e.valorEgreso) || 0),
+                estado:      e.estado
+            }))
+        });
+    } catch (e) {
+        console.error('getCierreEgresosJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ── API: traslados de un PDV (como origen o destino) ─────────────────────────
+const getTrasladosTiendaJSON = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    const { estado, pagina = 1 } = req.query;
+    try {
+        const limite = parseInt(process.env.LIMIT_PER_PAGE) || 15;
+        const offset = (parseInt(pagina) - 1) * limite;
+
+        const where = { [Op.or]: [{ idOrigen: idPuntoDeVenta }, { idDestino: idPuntoDeVenta }] };
+        if (estado) where.estado = estado;
+
+        const { count, rows } = await Traslados.findAndCountAll({
+            where,
+            include: [
+                { model: PuntosDeVenta,    as: 'origen',  attributes: ['nombreComercial'] },
+                { model: PuntosDeVenta,    as: 'destino', attributes: ['nombreComercial'] },
+                { model: DetalleTraslados, as: 'items',   attributes: ['idDetalleTraslado'] }
+            ],
+            order: [['fechaEnvio', 'DESC']],
+            limit: limite, offset, distinct: true
+        });
+
+        return res.json({
+            success: true,
+            traslados: rows.map(t => ({
+                idTraslado:     t.idTraslado,
+                codigoTraslado: t.codigoTraslado,
+                origen:         t.origen?.nombreComercial  || '—',
+                destino:        t.destino?.nombreComercial || '—',
+                fechaEnvio:     t.fechaEnvio,
+                fechaRecepcion: t.fechaRecepcion,
+                estado:         t.estado,
+                nroItems:       t.items?.length || 0,
+                esOrigen:       t.idOrigen === idPuntoDeVenta
+            })),
+            totalPaginas: Math.ceil(count / limite),
+            paginaActual: parseInt(pagina), total: count
+        });
+    } catch (e) {
+        console.error('getTrasladosTiendaJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
 
 
 const listaProductos = async (req, res) => {
@@ -4832,6 +5078,13 @@ export {
     getStatsVendedorMes,
     getCajasCerradasAdmin,
     getAdminCuadrePDF,
+    storeCierresCaja,
+    storeTrasladosTienda,
+    getCierresCajaListaJSON,
+    getCierreCajaDatosJSON,
+    getCierreFacturasJSON,
+    getCierreEgresosJSON,
+    getTrasladosTiendaJSON,
     getStockBajoGlobal,
     getStockBajoPorTienda,
     getVentasPdv30d,

@@ -167,25 +167,26 @@
             bar.style.backgroundColor = `rgba(236,95,163,${alpha.toFixed(2)})`;
             bar.style.transition      = 'height 0.6s cubic-bezier(.4,0,.2,1), background-color 0.6s';
 
-            // etiqueta del día correspondiente
             const d = new Date(hoyRef);
             d.setDate(d.getDate() - (6 - i));
             const label = `${DIAS_ES[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
             bar.dataset.label = label;
             bar.dataset.valor = valor;
 
-            bar.addEventListener('mouseenter', () => {
-                if (!tooltip || !tooltipTxt) return;
-                tooltipTxt.textContent = `${bar.dataset.label} · ${fmtCOP(bar.dataset.valor)}`;
-                // posicionar centrado sobre la barra
-                const barRect     = bar.getBoundingClientRect();
-                const parentRect  = bar.parentElement.getBoundingClientRect();
-                tooltip.style.left = `${barRect.left - parentRect.left + barRect.width / 2}px`;
-                tooltip.classList.remove('hidden');
-            });
-            bar.addEventListener('mouseleave', () => {
-                if (tooltip) tooltip.classList.add('hidden');
-            });
+            if (!bar.dataset.listenersSet) {
+                bar.dataset.listenersSet = '1';
+                bar.addEventListener('mouseenter', () => {
+                    if (!tooltip || !tooltipTxt) return;
+                    tooltipTxt.textContent = `${bar.dataset.label} · ${fmtCOP(bar.dataset.valor)}`;
+                    const barRect    = bar.getBoundingClientRect();
+                    const parentRect = bar.parentElement.getBoundingClientRect();
+                    tooltip.style.left = `${barRect.left - parentRect.left + barRect.width / 2}px`;
+                    tooltip.classList.remove('hidden');
+                });
+                bar.addEventListener('mouseleave', () => {
+                    if (tooltip) tooltip.classList.add('hidden');
+                });
+            }
         });
     };
 
@@ -278,9 +279,18 @@
         } catch (_) {}
     };
 
-    // ─── SSE ─────────────────────────────────────────────────────────────────
+    // ─── SSE (conexión compartida vía window.__adminSSE) ─────────────────────
     const conectarSSE = () => {
-        const sse = new EventSource('/admin/sse');
+        if (!window.__adminSSE) {
+            const sse = new EventSource('/admin/sse');
+            window.__adminSSE = sse;
+            sse.onerror = () => {
+                window.__adminSSE = null;
+                setTimeout(conectarSSE, 5000);
+            };
+        }
+
+        const sse = window.__adminSSE;
 
         sse.addEventListener('store_stats', (e) => {
             const data = JSON.parse(e.data);
@@ -298,8 +308,6 @@
             if (data.ventasGlobalesHoy !== undefined) actualizarGlobal(data.ventasGlobalesHoy);
             if (data.pagosGlobales)                   actualizarPagos(data.pagosGlobales);
         });
-
-        sse.onerror = () => setTimeout(conectarSSE, 5000);
     };
 
     // ─── INIT ─────────────────────────────────────────────────────────────────
