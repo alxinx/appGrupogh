@@ -19,14 +19,10 @@ export const cargarPuntoDeVenta = async (req, res, next) => {
         res.locals.nombreTienda   = empleado?.sede?.nombreComercial || null;
 
         if (req.method === 'GET' && !API_PATH.test(req.path) && req.idPuntoDeVenta) {
-            const hoy = new Date();
-            hoy.setHours(0, 0, 0, 0);
-
             const caja = await CajaTienda.findOne({
                 where: {
                     idPuntoDeVenta: req.idPuntoDeVenta,
                     estado: 'abierto',
-                    fechaApertura: { [Op.gte]: hoy },
                     fechaCierre: null
                 },
                 attributes: ['idCajaTienda']

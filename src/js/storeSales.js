@@ -125,7 +125,7 @@ function renderPanel(data) {
         } else {
             facturas.forEach(f => {
                 const item = document.createElement('div');
-                item.className = 'flex items-center gap-3 px-5 py-3.5 hover:bg-pink-50/40 transition-colors';
+                item.className = 'flex items-center gap-3 px-5 py-3.5';
                 item.innerHTML = `
                     <div class="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
                         <i class="fi fi-rr-receipt text-slate-400 text-sm"></i>

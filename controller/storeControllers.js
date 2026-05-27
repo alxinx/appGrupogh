@@ -317,6 +317,56 @@ const _broadcastEstadoTraslado = async (idDestino, idOrigen = null) => {
     return pendientes;
 };
 
+// ─── HELPERS CAJA ────────────────────────────────────────────────────────────
+
+const _getCajaAbierta = (idPuntoDeVenta, includes = []) =>
+    CajaTienda.findOne({
+        where: { idPuntoDeVenta, estado: 'abierto', fechaCierre: null },
+        include: includes
+    });
+
+// estadoTx: 'pendiente' para caja activa, 'liquidada' para PDF de caja ya cerrada
+const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendiente') => {
+    const [egresosRows, facturas] = await Promise.all([
+        Egresos.findAll({
+            where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
+            attributes: ['referencia', 'descripcion', 'valorEgreso'],
+            raw: true
+        }),
+        FacturaClientes.findAll({
+            where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
+            attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
+            include: [{ model: DetallesPagosFactura, as: 'pagos',
+                        include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }]
+        })
+    ]);
+
+    let sEfectivo = 0, sMedios = 0, sCredito = 0;
+    const txElectronicos = [], txCredito = [];
+
+    for (const f of facturas) {
+        const nroFactura = `${f.prefijo || ''}${f.numeroFactura}`;
+        for (const p of f.pagos) {
+            const val = Math.round(parseFloat(p.valor) || 0);
+            if (p.metodoPago === 'Efectivo') {
+                sEfectivo += val;
+            } else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) {
+                sMedios += val;
+                txElectronicos.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
+            } else if (p.metodoPago === 'Entidad Crediticia') {
+                sCredito += val;
+                txCredito.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
+            }
+        }
+    }
+
+    const txEgresos  = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
+    const sEgresos   = txEgresos.reduce((s, e) => s + e.valor, 0);
+    const idFacturas = facturas.map(f => f.idFacturaCliente);
+
+    return { sEfectivo, sMedios, sCredito, sEgresos, sVentas: sEfectivo + sMedios + sCredito, txElectronicos, txCredito, txEgresos, idFacturas };
+};
+
 // ─── ACEPTAR TRASLADO ────────────────────────────────────────────────────────
 
 const aceptarTrasladoAPI = async (req, res) => {
@@ -1169,10 +1219,7 @@ const procesarFactura = async (req, res) => {
     if (!idPuntoDeVenta)
         return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
 
-    const cajaAbierta = await CajaTienda.findOne({
-        where: { idPuntoDeVenta, estado: 'abierto' },
-        attributes: ['idCajaTienda']
-    });
+    const cajaAbierta = await _getCajaAbierta(idPuntoDeVenta);
     if (!cajaAbierta)
         return res.status(403).json({ success: false, mensaje: 'No hay caja abierta. Debes abrir la caja antes de facturar.' });
 
@@ -1785,75 +1832,22 @@ const getCuadreCajaDatos = async (req, res) => {
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
 
     try {
-        const hoy   = new Date();
-        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0);
-        const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59);
-
-        const caja = await CajaTienda.findOne({
-            where: {
-                idPuntoDeVenta: idPdv,
-                estado: 'abierto',
-                fechaApertura: { [Op.gte]: inicio },
-                fechaCierre: null
-            },
-            include: [{ model: Empleados, as: 'empleadoApertura', attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido'] }]
-        });
+        const caja = await _getCajaAbierta(idPdv, [
+            { model: Empleados, as: 'empleadoApertura', attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido'] }
+        ]);
         if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta.' });
 
-        const [egresosRows, facturas] = await Promise.all([
-            Egresos.findAll({
-                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['referencia', 'descripcion', 'valorEgreso'],
-                raw: true
-            }),
-            FacturaClientes.findAll({
-                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
-                include: [{
-                    model: DetallesPagosFactura, as: 'pagos',
-                    include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
-                }]
-            })
-        ]);
-
-        let efectivo = 0, mediosElectronicos = 0, credito = 0;
-        const txElectronicos = [], txCredito = [];
-
-        for (const f of facturas) {
-            const nroFactura = `${f.prefijo || ''}${f.numeroFactura}`;
-            for (const p of f.pagos) {
-                const val = Math.round(parseFloat(p.valor) || 0);
-                if (p.metodoPago === 'Efectivo') {
-                    efectivo += val;
-                } else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) {
-                    mediosElectronicos += val;
-                    txElectronicos.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
-                } else if (p.metodoPago === 'Entidad Crediticia') {
-                    credito += val;
-                    txCredito.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
-                }
-            }
-        }
-
-        const txEgresos = egresosRows.map(e => ({
-            referencia:  e.referencia  || '—',
-            descripcion: e.descripcion || '—',
-            valor:       Math.round(parseFloat(e.valorEgreso) || 0)
-        }));
-        const sumaEgresos = txEgresos.reduce((s, e) => s + e.valor, 0);
+        const { sEfectivo, sMedios, sCredito, sEgresos, sVentas, txElectronicos, txCredito, txEgresos } =
+            await _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date());
 
         return res.json({
             success: true,
             caja: {
-                idCajaTienda: caja.idCajaTienda,
-                cajaMenor: Math.round(parseFloat(caja.cajaMenor) || 0),
+                idCajaTienda:     caja.idCajaTienda,
+                cajaMenor:        Math.round(parseFloat(caja.cajaMenor) || 0),
                 empleadoApertura: `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim()
             },
-            totales: {
-                ventas: efectivo + mediosElectronicos + credito,
-                egresos: sumaEgresos,
-                efectivo, mediosElectronicos, credito
-            },
+            totales: { ventas: sVentas, egresos: sEgresos, efectivo: sEfectivo, mediosElectronicos: sMedios, credito: sCredito },
             txElectronicos,
             txCredito,
             txEgresos
@@ -1900,67 +1894,32 @@ const cerrarCajaAPI = async (req, res) => {
         });
         if (!empleadoCierre) return res.status(400).json({ success: false, mensaje: 'Empleado no pertenece a esta tienda.' });
 
-        const hoy    = new Date();
-        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0);
-        const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59);
-
         // ── Buscar la caja por idCajaTienda + idPuntoDeVenta + estado abierto ──
         const caja = await CajaTienda.findOne({
             where: { idCajaTienda, idPuntoDeVenta: idPdv, estado: 'abierto' },
-            include: [{ model: Empleados, as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
-                      { model: PuntosDeVenta, as: 'puntoDeVenta', attributes: ['nombreComercial', 'footerBill'] }]
+            include: [
+                { model: Empleados,    as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
+                { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial', 'footerBill'] }
+            ]
         });
         if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta con ese ID.' });
 
-        // Datos sistema
-        const [egresosRows, facturas] = await Promise.all([
-            Egresos.findAll({
-                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['referencia', 'descripcion', 'valorEgreso'],
-                raw: true
-            }),
-            FacturaClientes.findAll({
-                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
-                include: [{
-                    model: DetallesPagosFactura, as: 'pagos',
-                    include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
-                }]
-            })
-        ]);
+        const inicio = new Date(caja.fechaApertura);
+        const fin    = new Date();
 
-        let sEfectivo = 0, sMedios = 0, sCredito = 0;
-        const txElectronicos = [], txCredito = [];
-        for (const f of facturas) {
-            const nroFactura = `${f.prefijo || ''}${f.numeroFactura}`;
-            for (const p of f.pagos) {
-                const val = Math.round(parseFloat(p.valor) || 0);
-                if (p.metodoPago === 'Efectivo') { sEfectivo += val; }
-                else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) {
-                    sMedios += val;
-                    txElectronicos.push({ nroFactura, entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
-                } else if (p.metodoPago === 'Entidad Crediticia') {
-                    sCredito += val;
-                    txCredito.push({ nroFactura, entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
-                }
-            }
-        }
-        const txEgresos     = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
-        const sEgresos      = txEgresos.reduce((s, e) => s + e.valor, 0);
-        const sVentas       = sEfectivo + sMedios + sCredito;
+        const { sEfectivo, sMedios, sCredito, sEgresos, sVentas, txElectronicos, txCredito, txEgresos, idFacturas } =
+            await _calcularTransaccionesCaja(idPdv, inicio, fin);
+
         const oEgresos      = Math.round(parseFloat(operadorEgresos)      || 0);
         const oEfectivo     = Math.round(parseFloat(operadorEfectivo)     || 0);
         const oElectronicos = Math.round(parseFloat(operadorElectronicos) || 0);
         const oCredito      = Math.round(parseFloat(operadorCredito)      || 0);
 
-        const idFacturas = facturas.map(f => f.idFacturaCliente);
         if (idFacturas.length > 0) {
-            await FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente: idFacturas } });
-        }
-        if (idFacturas.length > 0) {
-            await Egresos.update({ estado: 'liquidada' }, {
-                where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } }
-            });
+            await Promise.all([
+                FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente: idFacturas } }),
+                Egresos.update({ estado: 'liquidada' }, { where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } } })
+            ]);
         }
 
         await caja.update({
@@ -2124,37 +2083,12 @@ const getCuadrePDF = async (req, res) => {
         });
         if (!caja) return res.status(404).send('Caja no encontrada.');
 
-        const fecha  = new Date(caja.fechaCierre);
-        const inicio = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 0, 0, 0);
-        const fin    = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 23, 59, 59);
+        const { txEgresos, txElectronicos, txCredito } =
+            await _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date(caja.fechaCierre), 'liquidada');
 
-        const [egresosRows, facturas] = await Promise.all([
-            Egresos.findAll({
-                where: { idPuntoDeVenta: idPdv, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['referencia', 'descripcion', 'valorEgreso'], raw: true
-            }),
-            FacturaClientes.findAll({
-                where: { idPuntoDeVenta: idPdv, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['prefijo', 'numeroFactura'],
-                include: [{ model: DetallesPagosFactura, as: 'pagos', include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }]
-            })
-        ]);
-
-        const txEgresos = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
-        const txElectronicos = [], txCredito = [];
-        for (const f of facturas) {
-            for (const p of f.pagos) {
-                const val = Math.round(parseFloat(p.valor) || 0);
-                if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago))
-                    txElectronicos.push({ entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
-                else if (p.metodoPago === 'Entidad Crediticia')
-                    txCredito.push({ entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
-            }
-        }
-
-        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, fecha);
+        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, new Date(caja.fechaCierre));
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="cuadre-${fecha.toISOString().slice(0,10)}.pdf"`);
+        res.setHeader('Content-Disposition', `inline; filename="cuadre-${new Date(caja.fechaCierre).toISOString().slice(0,10)}.pdf"`);
         res.setHeader('Content-Length', buf.length);
         return res.send(buf);
     } catch (e) {
@@ -2702,19 +2636,9 @@ const abrirCajaAPI = async (req, res) => {
         return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
 
     try {
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-
-        const cajaExistente = await CajaTienda.findOne({
-            where: {
-                idPuntoDeVenta,
-                estado: 'abierto',
-                fechaApertura: { [Op.gte]: hoy },
-                fechaCierre: null
-            }
-        });
+        const cajaExistente = await _getCajaAbierta(idPuntoDeVenta);
         if (cajaExistente)
-            return res.status(400).json({ success: false, mensaje: 'Ya hay una caja abierta.' });
+            return res.status(400).json({ success: false, mensaje: 'Hay una caja pendiente de cierre. Ciérrala antes de abrir una nueva.' });
 
         const cajaMenor = Number(req.body.cajaMenor);
         if (!Number.isFinite(cajaMenor) || cajaMenor < 0)
