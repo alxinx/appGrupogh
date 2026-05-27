@@ -38,25 +38,9 @@ aside(
  
         
 
-    // Dosificador y traslados (submenu)
-    details(class="group")
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr -dialogue-exchange")
-          span Traslados
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
- 
-      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/store/traslados/get" class="submenu-item")
-          i(class="fi fi-rr-inbox-in text-sm mr-2")
-         
-          | Recibir Traslados
-        a(href="/store/traslados/new" class="submenu-item") 
-          i(class="fi fi-rr-inbox-out text-sm mr-2")
-          |Realizar Traslados
-        a(href="/store/traslados/history" class="submenu-item")
-          i(class="fi fi-rr-book-bookmark text-sm mr-2") 
-          |Historial de Traslados
+    a(href="/store/traslados/get" class=`menu-item ${currentPath === '/traslados' ? 'active' : ''}`)
+      i(class="fi fi-rr-paper-plane text-lg")
+      span Traslados
       
     
     

@@ -21,7 +21,7 @@ const InsidenciaTraslado = db.define('INSIDENCIAS_TRASLADOS', {
     },
     idEmpleado: {
         type: DataTypes.UUID,
-        allowNull: false
+        allowNull: true
     },
     razonInsidencia: {
         type: DataTypes.STRING(500),

@@ -252,6 +252,71 @@ const _checkPermisoTraslado = async (codigoEmpleado, nombreAccion, idPdv = null)
     return { ok: true, empleado };
 };
 
+// ─── HELPERS: operaciones comunes de traslado ─────────────────────────────────
+
+const _calcularValorPack = async (idPack, transaction) => {
+    const detalles = await DetallesPack.findAll({ where: { idPack }, transaction });
+    return detalles.reduce((s, d) => s + (parseFloat(d.valorUnidad || 0) * d.cantidad), 0);
+};
+
+const _crearStockRow = async (idPuntoVenta, { idPack, idProducto }, cantidad, transaction) => {
+    if (idPack) {
+        await Stock.create({
+            idPuntoVenta,
+            idPack,
+            idProducto:        null,
+            cantidadExistente: cantidad,
+            cantidadOriginal:  cantidad,
+            valorUnidad:       await _calcularValorPack(idPack, transaction),
+            estadoInterno:     'CERRADO'
+        }, { transaction });
+    } else if (idProducto) {
+        const ref = await Stock.findOne({
+            where: { idProducto },
+            order: [['createdAt', 'DESC']],
+            transaction
+        });
+        await Stock.create({
+            idPuntoVenta,
+            idPack:            null,
+            idProducto,
+            cantidadExistente: cantidad,
+            cantidadOriginal:  cantidad,
+            valorUnidad:       ref?.valorUnidad || 0,
+            estadoInterno:     'SUELTO'
+        }, { transaction });
+    }
+};
+
+const _crearTraslado = async (idOrigen, idDestino, idEmpleado, notas, transaction) => {
+    const ultimo = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction });
+    const nro    = ultimo ? parseInt(ultimo.codigoTraslado.split('-')[1]) + 1 : 1000;
+    const codigo = `TR-${nro}`;
+    const traslado = await Traslados.create({
+        codigoTraslado:    codigo,
+        idOrigen,
+        idDestino,
+        idUsuarioDespacha: idEmpleado,
+        notas:             notas || null,
+        estado:            'EN_TRANSITO'
+    }, { transaction });
+    return { traslado, codigo };
+};
+
+const _broadcastEstadoTraslado = async (idDestino, idOrigen = null) => {
+    const pendientes = await Traslados.count({
+        where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
+    });
+    broadcast(idDestino, 'state', { pendientes });
+    if (idOrigen && !['PRODUCCION', 'BODEGA-VIRTUAL'].includes(idOrigen)) {
+        const controversias = await Traslados.count({
+            where: { idOrigen, estado: 'EN_CONTROVERSIA' }
+        });
+        broadcast(idOrigen, 'state', { controversias });
+    }
+    return pendientes;
+};
+
 // ─── ACEPTAR TRASLADO ────────────────────────────────────────────────────────
 
 const aceptarTrasladoAPI = async (req, res) => {
@@ -296,70 +361,26 @@ const aceptarTrasladoAPI = async (req, res) => {
                 { where: { idDetalleTraslado: item.idDetalleTraslado }, transaction: t }
             );
 
-            // Crear insidencia si hay diferencia
-            if (!aceptado) {
-                await InsidenciaTraslado.create({
-                    idTraslado,
-                    idDetalleTraslado: item.idDetalleTraslado,
-                    idEmpleado: empleado.idEmpleado,
-                    razonInsidencia: item.razon || 'Sin descripción',
-                    cantidadOriginal: cantOriginal,
-                    cantidadAceptada: cantAceptada,
-                    resuelta: 'no'
-                }, { transaction: t });
-            }
+            // Registrar movimiento de recepción
+            await InsidenciaTraslado.create({
+                idTraslado,
+                idDetalleTraslado: item.idDetalleTraslado,
+                idEmpleado:        empleado.idEmpleado,
+                razonInsidencia:   aceptado
+                    ? `RECIBIDO: ${cantAceptada}/${cantOriginal} uds`
+                    : (item.razon || 'Sin descripción'),
+                cantidadOriginal:  cantOriginal,
+                cantidadAceptada:  cantAceptada,
+                resuelta:          aceptado ? 'si' : 'no'
+            }, { transaction: t });
 
             // Crear stock en destino
-            if (item.idPack && cantAceptada > 0) {
-                const detallesPack = await DetallesPack.findAll({
-                    where: { idPack: item.idPack },
-                    transaction: t
-                });
-                const valorPack = detallesPack.reduce(
-                    (sum, dp) => sum + (parseFloat(dp.valorUnidad || 0) * dp.cantidad), 0
-                );
-                await Stock.create({
-                    idPuntoVenta: traslado.idDestino,
-                    idPack:       item.idPack,
-                    idProducto:   null,
-                    cantidadExistente: cantAceptada,
-                    cantidadOriginal:  cantAceptada,
-                    valorUnidad:  valorPack,
-                    estadoInterno: 'CERRADO'
-                }, { transaction: t });
-            } else if (!item.idPack && item.idProducto && cantAceptada > 0) {
-                const stockRef = await Stock.findOne({
-                    where: { idProducto: item.idProducto },
-                    order: [['createdAt', 'DESC']],
-                    transaction: t
-                });
-                await Stock.create({
-                    idPuntoVenta:      traslado.idDestino,
-                    idPack:            null,
-                    idProducto:        item.idProducto,
-                    cantidadExistente: cantAceptada,
-                    cantidadOriginal:  cantAceptada,
-                    valorUnidad:       stockRef?.valorUnidad || 0,
-                    estadoInterno:     'SUELTO'
-                }, { transaction: t });
-            }
+            if (cantAceptada > 0) await _crearStockRow(traslado.idDestino, item, cantAceptada, t);
 
         }
 
         await t.commit();
-
-        // Notificar SSE: pendientes al destino, controversias al origen
-        const pendientes = await Traslados.count({
-            where: { idDestino: traslado.idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
-        });
-        broadcast(traslado.idDestino, 'state', { pendientes });
-
-        if (!['PRODUCCION', 'BODEGA-VIRTUAL'].includes(traslado.idOrigen)) {
-            const controversiasOrigen = await Traslados.count({
-                where: { idOrigen: traslado.idOrigen, estado: 'EN_CONTROVERSIA' }
-            });
-            broadcast(traslado.idOrigen, 'state', { controversias: controversiasOrigen });
-        }
+        await _broadcastEstadoTraslado(traslado.idDestino, traslado.idOrigen);
 
         return res.json({ success: true, estado: nuevoEstado });
     } catch (e) {
@@ -560,18 +581,7 @@ const trasladarDesdeStoreAPI = async (req, res) => {
 
     const t = await db.transaction();
     try {
-        const ultimoTraslado = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction: t });
-        const nroSiguiente   = ultimoTraslado ? parseInt(ultimoTraslado.codigoTraslado.split('-')[1]) + 1 : 1000;
-        const nuevoCodigo    = `TR-${nroSiguiente}`;
-
-        const traslado = await Traslados.create({
-            codigoTraslado:     nuevoCodigo,
-            idOrigen:           idPdv,
-            idDestino,
-            idUsuarioDespacha:  empleado.idEmpleado,
-            notas:              notas || null,
-            estado:             'EN_TRANSITO'
-        }, { transaction: t });
+        const { traslado, codigo: nuevoCodigo } = await _crearTraslado(idPdv, idDestino, empleado.idEmpleado, notas, t);
 
         const recordsPacks = await Pack.findAll({
             where: { idPack: packs },
@@ -579,25 +589,29 @@ const trasladarDesdeStoreAPI = async (req, res) => {
             transaction: t
         });
         for (const pack of recordsPacks) {
-            await DetalleTraslados.create({
+            const detalle = await DetalleTraslados.create({
                 idTraslado: traslado.idTraslado,
                 idPack:     pack.idPack,
                 cantidad:   1
             }, { transaction: t });
             await pack.update({ estado: 'TRASLADADO' }, { transaction: t });
-            // Vaciar el stock del pack en este PDV
             await Stock.update(
                 { cantidadExistente: 0, estadoInterno: 'SUELTO' },
                 { where: { idPack: pack.idPack, idPuntoVenta: idPdv }, transaction: t }
             );
+            await InsidenciaTraslado.create({
+                idTraslado:        traslado.idTraslado,
+                idDetalleTraslado: detalle.idDetalleTraslado,
+                idEmpleado:        empleado.idEmpleado,
+                razonInsidencia:   `ENVIADO: pack ${pack.codigoEtiqueta || pack.idPack}`,
+                cantidadOriginal:  1,
+                cantidadAceptada:  1,
+                resuelta:          'si'
+            }, { transaction: t });
         }
 
         await t.commit();
-
-        const pendientes = await Traslados.count({
-            where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
-        });
-        broadcast(idDestino, 'state', { pendientes });
+        await _broadcastEstadoTraslado(idDestino);
 
         return res.json({ success: true, idTraslado: traslado.idTraslado, codigo: nuevoCodigo });
     } catch (e) {
@@ -645,75 +659,27 @@ const resolverControversiaAPI = async (req, res) => {
 
             if (item.resolucion === 'RECIBIDO') {
                 await detalle.update({ estado: 'RECIBIDO' }, { transaction: t });
-
-                if (item.idPack) {
-                    const dpRec = await DetallesPack.findAll({ where: { idPack: item.idPack }, transaction: t });
-                    const valRec = dpRec.reduce((s, d) => s + (parseFloat(d.valorUnidad || 0) * d.cantidad), 0);
-                    await Stock.create({
-                        idPuntoVenta:      traslado.idDestino,
-                        idPack:            item.idPack,
-                        idProducto:        null,
-                        cantidadExistente: cantControversia,
-                        cantidadOriginal:  cantControversia,
-                        valorUnidad:       valRec,
-                        estadoInterno:     'CERRADO'
-                    }, { transaction: t });
-                } else if (detalle.idProducto) {
-                    const sRef = await Stock.findOne({
-                        where: { idProducto: detalle.idProducto },
-                        order: [['createdAt', 'DESC']],
-                        transaction: t
-                    });
-                    await Stock.create({
-                        idPuntoVenta:      traslado.idDestino,
-                        idPack:            null,
-                        idProducto:        detalle.idProducto,
-                        cantidadExistente: cantControversia,
-                        cantidadOriginal:  cantControversia,
-                        valorUnidad:       sRef?.valorUnidad || 0,
-                        estadoInterno:     'SUELTO'
-                    }, { transaction: t });
-                }
+                const target = item.idPack ? { idPack: item.idPack } : { idProducto: detalle.idProducto };
+                await _crearStockRow(traslado.idDestino, target, cantControversia, t);
+                await InsidenciaTraslado.create({
+                    idTraslado,
+                    idDetalleTraslado: item.idDetalleTraslado,
+                    idEmpleado:        empleado.idEmpleado,
+                    razonInsidencia:   `ACEPTADO POR ORIGEN: ${nombreEmpleado}`,
+                    cantidadOriginal:  cantControversia,
+                    cantidadAceptada:  cantControversia,
+                    resuelta:          'si'
+                }, { transaction: t });
             } else if (item.resolucion === 'ANULADO') {
                 await detalle.update({ estado: 'CONTROVERSIA' }, { transaction: t });
 
                 if (item.idPack && esDesdeProduccion) {
-                    await Pack.update(
-                        { estado: 'ANULADO' },
-                        { where: { idPack: item.idPack }, transaction: t }
-                    );
+                    await Pack.update({ estado: 'ANULADO' }, { where: { idPack: item.idPack }, transaction: t });
                 }
 
-                // Devolver unidades al origen ahora que se resuelve como anulado
                 if (!esDesdeProduccion && cantControversia > 0) {
-                    if (item.idPack) {
-                        const dpAnul = await DetallesPack.findAll({ where: { idPack: item.idPack }, transaction: t });
-                        const valAnul = dpAnul.reduce((s, d) => s + (parseFloat(d.valorUnidad || 0) * d.cantidad), 0);
-                        await Stock.create({
-                            idPuntoVenta:      traslado.idOrigen,
-                            idPack:            item.idPack,
-                            idProducto:        null,
-                            cantidadExistente: cantControversia,
-                            cantidadOriginal:  cantControversia,
-                            valorUnidad:       valAnul,
-                            estadoInterno:     'CERRADO'
-                        }, { transaction: t });
-                    } else if (detalle.idProducto) {
-                        const sRef = await Stock.findOne({
-                            where: { idProducto: detalle.idProducto },
-                            order: [['createdAt', 'DESC']],
-                            transaction: t
-                        });
-                        await Stock.create({
-                            idPuntoVenta:      traslado.idOrigen,
-                            idPack:            null,
-                            idProducto:        detalle.idProducto,
-                            cantidadExistente: cantControversia,
-                            cantidadOriginal:  cantControversia,
-                            valorUnidad:       sRef?.valorUnidad || 0,
-                            estadoInterno:     'SUELTO'
-                        }, { transaction: t });
-                    }
+                    const target = item.idPack ? { idPack: item.idPack } : { idProducto: detalle.idProducto };
+                    await _crearStockRow(traslado.idOrigen, target, cantControversia, t);
                 }
 
                 await InsidenciaTraslado.create({
@@ -730,16 +696,7 @@ const resolverControversiaAPI = async (req, res) => {
 
         await traslado.update({ estado: 'RECIBIDO' }, { transaction: t });
         await t.commit();
-
-        const pendientes = await Traslados.count({
-            where: { idDestino: traslado.idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
-        });
-        broadcast(traslado.idDestino, 'state', { pendientes });
-
-        const controversiasOrigen = await Traslados.count({
-            where: { idOrigen: idPdv, estado: 'EN_CONTROVERSIA' }
-        });
-        broadcast(idPdv, 'state', { controversias: controversiasOrigen });
+        await _broadcastEstadoTraslado(traslado.idDestino, idPdv);
 
         return res.json({ success: true });
     } catch (e) {
@@ -1771,35 +1728,31 @@ const crearTrasladoSueltos = async (req, res) => {
             }
         }
 
-        const ultimoTraslado = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction: t });
-        const nroSiguiente   = ultimoTraslado ? parseInt(ultimoTraslado.codigoTraslado.split('-')[1]) + 1 : 1000;
-        const nuevoCodigo    = `TR-${nroSiguiente}`;
-
-        const traslado = await Traslados.create({
-            codigoTraslado:    nuevoCodigo,
-            idOrigen:          idPdv,
-            idDestino,
-            idUsuarioDespacha: empleado.idEmpleado,
-            notas:             notas || null,
-            estado:            'EN_TRANSITO'
-        }, { transaction: t });
+        const { traslado, codigo: nuevoCodigo } = await _crearTraslado(idPdv, idDestino, empleado.idEmpleado, notas, t);
 
         for (const item of items) {
-            await DetalleTraslados.create({
+            const cant = parseInt(item.cantidad);
+            const detalle = await DetalleTraslados.create({
                 idTraslado: traslado.idTraslado,
                 idPack:     null,
                 idProducto: item.idProducto,
-                cantidad:   parseInt(item.cantidad)
+                cantidad:   cant
+            }, { transaction: t });
+            await InsidenciaTraslado.create({
+                idTraslado:        traslado.idTraslado,
+                idDetalleTraslado: detalle.idDetalleTraslado,
+                idEmpleado:        empleado.idEmpleado,
+                razonInsidencia:   `ENVIADO: ${cant} uds`,
+                cantidadOriginal:  cant,
+                cantidadAceptada:  cant,
+                resuelta:          'si'
             }, { transaction: t });
         }
 
         await t.commit();
 
-        const pendientes = await Traslados.count({
-            where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
-        });
+        const pendientes = await _broadcastEstadoTraslado(idDestino);
         broadcast(idDestino, 'new_traslado', { codigo: nuevoCodigo, pendientes });
-        broadcast(idDestino, 'state', { pendientes });
 
         return res.json({ success: true, idTraslado: traslado.idTraslado, codigo: nuevoCodigo });
     } catch (e) {
@@ -2479,21 +2432,17 @@ const verificarTrasladosExpirados = async () => {
                             { where: { idPack: detalle.idPack }, transaction: t }
                         );
                     } else if (detalle.idProducto) {
-                        const stockRef = await Stock.findOne({
-                            where: { idProducto: detalle.idProducto },
-                            order: [['createdAt', 'DESC']],
-                            transaction: t
-                        });
-                        await Stock.create({
-                            idPuntoVenta:      traslado.idOrigen,
-                            idPack:            null,
-                            idProducto:        detalle.idProducto,
-                            cantidadExistente: detalle.cantidad,
-                            cantidadOriginal:  detalle.cantidad,
-                            valorUnidad:       stockRef?.valorUnidad || 0,
-                            estadoInterno:     'SUELTO'
-                        }, { transaction: t });
+                        await _crearStockRow(traslado.idOrigen, { idProducto: detalle.idProducto }, detalle.cantidad, t);
                     }
+                    await InsidenciaTraslado.create({
+                        idTraslado:        traslado.idTraslado,
+                        idDetalleTraslado: detalle.idDetalleTraslado,
+                        idEmpleado:        null,
+                        razonInsidencia:   'DEVUELTO: traslado expirado automáticamente',
+                        cantidadOriginal:  detalle.cantidad,
+                        cantidadAceptada:  detalle.cantidad,
+                        resuelta:          'si'
+                    }, { transaction: t });
                 }
 
                 await traslado.update({ estado: 'DEVUELTO' }, { transaction: t });
@@ -2800,42 +2749,51 @@ const abrirCajaAPI = async (req, res) => {
     }
 };
 
-// ── API: traslados EN_TRANSITO con destino en esta tienda (para alerta sidebar) ──
+// ── API: alertas de traslados — entrantes (destino = yo) y salientes sin aceptar (origen = yo) ──
 const getTrasladosAlertaJSON = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false });
 
     try {
         const maxTime = parseInt(process.env.MAX_TRANSFER_TIME) || 259200; // segundos
+        const ahora   = Date.now();
 
-        const traslados = await Traslados.findAll({
-            where: { idDestino: idPdv, estado: 'EN_TRANSITO' },
-            include: [
-                { model: PuntosDeVenta,    as: 'origen', attributes: ['nombreComercial'], required: false },
-                { model: DetalleTraslados, as: 'items',  attributes: ['cantidad'] }
-            ],
-            order: [['fechaEnvio', 'ASC']]
-        });
+        const [entrantes, salientes] = await Promise.all([
+            Traslados.findAll({
+                where: { idDestino: idPdv, estado: 'EN_TRANSITO' },
+                include: [
+                    { model: PuntosDeVenta,    as: 'origen',  attributes: ['nombreComercial'], required: false },
+                    { model: DetalleTraslados, as: 'items',   attributes: ['cantidad'] }
+                ],
+                order: [['fechaEnvio', 'ASC']]
+            }),
+            Traslados.findAll({
+                where: { idOrigen: idPdv, estado: 'EN_TRANSITO' },
+                include: [
+                    { model: PuntosDeVenta,    as: 'destino', attributes: ['nombreComercial'], required: false },
+                    { model: DetalleTraslados, as: 'items',   attributes: ['cantidad'] }
+                ],
+                order: [['fechaEnvio', 'ASC']]
+            })
+        ]);
 
-        const ahora = Date.now();
-        const datos = traslados.map(t => {
-            const totalItems   = (t.items || []).reduce((s, i) => s + (parseInt(i.cantidad) || 0), 0);
+        const mapear = (t, esOrigen) => {
+            const totalItems            = (t.items || []).reduce((s, i) => s + (parseInt(i.cantidad) || 0), 0);
             const segundosTranscurridos = Math.floor((ahora - new Date(t.fechaEnvio).getTime()) / 1000);
-            const fraccion     = Math.min(segundosTranscurridos / maxTime, 1);
-            const nivel        = fraccion < 1 / 3 ? 'verde' : fraccion < 2 / 3 ? 'naranja' : 'rojo';
+            const fraccion              = Math.min(segundosTranscurridos / maxTime, 1);
+            const nivel                 = fraccion < 1 / 3 ? 'verde' : fraccion < 2 / 3 ? 'naranja' : 'rojo';
+            const contraparte           = esOrigen
+                ? (t.destino?.nombreComercial || '—')
+                : (t.origen?.nombreComercial  || '—');
+            return { idTraslado: t.idTraslado, codigo: t.codigoTraslado, contraparte, fechaEnvio: t.fechaEnvio, segundosTranscurridos, totalItems, nivel, esOrigen };
+        };
 
-            return {
-                idTraslado:   t.idTraslado,
-                codigo:       t.codigoTraslado,
-                origen:       t.origen?.nombreComercial || '—',
-                fechaEnvio:   t.fechaEnvio,
-                segundosTranscurridos,
-                totalItems,
-                nivel
-            };
-        });
+        const traslados = [
+            ...entrantes.map(t => mapear(t, false)),
+            ...salientes.map(t => mapear(t, true))
+        ];
 
-        return res.json({ success: true, traslados: datos, maxTime });
+        return res.json({ success: true, traslados, maxTime });
     } catch (e) {
         console.error('getTrasladosAlertaJSON:', e);
         return res.status(500).json({ success: false });

@@ -4,7 +4,6 @@
     // ─── ESTADO ──────────────────────────────────────────────────────────────
     let trasladoActivo = null;
     let empleadoValidado = null;
-    let employeeLookupTimer = null;
     let paginaHistorial = 1;
     let busquedaHistorial = '';
     let miPdvId = null;
@@ -36,6 +35,32 @@
         if (!iso) return '—';
         return new Date(iso).toLocaleTimeString('es-CO', {
             hour: '2-digit', minute: '2-digit'
+        });
+    };
+
+    const _setupLookupEmpleado = (inputEl, feedbackEl, accion, onFound) => {
+        if (!inputEl) return;
+        let timer;
+        inputEl.addEventListener('input', () => {
+            clearTimeout(timer);
+            onFound(null);
+            const code = inputEl.value.trim();
+            if (!code) { feedbackEl.innerHTML = ''; return; }
+            feedbackEl.innerHTML = `<span class="text-slate-400 text-xs"><i class="fi fi-rr-spinner animate-spin mr-1"></i>Buscando...</span>`;
+            timer = setTimeout(async () => {
+                try {
+                    const r = await fetch(`/store/inventario/json/empleado-traslado?codigo=${encodeURIComponent(code.toUpperCase())}&accion=${accion}`);
+                    const d = await r.json();
+                    if (d.success) {
+                        onFound({ nombre: d.nombre });
+                        feedbackEl.innerHTML = `<span class="text-emerald-600 font-semibold text-xs"><i class="fi fi-rr-check mr-1"></i>${d.nombre}</span>`;
+                    } else {
+                        feedbackEl.innerHTML = `<span class="text-red-500 text-xs"><i class="fi fi-rr-cross-circle mr-1"></i>${d.mensaje || 'Sin permiso'}</span>`;
+                    }
+                } catch {
+                    feedbackEl.innerHTML = `<span class="text-red-500 text-xs">Error al buscar</span>`;
+                }
+            }, 500);
         });
     };
 
@@ -175,19 +200,8 @@
     };
 
     const renderPaginacion = (totalPaginas, paginaActual) => {
-        const container = document.getElementById('paginacion-historial');
-        if (!container) return;
-        if (totalPaginas <= 1) { container.innerHTML = ''; return; }
-
-        let btns = '';
-        for (let i = 1; i <= totalPaginas; i++) {
-            btns += `<button class="btn btn-xs ${i === paginaActual ? 'btn-primary' : 'btn-ghost'} cursor-pointer"
-                onclick="window._irPagina(${i})">${i}</button>`;
-        }
-        container.innerHTML = `<div class="flex gap-1 flex-wrap">${btns}</div>`;
+        window.generarPaginacion('#paginacion-historial', totalPaginas, paginaActual, (p) => loadHistorial(busquedaHistorial, p));
     };
-
-    window._irPagina = (p) => loadHistorial(busquedaHistorial, p);
 
     const inputBusqueda = document.getElementById('busqueda-historial');
     if (inputBusqueda) {
@@ -485,33 +499,7 @@
     });
 
     // ─── LOOKUP EMPLEADO ─────────────────────────────────────────────────────
-    lbCodEmp?.addEventListener('input', () => {
-        clearTimeout(employeeLookupTimer);
-        empleadoValidado = null;
-        const code = lbCodEmp.value.trim();
-
-        if (!code) { lbFeedback.innerHTML = ''; return; }
-
-        lbFeedback.innerHTML = `<span class="text-slate-400 text-xs">
-            <i class="fi fi-rr-spinner animate-spin mr-1"></i>Buscando...</span>`;
-
-        employeeLookupTimer = setTimeout(async () => {
-            try {
-                const r = await fetch(`/store/inventario/json/empleado-traslado?codigo=${encodeURIComponent(code.toUpperCase())}&accion=EDIT`);
-                const d = await r.json();
-                if (d.success) {
-                    empleadoValidado = { nombre: d.nombre };
-                    lbFeedback.innerHTML = `<span class="text-emerald-600 font-semibold text-xs">
-                        <i class="fi fi-rr-check mr-1"></i>${d.nombre}</span>`;
-                } else {
-                    lbFeedback.innerHTML = `<span class="text-red-500 text-xs">
-                        <i class="fi fi-rr-cross-circle mr-1"></i>${d.mensaje || 'Sin permiso'}</span>`;
-                }
-            } catch {
-                lbFeedback.innerHTML = `<span class="text-red-500 text-xs">Error al buscar</span>`;
-            }
-        }, 500);
-    });
+    _setupLookupEmpleado(lbCodEmp, lbFeedback, 'EDIT', v => { empleadoValidado = v; });
 
     // ─── SUBMIT ACEPTAR ──────────────────────────────────────────────────────
     btnAceptar?.addEventListener('click', async () => {
@@ -677,7 +665,6 @@
 
         let ntItems    = [];   // [{ id, idProducto, sku, nombreProducto, stockDisponible, cantidad }]
         let ntEmpleado = null;
-        let ntEmpTimer = null;
         let ntRowId    = 0;
 
         // ── Abrir / cerrar ───────────────────────────────────────────────────
@@ -842,27 +829,7 @@
         btnAgregar?.addEventListener('click', agregarFila);
 
         // ── Validación empleado ──────────────────────────────────────────────
-        inputEmp?.addEventListener('input', () => {
-            clearTimeout(ntEmpTimer);
-            ntEmpleado = null;
-            const code = inputEmp.value.trim();
-            if (!code) { feedbackEmp.innerHTML = ''; return; }
-            feedbackEmp.innerHTML = `<span class="text-slate-400"><i class="fi fi-rr-spinner animate-spin mr-1"></i>Buscando...</span>`;
-            ntEmpTimer = setTimeout(async () => {
-                try {
-                    const r = await fetch(`/store/inventario/json/empleado-traslado?codigo=${encodeURIComponent(code.toUpperCase())}&accion=CREATE`);
-                    const d = await r.json();
-                    if (d.success) {
-                        ntEmpleado = { nombre: d.nombre };
-                        feedbackEmp.innerHTML = `<span class="text-emerald-600 font-semibold"><i class="fi fi-rr-check mr-1"></i>${d.nombre}</span>`;
-                    } else {
-                        feedbackEmp.innerHTML = `<span class="text-red-500"><i class="fi fi-rr-cross-circle mr-1"></i>${d.mensaje || 'Sin permiso'}</span>`;
-                    }
-                } catch {
-                    feedbackEmp.innerHTML = `<span class="text-red-400">Error al buscar</span>`;
-                }
-            }, 500);
-        });
+        _setupLookupEmpleado(inputEmp, feedbackEmp, 'CREATE', v => { ntEmpleado = v; });
 
         // ── Submit ───────────────────────────────────────────────────────────
         btnSubmit?.addEventListener('click', async () => {

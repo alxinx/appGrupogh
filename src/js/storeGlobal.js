@@ -307,21 +307,23 @@
         return h > 0 ? `hace ${d}d ${h}h` : `hace ${d}d`;
     };
 
-    const estilosNivel = {
-        verde:   {
-            borde: '#16a34a', fondo: '#f0fdf4', fondoIcono: '#dcfce7',
-            texto: '#15803d', icono: 'fi-rr-truck',           extra: '',
-            label: 'Tienes Traslado'
+    // Tokens compartidos para niveles que son iguales en ambas perspectivas
+    const _nivelBase = {
+        naranja: { borde: '#ea580c', fondo: '#fff7ed', fondoIcono: '#ffedd5', texto: '#c2410c', icono: 'fi-rr-triangle-warning',  extra: '' },
+        rojo:    { borde: '#dc2626', fondo: '#fef2f2', fondoIcono: '#fee2e2', texto: '#b91c1c', icono: 'fi-rr-alarm-exclamation', extra: 'alerta-pulso' }
+    };
+
+    // Estilos indexados por perspectiva → nivel
+    const estilosPorPerspectiva = {
+        entrante: {
+            verde:   { borde: '#16a34a', fondo: '#f0fdf4', fondoIcono: '#dcfce7', texto: '#15803d', icono: 'fi-rr-truck',       extra: '', label: 'Tienes Traslado',         prefijo: 'De'   },
+            naranja: { ..._nivelBase.naranja, label: '¡Próximo a vencer!',                                                                                                     prefijo: 'De'   },
+            rojo:    { ..._nivelBase.rojo,    label: '¡URGENTE!',                                                                                                              prefijo: 'De'   }
         },
-        naranja: {
-            borde: '#ea580c', fondo: '#fff7ed', fondoIcono: '#ffedd5',
-            texto: '#c2410c', icono: 'fi-rr-triangle-warning', extra: '',
-            label: '¡Traslado Próximo a vencer!'
-        },
-        rojo: {
-            borde: '#dc2626', fondo: '#fef2f2', fondoIcono: '#fee2e2',
-            texto: '#b91c1c', icono: 'fi-rr-alarm-exclamation', extra: 'alerta-pulso',
-            label: '¡URGENTE!'
+        origen: {
+            verde:   { borde: '#0284c7', fondo: '#f0f9ff', fondoIcono: '#e0f2fe', texto: '#0369a1', icono: 'fi-rr-paper-plane', extra: '', label: 'Enviado',                  prefijo: 'Para' },
+            naranja: { ..._nivelBase.naranja, label: '¡Sin recibir!',                                                                                                          prefijo: 'Para' },
+            rojo:    { ..._nivelBase.rojo,    label: '¡Inventario en riesgo!',                                                                                                 prefijo: 'Para' }
         }
     };
 
@@ -340,6 +342,34 @@
         document.head.appendChild(style);
     };
 
+    // Banner permanente (sin botón de cierre) que avisa al origen sobre reversión inminente
+    const actualizarBannerReversion = (trasladosRojoOrigen) => {
+        let el = document.getElementById('banner-reversion');
+
+        if (!trasladosRojoOrigen.length) {
+            if (el) el.classList.add('hidden');
+            return;
+        }
+
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'banner-reversion';
+            el.className = 'fixed top-0 left-0 right-0 z-[60] bg-red-700 text-white text-center py-2 px-4 text-sm font-bold shadow-lg';
+            document.body.prepend(el);
+        }
+
+        el.classList.remove('hidden');
+        const n = trasladosRojoOrigen.length;
+        const codigos = trasladosRojoOrigen.map(t => t.codigo).join(', ');
+        el.innerHTML = `
+            <i class="fi fi-rr-alarm-exclamation mr-2"></i>
+            ⚠ ALERTA: El traslado${n > 1 ? 's' : ''} <strong>${codigos}</strong>
+            no ha${n > 1 ? 'n' : ''} sido aceptado${n > 1 ? 's' : ''} por el destino —
+            si no se recibe${n > 1 ? 'n' : ''} a tiempo, el inventario regresará automáticamente a tu stock.
+            <a href="/store/traslados/get" class="ml-3 underline hover:text-red-200">Ver traslados →</a>
+        `;
+    };
+
     const renderAlertasTraslado = (traslados) => {
         const cont = document.getElementById('traslado-alerta-container');
         if (!cont) return;
@@ -349,7 +379,8 @@
         inyectarCSSpulso();
 
         cont.innerHTML = traslados.map(t => {
-            const e = estilosNivel[t.nivel] || estilosNivel.verde;
+            const mapa = estilosPorPerspectiva[t.esOrigen ? 'origen' : 'entrante'];
+            const e = mapa[t.nivel] || mapa.verde;
             return `
                 <a href="/store/traslados/get" style="text-decoration:none;display:block;">
                     <div class="${e.extra}" style="
@@ -362,7 +393,6 @@
                         align-items: center;
                         gap: 12px;
                     ">
-                        <!-- Ícono circular grande -->
                         <div style="
                             width: 52px; height: 52px; flex-shrink: 0;
                             border-radius: 50%;
@@ -372,16 +402,17 @@
                         ">
                             <i class="fi ${e.icono}" style="color:${e.borde};font-size:22px;"></i>
                         </div>
-
-                        <!-- Texto -->
                         <div style="flex:1;min-width:0;">
                             <p style="margin:0 0 2px;font-size:13px;font-weight:800;color:${e.texto};
                                       text-transform:uppercase;letter-spacing:.03em;line-height:1.2;">
                                 ${e.label}
                             </p>
+                            <p style="margin:0 0 3px;font-size:11px;color:#64748b;font-weight:500;">
+                                ${e.prefijo}:
+                            </p>
                             <p style="margin:0 0 3px;font-size:14px;font-weight:700;color:#1e293b;
                                       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                ${t.origen}
+                                ${t.contraparte}
                             </p>
                             <p style="margin:0 0 3px;font-size:13px;color:#475569;font-weight:500;">
                                 📦 ${t.totalItems} producto${t.totalItems !== 1 ? 's' : ''}
@@ -400,7 +431,11 @@
             const r = await fetch('/store/traslados/alerta');
             if (!r.ok) return;
             const d = await r.json();
-            if (d.success) renderAlertasTraslado(d.traslados);
+            if (!d.success) return;
+            renderAlertasTraslado(d.traslados);
+            // Banner permanente de reversión: solo traslados salientes en zona roja
+            const rojoOrigen = d.traslados.filter(t => t.esOrigen && t.nivel === 'rojo');
+            actualizarBannerReversion(rojoOrigen);
         } catch (_) {}
     };
 

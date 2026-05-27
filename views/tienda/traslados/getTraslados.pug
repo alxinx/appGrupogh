@@ -71,13 +71,12 @@ block contenedor
                                     p(class="text-xs text-slate-400") Recibidos, controversias y anulados
 
                             div(class="px-4 pt-4 pb-2")
-                                div(class="relative")
-                                    i(class="fi fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs")
-                                    input(
-                                        id="busqueda-historial"
+                                div(class="input-group")
+                                    i(class="input-icon input-icon-left fi fi-rr-search text-xs")
+                                    input#busqueda-historial(
                                         type="text"
                                         placeholder="Buscar por código de traslado..."
-                                        class="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20 transition-all"
+                                        class="field-text input-has-icon-left"
                                     )
 
                             div(class="overflow-x-auto")
@@ -141,7 +140,7 @@ block contenedor
                         textarea#nt-notas(
                             rows="2"
                             placeholder="Observaciones del traslado (opcional)..."
-                            class="textarea textarea-bordered w-full text-sm resize-none rounded-xl"
+                            class="field-text resize-none"
                         )
 
                 //- Footer
@@ -151,22 +150,21 @@ block contenedor
                         //- Código empleado
                         div
                             label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Código empleado *
-                            div(class="relative")
-                                input(
-                                    id="nt-codigo-empleado"
+                            div(class="input-group")
+                                i(class="input-icon input-icon-left fi fi-rr-user")
+                                input#nt-codigo-empleado(
                                     type="text"
                                     placeholder="Ej: EMP01"
                                     maxlength="10"
                                     autocomplete="off"
-                                    class="input input-bordered w-full pl-9 text-sm font-mono uppercase tracking-widest rounded-xl"
+                                    class="field-text input-has-icon-left font-mono uppercase tracking-widest"
                                 )
-                                i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
                             div#nt-feedback-empleado(class="mt-1 text-xs min-h-[1rem]")
 
                         //- Destino
                         div
                             label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Destino *
-                            select#nt-destino(class="select select-bordered w-full text-sm rounded-xl")
+                            select#nt-destino(class="field-text")
                                 option(value="") Cargando destinos...
 
                     div(class="flex gap-3")
@@ -206,18 +204,17 @@ block contenedor
 
                 div(class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex-shrink-0 space-y-3")
                     div#lb-footer-form(class="flex gap-3 items-center")
-                        div(class="flex-1 relative")
+                        div(class="flex-1")
                             label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Código empleado que recibe *
-                            div(class="relative")
-                                input(
-                                    id="lb-codigo-empleado"
+                            div(class="input-group")
+                                i(class="input-icon input-icon-left fi fi-rr-user")
+                                input#lb-codigo-empleado(
                                     type="text"
                                     placeholder="Ej: 12345"
                                     maxlength="5"
                                     autocomplete="off"
-                                    class="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20"
+                                    class="field-text input-has-icon-left font-mono uppercase tracking-widest"
                                 )
-                                i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
                         div(id="lb-feedback-empleado" class="self-end text-xs pb-1")
                     div(class="flex gap-3")
                         button#lb-cancelar(class="flex-1 btn btn-secondary py-3 cursor-pointer") Cancelar
@@ -231,4 +228,5 @@ block contenedor
     input#csrf-token(type="hidden" value=csrfToken)
 
     script(src="/js/storeGlobal.js")
+    script(src="/js/paginador.js")
     script(src="/js/storeTraslados.js")
