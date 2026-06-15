@@ -46,6 +46,47 @@
 
     window.showToast = showToast;
 
+    // ─── ACTUALIZAR MENÚ POR CAMBIO DE PERMISOS (SSE) ───────────────────────
+    const actualizarMenu = (carpetasPermitidas) => {
+        // Mostrar u ocultar cada ítem del menú según las carpetas permitidas
+        document.querySelectorAll('[data-folder]').forEach(el => {
+            el.style.display = carpetasPermitidas.includes(el.dataset.folder) ? '' : 'none';
+        });
+
+        // Verificar si la página actual sigue siendo accesible
+        const rutaRel = window.location.pathname.replace(/^\/store/, '') || '/';
+        const tieneAcceso = carpetasPermitidas.some(f =>
+            f === '/' ? rutaRel === '/' : rutaRel === f || rutaRel.startsWith(f + '/')
+        );
+
+        if (!tieneAcceso) {
+            if (!carpetasPermitidas.length) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Sin permisos',
+                    text: 'Tu acceso ha sido revocado.',
+                    confirmButtonColor: '#EC5FA3',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false
+                }).then(() => { window.location.href = '/'; });
+                return;
+            }
+            Swal.fire({
+                icon: 'info',
+                title: 'Permisos actualizados',
+                text: 'Tus permisos cambiaron. Serás redirigido.',
+                timer: 2500,
+                timerProgressBar: true,
+                showConfirmButton: false
+            }).then(() => {
+                const primero = carpetasPermitidas[0];
+                window.location.href = '/store' + (primero === '/' ? '/' : primero + '/');
+            });
+        } else {
+            showToast('Tus permisos han sido actualizados', 'info', 4000);
+        }
+    };
+
     // ─── BANNER CONTROVERSIAS ────────────────────────────────────────────────
     const actualizarBanner = (count) => {
         const banner = document.getElementById('controversia-banner');
@@ -113,6 +154,11 @@
         sseSource.addEventListener('new_egreso', (e) => {
             const data = JSON.parse(e.data);
             if (typeof window.onNuevoEgreso === 'function') window.onNuevoEgreso(data);
+        });
+
+        sseSource.addEventListener('permissions_update', (e) => {
+            const { carpetasPermitidas } = JSON.parse(e.data);
+            actualizarMenu(carpetasPermitidas);
         });
 
         sseSource.onerror = () => {
@@ -201,25 +247,28 @@
             infoEmpleado.textContent = '';
         };
 
-        // ── Validación live de empleado ───────────────────────────────────────
+        // ── Validación live de empleado (solo feedback visual) ───────────────
+        // El botón se habilita por longitud del campo; el servidor es quien
+        // valida y cuenta los intentos fallidos.
         inputCodigo.addEventListener('input', () => {
-            empleadoValido    = false;
-            btnAbrir.disabled = true;
+            empleadoValido = false;
+            clearInfo();
             clearTimeout(debounceTimer);
 
             const codigo = inputCodigo.value.trim();
-            if (codigo.length < 3) { clearInfo(); return; }
+            btnAbrir.disabled = codigo.length < 2;
+
+            if (codigo.length < 2) return;
 
             debounceTimer = setTimeout(async () => {
                 try {
-                    const r = await fetch(`/store/json/personal/codigo/${encodeURIComponent(codigo.toUpperCase())}`);
+                    const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo.toUpperCase())}`);
                     const d = await r.json();
                     if (d.success) {
                         setInfo(d.nombre, true);
-                        empleadoValido    = true;
-                        btnAbrir.disabled = false;
+                        empleadoValido = true;
                     } else {
-                        setInfo('Empleado no encontrado', false);
+                        setInfo('No pertenece a esta tienda', false);
                     }
                 } catch (_) {
                     setInfo('Error al verificar', false);
@@ -242,8 +291,8 @@
                 setInfo('El valor de caja menor no puede ser negativo', false);
                 return;
             }
-            if (!codigoEmpleado || !empleadoValido) {
-                setInfo('Ingresa un código de empleado válido', false);
+            if (!codigoEmpleado) {
+                setInfo('Ingresa el código de empleado', false);
                 return;
             }
 
@@ -442,8 +491,12 @@
     document.addEventListener('DOMContentLoaded', () => {
         conectarSSE();
         initAperturaCaja();
-        // Mostrar modal si la caja no está abierta
-        if (window.__SIN_CAJA__) window.abrirModalCaja();
+        // Mostrar modal solo si no hay caja de hoy Y no hay cajas anteriores pendientes
+        if (window.__SIN_CAJA__ && !window.__CAJAS_PENDIENTES__) {
+            window.abrirModalCaja();
+        } else if (!window.__SIN_CAJA__) {
+            document.getElementById('codigo')?.focus();
+        }
 
         // Alerta de traslados: carga inmediata + polling cada 30 s
         pollAlertasTraslado();

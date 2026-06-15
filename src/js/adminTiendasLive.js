@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const fmtCOP = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const fmtCOP = window.fmtCOP;
 
     // ─── ANIMACIÓN CONTADOR ASCENDENTE ───────────────────────────────────────
     const countUp = (el, toValue) => {
@@ -227,6 +227,9 @@
     const elGlobal    = document.getElementById('stat-ventas-globales');
     const elGlobalBar = document.getElementById('stat-ventas-globales-bar');
 
+    // Promedio diario del mes; se actualiza en cargarStats y persiste para el SSE.
+    let metaDia = 0;
+
     const actualizarGlobal = (nuevoValor) => {
         if (!elGlobal) return;
         const from = parseFloat(elGlobal.dataset.val || '0');
@@ -248,14 +251,17 @@
                 requestAnimationFrame(step);
             } else {
                 elGlobal.textContent = fmtCOP(to);
-                // Flash de color verde
                 elGlobal.style.transition = 'color 0.3s';
                 elGlobal.style.color = '#059669';
                 setTimeout(() => { elGlobal.style.color = ''; }, 1400);
-                // Barra de progreso: relativa al máximo visible (propio)
-                if (elGlobalBar && to > 0) {
-                    const pct = Math.min((to / (to * 1.25)) * 100, 100);
-                    elGlobalBar.style.width = pct + '%';
+                if (elGlobalBar) {
+                    // Porcentaje respecto al promedio diario del mes; si es el primer
+                    // día del mes (metaDia === 0) y ya hay ventas, la barra va al 100%.
+                    const pct = metaDia > 0
+                        ? Math.min((to / metaDia) * 100, 100)
+                        : (to > 0 ? 100 : 0);
+                    elGlobalBar.style.transition = 'width 0.7s ease';
+                    elGlobalBar.style.width = pct.toFixed(1) + '%';
                 }
             }
         };
@@ -268,6 +274,14 @@
             const res  = await fetch('/admin/api/tiendas/stats-hoy');
             const json = await res.json();
             if (!json.success) return;
+
+            // Promedio diario del mes (días anteriores a hoy) como referencia de la barra
+            if (json.ventasMes !== undefined && (json.diasTranscurridos || 0) > 1) {
+                const diasAnteriores = json.diasTranscurridos - 1;
+                const ventasAnteriores = json.ventasMes - (json.ventasGlobalesHoy || 0);
+                metaDia = Math.round(Math.max(ventasAnteriores, 0) / diasAnteriores);
+            }
+
             for (const s of json.stats) {
                 actualizarCelda(s.idPuntoDeVenta, 'ventas',   s.ventasHoy);
                 actualizarCelda(s.idPuntoDeVenta, 'egresos',  s.egresosHoy);

@@ -21,7 +21,7 @@ block contenedor
                 div(class="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-5 items-start m-5")
 
                     //- ── COLUMNA IZQUIERDA: Tabla ──────────────────────────────
-                    div(class="cards cardWhite flex flex-col overflow-hidden !p-0 !m-0")
+                    div(class="cards flex flex-col overflow-hidden !p-0 !m-0")
 
                         //- Header: filtro fechas
                         div(class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-b border-slate-100")
@@ -74,19 +74,19 @@ block contenedor
 
                         //- 4 cards pequeñas
                         div(class="grid grid-cols-2 gap-3")
-                            div(class="cards cardWhite flex flex-col !m-0")
+                            div(class="cards flex flex-col !m-0")
                                 p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Efectivo
                                 p#sv-r-efectivo(class="text-xl font-bold text-slate-800") —
                                 div(class="h-0.5 rounded-full mt-1" style="background:#22c55e")
-                            div(class="cards cardWhite flex flex-col !m-0")
+                            div(class="cards flex flex-col !m-0")
                                 p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Electrónico
                                 p#sv-r-electronico(class="text-xl font-bold text-slate-800") —
                                 div(class="h-0.5 rounded-full mt-1" style="background:#3b82f6")
-                            div(class="cards cardWhite flex flex-col !m-0")
+                            div(class="cards flex flex-col !m-0")
                                 p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Crédito
                                 p#sv-r-credito(class="text-xl font-bold text-slate-800") —
                                 div(class="h-0.5 rounded-full mt-1" style="background:#a855f7")
-                            div(class="cards cardWhite flex flex-col !m-0")
+                            div(class="cards flex flex-col !m-0")
                                 p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest") Egresos
                                 p#sv-r-egresos(class="text-xl font-bold text-slate-800") —
                                 div(class="h-0.5 rounded-full mt-1" style="background:#f97316")
@@ -103,13 +103,13 @@ block contenedor
                         a#sv-btn-imprimir(
                             href="#"
                             target="_blank"
-                            class="hidden flex items-center justify-center gap-2 w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 cards cardWhite !m-0 text-slate-700 hover:border-pink-300 hover:text-pink-600"
+                            class="hidden flex items-center justify-center gap-2 w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 cards !m-0 text-slate-700 hover:border-pink-300 hover:text-pink-600"
                         )
                             i(class="fi fi-rr-print")
                             | Imprimir Cierre de Caja
 
                         //- Movimientos del día
-                        div(class="cards cardWhite flex flex-col overflow-hidden !p-0 !m-0")
+                        div(class="cards flex flex-col overflow-hidden !p-0 !m-0")
                             div(class="px-5 py-4 border-b border-slate-100")
                                 p(class="text-xs font-bold text-slate-700 uppercase tracking-widest") Movimientos del día
                                 p#sv-r-fecha-label(class="text-xs text-pink-500 font-semibold mt-0.5") —

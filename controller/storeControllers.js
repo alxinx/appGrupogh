@@ -28,12 +28,27 @@ import sharp from 'sharp';
 const dashboardStores = async (req, res) => {
     const idPuntoDeVenta = req.idPuntoDeVenta;
 
-    const [trasladosPendientes, departamentos, clienteRaw] = await Promise.all([
+    const inicioDia = new Date();
+    inicioDia.setHours(0, 0, 0, 0);
+
+    const [trasladosPendientes, departamentos, clienteRaw, cajaDelDiaAnterior] = await Promise.all([
         idPuntoDeVenta
             ? Traslados.count({ where: { idDestino: idPuntoDeVenta, estado: 'EN_TRANSITO' } })
             : 0,
         Departamentos.findAll({ attributes: ['id', 'nombre'], order: [['nombre', 'ASC']], raw: true }),
-        Clientes.findOne({ where: { idCliente: '0' }, raw: true }).catch(() => null)
+        Clientes.findOne({ where: { idCliente: '0' }, raw: true }).catch(() => null),
+        idPuntoDeVenta
+            ? CajaTienda.findOne({
+                where: {
+                    idPuntoDeVenta,
+                    estado: 'abierto',
+                    fechaCierre: null,
+                    fechaApertura: { [Op.lt]: inicioDia }
+                },
+                attributes: ['idCajaTienda', 'fechaApertura'],
+                raw: true
+              })
+            : null
     ]);
 
     const clienteGenerico = clienteRaw || {
@@ -52,7 +67,8 @@ const dashboardStores = async (req, res) => {
         wholesaleMin: parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6,
         departamentos,
         clienteGenerico,
-        cajaMenorDefault: parseFloat(process.env.PETTY_CASH_FOUND) || 0
+        cajaMenorDefault: parseFloat(process.env.PETTY_CASH_FOUND) || 0,
+        cajaDelDiaAnterior: cajaDelDiaAnterior || null
     });
 };
 
@@ -75,7 +91,8 @@ const getInventarioLista = async (req, res) => {
 // ─── SSE ────────────────────────────────────────────────────────────────────
 
 const sseConnect = async (req, res) => {
-    const idPdv = req.idPuntoDeVenta;
+    const idPdv     = req.idPuntoDeVenta;
+    const idUsuario = req.usuario?.idUsuario;
     if (!idPdv) return res.status(403).end();
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -84,6 +101,7 @@ const sseConnect = async (req, res) => {
     res.flushHeaders();
 
     addClient(idPdv, res);
+    if (idUsuario) addClient(idUsuario, res); // canal de permisos por usuario
 
     // Estado inicial
     await _enviarEstado(idPdv, res);
@@ -94,6 +112,7 @@ const sseConnect = async (req, res) => {
     req.on('close', () => {
         clearInterval(hb);
         removeClient(idPdv, res);
+        if (idUsuario) removeClient(idUsuario, res);
     });
 };
 
@@ -343,6 +362,7 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
 
     let sEfectivo = 0, sMedios = 0, sCredito = 0;
     const txElectronicos = [], txCredito = [];
+    const facturasEfectivo = new Set(), facturasElectronicos = new Set(), facturasCredito = new Set();
 
     for (const f of facturas) {
         const nroFactura = `${f.prefijo || ''}${f.numeroFactura}`;
@@ -350,12 +370,15 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
             const val = Math.round(parseFloat(p.valor) || 0);
             if (p.metodoPago === 'Efectivo') {
                 sEfectivo += val;
+                facturasEfectivo.add(f.idFacturaCliente);
             } else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) {
                 sMedios += val;
                 txElectronicos.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
+                facturasElectronicos.add(f.idFacturaCliente);
             } else if (p.metodoPago === 'Entidad Crediticia') {
                 sCredito += val;
                 txCredito.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
+                facturasCredito.add(f.idFacturaCliente);
             }
         }
     }
@@ -364,7 +387,14 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
     const sEgresos   = txEgresos.reduce((s, e) => s + e.valor, 0);
     const idFacturas = facturas.map(f => f.idFacturaCliente);
 
-    return { sEfectivo, sMedios, sCredito, sEgresos, sVentas: sEfectivo + sMedios + sCredito, txElectronicos, txCredito, txEgresos, idFacturas };
+    return {
+        sEfectivo, sMedios, sCredito, sEgresos, sVentas: sEfectivo + sMedios + sCredito,
+        txElectronicos, txCredito, txEgresos, idFacturas,
+        nFacturasEfectivo:     facturasEfectivo.size,
+        nFacturasElectronicos: facturasElectronicos.size,
+        nFacturasCredito:      facturasCredito.size,
+        nFacturasTotal:        facturas.length
+    };
 };
 
 // ─── ACEPTAR TRASLADO ────────────────────────────────────────────────────────
@@ -378,10 +408,7 @@ const aceptarTrasladoAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    // Validar empleado + permiso EDIT + pertenencia a esta tienda
-    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT', idPdv);
-    if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
-    const empleado = check.empleado;
+    const empleado = req.empleadoVerificado;
 
     const traslado = await Traslados.findByPk(idTraslado);
     if (!traslado) return res.status(404).json({ success: false, mensaje: 'Traslado no encontrado.' });
@@ -560,17 +587,11 @@ const getDestinosJSON = async (req, res) => {
 
 const desempacarPackAPI = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
-    const { idPack, codigoEmpleado } = req.body;
+    const { idPack } = req.body;
 
-    if (!idPack || !codigoEmpleado) {
-        return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
+    if (!idPack) {
+        return res.status(400).json({ success: false, mensaje: 'idPack requerido.' });
     }
-
-    const empleado = await Empleados.findOne({
-        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado']
-    });
-    if (!empleado) return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
 
     // Leer los detalles ANTES de abrir la transacción para evitar lecturas inconsistentes
     const detalles = await DetallesPack.findAll({ where: { idPack } });
@@ -622,12 +643,7 @@ const trasladarDesdeStoreAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    const empleado = await Empleados.findOne({
-        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado', 'idPuntoDeVenta']
-    });
-    if (!empleado) return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
-    if (empleado.idPuntoDeVenta !== idPdv) return res.status(403).json({ success: false, mensaje: 'El empleado no pertenece a esta tienda.' });
+    const empleado = req.empleadoVerificado;
 
     const t = await db.transaction();
     try {
@@ -682,9 +698,7 @@ const resolverControversiaAPI = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    const check = await _checkPermisoTraslado(codigoEmpleado, 'EDIT', idPdv);
-    if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
-    const empleado = check.empleado;
+    const empleado = req.empleadoVerificado;
 
     const traslado = await Traslados.findByPk(idTraslado);
     if (!traslado || traslado.estado !== 'EN_CONTROVERSIA') {
@@ -697,7 +711,7 @@ const resolverControversiaAPI = async (req, res) => {
         return res.status(403).json({ success: false, mensaje: 'Solo el punto de origen puede resolver esta controversia.' });
     }
 
-    const nombreEmpleado = `${empleado.PrimerNombre} ${empleado.PrimerApellido}`;
+    const nombreEmpleado = empleado.nombre;
 
     const t = await db.transaction();
     try {
@@ -868,6 +882,8 @@ const buscarPosProducto = async (req, res) => {
 
     try {
         const term = `%${q}%`;
+        // Traemos hasta 50 candidatos para que el sort por stock posterior
+        // no quede truncado antes de evaluar todos los coincidentes.
         const productos = await Productos.findAll({
             where: {
                 activo: 1,
@@ -885,7 +901,7 @@ const buscarPosProducto = async (req, res) => {
                 limit: 1,
                 required: false
             }],
-            limit: 8
+            limit: 50
         });
 
         if (!productos.length) return res.json({ success: true, productos: [] });
@@ -918,7 +934,8 @@ const buscarPosProducto = async (req, res) => {
                     imagen:                  img ? `${r2}${img}` : '/img/image-default.webp'
                 };
             })
-            .sort((a, b) => b.stock - a.stock);
+            .sort((a, b) => b.stock - a.stock)
+            .slice(0, 8);
 
         return res.json({ success: true, productos: resultado });
     } catch (e) {
@@ -950,7 +967,7 @@ const getPosProductoJSON = async (req, res) => {
         if (!producto) return res.json({ success: false });
 
         const attrIds = [...new Set(
-            variaciones.flatMap(v => v.idAtributos.split('|').map(Number)).filter(Boolean)
+            variaciones.flatMap(v => (v.idAtributos || '').split('|').map(Number)).filter(Boolean)
         )];
         let tallas = [], colores = [];
         if (attrIds.length) {
@@ -1506,6 +1523,7 @@ const getTirillaPDF = async (req, res) => {
                 { model: Clientes,           as: 'cliente' },
                 { model: RegimenFacturacion, as: 'regimen' },
                 { model: PuntosDeVenta,      as: 'puntoDeVenta' },
+                { model: Empleados,          as: 'vendedor', attributes: ['PrimerNombre', 'PrimerApellido'] },
                 {
                     model:   DetallesFactura, as: 'detalles',
                     include: [{ model: Productos, as: 'producto', attributes: ['nombreProducto'] }]
@@ -1581,6 +1599,10 @@ const getTirillaPDF = async (req, res) => {
            .text(`Factura No: ${factura.prefijo || ''}${factura.numeroFactura}`, MARGIN, doc.y, { width: CW });
         doc.font('Helvetica').fontSize(7)
            .text(`Fecha: ${factura.fechaEmision}  Hora: ${factura.horaEmision || ''}`, MARGIN, doc.y, { width: CW });
+        const nomVendedor = factura.vendedor
+            ? `${factura.vendedor.PrimerNombre} ${factura.vendedor.PrimerApellido}`.trim()
+            : 'N/A';
+        doc.text(`Vendedor: ${nomVendedor}`, MARGIN, doc.y, { width: CW });
 
         doc.moveDown(0.3); hr();
 
@@ -1731,10 +1753,7 @@ const crearTrasladoSueltos = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
-    // Validar empleado + permiso CREATE + pertenencia a esta tienda
-    const check = await _checkPermisoTraslado(codigoEmpleado, 'CREATE', idPdv);
-    if (!check.ok) return res.status(403).json({ success: false, mensaje: check.mensaje });
-    const empleado = check.empleado;
+    const empleado = req.empleadoVerificado;
 
     const t = await db.transaction();
     try {
@@ -1867,32 +1886,7 @@ const cerrarCajaAPI = async (req, res) => {
     if (!idCajaTienda) return res.status(400).json({ success: false, mensaje: 'idCajaTienda requerido.' });
 
     try {
-        // ── Verificar permiso: "Caja y ventas" / EDIT ─────────────────────────
-        const [recursoPermiso, accionPermiso] = await Promise.all([
-            PermisosRecursos.findOne({ where: { nombreRecurso: 'Caja y ventas' }, attributes: ['idRecurso'], raw: true }),
-            PermisosAcciones.findOne({ where: { nombreAccion: 'EDIT' }, attributes: ['idAccion'], raw: true })
-        ]);
-        if (!recursoPermiso || !accionPermiso)
-            return res.status(500).json({ success: false, mensaje: 'Configuración de permisos no encontrada.' });
-
-        const tienePermiso = await UserPermisos.findOne({
-            where: {
-                idUsuario: req.usuario.idUsuario,
-                idRecurso: recursoPermiso.idRecurso,
-                idAccion:  accionPermiso.idAccion
-            }
-        });
-        if (!tienePermiso)
-            return res.status(403).json({ success: false, mensaje: 'No tienes permiso para cerrar la caja.' });
-
-        // ── Validar empleado de la tienda ──────────────────────────────────────
-        const codigo = String(codigoEmpleado || '').trim().toUpperCase();
-        if (!codigo) return res.status(400).json({ success: false, mensaje: 'Código de empleado requerido.' });
-        const empleadoCierre = await Empleados.findOne({
-            where: { codigoEmpleado: codigo, idPuntoDeVenta: idPdv },
-            attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido']
-        });
-        if (!empleadoCierre) return res.status(400).json({ success: false, mensaje: 'Empleado no pertenece a esta tienda.' });
+        const empleadoCierre = req.empleadoVerificado;
 
         // ── Buscar la caja por idCajaTienda + idPuntoDeVenta + estado abierto ──
         const caja = await CajaTienda.findOne({
@@ -1949,7 +1943,7 @@ const cerrarCajaAPI = async (req, res) => {
 };
 
 // ── Helper reutilizable para generar el PDF de cuadre ────────────────────────
-const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fecha) => {
+const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fecha, counts = {}) => {
     const W = 227, MARGIN = 10, CW = W - MARGIN * 2;
     const doc = new PDFDocument({ size: [W, 900], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
     const chunks = [];
@@ -2010,6 +2004,17 @@ const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fec
         doc.moveDown(0.2);
     }
     hr();
+
+    const partes = [];
+    if (counts.nFacturasEfectivo)     partes.push(`Efectivo: ${counts.nFacturasEfectivo}`);
+    if (counts.nFacturasElectronicos) partes.push(`Medios: ${counts.nFacturasElectronicos}`);
+    if (counts.nFacturasCredito)      partes.push(`Crédito: ${counts.nFacturasCredito}`);
+    if (partes.length > 0) {
+        doc.font('Helvetica').fontSize(5.5).fillColor('#666')
+           .text(`Facturas: ${partes.join('  ·  ')}  —  Total: ${counts.nFacturasTotal || 0}`, MARGIN, doc.y, { width: CW });
+        doc.fillColor('#000').moveDown(0.3);
+        hr();
+    }
 
     if (txEgresos.length > 0) {
         doc.font('Helvetica-Bold').fontSize(6.5).text('Egresos', MARGIN, doc.y, { width: CW });
@@ -2083,10 +2088,11 @@ const getCuadrePDF = async (req, res) => {
         });
         if (!caja) return res.status(404).send('Caja no encontrada.');
 
-        const { txEgresos, txElectronicos, txCredito } =
+        const { txEgresos, txElectronicos, txCredito, nFacturasEfectivo, nFacturasElectronicos, nFacturasCredito, nFacturasTotal } =
             await _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date(caja.fechaCierre), 'liquidada');
 
-        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, new Date(caja.fechaCierre));
+        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, new Date(caja.fechaCierre),
+            { nFacturasEfectivo, nFacturasElectronicos, nFacturasCredito, nFacturasTotal });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="cuadre-${new Date(caja.fechaCierre).toISOString().slice(0,10)}.pdf"`);
         res.setHeader('Content-Length', buf.length);
@@ -2101,18 +2107,12 @@ const crearEgreso = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
 
-    const { valorEgreso, referencia, codigoEmpleado, descripcion } = req.body;
-    if (!valorEgreso || !codigoEmpleado) {
-        return res.status(400).json({ success: false, mensaje: 'Valor y código de empleado son requeridos.' });
+    const { valorEgreso, referencia, descripcion } = req.body;
+    if (!valorEgreso) {
+        return res.status(400).json({ success: false, mensaje: 'Valor requerido.' });
     }
 
-    const empleado = await Empleados.findOne({
-        where: { codigoEmpleado: codigoEmpleado.trim().toUpperCase() },
-        attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido', 'codigoEmpleado']
-    });
-    if (!empleado) {
-        return res.status(400).json({ success: false, mensaje: 'Código de empleado no encontrado.' });
-    }
+    const empleado = req.empleadoVerificado;
 
     const valor = parseFloat(valorEgreso);
     if (!Number.isFinite(valor) || valor <= 0) {
@@ -2152,7 +2152,7 @@ const crearEgreso = async (req, res) => {
         return res.json({
             success: true,
             idEgreso: egreso.idEgreso,
-            nombreEmpleado: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`
+            nombreEmpleado: empleado.nombre
         });
     } catch (e) {
         console.error('crearEgreso:', e);
@@ -2644,21 +2644,12 @@ const abrirCajaAPI = async (req, res) => {
         if (!Number.isFinite(cajaMenor) || cajaMenor < 0)
             return res.status(400).json({ success: false, mensaje: 'Caja menor inválida.' });
 
-        const codigo = String(req.body.codigoEmpleado || '').trim().toUpperCase();
-        if (!codigo)
-            return res.status(400).json({ success: false, mensaje: 'Código de empleado requerido.' });
-
-        const empleado = await Empleados.findOne({
-            where: { codigoEmpleado: codigo, idPuntoDeVenta },
-            attributes: ['idEmpleado']
-        });
-        if (!empleado)
-            return res.status(400).json({ success: false, mensaje: 'Empleado no pertenece a esta tienda.' });
+        const { idEmpleado } = req.empleadoVerificado;
 
         const caja = await CajaTienda.create({
             idPuntoDeVenta,
-            idEmpleadoApertura: empleado.idEmpleado,
-            idEmpleadoCierre:   empleado.idEmpleado,   // placeholder hasta el cierre real
+            idEmpleadoApertura: idEmpleado,
+            idEmpleadoCierre:   idEmpleado,   // placeholder hasta el cierre real
             cajaMenor,
             fechaApertura: new Date(),
             estado: 'abierto'
@@ -2724,6 +2715,27 @@ const getTrasladosAlertaJSON = async (req, res) => {
     }
 };
 
+const validarEmpleadoTienda = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+    const { codigo } = req.params;
+    try {
+        const empleado = await Empleados.findOne({
+            where: { codigoEmpleado: codigo.trim().toUpperCase(), idPuntoDeVenta: idPdv },
+            attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido']
+        });
+        if (!empleado) return res.json({ success: false, mensaje: 'El empleado no pertenece a esta tienda.' });
+        return res.json({
+            success: true,
+            idEmpleado: empleado.idEmpleado,
+            nombre: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`
+        });
+    } catch (e) {
+        console.error('validarEmpleadoTienda:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 export {
     dashboardStores,
     getTraslados,
@@ -2766,5 +2778,6 @@ export {
     getDetalleDia,
     validarEmpleadoTraslado,
     trasladarDesdePerfil,
-    getTrasladosAlertaJSON
+    getTrasladosAlertaJSON,
+    validarEmpleadoTienda
 };

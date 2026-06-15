@@ -28,6 +28,63 @@ import { _generarPDFCuadre } from './storeControllers.js';
 
 dotenv.config();
 
+// ─── CONSTANTES COMPARTIDAS ──────────────────────────────────────────────────
+const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+
+// ─── HELPERS INTERNOS ────────────────────────────────────────────────────────
+
+// Devuelve { inicio, fin } para el día de hoy (00:00:00 → 23:59:59)
+const _hoyRango = () => {
+    const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
+    const fin    = new Date(); fin.setHours(23, 59, 59, 999);
+    return { inicio, fin };
+};
+
+// Resuelve el rango de fechas de un cierre de caja. Retorna { caja, inicio, fin } o null.
+const _getRangoCaja = async (idCajaTienda, idPuntoDeVenta) => {
+    const caja = await CajaTienda.findOne({
+        where: { idCajaTienda, idPuntoDeVenta },
+        attributes: ['idCajaTienda', 'fechaApertura', 'fechaCierre', 'ventasTotales', 'egresosTotales', 'ventasEfectivo', 'ventasMediosElectronicos', 'estado']
+    });
+    if (!caja) return null;
+    const inicio = caja.fechaApertura ? new Date(caja.fechaApertura) : (() => {
+        const d = new Date(caja.fechaCierre);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+    })();
+    const fin = caja.fechaCierre ? new Date(caja.fechaCierre) : new Date();
+    return { caja, inicio, fin };
+};
+
+// Calcula ventas y desglose de pagos de un PDV en un rango. Retorna { ventas, pagos, totalFacturas }.
+const _getVentasPeriodo = async (idPuntoDeVenta, desde, hasta = null) => {
+    const whereFactura = { idPuntoDeVenta, createdAt: hasta ? { [Op.between]: [desde, hasta] } : { [Op.gte]: desde } };
+    const facturas = await FacturaClientes.findAll({ attributes: ['idFacturaCliente'], where: whereFactura, raw: true });
+
+    const pagos = Object.fromEntries(METODOS_PAGO.map(m => [m, 0]));
+    let ventas = 0;
+
+    if (facturas.length) {
+        const ids = facturas.map(f => f.idFacturaCliente);
+        const [detallesRows, pagosRows] = await Promise.all([
+            DetallesFactura.findAll({
+                attributes: [[fn('SUM', col('total')), 'suma']],
+                where: { idFacturaCliente: { [Op.in]: ids } }, raw: true
+            }),
+            DetallesPagosFactura.findAll({
+                attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
+                where: { idFacturaCliente: { [Op.in]: ids } },
+                group: ['metodoPago'], raw: true
+            })
+        ]);
+        ventas = parseFloat(detallesRows[0]?.suma || 0);
+        for (const r of pagosRows) {
+            if (Object.prototype.hasOwnProperty.call(pagos, r.metodoPago))
+                pagos[r.metodoPago] = parseFloat(r.total || 0);
+        }
+    }
+
+    return { ventas, pagos, totalFacturas: facturas.length };
+};
 
 //************************[GET CONTROLLERS] ************************ */
 
@@ -48,8 +105,7 @@ const dashboard = async (req, res) => {
         attributes: ['idPuntoDeVenta', 'nombreComercial', 'taxId']
     });
 
-    const hoyInicio = new Date(); hoyInicio.setHours(0, 0, 0, 0);
-    const hoyFin    = new Date(); hoyFin.setHours(23, 59, 59, 999);
+    const { inicio: hoyInicio, fin: hoyFin } = _hoyRango();
 
     const cajasHoy = await CajaTienda.findAll({
         raw: true,
@@ -87,17 +143,12 @@ const dashboardStores = async (req, res) => {
         attributes: ['idPuntoDeVenta', 'nombreComercial', 'taxId']
     });
 
-    const hoyInicio = new Date();
-    hoyInicio.setHours(0, 0, 0, 0);
-    const hoyFin = new Date();
-    hoyFin.setHours(23, 59, 59, 999);
+    const { inicio: hoyInicio, fin: hoyFin } = _hoyRango();
 
     const cajasHoy = await CajaTienda.findAll({
         raw: true,
         attributes: ['idPuntoDeVenta', 'estado', 'fechaApertura', 'fechaCierre'],
-        where: {
-            fechaApertura: { [Op.between]: [hoyInicio, hoyFin] }
-        }
+        where: { fechaApertura: { [Op.between]: [hoyInicio, hoyFin] } }
     });
 
     const cajasMap = {};
@@ -473,13 +524,11 @@ const storeEmployers = async (req, res) => {
 
 const storeDocuments = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
-    res.send(`
-        <div class="p-8 text-center">
-            <h2 class="text-2xl font-bold text-gh-primary">SECCIÓN: DOCUMENTOS TIENDA</h2>
-            <p class="text-slate-500">ID de la tienda: ${idPuntoDeVenta}</p>
-        </div>
-    `);
-}
+    return res.render('./administrador/stores/views/documentacionTienda', {
+        idPuntoDeVenta,
+        csrfToken: req.csrfToken()
+    });
+};
 
 // ── CIERRE DE CAJA: renderiza el partial ─────────────────────────────────────
 const storeCierresCaja = async (req, res) => {
@@ -521,20 +570,17 @@ const getCierresCajaListaJSON = async (req, res) => {
 const getCierreCajaDatosJSON = async (req, res) => {
     const { idPuntoDeVenta, idCajaTienda } = req.params;
     try {
-        const caja = await CajaTienda.findOne({
+        const rango = await _getRangoCaja(idCajaTienda, idPuntoDeVenta);
+        if (!rango) return res.status(404).json({ success: false, mensaje: 'Caja no encontrada.' });
+        const { caja, inicio, fin } = rango;
+
+        const cajaConEmpleados = await CajaTienda.findOne({
             where: { idCajaTienda, idPuntoDeVenta },
             include: [
                 { model: Empleados, as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
                 { model: Empleados, as: 'empleadoCierre',   attributes: ['PrimerNombre', 'PrimerApellido'] }
             ]
         });
-        if (!caja) return res.status(404).json({ success: false, mensaje: 'Caja no encontrada.' });
-
-        const inicio = caja.fechaApertura ? new Date(caja.fechaApertura) : (() => {
-            const d = new Date(caja.fechaCierre);
-            return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-        })();
-        const fin = caja.fechaCierre ? new Date(caja.fechaCierre) : new Date();
 
         const facturas = await FacturaClientes.findAll({
             where: { idPuntoDeVenta, createdAt: { [Op.between]: [inicio, fin] } },
@@ -567,8 +613,8 @@ const getCierreCajaDatosJSON = async (req, res) => {
                 idCajaTienda:              caja.idCajaTienda,
                 fechaApertura:             caja.fechaApertura,
                 fechaCierre:               caja.fechaCierre,
-                empleadoApertura: `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim() || '—',
-                empleadoCierre:   `${caja.empleadoCierre?.PrimerNombre   || ''} ${caja.empleadoCierre?.PrimerApellido   || ''}`.trim() || '—',
+                empleadoApertura: `${cajaConEmpleados.empleadoApertura?.PrimerNombre || ''} ${cajaConEmpleados.empleadoApertura?.PrimerApellido || ''}`.trim() || '—',
+                empleadoCierre:   `${cajaConEmpleados.empleadoCierre?.PrimerNombre   || ''} ${cajaConEmpleados.empleadoCierre?.PrimerApellido   || ''}`.trim() || '—',
                 ventasTotales:             Math.round(parseFloat(caja.ventasTotales)             || 0),
                 egresosTotales:            Math.round(parseFloat(caja.egresosTotales)            || 0),
                 ventasEfectivo:            Math.round(parseFloat(caja.ventasEfectivo)            || 0),
@@ -588,17 +634,9 @@ const getCierreFacturasJSON = async (req, res) => {
     const { idPuntoDeVenta, idCajaTienda } = req.params;
     const { pagina = 1 } = req.query;
     try {
-        const caja = await CajaTienda.findOne({
-            where: { idCajaTienda, idPuntoDeVenta },
-            attributes: ['fechaApertura', 'fechaCierre']
-        });
-        if (!caja) return res.status(404).json({ success: false });
-
-        const inicio = caja.fechaApertura ? new Date(caja.fechaApertura) : (() => {
-            const d = new Date(caja.fechaCierre);
-            return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-        })();
-        const fin    = caja.fechaCierre ? new Date(caja.fechaCierre) : new Date();
+        const rango = await _getRangoCaja(idCajaTienda, idPuntoDeVenta);
+        if (!rango) return res.status(404).json({ success: false });
+        const { inicio, fin } = rango;
         const limite = parseInt(process.env.LIMIT_PER_PAGE) || 15;
         const offset = (parseInt(pagina) - 1) * limite;
 
@@ -649,17 +687,9 @@ const getCierreFacturasJSON = async (req, res) => {
 const getCierreEgresosJSON = async (req, res) => {
     const { idPuntoDeVenta, idCajaTienda } = req.params;
     try {
-        const caja = await CajaTienda.findOne({
-            where: { idCajaTienda, idPuntoDeVenta },
-            attributes: ['fechaApertura', 'fechaCierre']
-        });
-        if (!caja) return res.status(404).json({ success: false });
-
-        const inicio = caja.fechaApertura ? new Date(caja.fechaApertura) : (() => {
-            const d = new Date(caja.fechaCierre);
-            return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-        })();
-        const fin = caja.fechaCierre ? new Date(caja.fechaCierre) : new Date();
+        const rango = await _getRangoCaja(idCajaTienda, idPuntoDeVenta);
+        if (!rango) return res.status(404).json({ success: false });
+        const { inicio, fin } = rango;
 
         const egresos = await Egresos.findAll({
             where: { idPuntoDeVenta, createdAt: { [Op.between]: [inicio, fin] } },
@@ -1277,7 +1307,7 @@ const editarTienda = async (req, res) => {
         ]);
         return { departamentos, ciudades };
     };
-    const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
+    const { departamentos, ciudades } = await obtenerDatosSelectores(puntoVenta?.departamento);
 
 
     //Formateo Fechas:
@@ -1939,7 +1969,7 @@ const _tienePermisoCredito = async (usuario) => {
 
     const [recurso, acciones] = await Promise.all([
         PermisosRecursos.findOne({
-            where: { nombreRecurso: 'Autorización de créditos' },
+            where: { nombreRecurso: 'Autorizacion de creditos' },
             raw: true
         }),
         PermisosAcciones.findAll({
@@ -3739,45 +3769,11 @@ const imprimirEtiquetaSKU = async (req, res) => {
 };
 
 // ─── STATS DETALLE TIENDA HOY ─────────────────────────────────────────────────
-const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
-
 const getTiendaStatsHoyDetalle = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
     try {
-        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-
-        const facturasHoy = await FacturaClientes.findAll({
-            attributes: ['idFacturaCliente'],
-            where: { idPuntoDeVenta, createdAt: { [Op.gte]: hoy } },
-            raw: true
-        });
-
-        let ventasHoy = 0;
-        const pagos = Object.fromEntries(METODOS_PAGO.map(m => [m, 0]));
-
-        if (facturasHoy.length) {
-            const ids = facturasHoy.map(f => f.idFacturaCliente);
-            const [detallesRows, pagosRows] = await Promise.all([
-                DetallesFactura.findAll({
-                    attributes: [[fn('SUM', col('total')), 'suma']],
-                    where: { idFacturaCliente: { [Op.in]: ids } },
-                    raw: true
-                }),
-                DetallesPagosFactura.findAll({
-                    attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
-                    where: { idFacturaCliente: { [Op.in]: ids } },
-                    group: ['metodoPago'],
-                    raw: true
-                })
-            ]);
-            ventasHoy = parseFloat(detallesRows[0]?.suma || 0);
-            for (const r of pagosRows) {
-                if (Object.prototype.hasOwnProperty.call(pagos, r.metodoPago)) {
-                    pagos[r.metodoPago] = parseFloat(r.total || 0);
-                }
-            }
-        }
-
+        const { inicio } = _hoyRango();
+        const { ventas: ventasHoy, pagos } = await _getVentasPeriodo(idPuntoDeVenta, inicio);
         return res.json({ success: true, ventasHoy, pagos });
     } catch (e) {
         console.error('getTiendaStatsHoyDetalle:', e);
@@ -3789,11 +3785,10 @@ const getTiendaStatsHoyDetalle = async (req, res) => {
 const getPagosHoyPorMetodo = async (req, res) => {
     const { idPuntoDeVenta, metodoPago } = req.params;
     const metodo = decodeURIComponent(metodoPago);
-    const metodosValidos = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
-    if (!metodosValidos.includes(metodo)) return res.status(400).json({ success: false, mensaje: 'Método inválido' });
+    if (!METODOS_PAGO.includes(metodo)) return res.status(400).json({ success: false, mensaje: 'Método inválido' });
 
     try {
-        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const { inicio: hoy } = _hoyRango();
 
         const facturasHoy = await FacturaClientes.findAll({
             attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura', 'horaEmision'],
@@ -3849,7 +3844,7 @@ const adminSseConnect = (req, res) => {
 // ─── STATS TIENDAS HOY ────────────────────────────────────────────────────────
 const getTiendasStatsHoy = async (req, res) => {
     try {
-        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const { inicio: hoy } = _hoyRango();
 
         const [facturasHoy, egresosRows] = await Promise.all([
             FacturaClientes.findAll({
@@ -4246,7 +4241,34 @@ const actualizarEmpleado = async (req, res) => {
         // ── 6. COMMIT ────────────────────────────────────────────────────────────
         await t.commit();
 
-        // ── 7. BORRAR FOTO ANTERIOR DE R2 (post-commit, best-effort) ─────────────
+        // ── 7. SSE: notificar cambio de permisos al usuario afectado ─────────────
+        const idUsuarioCambiado =
+            (!teniRol && tieneRol)  ? usuarioNuevo?.idUsuario :
+            (teniRol)               ? empleadoActual?.idUsuario : null;
+
+        if (idUsuarioCambiado) {
+            (async () => {
+                try {
+                    const rows = await UserPermisos.findAll({
+                        where: { idUsuario: idUsuarioCambiado },
+                        include: [{
+                            model: PermisosRecursos,
+                            as: 'recurso',
+                            where: { tipo: 'vendedor', folder: { [Op.not]: null } },
+                            attributes: ['folder']
+                        }],
+                        attributes: [],
+                        raw: true
+                    });
+                    const carpetasPermitidas = [...new Set(
+                        rows.map(r => r['recurso.folder']).filter(Boolean)
+                    )];
+                    broadcast(idUsuarioCambiado, 'permissions_update', { carpetasPermitidas });
+                } catch (_) {}
+            })();
+        }
+
+        // ── 8. BORRAR FOTO ANTERIOR DE R2 (post-commit, best-effort) ─────────────
         if (nuevaFotoKey && empleadoActual.imagen) {
             s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: empleadoActual.imagen })).catch(() => {});
         }
@@ -4755,6 +4777,66 @@ const getVentasPdv30d = async (req, res) => {
     }
 };
 
+// ─── DASHBOARD: CARTERA URGENTE ──────────────────────────────────────────────
+const getCarteraUrgente = async (req, res) => {
+    try {
+        const filas = await db.query(`
+            SELECT
+                c.idCliente,
+                COALESCE(c.razon_social,
+                    CONCAT(COALESCE(c.primer_nombre,''), ' ', COALESCE(c.primer_apellido,''))) AS nombreCliente,
+                c.tipo_documento,
+                c.numero_doc,
+                c.digito_verif,
+                SUM(df_sum.totalFactura)                              AS totalBruto,
+                SUM(COALESCE(pago_sum.totalPagado, 0))               AS totalAbonado,
+                SUM(df_sum.totalFactura) - SUM(COALESCE(pago_sum.totalPagado, 0)) AS saldoPendiente,
+                MAX(DATEDIFF(CURDATE(), fc.fechaVencimiento))        AS diasEnMora,
+                COUNT(DISTINCT fc.idFacturaCliente)                   AS nroFacturas
+            FROM FACTURA_CLIENTES fc
+            INNER JOIN CLIENTES c ON c.idCliente = fc.idCliente
+            INNER JOIN (
+                SELECT idFacturaCliente, SUM(total) AS totalFactura
+                FROM DETALLES_FACTURA GROUP BY idFacturaCliente
+            ) df_sum ON df_sum.idFacturaCliente = fc.idFacturaCliente
+            LEFT JOIN (
+                SELECT idFacturaCliente, SUM(valor) AS totalPagado
+                FROM DETALLES_PAGOS_FACTURA GROUP BY idFacturaCliente
+            ) pago_sum ON pago_sum.idFacturaCliente = fc.idFacturaCliente
+            WHERE fc.estado = 'pendiente'
+              AND fc.fechaVencimiento IS NOT NULL
+              AND fc.fechaVencimiento < CURDATE()
+            GROUP BY c.idCliente, c.razon_social, c.primer_nombre, c.primer_apellido,
+                     c.tipo_documento, c.numero_doc, c.digito_verif
+            HAVING saldoPendiente > 0
+            ORDER BY diasEnMora DESC
+            LIMIT 10
+        `, { type: db.QueryTypes.SELECT });
+
+        const [{ totalEnMora }] = await db.query(`
+            SELECT COUNT(DISTINCT idCliente) AS totalEnMora
+            FROM FACTURA_CLIENTES
+            WHERE estado = 'pendiente' AND fechaVencimiento IS NOT NULL AND fechaVencimiento < CURDATE()
+        `, { type: db.QueryTypes.SELECT });
+
+        const clientes = filas.map(r => ({
+            idCliente:      r.idCliente,
+            nombre:         r.nombreCliente.trim(),
+            tipoDoc:        r.tipo_documento,
+            nroDoc:         r.numero_doc,
+            digitoVerif:    r.digito_verif,
+            saldoPendiente: Math.round(parseFloat(r.saldoPendiente) || 0),
+            diasEnMora:     parseInt(r.diasEnMora) || 0,
+            nroFacturas:    parseInt(r.nroFacturas) || 0
+        }));
+
+        return res.json({ success: true, clientes, totalEnMora: parseInt(totalEnMora) || 0 });
+    } catch (e) {
+        console.error('getCarteraUrgente:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 // ─── TIRILLA ABONO PROVEEDOR ──────────────────────────────────────────────────
 const getTirillaAbonoProveedor = async (req, res) => {
     const { idCuentaPorPagar } = req.params;
@@ -5030,6 +5112,106 @@ const registrarAbonoProveedor = async (req, res) => {
     }
 };
 
+// ─── DOCUMENTOS DE TIENDA ────────────────────────────────────────────────────
+
+const _ALLOWED_DOC_EXTS  = ['jpg', 'jpeg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+const _ALLOWED_DOC_MIMES = [
+    'image/jpeg',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+];
+const _MAX_DOC_SIZE = 5 * 1024 * 1024;
+
+const getTiendaDocumentos = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    try {
+        const docs = await Documentacion.findAll({
+            where: { idPropietario: idPuntoDeVenta, pertenece: 'punto_venta' },
+            order: [['createdAt', 'DESC']],
+            raw: true
+        });
+        const r2Base = process.env.R2_PUBLIC_URL;
+        const archivos = docs.map(d => ({
+            idDocumento:     d.idDocumento,
+            nombreDocumento: d.nombreDocumento,
+            formato:         d.formato,
+            url:             `${r2Base}/${d.keyName}`,
+            createdAt:       d.createdAt
+        }));
+        return res.json({ success: true, archivos });
+    } catch (e) {
+        console.error('getTiendaDocumentos:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+const subirDocumentoTienda = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    const archivos = req.files || [];
+    if (!archivos.length) return res.status(400).json({ success: false, mensaje: 'No se recibió ningún archivo.' });
+
+    const tienda = await PuntosDeVenta.findByPk(idPuntoDeVenta);
+    if (!tienda) return res.status(404).json({ success: false, mensaje: 'Tienda no encontrada.' });
+
+    const uploadedKeys = [];
+    try {
+        const docsData = await Promise.all(archivos.map(async (file, idx) => {
+            const ext = file.originalname.split('.').pop().toLowerCase();
+            if (!_ALLOWED_DOC_EXTS.includes(ext) || !_ALLOWED_DOC_MIMES.includes(file.mimetype))
+                throw new Error(`Tipo de archivo no permitido: ${file.originalname}`);
+            if (file.size > _MAX_DOC_SIZE)
+                throw new Error(`El archivo "${file.originalname}" supera los 5MB.`);
+
+            const safePdv = idPuntoDeVenta.replace(/[^a-zA-Z0-9]/g, '-');
+            const r2Key   = `documentacion/tiendas/${safePdv}-${Date.now()}-${idx}.${ext}`;
+
+            await new Upload({
+                client: s3Client,
+                params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: file.buffer, ContentType: file.mimetype }
+            }).done();
+            uploadedKeys.push(r2Key);
+
+            return { idPropietario: idPuntoDeVenta, nombreDocumento: file.originalname, keyName: r2Key, formato: ext.toUpperCase(), pertenece: 'punto_venta' };
+        }));
+
+        const creados  = await Documentacion.bulkCreate(docsData);
+        const r2Base   = process.env.R2_PUBLIC_URL;
+        const resultado = creados.map(d => ({
+            idDocumento:     d.idDocumento,
+            nombreDocumento: d.nombreDocumento,
+            formato:         d.formato,
+            url:             `${r2Base}/${d.keyName}`
+        }));
+        return res.json({ success: true, archivos: resultado });
+
+    } catch (e) {
+        await Promise.allSettled(uploadedKeys.map(k =>
+            s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: k }))
+        ));
+        console.error('subirDocumentoTienda:', e);
+        return res.status(500).json({ success: false, mensaje: e.message || 'Error al subir el archivo.' });
+    }
+};
+
+const eliminarDocumentoTienda = async (req, res) => {
+    const { idDocumento } = req.params;
+    try {
+        const doc = await Documentacion.findOne({ where: { idDocumento, pertenece: 'punto_venta' } });
+        if (!doc) return res.status(404).json({ success: false, mensaje: 'Documento no encontrado.' });
+        await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: doc.keyName })).catch(() => {});
+        await doc.destroy();
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('eliminarDocumentoTienda:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al eliminar el documento.' });
+    }
+};
+
 export {
     dashboard,
     dashboardStores,
@@ -5088,5 +5270,7 @@ export {
     getStockBajoGlobal,
     getStockBajoPorTienda,
     getVentasPdv30d,
+    getCarteraUrgente,
     getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
+    getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda,
 }

@@ -195,12 +195,14 @@
             : 'text-xs mt-1.5 h-4 text-red-500';
     };
 
-    btnValidar.addEventListener('click', async () => {
-        const codigo = codEmpleado.value.trim().toUpperCase();
-        if (!codigo) { setEmpInfo('Ingresa el código', false); return; }
+    let validarTimer = null;
 
+    const validarEmpleado = async () => {
+        const codigo = codEmpleado.value.trim().toUpperCase();
+        if (!codigo) { setEmpInfo('', false); return; }
+        setEmpInfo('Verificando...', false);
         try {
-            const r = await fetch(`/store/json/personal/codigo/${encodeURIComponent(codigo)}`);
+            const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo)}`);
             const d = await r.json();
             if (d.success) {
                 empleadoId     = d.idEmpleado;
@@ -209,23 +211,39 @@
                 btnCerrar.disabled = false;
             } else {
                 empleadoId = null;
-                setEmpInfo('Empleado no encontrado en esta tienda', false);
+                setEmpInfo('No pertenece a esta tienda', false);
                 btnCerrar.disabled = true;
             }
         } catch (_) {
             setEmpInfo('Error al verificar', false);
         }
-    });
+    };
+
+    btnValidar.addEventListener('click', validarEmpleado);
 
     codEmpleado.addEventListener('input', () => {
         empleadoId = null;
-        btnCerrar.disabled = true;
-        setEmpInfo('', false);
+        clearTimeout(validarTimer);
+        const codigo = codEmpleado.value.trim();
+        // El botón se habilita por longitud; el servidor es quien cuenta fallos.
+        btnCerrar.disabled = codigo.length < 2;
+        if (codigo.length >= 2) {
+            setEmpInfo('Verificando...', false);
+            validarTimer = setTimeout(validarEmpleado, 600);
+        } else {
+            setEmpInfo('', false);
+        }
+    });
+
+    codEmpleado.addEventListener('blur', () => {
+        clearTimeout(validarTimer);
+        if (codEmpleado.value.trim()) validarEmpleado();
     });
 
     // ── Cerrar caja ───────────────────────────────────────────────────────────
     btnCerrar.addEventListener('click', async () => {
-        if (!dataSistema || !empleadoId) return;
+        if (!dataSistema) return;
+        if (!codEmpleado.value.trim()) { setEmpInfo('Ingresa el código de empleado', false); return; }
 
         const oE  = parse(oEgresos.value);
         const oEf = parse(oEfectivo.value);
@@ -251,7 +269,7 @@
                         ${buildConfirmRow('Crédito', dataSistema.totales.credito, oCr)}
                         ${buildConfirmRow('Base', dataSistema.caja.cajaMenor, oB)}
                     </table>
-                    <br><em style="font-size:11px;color:#999">Vendedor autorizado: ${empleadoNombre}</em>
+                    <br><em style="font-size:11px;color:#999">Vendedor: ${empleadoNombre || codEmpleado.value.trim().toUpperCase()}</em>
                 </div>`,
             showCancelButton: true,
             confirmButtonText: 'Sí, cerrar caja',

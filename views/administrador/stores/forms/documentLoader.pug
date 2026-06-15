@@ -1,10 +1,32 @@
-.grid.grid-cols-12.gap-4
-        h1.h1.col-span-12 Repositorio de Documentos
-        .col-span-12.md-col-span-6
-            label.label Tipo de Documento
-            select.field-text(name="tipoDocumento")
-                option(value="RUT") RUT
-                option(value="CAMARA_COMERCIO") Cámara de Comercio
-        .col-span-12.md-col-span-6
-            label.label Adjuntar Archivo (PDF/JPG)
-            input(type="file" name="documentoSede" class="field-text")
+div(class="col-span-12 md:col-span-12 pt-5")
+    h1.h1.text-left.pl-5.border-b-1.border-gray-200.pb-2
+        i.fi-rr-folder-open
+        span.ml-3 Documentación de la tienda
+    p(class="text-xs text-slate-400 mt-2 mb-6 pl-1") RUT, Cámara de Comercio, resoluciones u otros documentos. Solo PDF, Office y JPG. Máx. 5MB por archivo.
+
+    ul#doc-tienda-lista(class="space-y-2 mb-6 min-h-[2rem]")
+        li(class="text-xs text-slate-400 py-2 text-center") Sin documentos guardados
+
+    div(class="relative group")
+        input(
+            type="file"
+            multiple
+            id="doc-tienda-input"
+            accept=".jpg,.jpeg,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        )
+        div(class="inputUpload")
+            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2" style="color:#EC5FA3")
+                i.fi-rr-file-add.text-2xl
+            span(class="text-sm font-bold text-gray-600") Sube o arrastra documentos
+            span(class="text-xs text-gray-400 mt-1") PDF, Word, Excel, PowerPoint, JPG — máx. 5MB c/u
+
+div(class="form-actions justify-between mt-8 pt-4 border-t-2 border-t-gh-primarySoft")
+    div(class="flex gap-3 justify-center")
+        a(href="javascript:void(0)" id="btnVolver2" class="btn btn-primary step-btn")
+            i.fi-rr-arrow-small-left.mr-2
+            | Volver a datos tributarios
+
+        button(type="button" id="btnGuardarTienda" class="btn btn-secondary btn-guardar-salir")
+            i.fi-rr-disk.mr-2
+            | Guardar y Salir

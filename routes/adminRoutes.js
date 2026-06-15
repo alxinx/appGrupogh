@@ -12,11 +12,12 @@ listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad,
 getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
-getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d,
+getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente,
 getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
 getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 storeCierresCaja, storeTrasladosTienda,
-getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON } from "../controller/adminControllers.js"
+getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
+getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -205,6 +206,9 @@ routes.get('/api/tiendas/:idPuntoDeVenta/cierre/:idCajaTienda/egresos',   getCie
 routes.get('/api/tiendas/:idPuntoDeVenta/traslados',      getTrasladosTiendaJSON);
 routes.get('/tiendas/:idPuntoDeVenta/cuadre/:idCajaTienda/pdf', getAdminCuadrePDF);
 routes.get('/api/tiendas/:idPuntoDeVenta/pagos-hoy/:metodoPago', getPagosHoyPorMetodo);
+routes.get('/api/tiendas/:idPuntoDeVenta/documentos',                           getTiendaDocumentos);
+routes.post('/api/tiendas/:idPuntoDeVenta/documentos/subir', uploadMixed.array('documentos', 10), subirDocumentoTienda);
+routes.post('/api/tiendas/documentos/:idDocumento/eliminar',                    eliminarDocumentoTienda);
 routes.get('/api/factura/:id/tirilla', getTirillaPDF);
 
 // API CHECKS
@@ -221,6 +225,7 @@ routes.get('/api/inventario/:idProducto/ventas-por-tienda', ventasPorTiendaProdu
 routes.get('/api/dashboard/stock-bajo-global',    getStockBajoGlobal);
 routes.get('/api/dashboard/stock-bajo-por-tienda', getStockBajoPorTienda);
 routes.get('/api/dashboard/ventas-pdv-30d',        getVentasPdv30d);
+routes.get('/api/dashboard/cartera-urgente',       getCarteraUrgente);
 
 routes.get('/api/dosificaciones/stats-global', widgetGlobales);
 routes.get('/api/pack/:idPack/historial', historialPack);

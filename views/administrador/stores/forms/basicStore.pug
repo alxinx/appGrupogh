@@ -65,7 +65,7 @@ div(class="col-span-12 md:col-span-12")
         div
             label.label Ciudad
             div(class="select-wrapper")
-                select(name="ciudad" id="ciudad" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text")
+                select(name="ciudad" id="ciudad" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text" data-selected=(dato && dato.ciudad) ? dato.ciudad : "")
                     if ciudades
                         option(value="") -- Seleccione Ciudad --
                         each ciudad in ciudades

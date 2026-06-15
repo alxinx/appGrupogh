@@ -8,11 +8,12 @@ import Chart from 'chart.js/auto';
     const fmtFecha = (iso) =>
         new Date(iso + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
 
-    const fmtCOP = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const fmtCOP = window.fmtCOP;
 
     // ─── FLAGS de carga ───────────────────────────────────────────────────────
-    let stockCargado = false;
-    let chartCargado = false;
+    let stockCargado   = false;
+    let chartCargado   = false;
+    let carteraCargada = false;
 
     // ─── STOCK BAJO GLOBAL ────────────────────────────────────────────────────
     const renderStockBajoGlobal = (productos) => {
@@ -123,10 +124,11 @@ import Chart from 'chart.js/auto';
                     data:            s.valores,
                     borderColor:     PALETTE[i % PALETTE.length],
                     backgroundColor: PALETTE[i % PALETTE.length] + '18',
-                    borderWidth:     2,
-                    pointRadius:     fechas.length > 20 ? 0 : 3,
+                    borderWidth:      2,
+                    pointRadius:      fechas.length > 20 ? 1 : 3,
                     pointHoverRadius: 5,
-                    tension:         0.35,
+                    pointHitRadius:   10,
+                    tension:          0.35,
                     fill:            false
                 }))
             },
@@ -163,6 +165,37 @@ import Chart from 'chart.js/auto';
         }
     };
 
+    // ─── CARTERA URGENTE ─────────────────────────────────────────────────────
+    const renderCarteraUrgente = ({ clientes, totalEnMora }) => {
+        const tbody   = document.getElementById('cartera-urgente-body');
+        const footer  = document.getElementById('cartera-urgente-footer');
+        if (!tbody) return;
+
+        if (!clientes.length) {
+            tbody.innerHTML = `<tr><td colspan="3" class="py-8 text-center text-xs text-slate-400">Sin cartera vencida — ¡todo al día!</td></tr>`;
+            if (footer) footer.textContent = '';
+            return;
+        }
+
+        tbody.innerHTML = clientes.map(c => {
+            const doc = c.tipoDoc === 'NIT' && c.digitoVerif
+                ? `NIT: ${c.nroDoc}-${c.digitoVerif}`
+                : `${c.tipoDoc}: ${c.nroDoc}`;
+            return `
+            <tr class="border-b border-slate-100 last:border-0">
+                <td class="py-3 pr-4">
+                    <p class="font-bold text-slate-800 text-sm">${c.nombre}</p>
+                    <p class="text-xs text-slate-400">${doc}</p>
+                </td>
+                <td class="py-3 pr-4 font-bold text-sm" style="color:#EC5FA3">$${fmtCOP(c.saldoPendiente)}</td>
+                <td class="py-3 text-sm text-slate-700">${c.diasEnMora} Dias</td>
+            </tr>`;
+        }).join('');
+
+        if (footer)
+            footer.innerHTML = `Mostrando <strong>${clientes.length}</strong> de <strong>${totalEnMora}</strong> clientes en mora`;
+    };
+
     // ─── CARGA POR SECCIÓN ────────────────────────────────────────────────────
     const cargarStock = () => {
         Promise.all([
@@ -178,6 +211,12 @@ import Chart from 'chart.js/auto';
     const cargarChart = () => {
         fetch('/admin/api/dashboard/ventas-pdv-30d').then(r => r.json())
             .then(d => { if (d.success) { renderChartPdv(d); chartCargado = true; } })
+            .catch(() => {});
+    };
+
+    const cargarCartera = () => {
+        fetch('/admin/api/dashboard/cartera-urgente').then(r => r.json())
+            .then(d => { if (d.success) { renderCarteraUrgente(d); carteraCargada = true; } })
             .catch(() => {});
     };
 
@@ -210,8 +249,9 @@ import Chart from 'chart.js/auto';
                 if (!entry.isIntersecting) return;
                 obs.unobserve(entry.target);
                 const seccion = entry.target.dataset.lazy;
-                if (seccion === 'stock') cargarStock();
-                if (seccion === 'chart') cargarChart();
+                if (seccion === 'stock')   cargarStock();
+                if (seccion === 'chart')   cargarChart();
+                if (seccion === 'cartera') cargarCartera();
             });
         }, { rootMargin: '150px' });
 

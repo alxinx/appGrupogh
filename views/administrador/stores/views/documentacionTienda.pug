@@ -1,0 +1,70 @@
+input(type="hidden" id="doc-pdv-id"  value=idPuntoDeVenta)
+input(type="hidden" id="doc-csrf"    value=csrfToken)
+
+//- ── CABECERA ────────────────────────────────────────────────────────────────
+div(class="flex items-center justify-between mb-5 px-1")
+    div(class="flex items-center gap-3")
+        div(class="w-9 h-9 rounded-xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+            i(class="fi fi-rr-folder-open text-gh-primary")
+        div
+            h3(class="text-base font-bold text-slate-800") Documentación
+            p(class="text-xs text-slate-400") Archivos adjuntos de la tienda
+
+    button#btn-abrir-modal-doc(
+        type="button"
+        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all active:scale-95"
+        style="background:#EC5FA3"
+    )
+        i(class="fi fi-rr-file-add")
+        | Agregar documento
+
+//- ── LISTA DE DOCUMENTOS ─────────────────────────────────────────────────────
+ul#doc-tienda-lista(class="space-y-2 min-h-[3rem]")
+    li(class="flex items-center justify-center py-8 text-slate-300")
+        i(class="fi fi-rr-spinner animate-spin text-xl mr-2")
+        span(class="text-sm") Cargando...
+
+//- ── MODAL SUBIR DOCUMENTO ───────────────────────────────────────────────────
+div#modal-subir-doc(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4")
+    //- Overlay
+    div(class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="modal-doc-overlay")
+    //- Card
+    div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden")
+        //- Header modal
+        div(class="flex items-center justify-between px-6 py-4 border-b border-slate-100")
+            div(class="flex items-center gap-3")
+                div(class="w-8 h-8 rounded-xl bg-gh-primarySoft flex items-center justify-center")
+                    i(class="fi fi-rr-file-add text-gh-primary text-sm")
+                h2(class="text-base font-bold text-slate-800") Subir documentos
+            button#btn-cerrar-modal-doc(type="button" class="text-slate-400 hover:text-slate-600 transition-colors")
+                i(class="fi fi-rr-cross text-sm")
+
+        //- Body modal
+        div(class="px-6 py-5 flex flex-col gap-4")
+            p(class="text-xs text-slate-400 -mt-1") PDF, Word, Excel, PowerPoint, JPG — máx. 5MB por archivo.
+
+            //- Lista de archivos subidos en esta sesión del modal
+            ul#modal-doc-lista(class="space-y-1.5 max-h-48 overflow-y-auto hidden")
+
+            //- Zona de upload
+            div(class="relative group")
+                input(
+                    type="file"
+                    multiple
+                    id="doc-tienda-input"
+                    accept=".jpg,.jpeg,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                )
+                div(class="inputUpload")
+                    div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2" style="color:#EC5FA3")
+                        i(class="fi fi-rr-file-add text-2xl")
+                    span(class="text-sm font-bold text-gray-600") Sube o arrastra documentos
+                    span(class="text-xs text-gray-400 mt-1") PDF, Word, Excel, PowerPoint, JPG
+
+        //- Footer modal
+        div(class="px-6 py-4 border-t border-slate-100 flex justify-end")
+            button#btn-listo-modal-doc(
+                type="button"
+                class="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all active:scale-95"
+                style="background:#EC5FA3"
+            ) Listo

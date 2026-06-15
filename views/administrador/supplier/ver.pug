@@ -123,61 +123,51 @@ block contenedor
                                                 i(class="fi fi-rr-disk")
                                                 | Guardar cambios
 
-                                //- ── COLUMNA DERECHA: Facturas ───────────────────────────────────────
-                                div(class="col-span-12 md:col-span-4 flex flex-col gap-4")
+                                //- ── COLUMNA DERECHA: Historial de compras ───────────────────────────
+                                div(class="col-span-12 md:col-span-4 cards cardsWhite p-6 flex flex-col gap-5")
 
-                                    //- Resumen rápido
-                                    div(class="cards cardsWhite p-5 grid grid-cols-2 gap-3")
-                                        div(class="flex flex-col items-center gap-1 p-3 bg-slate-50 rounded-xl")
-                                            span(class="text-2xl font-black text-slate-800")= facturas.length
-                                            span(class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide") Facturas
-                                        div(class="flex flex-col items-center gap-1 p-3 bg-amber-50 rounded-xl")
-                                            span(class="text-2xl font-black text-amber-600")= facturas.filter(f => f.estado === 'Pendiente').length
-                                            span(class="text-[10px] font-semibold text-amber-400 uppercase tracking-wide") Pendientes
+                                    //- Cabecera del panel
+                                    div(class="flex items-center gap-2 -mx-6 px-6 pb-4 border-b border-gray-100")
+                                        i(class="fi fi-rr-file-invoice-dollar text-purple-400")
+                                        h2(class="font-bold text-slate-700 text-sm") Historial de compras
 
-                                    //- Lista facturas
-                                    div(class="cards cardsWhite p-5")
-                                        div(class="flex items-center justify-between mb-4")
-                                            div(class="flex items-center gap-2")
-                                                i(class="fi fi-rr-file-invoice-dollar text-purple-400")
-                                                h2(class="font-bold text-slate-700 text-sm") Historial de facturas
+                                    //- Lista de facturas
+                                    if facturas.length === 0
+                                        div(class="flex flex-col items-center justify-center py-10 text-center")
+                                            i(class="fi fi-rr-file-invoice text-4xl text-slate-200 mb-3")
+                                            p(class="text-sm font-semibold text-slate-400") Sin compras registradas
+                                            p(class="text-xs text-slate-300 mt-1") Las compras a este proveedor aparecerán aquí
 
-                                        if facturas.length === 0
-                                            div(class="flex flex-col items-center justify-center py-10 text-center")
-                                                i(class="fi fi-rr-file-invoice text-4xl text-slate-200 mb-3")
-                                                p(class="text-sm font-semibold text-slate-400") Sin facturas registradas
-                                                p(class="text-xs text-slate-300 mt-1") Las compras a este proveedor aparecerán aquí
+                                    else
+                                        ul(class="space-y-2")
+                                            each f in facturas
+                                                - const isVencida = f.vencState === 'vencida'
+                                                - const isProxima = f.vencState === 'proxima'
+                                                li(class=`rounded-xl p-3 border transition-colors ${isVencida ? 'bg-red-50 border-red-200' : isProxima ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-transparent hover:border-slate-200'}`)
+                                                    //- Fila 1: número + estado
+                                                    div(class="flex items-center justify-between mb-1")
+                                                        span(class="text-xs font-bold text-slate-700 font-mono")= f.nroFactura
+                                                        - const estadoClasses = f.estado === 'Pagada' ? 'bg-green-100 text-green-700' : f.estado === 'Anulada' ? 'bg-gray-100 text-gray-500' : isVencida ? 'bg-red-500 text-white' : 'bg-amber-100 text-amber-700'
+                                                        span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full ${estadoClasses}`)= f.estado
 
-                                        else
-                                            ul(class="space-y-2")
-                                                each f in facturas
-                                                    - const isVencida = f.vencState === 'vencida'
-                                                    - const isProxima = f.vencState === 'proxima'
-                                                    li(class=`rounded-xl p-3 border transition-colors ${isVencida ? 'bg-red-50 border-red-200' : isProxima ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-transparent hover:border-slate-200'}`)
-                                                        //- Fila 1: número + estado
-                                                        div(class="flex items-center justify-between mb-1")
-                                                            span(class="text-xs font-bold text-slate-700 font-mono")= f.nroFactura
-                                                            - const estadoClasses = f.estado === 'Pagada' ? 'bg-green-100 text-green-700' : f.estado === 'Anulada' ? 'bg-gray-100 text-gray-500' : isVencida ? 'bg-red-500 text-white' : 'bg-amber-100 text-amber-700'
-                                                            span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full ${estadoClasses}`)= f.estado
+                                                    //- Fila 2: fecha + tienda
+                                                    div(class="flex items-center justify-between text-[10px] text-slate-400 mb-1")
+                                                        span= f.fechaFactura
+                                                        span(class="truncate max-w-[100px] text-right")= f.destino
 
-                                                        //- Fila 2: fecha + tienda
-                                                        div(class="flex items-center justify-between text-[10px] text-slate-400 mb-1")
-                                                            span= f.fechaFactura
-                                                            span(class="truncate max-w-[100px] text-right")= f.destino
+                                                    //- Fila 3: montos
+                                                    div(class="flex items-center justify-between text-xs mt-1")
+                                                        span(class="text-slate-500") Total: #[strong(class="text-slate-700")= f.valorTotal]
+                                                        if f.saldoPendiente
+                                                            span(class=`font-bold ${isVencida ? 'text-red-600' : 'text-amber-600'}`) #{f.saldoPendiente}
 
-                                                        //- Fila 3: montos
-                                                        div(class="flex items-center justify-between text-xs mt-1")
-                                                            span(class="text-slate-500") Total: #[strong(class="text-slate-700")= f.valorTotal]
-                                                            if f.saldoPendiente
-                                                                span(class=`font-bold ${isVencida ? 'text-red-600' : 'text-amber-600'}`) #{f.saldoPendiente}
-
-                                                        //- Vencimiento
-                                                        if f.fechaVencimiento && f.estado === 'Pendiente'
-                                                            div(class=`text-[10px] font-semibold mt-1 flex items-center gap-1 ${isVencida ? 'text-red-600' : isProxima ? 'text-amber-600' : 'text-slate-400'}`)
-                                                                i(class=`fi ${isVencida ? 'fi-rr-exclamation' : 'fi-rr-clock'}`)
-                                                                | #{isVencida ? 'Venció:' : 'Vence:'} #{f.fechaVencimiento}
-                                                                if f.nroAbonos > 0
-                                                                    span(class="ml-auto text-slate-400 font-normal") #{f.nroAbonos} abono#{f.nroAbonos !== 1 ? 's' : ''}
+                                                    //- Vencimiento
+                                                    if f.fechaVencimiento && f.estado === 'Pendiente'
+                                                        div(class=`text-[10px] font-semibold mt-1 flex items-center gap-1 ${isVencida ? 'text-red-600' : isProxima ? 'text-amber-600' : 'text-slate-400'}`)
+                                                            i(class=`fi ${isVencida ? 'fi-rr-exclamation' : 'fi-rr-clock'}`)
+                                                            | #{isVencida ? 'Venció:' : 'Vence:'} #{f.fechaVencimiento}
+                                                            if f.nroAbonos > 0
+                                                                span(class="ml-auto text-slate-400 font-normal") #{f.nroAbonos} abono#{f.nroAbonos !== 1 ? 's' : ''}
 
                 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
                 script.

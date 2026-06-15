@@ -1,15 +1,8 @@
 (function () {
     'use strict';
 
-    const fmtCOP = (n) => `$${Math.round(parseFloat(n) || 0).toLocaleString('es-CO')}`;
-
-    const fmtFechaLarga = (iso) => {
-        if (!iso) return '—';
-        const d = new Date(iso);
-        const offset = d.getTimezoneOffset();
-        const local  = new Date(d.getTime() + offset * 60000);
-        return local.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    };
+    const fmtCOP       = window.fmtCOP;
+    const fmtFechaLarga = window.fmtFechaLarga;
 
     const hoy = () => {
         const d = new Date();

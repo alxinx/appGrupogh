@@ -30,8 +30,8 @@ block contenedor
     //- Contenedor de toasts globales
     div#toast-container(class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none")
 
-    //- Modal apertura de caja
-    if sinCaja
+    //- Modal apertura de caja — solo cuando no hay cajas de días anteriores pendientes de cierre
+    if sinCaja && !cajaDelDiaAnterior
         - const cajaMenorFormateado = (cajaMenorDefault || 0).toLocaleString('es-CO')
         div#modal-apertura-caja(class="fixed inset-0 z-[9999] hidden items-center justify-center p-6 bg-black/30 backdrop-blur-sm")
             div(class="bg-white rounded-[1.5rem] shadow-2xl w-full max-w-md flex flex-col overflow-hidden")
@@ -71,8 +71,8 @@ block contenedor
                         div(class="relative")
                             i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none")
                             input#input-codigo-apertura(
-                                type="text"
-                                placeholder="Ej: 12345"
+                                type="password"
+                                placeholder="••••••"
                                 maxlength="10"
                                 autocomplete="off"
                                 class="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
@@ -93,6 +93,8 @@ block contenedor
         window.__SIN_CAJA__          = !{JSON.stringify(!!sinCaja)};
         window.__CAJA_MENOR_DEFAULT__ = !{JSON.stringify(cajaMenorDefault || 0)};
         window.__cajaAbierta          = !window.__SIN_CAJA__;
+        window.__CAJAS_PENDIENTES__   = !{JSON.stringify(cajaDelDiaAnterior ? 1 : 0)};
+        window.__PUEDE_FACTURAR__     = !{JSON.stringify(!!puedeFacturar)};
 
     script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
     script(src="/js/helpers.js")
@@ -110,4 +112,23 @@ block contenedor
                 timerProgressBar: true,
                 showConfirmButton: false,
                 position: 'center'
+            });
+
+    if cajaDelDiaAnterior
+        - const fechaAp = new Date(cajaDelDiaAnterior.fechaApertura).toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        script.
+            Swal.fire({
+                icon: 'error',
+                title: 'Caja sin cerrar',
+                html: 'La caja abierta el <strong>!{fechaAp}</strong> no fue cerrada.<br><br>Debes realizar el cierre de caja antes de continuar.',
+                confirmButtonText: 'Ir a cuadre de caja',
+                confirmButtonColor: '#EC5FA3',
+                showCancelButton: true,
+                cancelButtonText: 'Ignorar por ahora',
+                allowOutsideClick: false,
+                allowEscapeKey: false
+            }).then(result => {
+                if (result.isConfirmed) {
+                    window.location.href = '/store/storebehivors/';
+                }
             });

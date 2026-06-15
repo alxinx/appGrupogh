@@ -132,6 +132,7 @@
                     document.querySelector('[data-content="2"]').classList.add('hidden');
                     document.querySelector('[data-content="3"]').classList.remove('hidden');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
+                    cargarDocsTienda();
                 }
             });
         }
@@ -141,6 +142,15 @@
                 e.preventDefault();
                 document.querySelector('[data-content="2"]').classList.add('hidden');
                 document.querySelector('[data-content="1"]').classList.remove('hidden');
+            });
+        }
+
+        const btnVolver2 = document.getElementById('btnVolver2');
+        if (btnVolver2) {
+            btnVolver2.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelector('[data-content="3"]').classList.add('hidden');
+                document.querySelector('[data-content="2"]').classList.remove('hidden');
             });
         }
 
@@ -165,6 +175,129 @@
                 await guardarDatos(pasoAValidar, true); 
             });
         });
+
+        // --- 7. DOCUMENTOS DE LA TIENDA ---
+        const inputIdPdv   = document.querySelector('input[name="idPuntoDeVenta"]');
+        const docsLista    = document.getElementById('doc-tienda-lista');
+        const uploadDocInput = document.getElementById('doc-tienda-input');
+
+        const _EXTS_DOC  = ['jpg', 'jpeg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+        const _MAX_DOC   = 5 * 1024 * 1024;
+        const renderDocItem = window.crearItemDocTienda;
+
+        const cargarDocsTienda = async () => {
+            const idPdv = inputIdPdv?.value;
+            if (!idPdv || !docsLista) return;
+            try {
+                const d = await fetch(`/admin/api/tiendas/${idPdv}/documentos`).then(r => r.json());
+                if (!d.success) return;
+                docsLista.innerHTML = '';
+                if (!d.archivos.length) {
+                    docsLista.innerHTML = '<li class="text-xs text-slate-400 py-2 text-center">Sin documentos guardados</li>';
+                    return;
+                }
+                d.archivos.forEach(a => docsLista.appendChild(renderDocItem(a)));
+            } catch (_) {}
+        };
+
+        if (uploadDocInput && docsLista) {
+            uploadDocInput.addEventListener('change', async (e) => {
+                const files = Array.from(e.target.files);
+                uploadDocInput.value = '';
+
+                const idPdv = inputIdPdv?.value;
+                if (!idPdv) {
+                    Swal.fire({ icon: 'warning', title: 'Guarda primero la tienda', text: 'Completa el paso 1 para poder adjuntar documentos.', confirmButtonColor: '#EC5FA3' });
+                    return;
+                }
+
+                for (const file of files) {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    if (!_EXTS_DOC.includes(ext)) {
+                        Swal.fire({ icon: 'error', title: 'Tipo no permitido', html: `<b>${file.name}</b><br>Solo se aceptan: PDF, Word, Excel, PowerPoint, JPG.`, confirmButtonColor: '#EC5FA3' });
+                        continue;
+                    }
+                    if (file.size > _MAX_DOC) {
+                        Swal.fire({ icon: 'error', title: 'Archivo muy grande', html: `<b>${file.name}</b> supera los 5MB.`, confirmButtonColor: '#EC5FA3' });
+                        continue;
+                    }
+
+                    const liProg = document.createElement('li');
+                    liProg.className = 'flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 animate-pulse';
+                    liProg.innerHTML = `<i class="fi fi-rr-spinner animate-spin text-blue-400 text-sm flex-shrink-0"></i><span class="text-xs text-slate-500 truncate flex-1">Subiendo ${file.name}…</span>`;
+                    docsLista.prepend(liProg);
+
+                    try {
+                        const fd = new FormData();
+                        fd.append('documentos', file);
+                        const csrfToken = document.querySelector('input[name="_csrf"]')?.value || '';
+                        const r    = await fetch(`/admin/api/tiendas/${idPdv}/documentos/subir`, {
+                            method: 'POST', body: fd,
+                            headers: { 'CSRF-Token': csrfToken }
+                        });
+                        const data = await r.json();
+                        liProg.remove();
+                        if (data.success && data.archivos?.length) {
+                            docsLista.querySelectorAll('li:not([data-id])').forEach(li => li.remove());
+                            data.archivos.forEach(a => docsLista.prepend(renderDocItem(a)));
+                        } else {
+                            Swal.fire({ icon: 'error', title: 'Error al subir', text: data.mensaje || 'No se pudo subir el archivo.', confirmButtonColor: '#EC5FA3' });
+                        }
+                    } catch (_) {
+                        liProg.remove();
+                        Swal.fire({ icon: 'error', title: 'Error de conexión', confirmButtonColor: '#EC5FA3' });
+                    }
+                }
+            });
+
+            docsLista.addEventListener('click', async (e) => {
+                const btn = e.target.closest('.btn-del-doc-tienda');
+                if (!btn) return;
+
+                const idDoc  = btn.dataset.id;
+                const nombre = btn.dataset.nombre;
+
+                const { isConfirmed } = await Swal.fire({
+                    icon: 'warning',
+                    title: '¿Eliminar documento?',
+                    html: `<b>${nombre}</b><br><span class="text-sm text-slate-500">Este documento se eliminará para siempre sin posibilidad de recuperarlo.</span>`,
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, eliminar para siempre',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: '#ef4444',
+                    cancelButtonColor: '#94a3b8'
+                });
+                if (!isConfirmed) return;
+
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fi fi-rr-spinner animate-spin text-red-400 text-xs"></i>';
+
+                try {
+                    const csrfToken = document.querySelector('input[name="_csrf"]')?.value || '';
+                    const r    = await fetch(`/admin/api/tiendas/documentos/${idDoc}/eliminar`, {
+                        method: 'POST',
+                        headers: { 'CSRF-Token': csrfToken }
+                    });
+                    const data = await r.json();
+                    if (data.success) {
+                        btn.closest('li').remove();
+                        if (!docsLista.querySelectorAll('li[data-id]').length)
+                            docsLista.innerHTML = '<li class="text-xs text-slate-400 py-2 text-center">Sin documentos guardados</li>';
+                    } else {
+                        Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje || 'No se pudo eliminar.', confirmButtonColor: '#EC5FA3' });
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fi fi-rr-trash text-red-400 text-xs pointer-events-none"></i>';
+                    }
+                } catch (_) {
+                    Swal.fire({ icon: 'error', title: 'Error de conexión', confirmButtonColor: '#EC5FA3' });
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fi fi-rr-trash text-red-400 text-xs pointer-events-none"></i>';
+                }
+            });
+
+            // En modo edición el idPuntoDeVenta ya está pre-cargado
+            if (inputIdPdv?.value) cargarDocsTienda();
+        }
 
         // --- 6. MUNICIPIOS (Se mantiene igual) ---
         if (departamentoSelect && ciudadSelect) {

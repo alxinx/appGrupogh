@@ -9,6 +9,12 @@ const CajaTienda = db.define('CAJA_TIENDA', {
         unique: true,
         allowNull: false
     },
+    codigo : {
+        type : DataTypes.STRING(100),
+        defaultValue : null,
+        unique : true,
+
+    },
     idEmpleadoApertura: {
         type: DataTypes.UUID,
         allowNull: false,

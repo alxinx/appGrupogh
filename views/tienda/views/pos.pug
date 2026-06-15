@@ -30,7 +30,7 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
     
     //- SECCIÓN DERECHA: ESTADO DE COMPRA (4 Columnas)
     aside(id="drop-zone" data-wholesale-min=wholesaleMin class="col-span-12 lg:col-span-4 flex flex-col min-h-0")
-        div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[1.5rem] border border-white/60 shadow-xl flex flex-col h-full min-h-0 overflow-hidden transition-all")
+        div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[1.5rem] border border-white/60 shadow-xl flex flex-col lg:h-full min-h-0 overflow-y-auto lg:overflow-hidden transition-all")
 
             //- Header de la Orden
             div(class="flex items-center justify-between mb-6")
@@ -42,8 +42,8 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
                 button(id="btn-clear-cart" class="p-2 text-gh-primary hover:bg-gh-primary/10 rounded-xl transition-colors cursor-pointer")
                     i(class="fi-rr-trash text-xl")
             //- Lista Scrolleable (Items del Carrito)
-            div(class="relative flex-1 min-h-0 flex flex-col")
-                div(id="cart-list" class="flex-1 overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-4")
+            div(class="relative lg:flex-1 lg:min-h-0 flex flex-col mb-4 lg:mb-0")
+                div(id="cart-list" class="lg:flex-1 lg:overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-4")
                 button(
                     id="cart-scroll-hint"
                     class="hidden absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-white shadow-lg cursor-pointer select-none"
@@ -52,7 +52,7 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
                     i(class="fi fi-rr-angle-double-down text-xs")
                     | más items
             //- Resumen y Cliente (Anclados al fondo)
-            div(class="space-y-4 mt-auto")
+            div(class="space-y-4 mt-4 lg:mt-auto")
                 input(type="hidden" id="idCliente" value=clienteGenerico.idCliente)
                 - const cliNombre = ((clienteGenerico.primer_nombre || '') + ' ' + (clienteGenerico.primer_apellido || '')).trim()
                 - const cliDoc    = (clienteGenerico.tipo_documento || 'CC') + ' ' + (clienteGenerico.numero_doc || '')

@@ -38,7 +38,8 @@ export default {
         dataCliente         : '/src/js/dataCliente.js',
         batchOrder          : '/src/js/batchOrder.js',
         adminCierresCaja    : '/src/js/adminCierresCaja.js',
-        adminTrasladosTienda: '/src/js/adminTrasladosTienda.js'
+        adminTrasladosTienda: '/src/js/adminTrasladosTienda.js',
+        adminDocsTienda     : '/src/js/adminDocsTienda.js'
     },
     output: {
         filename: '[name].js',

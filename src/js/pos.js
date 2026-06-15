@@ -1,5 +1,29 @@
 (function () {
 
+    // ─── BLOQUEO DE FACTURACIÓN ───────────────────────────────────────────────
+    // Devuelve true y muestra Swal si no se puede facturar; false si puede continuar.
+    const bloquearSiSinCaja = () => {
+        if (window.__PUEDE_FACTURAR__ === false) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Sin permiso',
+                text: 'No tienes permiso para crear facturas.',
+                confirmButtonColor: '#EC5FA3'
+            });
+            return true;
+        }
+        if (window.__cajaAbierta !== false) return false;
+        Swal.fire({
+            icon: 'warning',
+            title: window.__CAJAS_PENDIENTES__ ? 'Cajas anteriores sin cerrar' : 'Caja no abierta',
+            html: window.__CAJAS_PENDIENTES__
+                ? 'Debes cerrar las cajas de días anteriores antes de poder abrir la caja de hoy.<br><br><a href="/store/storebehivors/" style="color:#EC5FA3;font-weight:bold;text-decoration:underline;">Ir a cuadre de caja →</a>'
+                : 'Debes abrir la caja antes de registrar una venta.',
+            confirmButtonColor: '#EC5FA3'
+        });
+        return true;
+    };
+
     // ─── BUSCADOR POS ─────────────────────────────────────────────────────────
     const inputCodigo    = document.getElementById('codigo');
     const catalogoPos    = document.getElementById('catalogo-pos');
@@ -195,15 +219,7 @@
     const addToCart = (p, qty = 1) => {
         if (!p?.idProducto || qty < 1) return;
 
-        if (window.__cajaAbierta === false) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Caja no abierta',
-                text: 'Debes abrir la caja antes de registrar una venta.',
-                confirmButtonColor: '#EC5FA3'
-            });
-            return;
-        }
+        if (bloquearSiSinCaja()) return;
 
         if (cart.has(p.idProducto)) {
             const item = cart.get(p.idProducto);
@@ -390,36 +406,106 @@
         if (p) addToCart(p);
     });
 
-    // ── Drag & Drop ──────────────────────────────────────────────────────────
+    // ── Drag & Drop (mouse + touch) ──────────────────────────────────────────
+    const _dropHighlight = (on) => {
+        dropZone?.classList.toggle('ring-2',             on);
+        dropZone?.classList.toggle('ring-gh-primary/40', on);
+        dropZone?.classList.toggle('ring-inset',         on);
+    };
+
+    const _sobreDropZone = (clientX, clientY) => {
+        const r = dropZone?.getBoundingClientRect();
+        return r && clientX >= r.left && clientX <= r.right &&
+                    clientY >= r.top  && clientY <= r.bottom;
+    };
+
     const bindDragEnCatalogo = () => {
         catalogoPos?.querySelectorAll('.product-card-individual[draggable="true"]').forEach(card => {
+
+            // ── Eventos mouse (desktop) ──────────────────────────────────────
             card.addEventListener('dragstart', (e) => {
-                const idProducto = card.id.replace('product-', '');
-                e.dataTransfer.setData('text/plain', idProducto);
+                e.dataTransfer.setData('text/plain', card.id.replace('product-', ''));
                 e.dataTransfer.effectAllowed = 'copy';
                 card.classList.add('opacity-50', 'scale-95');
             });
             card.addEventListener('dragend', () => {
                 card.classList.remove('opacity-50', 'scale-95');
             });
+
+            // ── Eventos touch (móvil / tablet) ───────────────────────────────
+            let ghost     = null;
+            let dragging  = false;
+            let cardRect  = null;
+            let t0x = 0, t0y = 0;
+
+            const touchCleanup = () => {
+                ghost?.remove(); ghost = null;
+                dragging = false; cardRect = null;
+                card.classList.remove('opacity-50', 'scale-95');
+                _dropHighlight(false);
+            };
+
+            card.addEventListener('touchstart', (e) => {
+                const t = e.touches[0];
+                t0x = t.clientX; t0y = t.clientY;
+            }, { passive: true });
+
+            card.addEventListener('touchmove', (e) => {
+                const t = e.touches[0];
+
+                // Iniciar drag solo tras superar el umbral de movimiento (10 px)
+                if (!dragging) {
+                    if (Math.hypot(t.clientX - t0x, t.clientY - t0y) < 10) return;
+                    dragging = true;
+                    cardRect = card.getBoundingClientRect();
+                    ghost    = card.cloneNode(true);
+                    ghost.style.cssText = [
+                        'position:fixed',
+                        `width:${cardRect.width}px`,
+                        `top:${t.clientY - cardRect.height / 2}px`,
+                        `left:${t.clientX - cardRect.width  / 2}px`,
+                        'opacity:.75', 'pointer-events:none', 'z-index:9999',
+                        'transform:scale(.92)', 'border-radius:1rem',
+                        'box-shadow:0 8px 30px rgba(0,0,0,.2)', 'transition:none'
+                    ].join(';');
+                    document.body.appendChild(ghost);
+                    card.classList.add('opacity-50', 'scale-95');
+                }
+
+                e.preventDefault();
+                ghost.style.top  = `${t.clientY - cardRect.height / 2}px`;
+                ghost.style.left = `${t.clientX - cardRect.width  / 2}px`;
+                _dropHighlight(_sobreDropZone(t.clientX, t.clientY));
+            }, { passive: false });
+
+            card.addEventListener('touchend', (e) => {
+                if (!dragging) return;
+                const t    = e.changedTouches[0];
+                const over = _sobreDropZone(t.clientX, t.clientY);
+                touchCleanup();
+                if (over) {
+                    const p = productosEnPantalla.get(card.id.replace('product-', ''));
+                    if (p) addToCart(p);
+                }
+            }, { passive: true });
+
+            card.addEventListener('touchcancel', touchCleanup, { passive: true });
         });
     };
 
+    // Eventos drop para mouse (el touch los maneja en touchend)
     dropZone?.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
-        dropZone.classList.add('ring-2', 'ring-gh-primary/40', 'ring-inset');
+        _dropHighlight(true);
     });
     dropZone?.addEventListener('dragleave', (e) => {
-        if (!dropZone.contains(e.relatedTarget)) {
-            dropZone.classList.remove('ring-2', 'ring-gh-primary/40', 'ring-inset');
-        }
+        if (!dropZone.contains(e.relatedTarget)) _dropHighlight(false);
     });
     dropZone?.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZone.classList.remove('ring-2', 'ring-gh-primary/40', 'ring-inset');
-        const idProducto = e.dataTransfer.getData('text/plain');
-        const p = productosEnPantalla.get(idProducto);
+        _dropHighlight(false);
+        const p = productosEnPantalla.get(e.dataTransfer.getData('text/plain'));
         if (p) addToCart(p);
     });
 
@@ -795,7 +881,10 @@
             try {
                 const res  = await fetch(`/store/json/pos/producto/${idProducto}`);
                 const data = await res.json();
-                if (!data.success) return;
+                if (!data.success) {
+                    elTiendas.innerHTML = '<p class="text-xs text-red-400 italic">Error al cargar disponibilidad</p>';
+                    return;
+                }
                 const p = data.producto;
 
                 elNombre.textContent = p.nombre;
@@ -835,7 +924,7 @@
                     elTiendas.innerHTML = '<p class="text-xs text-slate-300 italic">Sin stock en ninguna tienda</p>';
                 }
             } catch {
-                // datos básicos ya pintados
+                elTiendas.innerHTML = '<p class="text-xs text-red-400 italic">Error al cargar disponibilidad</p>';
             }
         };
 
@@ -858,7 +947,7 @@
             window.location.href = `/store/inventario/perfilProducto/${mdpProductoActual.idProducto}`;
         });
 
-        // ── Doble clic en tarjeta ─────────────────────────────────────────────────
+        // ── Doble clic en tarjeta (mouse) ────────────────────────────────────────
         document.addEventListener('dblclick', (e) => {
             if (e.target.closest('.btn-agregar-pedido')) return;
             const tarjeta = e.target.closest('.product-card-individual');
@@ -866,6 +955,26 @@
             const idProducto = tarjeta.id.replace('product-', '');
             if (idProducto) abrir(idProducto);
         });
+
+        // ── Doble tap en tarjeta (touch) ──────────────────────────────────────────
+        let _lastTapTarget = null;
+        let _lastTapTime   = 0;
+        document.addEventListener('touchend', (e) => {
+            if (e.target.closest('.btn-agregar-pedido')) return;
+            const tarjeta = e.target.closest('.product-card-individual');
+            if (!tarjeta) return;
+            const ahora = Date.now();
+            if (tarjeta === _lastTapTarget && ahora - _lastTapTime < 300) {
+                e.preventDefault(); // evitar zoom nativo del doble tap
+                _lastTapTarget = null;
+                _lastTapTime   = 0;
+                const idProducto = tarjeta.id.replace('product-', '');
+                if (idProducto) abrir(idProducto);
+            } else {
+                _lastTapTarget = tarjeta;
+                _lastTapTime   = ahora;
+            }
+        }, { passive: false });
 
         // ── Clicks generales ─────────────────────────────────────────────────────
         document.addEventListener('click', (e) => {
@@ -1511,15 +1620,7 @@
             });
 
             // ── Enviar ───────────────────────────────────────────────────────
-            if (window.__cajaAbierta === false) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Caja no abierta',
-                    text: 'Debes abrir la caja antes de registrar una venta.',
-                    confirmButtonColor: '#EC5FA3'
-                });
-                return;
-            }
+            if (bloquearSiSinCaja()) return;
 
             btn.disabled  = true;
             btn.className = 'flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed';

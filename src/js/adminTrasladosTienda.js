@@ -1,10 +1,7 @@
 (function () {
     'use strict';
 
-    const fmtFecha = (iso) => {
-        if (!iso) return '—';
-        return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    };
+    const fmtFecha = window.fmtFecha;
 
     const estadoBadge = (estado) => {
         const mapa = {

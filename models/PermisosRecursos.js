@@ -16,6 +16,10 @@ const PermisosRecursos = db.define('PERMISOS_RECURSOS', {
         allowNull: false,
         defaultValue: 'general',
     },
+    folder: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+    },
 },
 {
     timestamps: true,

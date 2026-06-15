@@ -4,7 +4,7 @@
     const pdvId = document.getElementById('pdv-current-id')?.value;
     if (!pdvId) return;
 
-    const fmtCOP = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const fmtCOP = window.fmtCOP;
 
     // ─── MAPA: stat id → metodoPago / clave ──────────────────────────────────
     const STATS = [

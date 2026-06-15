@@ -40,11 +40,15 @@ import {
     getDetalleDia,
     validarEmpleadoTraslado,
     trasladarDesdePerfil,
-    getTrasladosAlertaJSON
+    getTrasladosAlertaJSON,
+    validarEmpleadoTienda
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
 import { cargarPuntoDeVenta } from '../middlewares/storeMiddleware.js';
+import verificarCodigoEmpleado    from '../middlewares/verificarCodigoEmpleado.js';
+import verificarPermisoEmpleado   from '../middlewares/verificarPermisoEmpleado.js';
+import verificarPermisoSesion     from '../middlewares/verificarPermisoSesion.js';
 import apiRateLimit from '../middlewares/apiRateLimit.js';
 import uploadMixed from '../middlewares/uploadMixed.js';
 
@@ -71,6 +75,7 @@ routes.use('/traslados/historial', apiRateLimit);
 routes.use('/traslados/detalle', apiRateLimit);
 
 routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
+routes.get('/json/personal/validar/:codigo', validarEmpleadoTienda);
 routes.get('/json/destinos', getDestinosJSON);
 routes.get('/json/pos/buscar', buscarPosProducto);
 routes.get('/json/pos/producto/:idProducto', getPosProductoJSON);
@@ -90,38 +95,41 @@ routes.get('/traslados/comprobante/:idTraslado', imprimirComprobanteTraslado);
 routes.get('/inventario/json', getInventarioJSON);
 
 // Acciones — traslados
-routes.post('/traslados/aceptar', csrfProtection, aceptarTrasladoAPI);
-routes.post('/traslados/resolver', csrfProtection, resolverControversiaAPI);
-routes.post('/traslados/crear', csrfProtection, crearTrasladoSueltos);
+const pTraslEdit   = verificarPermisoEmpleado('Traslados', 'vendedor', 'EDIT');
+const pTraslCreate = verificarPermisoEmpleado('Traslados', 'vendedor', 'CREATE');
+
+routes.post('/traslados/aceptar', csrfProtection, verificarCodigoEmpleado, pTraslEdit,   aceptarTrasladoAPI);
+routes.post('/traslados/resolver', csrfProtection, verificarCodigoEmpleado, pTraslEdit,   resolverControversiaAPI);
+routes.post('/traslados/crear',   csrfProtection, verificarCodigoEmpleado, pTraslCreate, crearTrasladoSueltos);
 
 // Acciones — inventario
-routes.post('/inventario/desempacar', csrfProtection, desempacarPackAPI);
-routes.post('/inventario/trasladar',  csrfProtection, trasladarDesdeStoreAPI);
+routes.post('/inventario/desempacar', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Inventario y Productos', 'vendedor', 'EDIT'), desempacarPackAPI);
+routes.post('/inventario/trasladar',  csrfProtection, verificarCodigoEmpleado, pTraslCreate, trasladarDesdeStoreAPI);
 
 // Clientes
 routes.post('/clientes/guardar', csrfProtection, uploadMixed.single('rut'), guardarCliente);
 
 // Caja
-routes.post('/caja/abrir', csrfProtection, abrirCajaAPI);
+routes.post('/caja/abrir', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), abrirCajaAPI);
 
 // Facturas
-routes.post('/facturas/procesar', csrfProtection, procesarFactura);
+routes.post('/facturas/procesar', csrfProtection, verificarPermisoSesion('Pos de venta', 'vendedor', 'CREATE'), procesarFactura);
 routes.get('/facturas/:id/tirilla', getTirillaPDF);
 
 // Storebehivors — cuadre de caja
 routes.get('/storebehivors/', csrfProtection, cuadrarCajaPage);
 routes.get('/storebehivors/caja/datos', getCuadreCajaDatos);
-routes.post('/storebehivors/caja/cerrar', csrfProtection, cerrarCajaAPI);
+routes.post('/storebehivors/caja/cerrar', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'EDIT'), cerrarCajaAPI);
 routes.get('/storebehivors/caja/:idCajaTienda/pdf', getCuadrePDF);
 routes.get('/storebehivors/expenses', csrfProtection, getExpensesPage);
 routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
 routes.get('/storebehivors/expenses/json', getEgresosJSON);
 routes.get('/storebehivors/expenses/:idEgreso/pdf', getEgresoComprobantePDF);
-routes.post('/storebehivors/expenses/crear', csrfProtection, crearEgreso);
+routes.post('/storebehivors/expenses/crear', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), crearEgreso);
 
 // Inventario — traslado desde perfil de producto
 routes.get('/inventario/json/empleado-traslado', validarEmpleadoTraslado);
-routes.post('/inventario/traslado-producto', csrfProtection, trasladarDesdePerfil);
+routes.post('/inventario/traslado-producto', csrfProtection, verificarCodigoEmpleado, pTraslCreate, trasladarDesdePerfil);
 
 // Storebehivors — ventas del mes
 routes.get('/storebehivors/sales', csrfProtection, getSalesPage);
