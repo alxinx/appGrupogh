@@ -1,3 +1,5 @@
+import ciiuData from '../json/ciiu.json';
+
 (function () {
 
     // ─── BLOQUEO DE FACTURACIÓN ───────────────────────────────────────────────
@@ -546,6 +548,22 @@
 
     let tabActivo = 'natural'; // 'natural' | 'empresa'
 
+    const TIPOS_EMPRESA  = new Set(['CC', 'NIT']);
+    const TODOS_LOS_TIPOS = ['CC', 'CE', 'TI', 'NIT', 'PP', 'DE'];
+
+    const filtrarTipoDoc = (tab) => {
+        const sel = document.getElementById('cli-tipo-doc');
+        if (!sel) return;
+        if (tab === 'empresa') {
+            sel.querySelectorAll('option').forEach(o => {
+                o.hidden = !TIPOS_EMPRESA.has(o.value);
+            });
+            if (!TIPOS_EMPRESA.has(sel.value)) sel.value = 'NIT';
+        } else {
+            sel.querySelectorAll('option').forEach(o => { o.hidden = false; });
+        }
+    };
+
     const switchTab = (tab) => {
         tabActivo = tab;
         ['natural', 'empresa'].forEach(t => {
@@ -558,6 +576,7 @@
                 el.classList.toggle('hidden', !esActivo);
             });
         });
+        filtrarTipoDoc(tab);
         actualizarHeaderModal();
     };
 
@@ -588,7 +607,13 @@
     ['cli-primer-nombre', 'cli-primer-apellido', 'cli-razon-social'].forEach(id =>
         document.getElementById(id)?.addEventListener('input', actualizarHeaderModal)
     );
-    document.getElementById('cli-numero-doc')?.addEventListener('input',  actualizarHeaderModal);
+    document.getElementById('cli-numero-doc')?.addEventListener('input', (e) => {
+        const el = e.target;
+        const pos = el.selectionStart - (el.value.length - el.value.replace(/\s/g, '').length);
+        el.value = el.value.replace(/\s/g, '');
+        el.setSelectionRange(pos, pos);
+        actualizarHeaderModal();
+    });
     document.getElementById('cli-tipo-doc')?.addEventListener('change',   actualizarHeaderModal);
 
     // ── Cascade departamento → municipios ─────────────────────────────────────
@@ -611,6 +636,23 @@
         else {
             const sel = document.getElementById('cli-municipio');
             if (sel) sel.innerHTML = '<option value="">— selecciona un departamento —</option>';
+        }
+    });
+
+    // ── Autocomplete CIIU ─────────────────────────────────────────────────────
+    const ciiuMap = new Map(ciiuData.map(c => [c.codigo, c.descripcion]));
+
+    document.getElementById('cli-ciiu')?.addEventListener('input', (e) => {
+        const codigo = e.target.value.trim();
+        const descEl = document.getElementById('cli-desc-ciiu');
+        if (!descEl) return;
+        const desc = ciiuMap.get(codigo);
+        if (desc) {
+            descEl.value = desc;
+            descEl.classList.add('text-gh-primary');
+        } else {
+            if (descEl.value === (ciiuMap.get(codigo) ?? '')) descEl.value = '';
+            descEl.classList.remove('text-gh-primary');
         }
     });
 

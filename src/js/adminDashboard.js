@@ -229,17 +229,8 @@ import Chart from 'chart.js/auto';
             chartDebounce = setTimeout(cargarChart, 5000);
         };
 
-        if (window.__adminSSE) {
-            window.__adminSSE.addEventListener('store_stats', recargarChart);
-            return;
-        }
-        const sse = new EventSource('/admin/sse');
-        window.__adminSSE = sse;
-        sse.addEventListener('store_stats', recargarChart);
-        sse.onerror = () => {
-            window.__adminSSE = null;
-            setTimeout(conectarSSEChart, 5000);
-        };
+        window.adminSSE.on('store_stats', recargarChart);
+        window.adminSSE.connect();
     };
 
     // ─── LAZY LOAD CON IntersectionObserver ───────────────────────────────────

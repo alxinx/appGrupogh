@@ -17,7 +17,8 @@ getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial,
 getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 storeCierresCaja, storeTrasladosTienda,
 getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
-getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda } from "../controller/adminControllers.js"
+getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda,
+trasladarProductoAdmin } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
@@ -219,6 +220,7 @@ routes.get('/api/inventario/:idProducto/dias-inventario', diasInventarioProducto
 routes.get('/api/inventario/:idProducto/stock-por-tienda', stockPorTiendaProducto);
 routes.get('/api/inventario/:idProducto/ventas-historico', ventasHistoricoProducto);
 routes.get('/api/inventario/:idProducto/ventas-por-tienda', ventasPorTiendaProducto);
+routes.post('/api/inventario/:idProducto/traslado', csrfProtection, trasladarProductoAdmin);
 
 
 // DASHBOARD PRINCIPAL

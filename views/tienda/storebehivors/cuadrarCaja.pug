@@ -56,10 +56,25 @@ block contenedor
                                             th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
                                     tbody#cc-tbody-egresos
 
-                        //- Efectivo
-                        div(class="flex justify-between items-center px-4 py-3 rounded-xl bg-slate-50 border border-slate-200")
-                            span(class="text-sm text-slate-600") Ventas en Efectivo
-                            span#cc-s-efectivo(class="font-semibold text-slate-800") —
+                        //- Ventas en Efectivo (acordeón)
+                        div(class="rounded-xl border border-slate-200 overflow-hidden")
+                            button#cc-toggle-efectivo(
+                                type="button"
+                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                            )
+                                span(class="text-sm text-slate-600") Ventas en Efectivo
+                                div(class="flex items-center gap-2")
+                                    span#cc-s-efectivo(class="font-semibold text-slate-800") —
+                                    i#cc-icon-efectivo(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
+                            div#cc-acordeon-efectivo(class="hidden px-2 pb-2")
+                                table(class="w-full text-xs mt-1")
+                                    thead
+                                        tr(class="border-b border-slate-200")
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Nro Factura
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Entidad
+                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Ref.
+                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
+                                    tbody#cc-tbody-efectivo
 
                         //- Medios Electrónicos (acordeón)
                         div(class="rounded-xl border border-slate-200 overflow-hidden")

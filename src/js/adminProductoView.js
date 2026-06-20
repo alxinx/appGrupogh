@@ -248,4 +248,123 @@ import Chart from 'chart.js/auto';
 
     cargarStockTiendas();
 
+    // ─── MODAL HACER TRASLADO ─────────────────────────────────────────────────
+    const modal       = $('modal-traslado');
+    const btnAbrir    = $('btn-hacer-traslado');
+    const btnCerrar   = $('modal-traslado-cerrar');
+    const selOrigen   = $('trl-origen');
+    const selDestino  = $('trl-destino');
+    const inpCantidad = $('trl-cantidad');
+    const spanMax     = $('trl-max');
+    const inpNotas    = $('trl-notas');
+    const btnSubmit   = $('trl-submit');
+    const csrfToken   = $('csrf-token-admin')?.value;
+
+    if (!modal || !btnAbrir) return;
+
+    // stock por tienda cacheado para el modal
+    let stockData = [];
+    let todasTiendas = [];
+
+    const abrirModal = async () => {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        selOrigen.innerHTML   = '<option value="">Cargando...</option>';
+        selDestino.innerHTML  = '<option value="">Cargando...</option>';
+        spanMax.textContent   = '';
+        inpCantidad.value     = 1;
+        inpCantidad.removeAttribute('max');
+        btnSubmit.disabled    = true;
+
+        const [resStock, resTiendas] = await Promise.all([
+            fetch(`/admin/api/inventario/${idProducto}/stock-por-tienda`).then(r => r.json()).catch(() => ({ success: false })),
+            fetch('/admin/json/tiendas/').then(r => r.json()).catch(() => [])
+        ]);
+
+        stockData    = (resStock.success && resStock.datos.length) ? resStock.datos : [];
+        todasTiendas = Array.isArray(resTiendas) ? resTiendas : [];
+
+        selOrigen.innerHTML = stockData.length
+            ? '<option value="">Selecciona origen...</option>' + stockData.map(d => `<option value="${d.idPuntoVenta ?? ''}" data-max="${d.total}">${d.nombre} (${d.total} uds.)</option>`).join('')
+            : '<option value="">Sin stock disponible</option>';
+
+        actualizarDestinos();
+        validarModal();
+    };
+
+    const actualizarDestinos = () => {
+        const idOrigenVal = selOrigen.value;
+        const opts = todasTiendas
+            .filter(t => String(t.idPuntoDeVenta) !== idOrigenVal)
+            .map(t => `<option value="${t.idPuntoDeVenta}">${t.nombreComercial}</option>`)
+            .join('');
+        selDestino.innerHTML = '<option value="">Selecciona destino...</option>' + opts;
+    };
+
+    const actualizarMax = () => {
+        const opt = selOrigen.options[selOrigen.selectedIndex];
+        const max = opt ? parseInt(opt.dataset.max) || 0 : 0;
+        if (max > 0) {
+            inpCantidad.max   = max;
+            spanMax.textContent = `Máx: ${max}`;
+            if (parseInt(inpCantidad.value) > max) inpCantidad.value = max;
+        } else {
+            inpCantidad.removeAttribute('max');
+            spanMax.textContent = '';
+        }
+    };
+
+    const validarModal = () => {
+        const ok = selOrigen.value && selDestino.value && parseInt(inpCantidad.value) > 0;
+        btnSubmit.disabled = !ok;
+    };
+
+    selOrigen.addEventListener('change', () => { actualizarMax(); actualizarDestinos(); validarModal(); });
+    selDestino.addEventListener('change', validarModal);
+    inpCantidad.addEventListener('input', validarModal);
+
+    btnAbrir.addEventListener('click', abrirModal);
+    btnCerrar.addEventListener('click', () => { modal.classList.add('hidden'); modal.classList.remove('flex'); });
+    modal.addEventListener('click', (e) => { if (e.target === modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); } });
+
+    btnSubmit.addEventListener('click', async () => {
+        btnSubmit.disabled = true;
+        const body = {
+            idOrigen:  selOrigen.value,
+            idDestino: selDestino.value,
+            cantidad:  parseInt(inpCantidad.value),
+            notas:     inpNotas?.value?.trim() || ''
+        };
+        try {
+            const r = await fetch(`/admin/api/inventario/${idProducto}/traslado`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', 'CSRF-Token': csrfToken },
+                body:    JSON.stringify(body)
+            });
+            const data = await r.json();
+            if (data.success) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (window.Swal) {
+                    Swal.fire({ icon: 'success', title: '¡Traslado creado!', text: `Código: ${data.codigo}`, confirmButtonColor: '#EC5FA3' });
+                } else {
+                    alert(`Traslado creado. Código: ${data.codigo}`);
+                }
+                cargarStockTiendas();
+            } else {
+                if (window.Swal) {
+                    Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje || 'No se pudo crear el traslado.', confirmButtonColor: '#EC5FA3' });
+                } else {
+                    alert(data.mensaje || 'Error al crear el traslado.');
+                }
+                btnSubmit.disabled = false;
+            }
+        } catch {
+            btnSubmit.disabled = false;
+            if (window.Swal) {
+                Swal.fire({ icon: 'error', title: 'Error de red', text: 'No se pudo conectar al servidor.', confirmButtonColor: '#EC5FA3' });
+            }
+        }
+    });
+
 })();

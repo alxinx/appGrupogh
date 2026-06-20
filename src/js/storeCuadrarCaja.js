@@ -71,6 +71,7 @@
         });
     };
     initAcordeon('cc-toggle-egresos',  'cc-acordeon-egresos',  'cc-icon-egresos');
+    initAcordeon('cc-toggle-efectivo', 'cc-acordeon-efectivo', 'cc-icon-efectivo');
     initAcordeon('cc-toggle-medios',   'cc-acordeon-medios',   'cc-icon-medios');
     initAcordeon('cc-toggle-credito',  'cc-acordeon-credito',  'cc-icon-credito');
 
@@ -126,11 +127,22 @@
                     const tr = document.createElement('tr');
                     tr.className = 'border-b border-slate-100';
                     tr.innerHTML = `
-                        <td class="py-1.5 px-2 text-slate-600 text-xs">${e.referencia}</td>
+                        <td class="py-1.5 px-2 text-xs">
+                            <a href="/store/storebehivors/expenses/${e.idEgreso}/pdf" target="_blank"
+                               class="text-pink-500 underline hover:text-pink-700 font-medium">${e.referencia}</a>
+                        </td>
                         <td class="py-1.5 px-2 text-slate-500 text-xs">${e.descripcion}</td>
                         <td class="py-1.5 px-2 text-right font-mono text-xs font-semibold text-rose-600">${fmt(e.valor)}</td>`;
                     tbodyE.appendChild(tr);
                 });
+            }
+
+            // Acordeón — efectivo
+            const tbodyEf = $('cc-tbody-efectivo');
+            if (d.txEfectivo.length === 0) {
+                tbodyEf.innerHTML = '<tr><td colspan="4" class="py-2 px-2 text-xs text-slate-400 text-center">Sin transacciones</td></tr>';
+            } else {
+                d.txEfectivo.forEach(tx => tbodyEf.appendChild(buildRow(tx)));
             }
 
             // Acordeón — medios

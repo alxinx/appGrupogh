@@ -75,17 +75,15 @@
         } catch (_) {}
     };
 
-    // ─── SSE — JAMÁS POLLING ──────────────────────────────────────────────────
+    // ─── SSE — JAMÁS POLLING (conexión compartida, ver helpers.js) ───────────
     const conectarSSE = () => {
-        const sse = new EventSource('/admin/sse');
-
-        sse.addEventListener('store_stats_detail', (e) => {
+        window.adminSSE.on('store_stats_detail', (e) => {
             const data = JSON.parse(e.data);
             if (data.idPuntoDeVenta !== pdvId) return;
             aplicarStats(data.ventasHoy, data.pagos);
         });
 
-        sse.onerror = () => setTimeout(conectarSSE, 5000);
+        window.adminSSE.connect();
     };
 
     // ─── MODAL PAGOS POR MÉTODO ───────────────────────────────────────────────

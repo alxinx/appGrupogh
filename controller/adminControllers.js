@@ -914,15 +914,16 @@ const stockPorTiendaProducto = async (req, res) => {
     const UMBRAL_BAJO = 5;
     try {
         const filas = await db.query(`
-            SELECT pdv.nombreComercial AS nombre, pdv.tipo AS tipo, SUM(s.cantidadExistente) AS total
+            SELECT pdv.idPuntoDeVenta AS idPuntoVenta, pdv.nombreComercial AS nombre, pdv.tipo AS tipo, SUM(s.cantidadExistente) AS total
             FROM STOCKS s
             INNER JOIN PUNTO_DE_VENTA pdv ON s.idPuntoVenta = pdv.idPuntoDeVenta
             WHERE s.idProducto = :idProducto AND s.cantidadExistente > 0
-            GROUP BY s.idPuntoVenta, pdv.nombreComercial, pdv.tipo
+            GROUP BY s.idPuntoVenta, pdv.idPuntoDeVenta, pdv.nombreComercial, pdv.tipo
             ORDER BY total DESC
         `, { replacements: { idProducto }, type: db.QueryTypes.SELECT });
 
         const datos = filas.map(r => ({
+            idPuntoVenta: r.idPuntoVenta,
             nombre: r.nombre,
             tipo:   r.tipo,
             total:  parseInt(r.total) || 0,
@@ -933,6 +934,84 @@ const stockPorTiendaProducto = async (req, res) => {
     } catch (e) {
         console.error('stockPorTiendaProducto:', e);
         return res.status(500).json({ success: false });
+    }
+};
+
+const trasladarProductoAdmin = async (req, res) => {
+    const { idProducto } = req.params;
+    const { idOrigen, idDestino, cantidad, notas } = req.body;
+    const idAdmin = req.usuario?.idUsuario;
+
+    if (!idOrigen || !idDestino || !cantidad || !idProducto) {
+        return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
+    }
+    if (idOrigen === idDestino) {
+        return res.status(400).json({ success: false, mensaje: 'El origen y destino deben ser distintos.' });
+    }
+    const cant = parseInt(cantidad);
+    if (isNaN(cant) || cant <= 0) {
+        return res.status(400).json({ success: false, mensaje: 'Cantidad inválida.' });
+    }
+
+    const t = await db.transaction();
+    try {
+        const stockRows = await Stock.findAll({
+            where: { idProducto, idPuntoVenta: idOrigen, cantidadExistente: { [Op.gt]: 0 } },
+            order: [['createdAt', 'ASC']],
+            lock: t.LOCK.UPDATE,
+            transaction: t
+        });
+        const totalDisp = stockRows.reduce((s, r) => s + parseFloat(r.cantidadExistente), 0);
+        if (totalDisp < cant) {
+            await t.rollback();
+            return res.status(400).json({ success: false, mensaje: `Stock insuficiente. Disponible: ${totalDisp}, solicitado: ${cant}.` });
+        }
+
+        let restante = cant;
+        for (const row of stockRows) {
+            if (restante <= 0) break;
+            const disp = parseFloat(row.cantidadExistente);
+            if (disp <= restante) {
+                await row.update({ cantidadExistente: 0 }, { transaction: t });
+                restante -= disp;
+            } else {
+                await row.update({ cantidadExistente: disp - restante }, { transaction: t });
+                restante = 0;
+            }
+        }
+
+        const ultimo = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction: t });
+        const nro    = ultimo ? parseInt(ultimo.codigoTraslado.split('-')[1]) + 1 : 1000;
+        const codigo = `TR-${nro}`;
+
+        const traslado = await Traslados.create({
+            codigoTraslado:    codigo,
+            idOrigen,
+            idDestino,
+            idUsuarioDespacha: idAdmin,
+            notas:             notas || null,
+            estado:            'EN_TRANSITO'
+        }, { transaction: t });
+
+        await DetalleTraslados.create({
+            idTraslado: traslado.idTraslado,
+            idPack:     null,
+            idProducto,
+            cantidad:   cant
+        }, { transaction: t });
+
+        await t.commit();
+
+        const pendientes = await Traslados.count({
+            where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
+        });
+        broadcast(idDestino, 'new_traslado', { codigo, pendientes });
+
+        return res.json({ success: true, idTraslado: traslado.idTraslado, codigo });
+    } catch (e) {
+        await t.rollback();
+        console.error('trasladarProductoAdmin:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
 };
 
@@ -5225,7 +5304,7 @@ export {
     storeInventory,
     storeEmployers,
     storeDocuments,
-    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, newProduct,
+    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, newProduct, trasladarProductoAdmin,
     batchBuyOrder, saveBatchOrder,
     dosificar,
     dashboardSupplier,

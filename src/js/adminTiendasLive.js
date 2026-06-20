@@ -293,35 +293,26 @@
         } catch (_) {}
     };
 
-    // ─── SSE (conexión compartida vía window.__adminSSE) ─────────────────────
+    // ─── SSE (conexión compartida vía window.adminSSE, ver helpers.js) ───────
     const conectarSSE = () => {
-        if (!window.__adminSSE) {
-            const sse = new EventSource('/admin/sse');
-            window.__adminSSE = sse;
-            sse.onerror = () => {
-                window.__adminSSE = null;
-                setTimeout(conectarSSE, 5000);
-            };
-        }
-
-        const sse = window.__adminSSE;
-
-        sse.addEventListener('store_stats', (e) => {
+        window.adminSSE.on('store_stats', (e) => {
             const data = JSON.parse(e.data);
             if (data.ventasHoy  !== undefined) actualizarCelda(data.idPuntoDeVenta, 'ventas',  data.ventasHoy);
             if (data.egresosHoy !== undefined) actualizarCelda(data.idPuntoDeVenta, 'egresos', data.egresosHoy);
         });
 
-        sse.addEventListener('caja_status', (e) => {
+        window.adminSSE.on('caja_status', (e) => {
             const { idPuntoDeVenta, estado } = JSON.parse(e.data);
             actualizarBadgeCaja(idPuntoDeVenta, estado);
         });
 
-        sse.addEventListener('global_stats', (e) => {
+        window.adminSSE.on('global_stats', (e) => {
             const data = JSON.parse(e.data);
             if (data.ventasGlobalesHoy !== undefined) actualizarGlobal(data.ventasGlobalesHoy);
             if (data.pagosGlobales)                   actualizarPagos(data.pagosGlobales);
         });
+
+        window.adminSSE.connect();
     };
 
     // ─── INIT ─────────────────────────────────────────────────────────────────

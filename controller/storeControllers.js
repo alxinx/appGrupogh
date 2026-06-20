@@ -349,7 +349,7 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
     const [egresosRows, facturas] = await Promise.all([
         Egresos.findAll({
             where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
-            attributes: ['referencia', 'descripcion', 'valorEgreso'],
+            attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso'],
             raw: true
         }),
         FacturaClientes.findAll({
@@ -361,7 +361,7 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
     ]);
 
     let sEfectivo = 0, sMedios = 0, sCredito = 0;
-    const txElectronicos = [], txCredito = [];
+    const txEfectivo = [], txElectronicos = [], txCredito = [];
     const facturasEfectivo = new Set(), facturasElectronicos = new Set(), facturasCredito = new Set();
 
     for (const f of facturas) {
@@ -370,6 +370,7 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
             const val = Math.round(parseFloat(p.valor) || 0);
             if (p.metodoPago === 'Efectivo') {
                 sEfectivo += val;
+                txEfectivo.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: 'Efectivo', referencia: p.nroReferencia || '—', valor: val });
                 facturasEfectivo.add(f.idFacturaCliente);
             } else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) {
                 sMedios += val;
@@ -383,13 +384,13 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
         }
     }
 
-    const txEgresos  = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
+    const txEgresos  = egresosRows.map(e => ({ idEgreso: e.idEgreso, referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
     const sEgresos   = txEgresos.reduce((s, e) => s + e.valor, 0);
     const idFacturas = facturas.map(f => f.idFacturaCliente);
 
     return {
         sEfectivo, sMedios, sCredito, sEgresos, sVentas: sEfectivo + sMedios + sCredito,
-        txElectronicos, txCredito, txEgresos, idFacturas,
+        txEfectivo, txElectronicos, txCredito, txEgresos, idFacturas,
         nFacturasEfectivo:     facturasEfectivo.size,
         nFacturasElectronicos: facturasElectronicos.size,
         nFacturasCredito:      facturasCredito.size,
@@ -1856,7 +1857,7 @@ const getCuadreCajaDatos = async (req, res) => {
         ]);
         if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta.' });
 
-        const { sEfectivo, sMedios, sCredito, sEgresos, sVentas, txElectronicos, txCredito, txEgresos } =
+        const { sEfectivo, sMedios, sCredito, sEgresos, sVentas, txEfectivo, txElectronicos, txCredito, txEgresos } =
             await _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date());
 
         return res.json({
@@ -1867,6 +1868,7 @@ const getCuadreCajaDatos = async (req, res) => {
                 empleadoApertura: `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim()
             },
             totales: { ventas: sVentas, egresos: sEgresos, efectivo: sEfectivo, mediosElectronicos: sMedios, credito: sCredito },
+            txEfectivo,
             txElectronicos,
             txCredito,
             txEgresos
@@ -2295,7 +2297,6 @@ const getEgresoComprobantePDF = async (req, res) => {
         const codigoEmp  = egreso.empleado?.codigoEmpleado || 'N/A';
 
         fila('Responsable:', nombreEmp);
-        fila('Cód. empleado:', codigoEmp);
 
         doc.moveDown(0.2); hr();
 
@@ -2311,9 +2312,9 @@ const getEgresoComprobantePDF = async (req, res) => {
 
         // Valor grande y destacado
         const valorStr = `$${Math.round(parseFloat(egreso.valorEgreso)).toLocaleString('es-CO')}`;
-        doc.font('Helvetica-Bold').fontSize(16).text(valorStr, MARGIN, doc.y, { width: CW, align: 'center' });
-        doc.moveDown(0.1);
         doc.font('Helvetica').fontSize(6.5).text('VALOR DEL EGRESO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.1);
+        doc.font('Helvetica-Bold').fontSize(16).text(valorStr, MARGIN, doc.y, { width: CW, align: 'center' });
         doc.moveDown(0.6);
 
         hr();
