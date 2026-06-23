@@ -35,21 +35,31 @@
 
     // ─── LOOKUP DE EMPLEADO ───────────────────────────────────────────────────
     let empTimer = null;
+    let empleadoOk = false;
     const feedbackEmp = document.getElementById('egr-feedback-emp');
+    const btnSubmit    = document.getElementById('egr-submit');
+
+    const setEmpleadoOk = (ok) => {
+        empleadoOk = ok;
+        btnSubmit.disabled = !ok;
+    };
+
     document.getElementById('egr-empleado').addEventListener('input', (e) => {
         clearTimeout(empTimer);
         const cod = e.target.value.trim();
         feedbackEmp.textContent = '';
+        setEmpleadoOk(false);
         if (cod.length < 3) return;
         empTimer = setTimeout(async () => {
             try {
-                const r = await fetch(`/store/json/personal/codigo/${encodeURIComponent(cod.toUpperCase())}`);
+                const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(cod.toUpperCase())}?accion=CREATE`);
                 const json = await r.json();
                 if (json.success) {
-                    feedbackEmp.textContent = `✓ ${json.empleado.PrimerNombre} ${json.empleado.PrimerApellido}`;
+                    feedbackEmp.textContent = `✓ ${json.nombre}`;
                     feedbackEmp.className = 'text-xs ml-1 h-4 text-emerald-600';
+                    setEmpleadoOk(true);
                 } else {
-                    feedbackEmp.textContent = 'Empleado no encontrado';
+                    feedbackEmp.textContent = json.mensaje || 'Empleado no encontrado';
                     feedbackEmp.className = 'text-xs ml-1 h-4 text-red-500';
                 }
             } catch (_) {}
@@ -194,6 +204,7 @@
             document.getElementById('egr-empleado').value = '';
             document.getElementById('egr-descripcion').value = '';
             feedbackEmp.textContent = '';
+            setEmpleadoOk(false);
 
             Swal.fire({
                 icon: 'success',
@@ -207,7 +218,7 @@
         } catch (_) {
             Swal.fire({ icon: 'error', title: 'Error de red', text: 'No se pudo conectar con el servidor.', confirmButtonColor: '#EC5FA3' });
         } finally {
-            btn.disabled = false;
+            btn.disabled = !empleadoOk;
             btn.innerHTML = '<i class="fi fi-rr-disk mr-2"></i>Registrar Egreso';
         }
     });

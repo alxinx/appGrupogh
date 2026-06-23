@@ -58,6 +58,11 @@ const CajaTienda = db.define('CAJA_TIENDA', {
         allowNull: true,
         defaultValue: 0
     },
+    cajaMenorRegistrada: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0
+    },
     ventasTotales: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,

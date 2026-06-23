@@ -52,11 +52,12 @@
     const oMedios   = $('cc-o-medios');
     const oCredito  = $('cc-o-credito');
 
-    const codEmpleado  = $('cc-codigo-empleado');
-    const btnValidar   = $('cc-btn-validar');
-    const btnCerrar    = $('cc-btn-cerrar');
-    const empleadoInfo = $('cc-empleado-info');
-    const nota         = $('cc-nota');
+    const codEmpleado    = $('cc-codigo-empleado');
+    const btnCerrar      = $('cc-btn-cerrar');
+    const empleadoInfo   = $('cc-empleado-info');
+    const nota           = $('cc-nota');
+    const cardDescuadre  = $('cc-card-descuadre');
+    const checkDescuadre = $('cc-check-descuadre');
 
     // ── Acordeones ───────────────────────────────────────────────────────────
     const initAcordeon = (btnId, panelId, iconId) => {
@@ -180,13 +181,25 @@
             { inp: oMedios,   sys: dataSistema.totales.mediosElectronicos },
             { inp: oCredito,  sys: dataSistema.totales.credito },
         ];
+        let hayDescuadre = false;
         for (const { inp, sys } of pares) {
             const val    = parse(inp.value);
             const vacio  = inp.value.trim() === '';
             const diff   = !vacio && Math.abs(val - sys) > 0.5;
+            if (diff) hayDescuadre = true;
             inp.classList.remove(...ALERT_CLASS.split(' '), ...NORMAL_CLASS.split(' '));
             inp.classList.add(...(diff ? ALERT_CLASS : NORMAL_CLASS).split(' '));
         }
+        toggleDescuadre(hayDescuadre);
+    };
+
+    // ── Checkbox de responsabilidad por descuadre ─────────────────────────────
+    const toggleDescuadre = (hayDescuadre) => {
+        if (!cardDescuadre) return;
+        cardDescuadre.classList.toggle('hidden', !hayDescuadre);
+        cardDescuadre.classList.toggle('flex',   hayDescuadre);
+        if (!hayDescuadre) checkDescuadre.checked = false;
+        actualizarBotonCerrar();
     };
 
     // Inputs: formateo en tiempo real + comparación
@@ -208,37 +221,49 @@
     };
 
     let validarTimer = null;
+    let empleadoOk    = false;
+
+    // Habilita "Cerrar caja" solo si el empleado quedó validado y, en caso de
+    // descuadre, el responsable marcó la casilla de aceptación.
+    const actualizarBotonCerrar = () => {
+        const descuadreOk = !cardDescuadre || cardDescuadre.classList.contains('hidden') || checkDescuadre.checked;
+        btnCerrar.disabled = !empleadoOk || !descuadreOk;
+    };
+
+    checkDescuadre?.addEventListener('change', actualizarBotonCerrar);
 
     const validarEmpleado = async () => {
         const codigo = codEmpleado.value.trim().toUpperCase();
         if (!codigo) { setEmpInfo('', false); return; }
         setEmpInfo('Verificando...', false);
         try {
-            const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo)}`);
+            const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo)}?accion=EDIT`);
             const d = await r.json();
             if (d.success) {
                 empleadoId     = d.idEmpleado;
                 empleadoNombre = d.nombre;
                 setEmpInfo(d.nombre, true);
-                btnCerrar.disabled = false;
+                empleadoOk = true;
             } else {
                 empleadoId = null;
-                setEmpInfo('No pertenece a esta tienda', false);
-                btnCerrar.disabled = true;
+                setEmpInfo(d.mensaje || 'No pertenece a esta tienda', false);
+                empleadoOk = false;
             }
         } catch (_) {
             setEmpInfo('Error al verificar', false);
+            empleadoOk = false;
         }
+        actualizarBotonCerrar();
     };
-
-    btnValidar.addEventListener('click', validarEmpleado);
 
     codEmpleado.addEventListener('input', () => {
         empleadoId = null;
         clearTimeout(validarTimer);
         const codigo = codEmpleado.value.trim();
-        // El botón se habilita por longitud; el servidor es quien cuenta fallos.
-        btnCerrar.disabled = codigo.length < 2;
+        // Se habilita de forma optimista por longitud; la validación asíncrona
+        // (debounce) confirma o revoca el acceso al terminar.
+        empleadoOk = codigo.length >= 2;
+        actualizarBotonCerrar();
         if (codigo.length >= 2) {
             setEmpInfo('Verificando...', false);
             validarTimer = setTimeout(validarEmpleado, 600);
@@ -256,6 +281,15 @@
     btnCerrar.addEventListener('click', async () => {
         if (!dataSistema) return;
         if (!codEmpleado.value.trim()) { setEmpInfo('Ingresa el código de empleado', false); return; }
+        if (cardDescuadre && !cardDescuadre.classList.contains('hidden') && !checkDescuadre.checked) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Confirma el descuadre',
+                text: 'Debes marcar la casilla de responsabilidad antes de cerrar la caja.',
+                confirmButtonColor: '#EC5FA3'
+            });
+            return;
+        }
 
         const oE  = parse(oEgresos.value);
         const oEf = parse(oEfectivo.value);

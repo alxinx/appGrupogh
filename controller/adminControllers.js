@@ -23,7 +23,7 @@ import contratosLaborales from '../src/json/contratosLaborales.json' with {type:
 import { limpiarPrecio, sanitizarHTML, getAvailability } from '../helpers/helpers.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col } from "sequelize";
-import { _generarPDFCuadre } from './storeControllers.js';
+import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
 
 
 dotenv.config();
@@ -4704,42 +4704,28 @@ const getAdminCuadrePDF = async (req, res) => {
             include: [
                 { model: Empleados,    as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
                 { model: Empleados,    as: 'empleadoCierre',   attributes: ['PrimerNombre', 'PrimerApellido'] },
-                { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial'] }
+                { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial', 'direccionPrincipal', 'ciudad'] }
             ]
         });
         if (!caja) return res.status(404).send('Caja no encontrada.');
 
-        const fecha  = new Date(caja.fechaCierre);
-        const inicio = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 0, 0, 0);
-        const fin    = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 23, 59, 59);
-
-        const [egresosRows, facturas] = await Promise.all([
-            Egresos.findAll({
-                where: { idPuntoDeVenta, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['referencia', 'descripcion', 'valorEgreso'], raw: true
-            }),
-            FacturaClientes.findAll({
-                where: { idPuntoDeVenta, estado: 'liquidada', createdAt: { [Op.between]: [inicio, fin] } },
-                attributes: ['prefijo', 'numeroFactura'],
-                include: [{ model: DetallesPagosFactura, as: 'pagos', include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }]
-            })
+        const [regimen, municipio, datos] = await Promise.all([
+            RegimenFacturacion.findOne({ where: { idPuntoDeVenta, activa: true } }),
+            caja.puntoDeVenta?.ciudad
+                ? Municipios.findOne({ where: { id: caja.puntoDeVenta.ciudad }, attributes: ['nombre'], raw: true })
+                : null,
+            _calcularTransaccionesCaja(idPuntoDeVenta, new Date(caja.fechaApertura), new Date(caja.fechaCierre), 'liquidada')
         ]);
 
-        const txEgresos = egresosRows.map(e => ({ referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
-        const txElectronicos = [], txCredito = [];
-        for (const f of facturas) {
-            for (const p of f.pagos) {
-                const val = Math.round(parseFloat(p.valor) || 0);
-                if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago))
-                    txElectronicos.push({ entidad: p.entidad?.nombreEntidad || p.metodoPago, referencia: p.nroReferencia || '—', valor: val });
-                else if (p.metodoPago === 'Entidad Crediticia')
-                    txCredito.push({ entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
-            }
-        }
-
-        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, fecha);
+        const buf = await _generarPDFCuadre({
+            caja, regimen, municipio,
+            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas },
+            txElectronicos: datos.txElectronicos,
+            txCredito:      datos.txCredito,
+            txEgresos:      datos.txEgresos
+        });
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="cuadre-${fecha.toISOString().slice(0,10)}.pdf"`);
+        res.setHeader('Content-Disposition', `inline; filename="cuadre-${new Date(caja.fechaCierre).toISOString().slice(0,10)}.pdf"`);
         res.setHeader('Content-Length', buf.length);
         return res.send(buf);
     } catch (e) {

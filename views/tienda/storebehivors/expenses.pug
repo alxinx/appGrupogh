@@ -70,7 +70,7 @@ block contenedor
                                     div(class="relative")
                                         i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none")
                                         input(
-                                            type="text"
+                                            type="password"
                                             id="egr-empleado"
                                             placeholder="Ej: 00123"
                                             maxlength="5"
@@ -93,7 +93,8 @@ block contenedor
                                 button(
                                     type="submit"
                                     id="egr-submit"
-                                    class="w-full btn btn-primary py-3 flex items-center justify-center gap-2 cursor-pointer"
+                                    disabled
+                                    class="w-full btn btn-primary py-3 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                 )
                                     i(class="fi fi-rr-disk")
                                     | Registrar Egreso

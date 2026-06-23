@@ -520,6 +520,13 @@ import ciiuData from '../json/ciiu.json';
     const inputIdCliente  = document.getElementById('idCliente');
     const btnAbrirCliente = document.getElementById('btn-abrir-modal-cliente');
 
+    // Snapshot del cliente genérico (render inicial) para poder volver a él tras cada venta
+    const CLIENTE_GENERICO = {
+        idCliente: inputIdCliente?.value || '0',
+        nombre:    document.getElementById('cli-display-nombre')?.textContent?.trim() || 'Cliente Genérico',
+        doc:       document.getElementById('cli-display-doc')?.textContent?.trim()    || ''
+    };
+
     // ── Abrir / cerrar ────────────────────────────────────────────────────────
     const abrirModalCliente = () => {
         if (!modalCliente) return;
@@ -719,6 +726,42 @@ import ciiuData from '../json/ciiu.json';
         if (h) h.value = cli.idCliente;
 
         actualizarHeaderModal();
+    };
+
+    // ── Volver al cliente genérico (tras finalizar una venta) ─────────────────
+    const resetCliente = () => {
+        if (inputIdCliente) inputIdCliente.value = CLIENTE_GENERICO.idCliente;
+        const elNombre = document.getElementById('cli-display-nombre');
+        const elDoc    = document.getElementById('cli-display-doc');
+        if (elNombre) elNombre.textContent = CLIENTE_GENERICO.nombre;
+        if (elDoc)    elDoc.textContent    = CLIENTE_GENERICO.doc;
+
+        const idHidden = document.getElementById('cli-id-hidden');
+        if (idHidden) idHidden.value = CLIENTE_GENERICO.idCliente;
+
+        ['cli-numero-doc', 'cli-primer-nombre', 'cli-segundo-nombre', 'cli-primer-apellido', 'cli-segundo-apellido',
+         'cli-email-n', 'cli-telefono-n', 'cli-razon-social', 'cli-digito-verif', 'cli-email-e', 'cli-telefono-e',
+         'cli-regimen', 'cli-ciiu', 'cli-desc-ciiu', 'cli-fecha-rut', 'cli-direccion'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        const tipoDocSel = document.getElementById('cli-tipo-doc');
+        if (tipoDocSel) tipoDocSel.value = 'CC';
+
+        const deptoSel = document.getElementById('cli-departamento');
+        if (deptoSel) deptoSel.value = '';
+        const munSel = document.getElementById('cli-municipio');
+        if (munSel) munSel.innerHTML = '<option value="">Seleccionar...</option>';
+
+        modalCliente?.querySelectorAll('[name="gran_contribuyente"], [name="autorretenedor"], [name="agente_retencion"], [name="obligado_aduanero"]')
+            .forEach(el => { el.checked = false; });
+
+        const rutFile = document.getElementById('cli-rut-file');
+        if (rutFile) rutFile.value = '';
+        document.getElementById('cli-rut-nombre')?.classList.add('hidden');
+
+        switchTab('natural');
     };
 
     // ── Búsqueda async por documento ─────────────────────────────────────────
@@ -1685,11 +1728,12 @@ import ciiuData from '../json/ciiu.json';
                     return;
                 }
 
-                // Éxito → abrir tirilla y limpiar carrito
+                // Éxito → abrir tirilla y dejar el POS listo para una nueva orden
                 window.open(`/store/facturas/${data.idFacturaCliente}/tirilla`, '_blank');
                 cerrarFV();
                 cart.clear();
                 renderCarrito();
+                resetCliente();
                 Swal.fire({
                     icon: 'success', title: '¡Venta registrada!',
                     text: 'La factura fue generada correctamente.',

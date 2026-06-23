@@ -262,13 +262,13 @@
 
             debounceTimer = setTimeout(async () => {
                 try {
-                    const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo.toUpperCase())}`);
+                    const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo.toUpperCase())}?accion=CREATE`);
                     const d = await r.json();
                     if (d.success) {
                         setInfo(d.nombre, true);
                         empleadoValido = true;
                     } else {
-                        setInfo('No pertenece a esta tienda', false);
+                        setInfo(d.mensaje || 'No pertenece a esta tienda', false);
                     }
                 } catch (_) {
                     setInfo('Error al verificar', false);

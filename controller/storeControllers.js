@@ -11,6 +11,7 @@ import {
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import db from '../config/bd.js';
@@ -19,6 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 const LOGO_PATH  = path.resolve(__dirname, '../public/img/logo.png');
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
+import { resolverIds } from '../middlewares/verificarPermisoEmpleado.js';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
 import sharp from 'sharp';
@@ -337,6 +339,28 @@ const _broadcastEstadoTraslado = async (idDestino, idOrigen = null) => {
 };
 
 // ─── HELPERS CAJA ────────────────────────────────────────────────────────────
+
+// Dos iniciales (palabras compuestas) o las dos primeras letras (palabra única) del nombre de la tienda
+const _prefijoTienda = (nombreComercial) => {
+    const limpio = (nombreComercial || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z\s]/g, '');
+    const palabras = limpio.split(/\s+/).filter(Boolean);
+    if (palabras.length >= 2) return palabras[0][0] + palabras[1][0];
+    return (palabras[0] || 'XX').padEnd(2, 'X').slice(0, 2);
+};
+
+// Código único y correlativo por tienda: PREFIJO-000001
+const _generarCodigoCaja = async (idPuntoDeVenta, nombreComercial) => {
+    const prefijo = _prefijoTienda(nombreComercial);
+    const ultimo = await CajaTienda.findOne({
+        where: { idPuntoDeVenta, codigo: { [Op.like]: `${prefijo}-%` } },
+        order: [['createdAt', 'DESC']]
+    });
+    const nro = ultimo ? parseInt(ultimo.codigo.split('-')[1], 10) + 1 : 1;
+    return `${prefijo}-${String(nro).padStart(6, '0')}`;
+};
 
 const _getCajaAbierta = (idPuntoDeVenta, includes = []) =>
     CajaTienda.findOne({
@@ -1910,6 +1934,7 @@ const cerrarCajaAPI = async (req, res) => {
         const oEfectivo     = Math.round(parseFloat(operadorEfectivo)     || 0);
         const oElectronicos = Math.round(parseFloat(operadorElectronicos) || 0);
         const oCredito      = Math.round(parseFloat(operadorCredito)      || 0);
+        const oBase         = Math.round(parseFloat(operadorBase)        || 0);
 
         if (idFacturas.length > 0) {
             await Promise.all([
@@ -1921,6 +1946,7 @@ const cerrarCajaAPI = async (req, res) => {
         await caja.update({
             idEmpleadoCierre:               empleadoCierre.idEmpleado,
             fechaCierre:                    new Date(),
+            cajaMenorRegistrada:            oBase,
             ventasTotales:                  sVentas,
             ventasTotalesRegistradas:       oEfectivo + oElectronicos + oCredito,
             egresosTotales:                 sEgresos,
@@ -1945,118 +1971,176 @@ const cerrarCajaAPI = async (req, res) => {
 };
 
 // ── Helper reutilizable para generar el PDF de cuadre ────────────────────────
-const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fecha, counts = {}) => {
+const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronicos, txCredito, txEgresos }) => {
     const W = 227, MARGIN = 10, CW = W - MARGIN * 2;
-    const doc = new PDFDocument({ size: [W, 900], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
+    const estH = 650 + txElectronicos.length * 16 + txCredito.length * 16 + txEgresos.length * 11;
+    const doc = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
     const chunks = [];
     doc.on('data', c => chunks.push(c));
     const pdfEnd = new Promise(r => doc.on('end', r));
 
+    // URL de verificación pública del cierre (misma lógica que el QR de comprobante de traslados)
+    const baseUrl         = `${process.env.APP_URL}:${process.env.APP_PORT}`;
+    const verificacionUrl = `${baseUrl}/store/storebehivors/caja/${caja.idCajaTienda}/pdf`;
+    const qrBuffer         = await QRCode.toBuffer(verificacionUrl, { type: 'png', width: 200, margin: 1 });
+
     const hr  = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.3).stroke(); doc.moveDown(0.3); };
     const fmt = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
-    const fmtHora = (d) => d ? new Date(d).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
-    const fechaStr = fecha.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+    const fmtFechaHora = (d) => {
+        if (!d) return '—';
+        const date = new Date(d);
+        const f = date.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const h = date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+        return `${f} ${h}`;
+    };
 
+    // Fila "label .......... valor" con puntos de relleno calculados al ancho disponible
+    // checkbox: antepone "[ ]" para que el operador pueda marcar el ítem al auditar el voucher impreso
+    const filaPuntos = (label, valor, opts = {}) => {
+        const { size = 6.5, bold = false, indent = 0, checkbox = false } = opts;
+        const lbl = checkbox ? `[ ] ${label}` : label;
+        const width = CW - indent;
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size);
+        const wLabel = doc.widthOfString(lbl + ' ');
+        const wValor = doc.widthOfString(' ' + valor);
+        const wDot   = doc.widthOfString('.') || 1;
+        const nDots  = Math.max(3, Math.floor((width - wLabel - wValor - 3) / wDot));
+        doc.text(`${lbl} ${'.'.repeat(nDots)} ${valor}`, MARGIN + indent, doc.y, { width });
+    };
+
+    const seccionTitulo = (txt) => {
+        doc.moveDown(0.1);
+        doc.font('Helvetica-Bold').fontSize(7).text(`[ ${txt} ]`, MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.2);
+    };
+
+    // Lista de transacciones agrupada por entidad, con subtotal por grupo
+    const listaPorEntidad = (titulo, transacciones) => {
+        if (!transacciones.length) return;
+        seccionTitulo(titulo);
+
+        const grupos = new Map();
+        for (const t of transacciones) {
+            if (!grupos.has(t.entidad)) grupos.set(t.entidad, []);
+            grupos.get(t.entidad).push(t);
+        }
+
+        for (const [entidad, txs] of grupos) {
+            doc.font('Helvetica-Bold').fontSize(6.5).text(`${entidad}:`, MARGIN, doc.y, { width: CW });
+            doc.moveDown(0.1);
+            let subtotal = 0;
+            for (const t of txs) {
+                subtotal += t.valor;
+                filaPuntos(`Fact ${t.nroFactura} · Ref ${t.referencia}`, fmt(t.valor), { indent: 4, checkbox: true });
+                doc.moveDown(0.1);
+            }
+            hr();
+            filaPuntos(`TOTAL ${entidad.toUpperCase()}:`, fmt(subtotal), { bold: true });
+            doc.moveDown(0.3);
+        }
+    };
+
+    // ── HEADER: logo, nombre comercial, datos tributarios ──────────────────────
     try {
         const LOGO_SIZE = 40;
         doc.image(LOGO_PATH, MARGIN + (CW - LOGO_SIZE) / 2, MARGIN, { width: LOGO_SIZE, height: LOGO_SIZE });
         doc.y = MARGIN + LOGO_SIZE + 4;
     } catch (_) { doc.y = MARGIN + 8; }
 
-    doc.font('Helvetica-Bold').fontSize(8).text(caja.puntoDeVenta?.nombreComercial || 'Punto de Venta', MARGIN, doc.y, { width: CW, align: 'center' });
-    doc.font('Helvetica-Bold').fontSize(7).text(`CIERRE DE CAJA — ${fechaStr}`, MARGIN, doc.y, { width: CW, align: 'center' });
+    doc.font('Helvetica-Bold').fontSize(9).text(caja.puntoDeVenta?.nombreComercial || regimen?.razonSocial || 'Punto de Venta', MARGIN, doc.y, { width: CW, align: 'center' });
+    doc.font('Helvetica').fontSize(6.5);
+    if (regimen?.razonSocial) doc.text(regimen.razonSocial, MARGIN, doc.y, { width: CW, align: 'center' });
+    if (regimen?.taxId)       doc.text(`NIT: ${regimen.taxId}${regimen.DV ? '-' + regimen.DV : ''}`, MARGIN, doc.y, { width: CW, align: 'center' });
+    if (caja.puntoDeVenta?.direccionPrincipal) doc.text(caja.puntoDeVenta.direccionPrincipal, MARGIN, doc.y, { width: CW, align: 'center' });
+    if (municipio?.nombre) doc.text(municipio.nombre, MARGIN, doc.y, { width: CW, align: 'center' });
+    doc.moveDown(0.2);
+    doc.font('Helvetica-Bold').fontSize(7).text(`CIERRE DE CAJA — ${new Date(caja.fechaCierre).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}`, MARGIN, doc.y, { width: CW, align: 'center' });
+    if (caja.codigo) {
+        doc.font('Helvetica').fontSize(6.5).text(`Codigo cierre: ${caja.codigo}`, MARGIN, doc.y, { width: CW, align: 'center' });
+    }
     doc.moveDown(0.3); hr();
 
+    // ── SECCIÓN 2: apertura / cierre ────────────────────────────────────────────
     const nomApertura = `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim();
     const nomCierre   = `${caja.empleadoCierre?.PrimerNombre || ''} ${caja.empleadoCierre?.PrimerApellido || ''}`.trim();
     doc.font('Helvetica').fontSize(6.5);
-    doc.text(`Apertura: ${nomApertura}  ${fmtHora(caja.fechaApertura)}`, MARGIN, doc.y, { width: CW });
-    doc.text(`Cierre:   ${nomCierre}  ${fmtHora(caja.fechaCierre)}`,     MARGIN, doc.y, { width: CW });
+    doc.text(`Apertura: ${fmtFechaHora(caja.fechaApertura)}`, MARGIN, doc.y, { width: CW });
+    doc.text(`Abrió: ${nomApertura || 'N/A'}`,               MARGIN, doc.y, { width: CW });
+    doc.moveDown(0.15);
+    doc.text(`Cierre: ${fmtFechaHora(caja.fechaCierre)}`, MARGIN, doc.y, { width: CW });
+    doc.text(`Cerró: ${nomCierre || 'N/A'}`,            MARGIN, doc.y, { width: CW });
     doc.moveDown(0.3); hr();
 
-    const sEfectivo = Math.round(parseFloat(caja.ventasEfectivo)                    || 0);
-    const sMedios   = Math.round(parseFloat(caja.ventasMediosElectronicos)           || 0);
-    const sCredito  = Math.round(parseFloat(caja.ventasCredito)                      || 0);
-    const sEgresos  = Math.round(parseFloat(caja.egresosTotales)                     || 0);
-    const oEfectivo = Math.round(parseFloat(caja.ventasEfectivoRegistradas)          || 0);
-    const oMedios   = Math.round(parseFloat(caja.ventasMediosElectronicosRegistradas)|| 0);
-    const oCredito  = Math.round(parseFloat(caja.ventasCreditoRegistradas)           || 0);
-    const oEgresos  = Math.round(parseFloat(caja.egresosTotalesRegistrados)          || 0);
+    // ── SECCIÓN 3: ventas y egresos globales (negrilla) ─────────────────────────
+    doc.font('Helvetica-Bold').fontSize(8);
+    filaPuntos('VENTAS TOTALES', fmt(sums.sVentas),  { bold: true, size: 8 });
+    doc.moveDown(0.2);
+    filaPuntos('EGRESOS',        fmt(sums.sEgresos), { bold: true, size: 8 });
+    doc.moveDown(0.3); hr();
 
-    const col1 = MARGIN, col2 = MARGIN + 70, col3 = MARGIN + 120, wCol = 45;
-    doc.font('Helvetica-Bold').fontSize(6).text('Concepto', col1, doc.y, { width: 65 });
-    doc.y -= doc.currentLineHeight(); doc.text('Sistema',    col2, doc.y, { width: wCol, align: 'right' });
-    doc.y -= doc.currentLineHeight(); doc.text('Registrado', col3, doc.y, { width: wCol, align: 'right' });
-    doc.moveDown(0.2); hr();
+    // ── SECCIÓN 4: resumen de operación por método de pago ─────────────────────
+    seccionTitulo('RESUMEN DE OPERACIÓN');
+    filaPuntos('Efectivo',            fmt(sums.sEfectivo), { checkbox: true });
+    doc.moveDown(0.15);
+    filaPuntos('Crédito',             fmt(sums.sCredito), { checkbox: true });
+    doc.moveDown(0.15);
+    filaPuntos('Medios Electrónicos', fmt(sums.sMedios), { checkbox: true });
+    doc.moveDown(0.15);
+    filaPuntos('(-) Egresos Totales', fmt(sums.sEgresos));
+    doc.moveDown(0.3); hr();
 
-    let enControversia = false;
-    for (const { label, sis, op } of [
-        { label: 'Egresos',             sis: sEgresos,  op: oEgresos  },
-        { label: 'Efectivo',            sis: sEfectivo, op: oEfectivo },
-        { label: 'Medios Electrónicos', sis: sMedios,   op: oMedios   },
-        { label: 'Crédito',             sis: sCredito,  op: oCredito  },
-    ]) {
-        const diff = Math.abs(sis - op) > 0.5;
-        if (diff) enControversia = true;
-        const y = doc.y;
-        doc.font(diff ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.5)
-           .text(label + (diff ? ' ✗' : ''), col1, y, { width: 65 });
-        doc.y = y; doc.text(fmt(sis), col2, y, { width: wCol, align: 'right' });
-        doc.y = y; doc.text(fmt(op),  col3, y, { width: wCol, align: 'right' });
-        doc.moveDown(0.2);
+    // ── SECCIÓN 5: auditoría de caja física (base / caja menor) ────────────────
+    seccionTitulo('AUDITORÍA DE CAJA FÍSICA');
+    const cajaMenorSistema    = Math.round(parseFloat(caja.cajaMenor) || 0);
+    const cajaMenorRegistrada = Math.round(parseFloat(caja.cajaMenorRegistrada) || 0);
+    filaPuntos('Base (Caja Menor)', fmt(cajaMenorSistema), { checkbox: true });
+    if (Math.abs(cajaMenorSistema - cajaMenorRegistrada) > 0.5) {
+        doc.moveDown(0.1);
+        doc.font('Helvetica').fontSize(6).text(
+            `Diferencia con registrado: ${fmt(Math.abs(cajaMenorSistema - cajaMenorRegistrada))} (Registrado: ${fmt(cajaMenorRegistrada)})`,
+            MARGIN, doc.y, { width: CW, indent: 4 }
+        );
     }
-    hr();
+    doc.moveDown(0.3); hr();
 
-    const partes = [];
-    if (counts.nFacturasEfectivo)     partes.push(`Efectivo: ${counts.nFacturasEfectivo}`);
-    if (counts.nFacturasElectronicos) partes.push(`Medios: ${counts.nFacturasElectronicos}`);
-    if (counts.nFacturasCredito)      partes.push(`Crédito: ${counts.nFacturasCredito}`);
-    if (partes.length > 0) {
-        doc.font('Helvetica').fontSize(5.5).fillColor('#666')
-           .text(`Facturas: ${partes.join('  ·  ')}  —  Total: ${counts.nFacturasTotal || 0}`, MARGIN, doc.y, { width: CW });
-        doc.fillColor('#000').moveDown(0.3);
-        hr();
-    }
+    // ── Detalle: transacciones electrónicas (Banco / Billetera / Tarjeta) ──────
+    listaPorEntidad('TRANSACCIONES ELECTRÓNICAS', txElectronicos);
 
+    // ── Detalle: ventas a entidades crediticias ─────────────────────────────────
+    listaPorEntidad('VENTAS A CRÉDITO', txCredito);
+
+    // ── SECCIÓN 6: egresos ───────────────────────────────────────────────────────
     if (txEgresos.length > 0) {
-        doc.font('Helvetica-Bold').fontSize(6.5).text('Egresos', MARGIN, doc.y, { width: CW });
-        doc.moveDown(0.2);
+        seccionTitulo('EGRESOS');
         for (const e of txEgresos) {
-            const y = doc.y; doc.font('Helvetica').fontSize(6);
-            doc.text(e.referencia,  MARGIN,       y, { width: 50 });
-            const y1 = doc.y;
-            doc.y = y; doc.text(e.descripcion, MARGIN + 53,  y, { width: 60 });
-            const y2 = doc.y;
-            doc.y = y; doc.text(fmt(e.valor),  MARGIN + 116, y, { width: 37, align: 'right' });
-            const y3 = doc.y;
-            doc.y = Math.max(y1, y2, y3);
-            doc.moveDown(0.3);
+            filaPuntos(e.referencia, fmt(e.valor));
+            doc.moveDown(0.1);
         }
         hr();
+        filaPuntos('TOTAL EGRESOS:', fmt(sums.sEgresos), { bold: true });
+        doc.moveDown(0.3); hr();
     }
 
-    if (txElectronicos.length > 0) {
-        doc.font('Helvetica-Bold').fontSize(6.5).text('Medios Electrónicos', MARGIN, doc.y, { width: CW });
-        doc.moveDown(0.2);
-        for (const t of txElectronicos) {
-            const y = doc.y; doc.font('Helvetica').fontSize(6);
-            doc.text(t.entidad,    MARGIN,       y, { width: 55 });
-            doc.y = y; doc.text(t.referencia, MARGIN + 58,  y, { width: 55 });
-            doc.y = y; doc.text(fmt(t.valor), MARGIN + 116, y, { width: 37, align: 'right' });
-            doc.moveDown(0.15);
-        }
-        hr();
-    }
+    // ── SECCIÓN 7: descuadre (solo si hay diferencias sistema vs operador) ─────
+    const categoriasDescuadre = [
+        { label: 'egresos',             sis: caja.egresosTotales,                      op: caja.egresosTotalesRegistrados },
+        { label: 'efectivo',            sis: caja.ventasEfectivo,                      op: caja.ventasEfectivoRegistradas },
+        { label: 'medios electrónicos', sis: caja.ventasMediosElectronicos,            op: caja.ventasMediosElectronicosRegistradas },
+        { label: 'crédito',             sis: caja.ventasCredito,                       op: caja.ventasCreditoRegistradas },
+    ].map(c => ({ label: c.label, sis: Math.round(parseFloat(c.sis) || 0), op: Math.round(parseFloat(c.op) || 0) }))
+     .filter(c => Math.abs(c.sis - c.op) > 0.5);
 
-    if (txCredito.length > 0) {
-        doc.font('Helvetica-Bold').fontSize(6.5).text('Ventas a Crédito', MARGIN, doc.y, { width: CW });
-        doc.moveDown(0.2);
-        for (const t of txCredito) {
-            const y = doc.y; doc.font('Helvetica').fontSize(6);
-            doc.text(t.entidad,    MARGIN,       y, { width: 55 });
-            doc.y = y; doc.text(t.referencia, MARGIN + 58,  y, { width: 55 });
-            doc.y = y; doc.text(fmt(t.valor), MARGIN + 116, y, { width: 37, align: 'right' });
-            doc.moveDown(0.15);
+    const enControversia = categoriasDescuadre.length > 0;
+    if (enControversia) {
+        seccionTitulo('DESCUADRE');
+        for (const c of categoriasDescuadre) {
+            doc.font('Helvetica-Bold').fontSize(6.5).text(`Diferencia de ${c.label}`, MARGIN, doc.y, { width: CW });
+            doc.moveDown(0.1);
+            doc.font('Helvetica').fontSize(6.5).text(
+                `En sistema: ${fmt(c.sis)}    Operador: ${fmt(c.op)}    Diferencia: ${fmt(Math.abs(c.sis - c.op))}`,
+                MARGIN, doc.y, { width: CW }
+            );
+            doc.moveDown(0.25);
         }
         hr();
     }
@@ -2069,6 +2153,15 @@ const _generarPDFCuadre = async (caja, txEgresos, txElectronicos, txCredito, fec
 
     doc.font('Helvetica-Bold').fontSize(9)
        .text(`[ ${enControversia ? 'EN CONTROVERSIA' : 'CAJA EN ORDEN'} ]`, MARGIN, doc.y, { width: CW, align: 'center' });
+    doc.moveDown(0.3); hr();
+
+    // ── QR de verificación ───────────────────────────────────────────────────
+    const QR_SIZE = 65;
+    const qrX = MARGIN + (CW - QR_SIZE) / 2;
+    doc.image(qrBuffer, qrX, doc.y, { width: QR_SIZE });
+    doc.y += QR_SIZE + 4;
+    doc.font('Helvetica-Oblique').fontSize(5.5)
+       .text('Verifica la autenticidad de este cierre escaneando el código QR', MARGIN, doc.y, { width: CW, align: 'center' });
 
     doc.end();
     await pdfEnd;
@@ -2085,16 +2178,26 @@ const getCuadrePDF = async (req, res) => {
             include: [
                 { model: Empleados,    as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
                 { model: Empleados,    as: 'empleadoCierre',   attributes: ['PrimerNombre', 'PrimerApellido'] },
-                { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial'] }
+                { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial', 'direccionPrincipal', 'ciudad'] }
             ]
         });
         if (!caja) return res.status(404).send('Caja no encontrada.');
 
-        const { txEgresos, txElectronicos, txCredito, nFacturasEfectivo, nFacturasElectronicos, nFacturasCredito, nFacturasTotal } =
-            await _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date(caja.fechaCierre), 'liquidada');
+        const [regimen, municipio, datos] = await Promise.all([
+            RegimenFacturacion.findOne({ where: { idPuntoDeVenta: idPdv, activa: true } }),
+            caja.puntoDeVenta?.ciudad
+                ? Municipios.findOne({ where: { id: caja.puntoDeVenta.ciudad }, attributes: ['nombre'], raw: true })
+                : null,
+            _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date(caja.fechaCierre), 'liquidada')
+        ]);
 
-        const buf = await _generarPDFCuadre(caja, txEgresos, txElectronicos, txCredito, new Date(caja.fechaCierre),
-            { nFacturasEfectivo, nFacturasElectronicos, nFacturasCredito, nFacturasTotal });
+        const buf = await _generarPDFCuadre({
+            caja, regimen, municipio,
+            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas },
+            txElectronicos: datos.txElectronicos,
+            txCredito:      datos.txCredito,
+            txEgresos:      datos.txEgresos
+        });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="cuadre-${new Date(caja.fechaCierre).toISOString().slice(0,10)}.pdf"`);
         res.setHeader('Content-Length', buf.length);
@@ -2646,9 +2749,11 @@ const abrirCajaAPI = async (req, res) => {
             return res.status(400).json({ success: false, mensaje: 'Caja menor inválida.' });
 
         const { idEmpleado } = req.empleadoVerificado;
+        const codigo = await _generarCodigoCaja(idPuntoDeVenta, res.locals.nombreTienda);
 
         const caja = await CajaTienda.create({
             idPuntoDeVenta,
+            codigo,
             idEmpleadoApertura: idEmpleado,
             idEmpleadoCierre:   idEmpleado,   // placeholder hasta el cierre real
             cajaMenor,
@@ -2716,16 +2821,35 @@ const getTrasladosAlertaJSON = async (req, res) => {
     }
 };
 
+// accion (query, opcional): si se pasa, además de pertenecer a la tienda exige que el
+// empleado tenga permiso ('Caja y ventas'/'vendedor'/accion) — usado por apertura
+// (CREATE) y cierre (EDIT) de caja para dar feedback en vivo antes de enviar el form.
 const validarEmpleadoTienda = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false });
     const { codigo } = req.params;
+    const { accion } = req.query;
     try {
         const empleado = await Empleados.findOne({
             where: { codigoEmpleado: codigo.trim().toUpperCase(), idPuntoDeVenta: idPdv },
-            attributes: ['idEmpleado', 'PrimerNombre', 'PrimerApellido']
+            attributes: ['idEmpleado', 'idUsuario', 'PrimerNombre', 'PrimerApellido']
         });
         if (!empleado) return res.json({ success: false, mensaje: 'El empleado no pertenece a esta tienda.' });
+
+        if (accion) {
+            if (!empleado.idUsuario)
+                return res.json({ success: false, mensaje: 'El empleado no tiene acceso al sistema.' });
+
+            const ids = await resolverIds('Caja y ventas', 'vendedor', accion);
+            if (!ids) return res.status(500).json({ success: false, mensaje: 'Configuración de permisos inválida.' });
+
+            const permiso = await UserPermisos.findOne({
+                where: { idUsuario: empleado.idUsuario, idRecurso: ids.idRecurso, idAccion: ids.idAccion },
+                attributes: ['idPermiso']
+            });
+            if (!permiso) return res.json({ success: false, mensaje: 'El empleado no tiene permiso para esta acción.' });
+        }
+
         return res.json({
             success: true,
             idEmpleado: empleado.idEmpleado,
@@ -2774,6 +2898,7 @@ export {
     cerrarCajaAPI,
     getCuadrePDF,
     _generarPDFCuadre,
+    _calcularTransaccionesCaja,
     getSalesPage,
     getVentasMes,
     getDetalleDia,
