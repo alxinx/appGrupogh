@@ -206,7 +206,7 @@
                 <p class="text-sm text-gray-500 mb-3">Esto separará el pack en productos individuales en stock:</p>
                 <ul class="list-disc list-inside mb-4">${listaHtml}</ul>
                 <label class="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1 text-left">Código empleado responsable *</label>
-                <input id="swal-emp" class="swal2-input font-mono uppercase tracking-widest" maxlength="5" placeholder="Ej: 12345" autocomplete="new-password">`,
+                <input id="swal-emp" type="password" class="swal2-input font-mono tracking-widest" maxlength="5" placeholder="• • • • •" autocomplete="new-password">`,
             showCancelButton:  true,
             confirmButtonText: 'Confirmar desempacar',
             cancelButtonText:  'Cancelar',

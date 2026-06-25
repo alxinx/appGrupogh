@@ -121,6 +121,14 @@ const CajaTienda = db.define('CAJA_TIENDA', {
     nota: {
         type: DataTypes.TEXT,
         allowNull: true
+    },
+    permite_factura_extemporanea :{
+        type : DataTypes.BOOLEAN,
+        defaultValue : false
+    },
+    cupo_facturas_extemporaneas : {
+        type : DataTypes.INTEGER,
+        defaultValue : 0
     }
 }, {
     tableName: 'CAJA_TIENDA',

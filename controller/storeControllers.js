@@ -1973,7 +1973,7 @@ const cerrarCajaAPI = async (req, res) => {
 // ── Helper reutilizable para generar el PDF de cuadre ────────────────────────
 const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronicos, txCredito, txEgresos }) => {
     const W = 227, MARGIN = 10, CW = W - MARGIN * 2;
-    const estH = 650 + txElectronicos.length * 16 + txCredito.length * 16 + txEgresos.length * 11;
+    const estH = 720 + txElectronicos.length * 16 + txCredito.length * 16 + txEgresos.length * 11;
     const doc = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
     const chunks = [];
     doc.on('data', c => chunks.push(c));
@@ -2079,7 +2079,7 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
     doc.moveDown(0.3); hr();
 
     // ── SECCIÓN 4: resumen de operación por método de pago ─────────────────────
-    seccionTitulo('RESUMEN DE OPERACIÓN');
+    seccionTitulo('RESUMEN DE OPERACIÓN EN SISTEMA');
     filaPuntos('Efectivo',            fmt(sums.sEfectivo), { checkbox: true });
     doc.moveDown(0.15);
     filaPuntos('Crédito',             fmt(sums.sCredito), { checkbox: true });
@@ -2101,6 +2101,18 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
             MARGIN, doc.y, { width: CW, indent: 4 }
         );
     }
+    doc.moveDown(0.15);
+    const efReg = Math.round(parseFloat(caja.ventasEfectivoRegistradas)            || 0);
+    const crReg = Math.round(parseFloat(caja.ventasCreditoRegistradas)             || 0);
+    const meReg = Math.round(parseFloat(caja.ventasMediosElectronicosRegistradas)  || 0);
+    const egReg = Math.round(parseFloat(caja.egresosTotalesRegistrados)            || 0);
+    filaPuntos('Efectivo Registrado',             fmt(efReg), { checkbox: true, bold: Math.abs(efReg - Math.round(sums.sEfectivo)) > 0.5 });
+    doc.moveDown(0.1);
+    filaPuntos('Crédito Registrado',              fmt(crReg), { checkbox: true, bold: Math.abs(crReg - Math.round(sums.sCredito))  > 0.5 });
+    doc.moveDown(0.1);
+    filaPuntos('Medios Electrónicos Registrado',  fmt(meReg), { checkbox: true, bold: Math.abs(meReg - Math.round(sums.sMedios))   > 0.5 });
+    doc.moveDown(0.1);
+    filaPuntos('Egresos Registrado',              fmt(egReg), { checkbox: true, bold: Math.abs(egReg - Math.round(sums.sEgresos))  > 0.5 });
     doc.moveDown(0.3); hr();
 
     // ── Detalle: transacciones electrónicas (Banco / Billetera / Tarjeta) ──────
@@ -2225,9 +2237,15 @@ const crearEgreso = async (req, res) => {
     }
 
     try {
+        const cajaActiva = await CajaTienda.findOne({
+            where: { idPuntoDeVenta: idPdv, estado: 'abierto' },
+            attributes: ['idCajaTienda']
+        });
+
         const egreso = await Egresos.create({
             idPuntoDeVenta: idPdv,
             idEmpleado: empleado.idEmpleado,
+            idCajaTienda: cajaActiva?.idCajaTienda || null,
             valorEgreso: valor,
             referencia: referencia?.trim() || null,
             descripcion: descripcion?.trim() || null,
@@ -2337,8 +2355,9 @@ const getEgresoComprobantePDF = async (req, res) => {
         const egreso = await Egresos.findOne({
             where: { idEgreso, idPuntoDeVenta: idPdv },
             include: [
-                { model: Empleados,     as: 'empleado',      attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'] },
-                { model: PuntosDeVenta, as: 'puntoDeVenta',  attributes: ['nombreComercial'] }
+                { model: Empleados,     as: 'empleado',     attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'] },
+                { model: PuntosDeVenta, as: 'puntoDeVenta', attributes: ['nombreComercial'] },
+                { model: CajaTienda,    as: 'caja',         attributes: ['codigo'] }
             ]
         });
         if (!egreso) return res.status(404).json({ success: false, mensaje: 'Egreso no encontrado.' });
@@ -2378,6 +2397,9 @@ const getEgresoComprobantePDF = async (req, res) => {
         doc.moveDown(0.2);
         if (egreso.puntoDeVenta?.nombreComercial) {
             doc.font('Helvetica').fontSize(7).text(egreso.puntoDeVenta.nombreComercial, MARGIN, doc.y, { width: CW, align: 'center' });
+        }
+        if (egreso.caja?.codigo) {
+            doc.font('Helvetica').fontSize(6.5).text(`Caja: ${egreso.caja.codigo}`, MARGIN, doc.y, { width: CW, align: 'center' });
         }
         doc.moveDown(0.4);
         hr();

@@ -12,6 +12,11 @@ const Egresos = db.define('EGRESOS', {
         allowNull: false,
         references: { model: 'PUNTO_DE_VENTA', key: 'idPuntoDeVenta' }
     },
+    idCajaTienda :{
+        type : DataTypes.INTEGER,
+        allowNull : true,
+        references: { model: 'CAJA_TIENDA', key: 'idCajaTienda' }
+    },
     idEmpleado: {
         type: DataTypes.UUID,
         allowNull: false,

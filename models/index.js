@@ -217,6 +217,9 @@ Egresos.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'puntoDeVen
 Empleados.hasMany(Egresos, { foreignKey: 'idEmpleado', as: 'egresos' });
 Egresos.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 
+CajaTienda.hasMany(Egresos, { foreignKey: 'idCajaTienda', as: 'egresos' });
+Egresos.belongsTo(CajaTienda, { foreignKey: 'idCajaTienda', as: 'caja' });
+
 // ─── Web e-commerce ──────────────────────────────────────────────────────────
 SeccionesWeb.belongsTo(Categorias, { foreignKey: 'idCategoria', as: 'categoria' });
 Categorias.hasMany(SeccionesWeb, { foreignKey: 'idCategoria', as: 'seccionesWeb' });

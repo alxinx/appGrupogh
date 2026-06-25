@@ -396,6 +396,111 @@
         </tr>`;
     }
 
+    // ── Modal: egreso olvidado ────────────────────────────────────────────────
+    const abrirModalEgreso = async () => {
+        const { value: resultado, isConfirmed } = await Swal.fire({
+            title: 'Registrar Egreso Olvidado',
+            html: `
+                <div style="text-align:left;display:flex;flex-direction:column;gap:12px">
+                    <div>
+                        <label style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Valor *</label>
+                        <div style="position:relative;margin-top:4px">
+                            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-weight:bold;pointer-events:none">$</span>
+                            <input id="me-valor" type="text" inputmode="numeric" placeholder="0"
+                                style="width:100%;padding:8px 12px 8px 24px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:monospace;box-sizing:border-box">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Referencia</label>
+                        <input id="me-referencia" type="text" maxlength="100" placeholder="Ej: EG-001"
+                            style="width:100%;padding:8px 12px;border:2px solid #e2e8f0;border-radius:10px;font-size:13px;margin-top:4px;box-sizing:border-box">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Descripción</label>
+                        <input id="me-descripcion" type="text" maxlength="200" placeholder="Motivo del egreso"
+                            style="width:100%;padding:8px 12px;border:2px solid #e2e8f0;border-radius:10px;font-size:13px;margin-top:4px;box-sizing:border-box">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Código del vendedor *</label>
+                        <input id="me-codigo" type="password" maxlength="10" placeholder="• • • • • •"
+                            style="width:100%;padding:8px 12px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:monospace;letter-spacing:.15em;margin-top:4px;box-sizing:border-box">
+                    </div>
+                </div>`,
+            showCancelButton: true,
+            confirmButtonText: 'Registrar egreso',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#EC5FA3',
+            cancelButtonColor: '#94a3b8',
+            width: '420px',
+            didOpen: () => {
+                const inp = document.getElementById('me-valor');
+                inp.addEventListener('keydown', (e) => {
+                    const ok = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter','Home','End'];
+                    if (!ok.includes(e.key) && !/^\d$/.test(e.key)) e.preventDefault();
+                });
+                inp.addEventListener('input', () => formatInputLive(inp));
+                inp.addEventListener('blur',  () => formatInput(inp));
+                inp.focus();
+            },
+            preConfirm: async () => {
+                const valor      = parse(document.getElementById('me-valor').value);
+                const referencia = document.getElementById('me-referencia').value.trim();
+                const descripcion = document.getElementById('me-descripcion').value.trim();
+                const codigo     = document.getElementById('me-codigo').value.trim().toUpperCase();
+
+                if (!valor || valor <= 0) { Swal.showValidationMessage('Ingresa un valor mayor a 0'); return false; }
+                if (!codigo)              { Swal.showValidationMessage('Ingresa el código del vendedor'); return false; }
+
+                const csrf = document.getElementById('csrf-token')?.value || '';
+                const r = await fetch('/store/storebehivors/expenses/crear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    body: JSON.stringify({ valorEgreso: valor, referencia, descripcion, codigoEmpleado: codigo })
+                });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok || !d.success) { Swal.showValidationMessage(d.mensaje || 'Error al registrar el egreso'); return false; }
+                return { valor, referencia, descripcion, idEgreso: d.idEgreso, nombreEmpleado: d.nombreEmpleado };
+            }
+        });
+
+        if (!isConfirmed || !resultado) return;
+
+        // Actualizar totales en caliente
+        dataSistema.totales.egresos = (dataSistema.totales.egresos || 0) + resultado.valor;
+        sEgresos.textContent = `-${fmt(dataSistema.totales.egresos)}`;
+
+        // Agregar fila al acordeón (quita el placeholder "Sin egresos" si existe)
+        const tbodyE = $('cc-tbody-egresos');
+        const placeholder = tbodyE.querySelector('td[colspan="3"]');
+        if (placeholder) placeholder.closest('tr').remove();
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-slate-100';
+        tr.innerHTML = `
+            <td class="py-1.5 px-2 text-xs">
+                <a href="/store/storebehivors/expenses/${resultado.idEgreso}/pdf" target="_blank"
+                   class="text-pink-500 underline hover:text-pink-700 font-medium">${resultado.referencia || `EG-${resultado.idEgreso}`}</a>
+            </td>
+            <td class="py-1.5 px-2 text-slate-500 text-xs">${resultado.descripcion || '—'}</td>
+            <td class="py-1.5 px-2 text-right font-mono text-xs font-semibold text-rose-600">${fmt(resultado.valor)}</td>`;
+        tbodyE.insertBefore(tr, tbodyE.firstChild);
+
+        comparar();
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Egreso registrado',
+            text: `Se registró ${fmt(resultado.valor)}${resultado.nombreEmpleado ? ` — ${resultado.nombreEmpleado}` : ''}.`,
+            confirmButtonColor: '#EC5FA3',
+            timer: 3000,
+            timerProgressBar: true
+        });
+    };
+
+    $('cc-btn-nuevo-egreso')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        abrirModalEgreso();
+    });
+
     // ── Init ──────────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', cargarDatos);
 })();
