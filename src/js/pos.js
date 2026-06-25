@@ -1734,11 +1734,23 @@ import ciiuData from '../json/ciiu.json';
                 cart.clear();
                 renderCarrito();
                 resetCliente();
-                Swal.fire({
-                    icon: 'success', title: '¡Venta registrada!',
-                    text: 'La factura fue generada correctamente.',
-                    timer: 2500, timerProgressBar: true, showConfirmButton: false
-                });
+
+                if (data.redirigirCierre) {
+                    await Swal.fire({
+                        icon: 'warning',
+                        title: 'Cupo extemporáneo agotado',
+                        text: 'Se han usado todas las facturas extemporáneas autorizadas. Debes cerrar la caja ahora.',
+                        confirmButtonColor: '#EC5FA3',
+                        confirmButtonText: 'Ir a cierre de caja'
+                    });
+                    window.location.href = '/store/storebehivors/';
+                } else {
+                    Swal.fire({
+                        icon: 'success', title: '¡Venta registrada!',
+                        text: 'La factura fue generada correctamente.',
+                        timer: 2500, timerProgressBar: true, showConfirmButton: false
+                    });
+                }
 
             } catch (err) {
                 console.error('procesarFactura:', err);

@@ -4,7 +4,7 @@ const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
-adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON,
+adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
 getPagosHoyPorMetodo,
@@ -41,7 +41,7 @@ routes.get("/", dashboard);
 routes.get('/tiendas', dashboardStores);
 routes.get('/tiendas/new', newStore);
 routes.get('/tiendas/ver/:idPuntoDeVenta', verTienda);
-routes.get('/tiendas/partials/facturacionHoy/:idPuntoDeVenta', billingToday)
+routes.get('/tiendas/partials/facturacionHoy/:idPuntoDeVenta', csrfProtection, billingToday)
 routes.get('/tiendas/partials/inventario/:idPuntoDeVenta', storeInventory)
 routes.get('/tiendas/partials/empleados/:idPuntoDeVenta', storeEmployers)
 routes.get('/tiendas/partials/documentacion/:idPuntoDeVenta', storeDocuments)
@@ -199,6 +199,8 @@ routes.get('/api/tiendas/stats-hoy', getTiendasStatsHoy);
 routes.get('/api/personal/:idEmpleado/stats-mes', getStatsVendedorMes);
 routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', getTiendaStatsHoyDetalle);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', getFacturasJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/cajas-abiertas', getCajasAbiertasPorFecha);
+routes.post('/api/tiendas/:idPuntoDeVenta/autorizar-factura-extemporanea', csrfProtection, autorizarFacturaExtemporanea);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-cerradas', getCajasCerradasAdmin);
 routes.get('/api/tiendas/:idPuntoDeVenta/cierres-lista',  getCierresCajaListaJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/cierre/:idCajaTienda',           getCierreCajaDatosJSON);

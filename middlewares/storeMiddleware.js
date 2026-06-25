@@ -36,9 +36,12 @@ export const cargarPuntoDeVenta = async (req, res, next) => {
                         idPuntoDeVenta: req.idPuntoDeVenta,
                         estado: 'abierto',
                         fechaCierre: null,
-                        fechaApertura: { [Op.gte]: inicioDia }
+                        [Op.or]: [
+                            { fechaApertura: { [Op.gte]: inicioDia } },
+                            { permite_factura_extemporanea: true }
+                        ]
                     },
-                    attributes: ['idCajaTienda']
+                    attributes: ['idCajaTienda', 'permite_factura_extemporanea']
                 });
                 res.locals.sinCaja = !caja;
             }

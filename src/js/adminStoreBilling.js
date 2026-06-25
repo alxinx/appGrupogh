@@ -179,6 +179,121 @@
         } catch (_) {}
     };
 
+    // ─── BOTÓN AUTORIZAR FACTURAS EXTEMPORÁNEAS ───────────────────────────────
+    let _cajasAbiertas = [];
+
+    const cargarBotonExtemporanea = async () => {
+        const cont = document.getElementById('billing-cuadre-btns');
+        if (!cont) return;
+
+        // Limpiar botón previo si existe
+        const prevBtn = document.getElementById('btn-autorizar-extemporanea');
+        if (prevBtn) prevBtn.remove();
+
+        try {
+            const res  = await fetch(`/admin/api/tiendas/${pdvId}/cajas-abiertas?fecha=${fechaActual}`);
+            const json = await res.json();
+            if (!json.success || !json.cajas.length || !json.tienePermiso) return;
+
+            // Solo mostrar si hay cajas SIN autorización activa
+            const cajasParaAutorizar = json.cajas.filter(c => !c.tieneExtemporanea);
+            if (!cajasParaAutorizar.length) return;
+
+            _cajasAbiertas = cajasParaAutorizar;
+
+            const btn = document.createElement('button');
+            btn.id        = 'btn-autorizar-extemporanea';
+            btn.className = 'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all active:scale-95';
+            btn.style.background = '#f59e0b';
+            btn.innerHTML = '<i class="fi fi-rr-clock-five"></i> Autorizar Facturas Extemporáneas';
+            btn.addEventListener('click', abrirModalExtemporanea);
+            cont.appendChild(btn);
+        } catch (_) {}
+    };
+
+    const abrirModalExtemporanea = () => {
+        const modal    = document.getElementById('modal-extemporanea');
+        const select   = document.getElementById('ext-caja-select');
+        const errMsg   = document.getElementById('ext-error-msg');
+        if (!modal || !select) return;
+
+        // Poblar select de cajas
+        select.innerHTML = '<option value="" disabled selected>Selecciona una caja...</option>';
+        _cajasAbiertas.forEach(c => {
+            const opt   = document.createElement('option');
+            opt.value   = c.idCajaTienda;
+            opt.textContent = `${c.codigo} — ${fmtHora(c.fechaApertura)} (${c.empleadoApertura || 'Sin empleado'})`;
+            select.appendChild(opt);
+        });
+
+        document.getElementById('ext-cantidad').value        = '';
+        document.getElementById('ext-codigo-empleado').value = '';
+        errMsg.textContent = '';
+        errMsg.classList.add('hidden');
+        modal.classList.remove('hidden');
+    };
+
+    const cerrarModalExtemporanea = () => {
+        document.getElementById('modal-extemporanea')?.classList.add('hidden');
+    };
+
+    const confirmarExtemporanea = async () => {
+        const idCajaTienda    = document.getElementById('ext-caja-select')?.value;
+        const cantidadFacturas = document.getElementById('ext-cantidad')?.value;
+        const codigoEmpleado  = document.getElementById('ext-codigo-empleado')?.value;
+        const errMsg          = document.getElementById('ext-error-msg');
+        const btnConfirmar    = document.getElementById('btn-confirmar-extemporanea');
+
+        if (!idCajaTienda || !cantidadFacturas || !codigoEmpleado) {
+            errMsg.textContent = 'Todos los campos son obligatorios.';
+            errMsg.classList.remove('hidden');
+            return;
+        }
+
+        const csrf = document.getElementById('billing-csrf-token')?.value || '';
+
+        btnConfirmar.disabled = true;
+        btnConfirmar.textContent = 'Autorizando...';
+        errMsg.classList.add('hidden');
+
+        try {
+            const res  = await fetch(`/admin/api/tiendas/${pdvId}/autorizar-factura-extemporanea`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', 'CSRF-Token': csrf },
+                body:    JSON.stringify({ idCajaTienda, cantidadFacturas: parseInt(cantidadFacturas), codigoEmpleado })
+            });
+            const json = await res.json();
+
+            if (!json.success) {
+                errMsg.textContent = json.mensaje || 'Error al autorizar.';
+                errMsg.classList.remove('hidden');
+                btnConfirmar.disabled = false;
+                btnConfirmar.textContent = 'Autorizar';
+                return;
+            }
+
+            cerrarModalExtemporanea();
+            // Ocultar el botón de autorizar (cupo ya asignado)
+            document.getElementById('btn-autorizar-extemporanea')?.remove();
+        } catch (_) {
+            errMsg.textContent = 'Error de conexión.';
+            errMsg.classList.remove('hidden');
+            btnConfirmar.disabled = false;
+            btnConfirmar.textContent = 'Autorizar';
+        }
+    };
+
+    const initModalExtemporanea = () => {
+        document.getElementById('btn-cerrar-modal-extemporanea')
+            ?.addEventListener('click', cerrarModalExtemporanea);
+        document.getElementById('btn-cancelar-extemporanea')
+            ?.addEventListener('click', cerrarModalExtemporanea);
+        document.getElementById('btn-confirmar-extemporanea')
+            ?.addEventListener('click', confirmarExtemporanea);
+        document.getElementById('modal-extemporanea')
+            ?.addEventListener('click', (e) => { if (e.target === e.currentTarget) cerrarModalExtemporanea(); });
+    };
+
     // ─── INICIALIZAR (llamado cuando el tab se carga en el DOM) ───────────────
     const initBilling = () => {
         pdvId = document.getElementById('billing-pdv-id')?.value;
@@ -207,6 +322,7 @@
                 actualizarNombreTab(fechaActual);
                 cargarFacturas(1);
                 cargarBotonesCuadre();
+                cargarBotonExtemporanea();
             });
         }
 
@@ -214,8 +330,10 @@
         const btnExport = document.getElementById('billing-export');
         if (btnExport) btnExport.addEventListener('click', exportarExcel);
 
+        initModalExtemporanea();
         cargarFacturas(1);
         cargarBotonesCuadre();
+        cargarBotonExtemporanea();
     };
 
     // ─── ESCUCHAR EVENTO DE TAB CARGADO ──────────────────────────────────────

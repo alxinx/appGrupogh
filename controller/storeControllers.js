@@ -30,8 +30,13 @@ import sharp from 'sharp';
 const dashboardStores = async (req, res) => {
     const idPuntoDeVenta = req.idPuntoDeVenta;
 
-    const inicioDia = new Date();
-    inicioDia.setHours(0, 0, 0, 0);
+    const maxCajaHours = parseInt(process.env.MAX_CAJA_HOURS) || 0;
+    const limiteCaja = new Date();
+    if (maxCajaHours > 0) {
+        limiteCaja.setTime(limiteCaja.getTime() - maxCajaHours * 60 * 60 * 1000);
+    } else {
+        limiteCaja.setHours(0, 0, 0, 0);
+    }
 
     const [trasladosPendientes, departamentos, clienteRaw, cajaDelDiaAnterior] = await Promise.all([
         idPuntoDeVenta
@@ -45,7 +50,8 @@ const dashboardStores = async (req, res) => {
                     idPuntoDeVenta,
                     estado: 'abierto',
                     fechaCierre: null,
-                    fechaApertura: { [Op.lt]: inicioDia }
+                    permite_factura_extemporanea: false,
+                    fechaApertura: { [Op.lt]: limiteCaja }
                 },
                 attributes: ['idCajaTienda', 'fechaApertura'],
                 raw: true
@@ -1524,7 +1530,25 @@ const procesarFactura = async (req, res) => {
             }
         } catch (_) {}
 
-        return res.json({ success: true, idFacturaCliente: factura.idFacturaCliente });
+        // Descuento atómico de cupo extemporáneo
+        let redirigirCierre = false;
+        if (cajaAbierta.permite_factura_extemporanea) {
+            await CajaTienda.update(
+                {
+                    cupo_facturas_extemporaneas: literal('GREATEST(cupo_facturas_extemporaneas - 1, 0)'),
+                    permite_factura_extemporanea: literal('IF(cupo_facturas_extemporaneas <= 0, FALSE, TRUE)')
+                },
+                { where: { idCajaTienda: cajaAbierta.idCajaTienda } }
+            );
+            const cajaCheck = await CajaTienda.findOne({
+                where: { idCajaTienda: cajaAbierta.idCajaTienda },
+                attributes: ['permite_factura_extemporanea'],
+                raw: true
+            });
+            redirigirCierre = !cajaCheck.permite_factura_extemporanea;
+        }
+
+        return res.json({ success: true, idFacturaCliente: factura.idFacturaCliente, ...(redirigirCierre ? { redirigirCierre: true } : {}) });
 
     } catch (error) {
         await t.rollback();
