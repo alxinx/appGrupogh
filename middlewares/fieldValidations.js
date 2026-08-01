@@ -67,6 +67,11 @@ const productBasicValidation = [
         .customSanitizer(value => parseInt(String(value).replace(/\D/g, '')) || 0)
         .custom(value => value > 0)
         .withMessage('🚨 El precio al público debe ser mayor a $0.'),
+    check('precioVentaMayoristaSurtido')
+        .customSanitizer(value => parseInt(String(value).replace(/\D/g, '')) || 0)
+        .optional({ checkFalsy: true })
+        .custom(value => value >= 0)
+        .withMessage('🚨 El precio mayorista surtido no puede ser negativo.'),
     body('precioVentaMayorista')
         .custom((value, { req }) => {
             const mayorista = parseInt(String(value).replace(/\D/g, '')) || 0;

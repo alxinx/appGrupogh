@@ -27,6 +27,10 @@ const Productos = db.define('PRODUCTOS', {
         type: DataTypes.DECIMAL(10, 2),
         defaultValue: 0,
     },
+    precioVentaMayoristaSurtido: {
+        type: DataTypes.DECIMAL(10, 2),
+        defaultValue: 0,
+    },
     precioVentaPublicoFinal: {
         type: DataTypes.DECIMAL(10, 2),
         defaultValue: 0,

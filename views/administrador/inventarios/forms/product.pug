@@ -64,6 +64,11 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
             label.label PRECIO MAYORISTA
                 input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000" value = (producto && producto.precioVentaMayorista) ? producto.precioVentaMayorista : "")
 
+        //- PRECIO MAYORISTA SURTIDO
+        div(class="col-span-12 md:col-span-3")
+            label.label MAYORISTA SURTIDO
+                input(class="field-text" type="text" id="precioVentaMayoristaSurtido" name="precioVentaMayoristaSurtido" placeholder="Ej : $35.000" value = (producto && producto.precioVentaMayoristaSurtido) ? producto.precioVentaMayoristaSurtido : "")
+
         //- PRECIOS PARA MINORISTA!
         div(class="col-span-12 md:col-span-3")
             label.label PRECIO PÚBLICO FINAL

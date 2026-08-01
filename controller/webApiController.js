@@ -2,7 +2,7 @@ import { Op, fn, col, literal } from 'sequelize';
 import {
     BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb,
     Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura,
-    Interesados, PaginasWeb,
+    Interesados, PaginasWeb, PuntosDeVenta,
 } from '../models/index.js';
 
 const R2 = () => `${process.env.R2_PUBLIC_URL}/productos/`;
@@ -417,6 +417,21 @@ export const getPaginaBySlug = async (req, res) => {
     } catch (e) {
         console.error('webApi.getPaginaBySlug:', e);
         return res.status(500).json({ error: 'Error al obtener página' });
+    }
+};
+
+// GET /api/web/puntos-venta
+export const getPuntosVenta = async (req, res) => {
+    try {
+        const puntos = await PuntosDeVenta.findAll({
+            where: { tipo: 'Punto de venta', activa: true },
+            attributes: ['idPuntoDeVenta', 'nombreComercial', 'direccionPrincipal'],
+            order: [['nombreComercial', 'ASC']]
+        });
+        return res.json({ puntos });
+    } catch (e) {
+        console.error('webApi.getPuntosVenta:', e);
+        return res.status(500).json({ error: 'Error al obtener puntos de venta' });
     }
 };
 

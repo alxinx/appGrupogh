@@ -490,6 +490,7 @@ actualizarEstadoWeb();
 // FORMATO PESOS COLOMBIANOS PARA LOS PRECIOS
 (function(){
     const inputMayorista = document.getElementById('precioVentaMayorista');
+    const inputMayoristaSurtido = document.getElementById('precioVentaMayoristaSurtido');
     const inputPublico = document.getElementById('precioVentaPublicoFinal');
 
     // 1. Función para limpiar y formatear SOLO al cargar (Backend -> UI)
@@ -508,7 +509,7 @@ actualizarEstadoWeb();
         return new Intl.NumberFormat('es-CO').format(value);
     };
 
-    const inputs = [inputMayorista, inputPublico];
+    const inputs = [inputMayorista, inputMayoristaSurtido, inputPublico];
 
     inputs.forEach(input => {
         if(!input) return;

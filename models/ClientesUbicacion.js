@@ -19,7 +19,7 @@ const ClientesUbicacion = db.define('CLIENTES_UBICACION', {
         defaultValue: 'CO'
     },
     idDepartamento: {
-        type: DataTypes.STRING(2),
+        type: DataTypes.STRING(5),
         allowNull: true,
         references: { model: 'DEPARTAMENTOS', key: 'id' },
         onUpdate: 'CASCADE',

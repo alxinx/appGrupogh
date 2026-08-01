@@ -2925,6 +2925,7 @@ const saveProduct = async (req, res, next) => {
         const idCategoriaParaDB = Array.isArray(categorias) ? categorias.join('|') : categorias;
         const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
         const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
+        const precioVentaMayoristaSurtido = parseInt(limpiarPrecio(req.body.precioVentaMayoristaSurtido)) || 0;
         const descripcionLimpia = sanitizarHTML(req.body.descripcion); // Usamos el name="descripcion" del pug
         const activo = req.body.activo === 'on' || req.body.activo === true;
         const web = req.body.web === 'on' || req.body.web === true;
@@ -2947,6 +2948,7 @@ const saveProduct = async (req, res, next) => {
             idCategoria: idCategoriaParaDB,
             precioVentaPublicoFinal,
             precioVentaMayorista,
+            precioVentaMayoristaSurtido,
             descripcion: descripcionLimpia,
             activo,
             web,

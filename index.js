@@ -35,6 +35,15 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
 app.use(cookieParser());
 
+// CORS para la API pública de la tienda web (sin cookies/sesión, consumida por grupoghweb desde el navegador)
+app.use('/api/web', (req, res, next) => {
+    res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+});
+
 // 2. Configuración de Vistas
 app.set("view engine", "pug");
 app.set("views", "./views");
