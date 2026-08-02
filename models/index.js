@@ -45,6 +45,11 @@ import PopupWeb from './PopupWeb.js'
 import Interesados from './Interesados.js'
 import EtiquetasWeb from './EtiquetasWeb.js'
 import PaginasWeb from './PaginasWeb.js'
+import VisitantesWeb from './VisitantesWeb.js'
+import VisitasProducto from './VisitasProducto.js'
+import PedidosWeb from './PedidosWeb.js'
+import DetallesPedidoWeb from './DetallesPedidoWeb.js'
+import PagosPedidoWeb from './PagosPedidoWeb.js'
 //ASOCIACIONES
 
 
@@ -228,6 +233,31 @@ Categorias.hasMany(SeccionesWeb, { foreignKey: 'idCategoria', as: 'seccionesWeb'
 Interesados.belongsTo(Productos, { foreignKey: 'producto', as: 'productoDetalle' });
 Productos.hasMany(Interesados, { foreignKey: 'producto', as: 'interesados' });
 
+// ─── Visitantes web / remarketing ─────────────────────────────────────────────
+VisitasProducto.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
+Productos.hasMany(VisitasProducto, { foreignKey: 'idProducto', as: 'visitas' });
+
+VisitasProducto.belongsTo(VisitantesWeb, { foreignKey: 'idVisitante', as: 'visitante' });
+VisitantesWeb.hasMany(VisitasProducto, { foreignKey: 'idVisitante', as: 'vistasProducto' });
+
+// ─── Pedidos web ───────────────────────────────────────────────────────────
+PedidosWeb.belongsTo(VisitantesWeb, { foreignKey: 'idVisitante', as: 'visitante' });
+PedidosWeb.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoVentaRecogida', as: 'puntoRecogida' });
+PedidosWeb.belongsTo(PuntosDeVenta, { foreignKey: 'idTiendaFacturacion', as: 'tiendaFacturacion' });
+PedidosWeb.belongsTo(Empleados, { foreignKey: 'idOperadorRevisor', as: 'operadorRevisor' });
+PedidosWeb.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente', as: 'factura' });
+
+PedidosWeb.hasMany(DetallesPedidoWeb, { foreignKey: 'idPedido', as: 'detalles' });
+DetallesPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
+DetallesPedidoWeb.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
+Productos.hasMany(DetallesPedidoWeb, { foreignKey: 'idProducto', as: 'detallesPedidoWeb' });
+
+PedidosWeb.hasMany(PagosPedidoWeb, { foreignKey: 'idPedido', as: 'pagos' });
+PagosPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
+
+Traslados.belongsTo(PedidosWeb, { foreignKey: 'idPedidoWeb', as: 'pedidoWeb' });
+PedidosWeb.hasMany(Traslados, { foreignKey: 'idPedidoWeb', as: 'traslados' });
+
 export {
   Usuarios,
   Departamentos,
@@ -249,4 +279,9 @@ export {
   Interesados,
   EtiquetasWeb,
   PaginasWeb,
+  VisitantesWeb,
+  VisitasProducto,
+  PedidosWeb,
+  DetallesPedidoWeb,
+  PagosPedidoWeb,
 }

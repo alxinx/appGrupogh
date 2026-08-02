@@ -20,7 +20,15 @@ const Imagenes = db.define('IMAGENES', {
         type: DataTypes.ENUM('principal', 'galeria'),
         defaultValue : 'galeria'
     },
-   
+    idAtributoColor: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'ATRIBUTOS',
+            key: 'idAtributo'
+        }
+    },
+
 }, {
     tableName: "IMAGENES",
     timestamps: true

@@ -1,12 +1,14 @@
-import { Op } from 'sequelize';
-import { Categorias, BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb, PaginasWeb } from '../models/index.js';
+import { Op, fn, col } from 'sequelize';
+import { Categorias, BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb, PaginasWeb, Productos, Imagenes, VisitasProducto } from '../models/index.js';
 import s3Client from '../config/r2.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import sharp from 'sharp';
+import { validarYConvertirImagenWebp } from '../helpers/helpers.js';
 
 const R2_BUCKET = process.env.R2_BUCKET_NAME;
 const R2_BASE   = process.env.R2_PUBLIC_URL;
+const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
 
 async function subirImagenR2(buffer, key, contentType = 'image/webp') {
     await new Upload({ client: s3Client, params: { Bucket: R2_BUCKET, Key: key, Body: buffer, ContentType: contentType } }).done();
@@ -21,16 +23,66 @@ async function eliminarImagenR2(key) {
 
 export const dashboardWeb = async (req, res) => {
     const currentPath = req.path;
-    const [banners, cenefas, secciones, popup, categoriasActivas, paginas] = await Promise.all([
+    const [banners, cenefas, secciones, popup, categoriasActivas, paginas, productosActivos, ranking] = await Promise.all([
         BannersWeb.count(),
         CenefasWeb.count({ where: { activo: true } }),
         SeccionesWeb.count({ where: { activo: true } }),
         PopupWeb.findOne({ where: { activo: true } }),
         Categorias.count({ where: { webActiva: true } }),
-        PaginasWeb.count({ where: { activa: true } })
+        PaginasWeb.count({ where: { activa: true } }),
+        Productos.count({ where: { activo: true } }),
+        VisitasProducto.findAll({
+            attributes: ['idProducto', [fn('COUNT', col('idVisita')), 'vistas']],
+            group: ['idProducto'],
+            order: [[fn('COUNT', col('idVisita')), 'DESC']],
+            limit: 5,
+            raw: true
+        })
     ]);
+
+    // "Resumen de pedidos" sigue simulado: aún no existe un módulo de pedidos web — se define en una segunda fase.
+    const resumenPedidos = {
+        nuevos: 8,
+        enProceso: 15,
+        pendientesPago: 6,
+        completadosHoy: 32,
+        canceladosHoy: 2
+    };
+
+    // "Productos más vistos" — ranking real desde VISITAS_PRODUCTO (tracking de vistas del sitio web).
+    const idsRanking = ranking.map(r => r.idProducto);
+    const productosDelRanking = idsRanking.length
+        ? await Productos.findAll({
+            where: { idProducto: { [Op.in]: idsRanking } },
+            include: [{ model: Imagenes, as: 'imagenes', attributes: ['nombreImagen', 'tipo'], required: false }]
+        })
+        : [];
+    const productoPorId = Object.fromEntries(productosDelRanking.map(p => [p.idProducto, p]));
+
+    const productosMasVistos = ranking
+        .map(r => {
+            const producto = productoPorId[r.idProducto];
+            if (!producto) return null;
+            const imagenPrincipal = producto.imagenes?.find(img => img.tipo === 'principal') || producto.imagenes?.[0];
+            return {
+                nombre: producto.nombreProducto,
+                imagen: imagenPrincipal ? `${R2_BASE}/productos/${imagenPrincipal.nombreImagen}` : null,
+                vistas: Number(r.vistas)
+            };
+        })
+        .filter(Boolean);
+    const maxVistas = Math.max(...productosMasVistos.map(p => p.vistas), 1);
+
+    const resumenRapido = {
+        productosActivos,
+        visitasHoy: 1248,
+        ventasHoy: 2450000,
+        tasaConversion: 2.8
+    };
+
     return res.render('./administrador/web/home', {
-        currentPath, banners, cenefas, secciones, popup, categoriasActivas, paginas
+        currentPath, banners, cenefas, secciones, popup, categoriasActivas, paginas,
+        webStoreUrl: WEB_STORE_URL, resumenPedidos, productosMasVistos, maxVistas, resumenRapido
     });
 };
 
@@ -62,23 +114,36 @@ export const listaBanners = async (req, res) => {
     return res.render('./administrador/web/banners', { currentPath, banners, csrfToken: req.csrfToken() });
 };
 
+// Convierte y sube a R2 el archivo de un campo de multer (`.fields()`), validando primero
+// que sea realmente una imagen decodificable — nunca confiar solo en el mimetype del cliente.
+async function procesarImagenBanner(file, sufijo) {
+    const buffer = await validarYConvertirImagenWebp(file.buffer);
+    const key = `web/banners/${Date.now()}-${sufijo}.webp`;
+    const url = await subirImagenR2(buffer, key, 'image/webp');
+    return { url, key };
+}
+
 export const crearBanner = async (req, res) => {
     try {
         const { titulo, subtitulo, textoBoton, linkBoton, orden } = req.body;
         let imagenUrl = null, imagenKey = null;
+        let imagenMovilUrl = null, imagenMovilKey = null;
 
-        if (req.file) {
-            const buffer = await sharp(req.file.buffer).webp({ quality: 85 }).toBuffer();
-            const key = `web/banners/${Date.now()}.webp`;
-            imagenUrl = await subirImagenR2(buffer, key, 'image/webp');
-            imagenKey = key;
+        const archivoDesktop = req.files?.imagen?.[0];
+        const archivoMovil = req.files?.imagenMovil?.[0];
+
+        if (archivoDesktop) {
+            ({ url: imagenUrl, key: imagenKey } = await procesarImagenBanner(archivoDesktop, 'desktop'));
+        }
+        if (archivoMovil) {
+            ({ url: imagenMovilUrl, key: imagenMovilKey } = await procesarImagenBanner(archivoMovil, 'movil'));
         }
 
-        await BannersWeb.create({ titulo, subtitulo, textoBoton, linkBoton, orden: orden || 0, imagenUrl, imagenKey });
+        await BannersWeb.create({ titulo, subtitulo, textoBoton, linkBoton, orden: orden || 0, imagenUrl, imagenKey, imagenMovilUrl, imagenMovilKey });
         return res.json({ success: true, mensaje: 'Banner creado correctamente.' });
     } catch (e) {
         console.error('crearBanner:', e);
-        return res.status(500).json({ success: false, mensaje: 'Error al crear el banner.' });
+        return res.status(400).json({ success: false, mensaje: e.message?.includes('imagen válida') ? e.message : 'Error al crear el banner.' });
     }
 };
 
@@ -90,20 +155,29 @@ export const actualizarBanner = async (req, res) => {
 
         const { titulo, subtitulo, textoBoton, linkBoton, orden, activo } = req.body;
         let imagenUrl = banner.imagenUrl, imagenKey = banner.imagenKey;
+        let imagenMovilUrl = banner.imagenMovilUrl, imagenMovilKey = banner.imagenMovilKey;
 
-        if (req.file) {
+        const archivoDesktop = req.files?.imagen?.[0];
+        const archivoMovil = req.files?.imagenMovil?.[0];
+
+        if (archivoDesktop) {
+            ({ url: imagenUrl, key: imagenKey } = await procesarImagenBanner(archivoDesktop, 'desktop'));
             if (banner.imagenKey) await eliminarImagenR2(banner.imagenKey).catch(() => {});
-            const buffer = await sharp(req.file.buffer).webp({ quality: 85 }).toBuffer();
-            const key = `web/banners/${Date.now()}.webp`;
-            imagenUrl = await subirImagenR2(buffer, key, 'image/webp');
-            imagenKey = key;
+        }
+        if (archivoMovil) {
+            ({ url: imagenMovilUrl, key: imagenMovilKey } = await procesarImagenBanner(archivoMovil, 'movil'));
+            if (banner.imagenMovilKey) await eliminarImagenR2(banner.imagenMovilKey).catch(() => {});
         }
 
-        await banner.update({ titulo, subtitulo, textoBoton, linkBoton, orden: orden || 0, activo: activo === 'true' || activo === true, imagenUrl, imagenKey });
+        await banner.update({
+            titulo, subtitulo, textoBoton, linkBoton, orden: orden || 0,
+            activo: activo === 'true' || activo === true,
+            imagenUrl, imagenKey, imagenMovilUrl, imagenMovilKey
+        });
         return res.json({ success: true, mensaje: 'Banner actualizado correctamente.' });
     } catch (e) {
         console.error('actualizarBanner:', e);
-        return res.status(500).json({ success: false, mensaje: 'Error al actualizar el banner.' });
+        return res.status(400).json({ success: false, mensaje: e.message?.includes('imagen válida') ? e.message : 'Error al actualizar el banner.' });
     }
 };
 
@@ -112,6 +186,7 @@ export const eliminarBanner = async (req, res) => {
     const banner = await BannersWeb.findByPk(idBanner);
     if (!banner) return res.status(404).json({ success: false, mensaje: 'Banner no encontrado.' });
     if (banner.imagenKey) await eliminarImagenR2(banner.imagenKey).catch(() => {});
+    if (banner.imagenMovilKey) await eliminarImagenR2(banner.imagenMovilKey).catch(() => {});
     await banner.destroy();
     return res.json({ success: true, mensaje: 'Banner eliminado.' });
 };

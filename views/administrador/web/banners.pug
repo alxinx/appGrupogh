@@ -48,6 +48,11 @@ block contenedor
                                                         = b.activo ? 'Activo' : 'Inactivo'
                                                     //- Orden badge
                                                     span(class="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/50 text-white") ##{b.orden}
+                                                    //- Indicador de imagen móvil
+                                                    if b.imagenMovilUrl
+                                                        span(class="absolute bottom-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-slate-600 flex items-center gap-1")
+                                                            i(class="fi fi-rr-mobile")
+                                                            | Móvil
 
                                                 //- Info
                                                 div(class="p-3")
@@ -69,47 +74,202 @@ block contenedor
                                                             i(class="fi fi-rr-trash")
 
                             //- ── MODAL CREAR / EDITAR ────────────────────────────────────────────────
-                            div#modal-banner(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4")
-                                div(class="bg-white rounded-2xl w-full max-w-lg shadow-2xl")
-                                    div(class="flex items-center justify-between p-5 border-b border-slate-100")
-                                        h2#modal-banner-title(class="font-bold text-slate-800") Nuevo banner
-                                        button#btn-cerrar-modal-banner(type="button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100")
+                            div#modal-banner(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4")
+                                div(class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl max-h-[92vh] flex flex-col")
+
+                                    //- Header del modal
+                                    div(class="flex items-center justify-between p-6 border-b border-slate-100 flex-shrink-0")
+                                        div(class="flex items-center gap-3")
+                                            div(class="w-10 h-10 rounded-xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                                                i(class="fi fi-rr-picture text-gh-primaryHover")
+                                            div
+                                                h2#modal-banner-title(class="font-bold text-slate-800 text-lg leading-tight") Nuevo banner
+                                                p#modal-banner-subtitle(class="text-xs text-slate-400") Crea un nuevo banner para tu tienda
+                                        button#btn-cerrar-modal-banner(type="button" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 flex-shrink-0")
                                             i(class="fi fi-rr-cross text-slate-500 text-sm")
 
-                                    form#form-banner(class="p-5 space-y-4" enctype="multipart/form-data")
+                                    //- Cuerpo (2 columnas) — scrollable
+                                    form#form-banner(class="flex-1 overflow-y-auto p-6" enctype="multipart/form-data")
                                         input(type="hidden" name="_csrf" value=csrfToken)
                                         input#banner-id(type="hidden" name="idBanner")
 
-                                        div(class="grid grid-cols-2 gap-4")
-                                            div(class="col-span-2")
-                                                label.label Imagen del banner
-                                                    input.field-text(type="file" name="imagen" accept="image/*" id="banner-imagen")
-                                                p(class="text-[10px] text-slate-400 mt-1") Se convierte automáticamente a WebP. Tamaño recomendado: 1920×600px
-                                            div(class="col-span-2")
-                                                label.label Título
-                                                    input.field-text(type="text" name="titulo" id="banner-titulo" placeholder="¡Nueva colección disponible!")
-                                            div(class="col-span-2")
-                                                label.label Subtítulo
-                                                    input.field-text(type="text" name="subtitulo" id="banner-subtitulo" placeholder="Descubre las últimas tendencias")
-                                            div(class="col-span-2 md:col-span-1")
-                                                label.label Texto del botón
-                                                    input.field-text(type="text" name="textoBoton" id="banner-textoBoton" placeholder="Ver colección")
-                                            div(class="col-span-2 md:col-span-1")
-                                                label.label Link del botón
-                                                    input.field-text(type="text" name="linkBoton" id="banner-linkBoton" placeholder="/catalogo")
-                                            div(class="col-span-2 md:col-span-1")
-                                                label.label Orden
-                                                    input.field-text(type="number" name="orden" id="banner-orden" value="0" min="0")
-                                            div(class="col-span-2 md:col-span-1 flex items-end pb-1")
-                                                label(class="flex items-center gap-2 cursor-pointer")
-                                                    input(type="checkbox" name="activo" id="banner-activo" value="true" class="checkbox" checked)
-                                                    span(class="text-sm font-semibold text-slate-700") Activo
+                                        div(class="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8")
 
-                                        div(class="flex justify-end gap-3 pt-2 border-t border-slate-100")
-                                            button#btn-cancelar-banner(type="button" class="btn text-sm py-2 px-4 bg-slate-100 text-slate-600 hover:bg-slate-200") Cancelar
-                                            button#btn-guardar-banner(type="submit" class="btn btn-primary text-sm py-2 px-4")
-                                                i(class="fi fi-rr-disk")
-                                                | Guardar
+                                            //- ── COLUMNA IZQUIERDA ───────────────────────────
+                                            div(class="space-y-6 min-w-0")
+
+                                                //- 1. Imagen del banner
+                                                div
+                                                    h3(class="text-sm font-bold text-slate-800 mb-3") 1. Imagen del banner
+
+                                                    //- Tabs escritorio / móvil
+                                                    div(class="grid grid-cols-2 gap-2 mb-4 p-1 bg-slate-100 rounded-xl")
+                                                        button#tab-desktop(type="button" data-tab="desktop" class="tab-imagen-banner flex items-center justify-center gap-2 text-xs font-bold py-2 rounded-lg transition-colors")
+                                                            i(class="fi fi-rr-dashboard-monitor")
+                                                            | Escritorio
+                                                        button#tab-movil(type="button" data-tab="movil" class="tab-imagen-banner flex items-center justify-center gap-2 text-xs font-bold py-2 rounded-lg transition-colors")
+                                                            i(class="fi fi-rr-mobile")
+                                                            | Móvil (opcional)
+
+                                                    //- Zona escritorio
+                                                    div#zona-desktop(data-lado="desktop")
+                                                        div(class="relative group")
+                                                            input#banner-imagen(type="file" name="imagen" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
+                                                            div#dropzone-desktop(class="inputUpload")
+                                                                div(class="w-14 h-14 bg-white shadow-sm rounded-full flex items-center justify-center mb-3 text-pink-400")
+                                                                    svg(xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor")
+                                                                        path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 001.657-9.71A5.5 5.5 0 007 9.5a4 4 0 00-4 5.5z")
+                                                                        path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 12v6m0-6l-2.5 2.5M12 12l2.5 2.5")
+                                                                span(class="text-sm font-bold text-gray-600") Arrastra tu imagen aquí
+                                                                span(class="text-xs text-gray-400 mt-0.5") o haz clic para seleccionar
+                                                                span(class="text-[11px] text-gray-400 mt-2") PNG, JPG o WEBP · 1920×600px recomendado · Máx. 2MB
+                                                        div(class="flex items-center gap-1.5 mt-2 text-xs text-slate-500")
+                                                            i#estado-desktop-icon(class="fi fi-rr-info text-slate-300")
+                                                            span#estado-desktop No hay imagen seleccionada
+
+                                                    //- Zona móvil
+                                                    div#zona-movil(data-lado="movil" class="hidden")
+                                                        div(class="relative group")
+                                                            input#banner-imagen-movil(type="file" name="imagenMovil" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
+                                                            div#dropzone-movil(class="inputUpload")
+                                                                div(class="w-14 h-14 bg-white shadow-sm rounded-full flex items-center justify-center mb-3 text-pink-400")
+                                                                    svg(xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor")
+                                                                        path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 001.657-9.71A5.5 5.5 0 007 9.5a4 4 0 00-4 5.5z")
+                                                                        path(stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 12v6m0-6l-2.5 2.5M12 12l2.5 2.5")
+                                                                span(class="text-sm font-bold text-gray-600") Arrastra tu imagen aquí
+                                                                span(class="text-xs text-gray-400 mt-0.5") o haz clic para seleccionar
+                                                                span(class="text-[11px] text-gray-400 mt-2") PNG, JPG o WEBP · 1200×1000px recomendado · Máx. 2MB
+                                                        div(class="flex items-center gap-1.5 mt-2 text-xs text-slate-500")
+                                                            i#estado-movil-icon(class="fi fi-rr-info text-slate-300")
+                                                            span#estado-movil No hay imagen seleccionada
+                                                        p(class="text-[11px] text-slate-400 mt-1") Opcional — si no se sube, en el celular se usa la imagen de escritorio recortada.
+
+                                                //- 2. Contenido del banner
+                                                div(class="pt-2 border-t border-slate-100")
+                                                    h3(class="text-sm font-bold text-slate-800 mb-3 mt-4") 2. Contenido del banner
+                                                    div(class="space-y-4")
+                                                        div
+                                                            div(class="flex items-center justify-between mb-1")
+                                                                label.label(class="mb-0") Título
+                                                                span#contador-titulo(class="text-[10px] text-slate-300") 0/60
+                                                            input#banner-titulo(type="text" name="titulo" maxlength="60" class="field-text" placeholder="¡Nueva colección disponible!")
+                                                        div
+                                                            div(class="flex items-center justify-between mb-1")
+                                                                label.label(class="mb-0") Subtítulo
+                                                                span#contador-subtitulo(class="text-[10px] text-slate-300") 0/100
+                                                            input#banner-subtitulo(type="text" name="subtitulo" maxlength="100" class="field-text" placeholder="Descubre las últimas tendencias")
+
+                                                //- 3. Botón del banner
+                                                div(class="pt-2 border-t border-slate-100")
+                                                    h3(class="text-sm font-bold text-slate-800 mb-3 mt-4") 3. Botón del banner
+                                                    div(class="grid grid-cols-2 gap-4")
+                                                        div
+                                                            div(class="flex items-center justify-between mb-1")
+                                                                label.label(class="mb-0") Texto del botón
+                                                                span#contador-boton(class="text-[10px] text-slate-300") 0/25
+                                                            input#banner-textoBoton(type="text" name="textoBoton" maxlength="25" class="field-text" placeholder="Ver colección")
+                                                        div
+                                                            label.label Destino (link)
+                                                            div(class="relative")
+                                                                i(class="fi fi-rr-globe absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs")
+                                                                input#banner-linkBoton(type="text" name="linkBoton" list="destinos-comunes" class="field-text pl-8" placeholder="/catalogo")
+                                                                datalist#destinos-comunes
+                                                                    option(value="/catalogo")
+                                                                    option(value="/catalogo?orden=nuevo")
+                                                                    option(value="/wishlist")
+                                                            p(class="text-[10px] text-slate-400 mt-1") Ej: /catalogo, /novedades, https://...
+
+                                                //- 4. Configuración
+                                                div(class="pt-2 border-t border-slate-100")
+                                                    h3(class="text-sm font-bold text-slate-800 mb-3 mt-4") 4. Configuración
+                                                    div(class="grid grid-cols-2 gap-4")
+                                                        div
+                                                            label(class="label flex items-center gap-1")
+                                                                | Prioridad (orden de aparición)
+                                                                i(class="fi fi-rr-info text-[10px] text-slate-300" title="Los banners con menor número se muestran primero")
+                                                            div(class="flex items-center gap-2 border border-gh-grayBorder rounded-lg px-3 h-11 bg-white")
+                                                                i(class="fi fi-rr-grip-dots-vertical text-slate-300 text-xs")
+                                                                input#banner-orden(type="number" name="orden" value="0" min="0" class="flex-1 min-w-0 outline-none text-sm font-semibold text-slate-700 bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none")
+                                                                div(class="flex flex-col -mr-1")
+                                                                    button#orden-up(type="button" class="h-4 flex items-center justify-center text-slate-400 hover:text-gh-primaryHover")
+                                                                        i(class="fi fi-rr-angle-small-up text-[10px]")
+                                                                    button#orden-down(type="button" class="h-4 flex items-center justify-center text-slate-400 hover:text-gh-primaryHover")
+                                                                        i(class="fi fi-rr-angle-small-down text-[10px]")
+                                                            p(class="text-[10px] text-slate-400 mt-1") Los banners con menor número se muestran primero
+                                                        div
+                                                            label.label Estado del banner
+                                                            label(class="flex items-center gap-3 cursor-pointer select-none h-11")
+                                                                input(type="checkbox" id="banner-activo" name="activo" value="true" class="hidden" checked)
+                                                                div(class="switch")
+                                                                    div(class="switch-thumb")
+                                                                span(class="text-sm font-semibold text-gray-600") Banner activo
+                                                            p(class="text-[10px] text-slate-400 mt-1") El banner será visible en la tienda
+
+                                            //- ── COLUMNA DERECHA — Vista previa ──────────────
+                                            div(class="space-y-4")
+                                                div(class="lg:sticky lg:top-0 space-y-4")
+                                                    div
+                                                        p(class="text-sm font-bold text-slate-800") Vista previa (#[span#preview-modo-label escritorio])
+                                                        p(class="text-xs text-slate-400") Así se verá tu banner en la tienda
+
+                                                    div#preview-box(class="relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 aspect-[19/6]")
+                                                        img#preview-img(class="absolute inset-0 w-full h-full object-cover object-top hidden")
+                                                        div#preview-placeholder(class="absolute inset-0 flex items-center justify-center text-slate-300")
+                                                            i(class="fi fi-rr-picture text-4xl")
+                                                        div(class="absolute inset-0 bg-gradient-to-t from-black/20 via-black/0 to-black/0")
+                                                        div(class="absolute inset-0 flex flex-col justify-center px-4")
+                                                            p#preview-titulo(class="font-serif text-base leading-tight font-bold text-slate-800 drop-shadow-sm") ¡Nueva colección disponible!
+                                                            p#preview-subtitulo(class="text-[11px] text-slate-700 mt-1 max-w-[75%] drop-shadow-sm") Descubre las últimas tendencias
+                                                            span#preview-boton(class="mt-2.5 inline-flex w-fit items-center px-3 py-1 rounded-full bg-black text-white text-[10px] font-bold") Ver colección
+                                                        div(class="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5")
+                                                            span(class="w-4 h-1.5 rounded-full bg-white")
+                                                            span(class="w-1.5 h-1.5 rounded-full bg-white/50")
+                                                            span(class="w-1.5 h-1.5 rounded-full bg-white/50")
+
+                                                    //- Recomendaciones — escritorio
+                                                    div#recom-desktop(class="bg-gh-primarySoft rounded-xl p-4")
+                                                        p(class="flex items-center gap-1.5 text-xs font-bold text-gh-primaryHover mb-2")
+                                                            i(class="fi fi-rr-star")
+                                                            | Recomendaciones
+                                                        ul(class="space-y-1.5 text-xs text-slate-600")
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Tamaño recomendado: 1920 x 600 px
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Formatos: JPG, PNG o WEBP
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Se optimiza automáticamente a WebP
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Peso máximo por archivo: 2MB
+
+                                                    //- Recomendaciones — móvil
+                                                    div#recom-movil(class="bg-gh-primarySoft rounded-xl p-4 hidden")
+                                                        p(class="flex items-center gap-1.5 text-xs font-bold text-gh-primaryHover mb-2")
+                                                            i(class="fi fi-rr-star")
+                                                            | Recomendaciones
+                                                        ul(class="space-y-1.5 text-xs text-slate-600")
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Tamaño recomendado: 1200 x 1000 px (proporción 6:5)
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Formatos: JPG, PNG o WEBP
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Opcional — si no se sube, se usa la imagen de escritorio recortada
+                                                            li(class="flex items-start gap-1.5")
+                                                                i(class="fi fi-rr-check text-gh-primaryHover mt-0.5")
+                                                                | Peso máximo por archivo: 2MB
+
+                                    //- Footer del modal
+                                    div(class="flex justify-end gap-3 p-6 border-t border-slate-100 flex-shrink-0")
+                                        button#btn-cancelar-banner(type="button" class="btn btn-secondary text-sm") Cancelar
+                                        button#btn-guardar-banner(type="submit" form="form-banner" class="btn btn-primary text-sm")
+                                            i(class="fi fi-rr-disk")
+                                            | Guardar banner
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
@@ -119,9 +279,144 @@ block contenedor
             const btnCerrar = document.getElementById('btn-cerrar-modal-banner');
             const btnCancelar = document.getElementById('btn-cancelar-banner');
             const modalTitle = document.getElementById('modal-banner-title');
+            const modalSubtitle = document.getElementById('modal-banner-subtitle');
 
+            //- ── Tabs Escritorio / Móvil ──────────────────────────────
+            const tabs = { desktop: document.getElementById('tab-desktop'), movil: document.getElementById('tab-movil') };
+            const zonas = { desktop: document.getElementById('zona-desktop'), movil: document.getElementById('zona-movil') };
+            const recoms = { desktop: document.getElementById('recom-desktop'), movil: document.getElementById('recom-movil') };
+            const previewModoLabel = document.getElementById('preview-modo-label');
+            const previewBox = document.getElementById('preview-box');
+            let tabActivo = 'desktop';
+
+            function estilarTab(lado) {
+                Object.entries(tabs).forEach(([key, btn]) => {
+                    if (key === lado) {
+                        btn.classList.add('bg-white', 'text-gh-primaryHover', 'shadow-sm');
+                        btn.classList.remove('text-slate-500');
+                    } else {
+                        btn.classList.remove('bg-white', 'text-gh-primaryHover', 'shadow-sm');
+                        btn.classList.add('text-slate-500');
+                    }
+                });
+            }
+
+            function irATab(lado) {
+                tabActivo = lado;
+                estilarTab(lado);
+                Object.entries(zonas).forEach(([key, el]) => el.classList.toggle('hidden', key !== lado));
+                previewModoLabel.textContent = lado === 'desktop' ? 'escritorio' : 'móvil';
+                previewBox.classList.toggle('aspect-[19/6]', lado === 'desktop');
+                previewBox.classList.toggle('aspect-[6/5]', lado === 'movil');
+                Object.entries(recoms).forEach(([key, el]) => el.classList.toggle('hidden', key !== lado));
+                actualizarPreviewImagen();
+            }
+
+            tabs.desktop.addEventListener('click', () => irATab('desktop'));
+            tabs.movil.addEventListener('click', () => irATab('movil'));
+
+            //- ── Dropzones (drag & drop + click) ──────────────────────
+            const inputs = { desktop: document.getElementById('banner-imagen'), movil: document.getElementById('banner-imagen-movil') };
+            const dropzones = { desktop: document.getElementById('dropzone-desktop'), movil: document.getElementById('dropzone-movil') };
+            const estados = { desktop: document.getElementById('estado-desktop'), movil: document.getElementById('estado-movil') };
+            const existentes = { desktop: null, movil: null };
+
+            function actualizarEstado(lado) {
+                const input = inputs[lado];
+                const estadoEl = estados[lado];
+                if (input.files && input.files[0]) {
+                    estadoEl.textContent = input.files[0].name;
+                    estadoEl.classList.add('text-gh-primaryHover', 'font-semibold');
+                } else if (existentes[lado]) {
+                    estadoEl.textContent = 'Usando imagen actual';
+                    estadoEl.classList.remove('text-gh-primaryHover', 'font-semibold');
+                } else {
+                    estadoEl.textContent = 'No hay imagen seleccionada';
+                    estadoEl.classList.remove('text-gh-primaryHover', 'font-semibold');
+                }
+            }
+
+            const previewImg = document.getElementById('preview-img');
+            const previewPlaceholder = document.getElementById('preview-placeholder');
+
+            function actualizarPreviewImagen() {
+                const input = inputs[tabActivo];
+                const file = input.files && input.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    previewImg.src = url;
+                    previewImg.classList.remove('hidden');
+                    previewPlaceholder.classList.add('hidden');
+                } else if (existentes[tabActivo]) {
+                    previewImg.src = existentes[tabActivo];
+                    previewImg.classList.remove('hidden');
+                    previewPlaceholder.classList.add('hidden');
+                } else {
+                    previewImg.src = '';
+                    previewImg.classList.add('hidden');
+                    previewPlaceholder.classList.remove('hidden');
+                }
+            }
+
+            ['desktop', 'movil'].forEach(lado => {
+                const input = inputs[lado];
+                const zona = dropzones[lado];
+
+                input.addEventListener('change', () => {
+                    actualizarEstado(lado);
+                    if (lado === tabActivo) actualizarPreviewImagen();
+                });
+
+                zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('border-gh-primaryHover', 'bg-pink-50'); });
+                zona.addEventListener('dragleave', () => zona.classList.remove('border-gh-primaryHover', 'bg-pink-50'));
+                zona.addEventListener('drop', e => {
+                    e.preventDefault();
+                    zona.classList.remove('border-gh-primaryHover', 'bg-pink-50');
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        input.files = e.dataTransfer.files;
+                        input.dispatchEvent(new Event('change'));
+                    }
+                });
+            });
+
+            //- ── Contadores de caracteres ─────────────────────────────
+            [
+                ['banner-titulo', 'contador-titulo', 60],
+                ['banner-subtitulo', 'contador-subtitulo', 100],
+                ['banner-textoBoton', 'contador-boton', 25],
+            ].forEach(([inputId, contadorId, max]) => {
+                const input = document.getElementById(inputId);
+                const contador = document.getElementById(contadorId);
+                input.addEventListener('input', () => { contador.textContent = `${input.value.length}/${max}`; });
+            });
+
+            //- ── Sincronizar texto de vista previa ───────────────────
+            const previewTitulo = document.getElementById('preview-titulo');
+            const previewSubtitulo = document.getElementById('preview-subtitulo');
+            const previewBoton = document.getElementById('preview-boton');
+            document.getElementById('banner-titulo').addEventListener('input', function() {
+                previewTitulo.textContent = this.value || '¡Nueva colección disponible!';
+            });
+            document.getElementById('banner-subtitulo').addEventListener('input', function() {
+                previewSubtitulo.textContent = this.value || 'Descubre las últimas tendencias';
+            });
+            document.getElementById('banner-textoBoton').addEventListener('input', function() {
+                previewBoton.textContent = this.value || 'Ver colección';
+            });
+
+            //- ── Stepper de prioridad ─────────────────────────────────
+            const inputOrden = document.getElementById('banner-orden');
+            document.getElementById('orden-up').addEventListener('click', () => {
+                inputOrden.value = Math.max(0, Number(inputOrden.value || 0) + 1);
+            });
+            document.getElementById('orden-down').addEventListener('click', () => {
+                inputOrden.value = Math.max(0, Number(inputOrden.value || 0) - 1);
+            });
+
+            //- ── Abrir / cerrar modal ─────────────────────────────────
             function abrirModal(datos) {
                 modalTitle.textContent = datos ? 'Editar banner' : 'Nuevo banner';
+                modalSubtitle.textContent = datos ? 'Edita los datos de este banner' : 'Crea un nuevo banner para tu tienda';
                 document.getElementById('banner-id').value = datos?.idBanner || '';
                 document.getElementById('banner-titulo').value = datos?.titulo || '';
                 document.getElementById('banner-subtitulo').value = datos?.subtitulo || '';
@@ -129,13 +424,32 @@ block contenedor
                 document.getElementById('banner-linkBoton').value = datos?.linkBoton || '';
                 document.getElementById('banner-orden').value = datos?.orden ?? 0;
                 document.getElementById('banner-activo').checked = datos ? datos.activo : true;
-                document.getElementById('banner-imagen').value = '';
+                inputs.desktop.value = '';
+                inputs.movil.value = '';
+                existentes.desktop = datos?.imagenUrl || null;
+                existentes.movil = datos?.imagenMovilUrl || null;
+
+                // Refrescar contadores de caracteres
+                ['banner-titulo', 'banner-subtitulo', 'banner-textoBoton'].forEach(id => {
+                    document.getElementById(id).dispatchEvent(new Event('input'));
+                });
+
+                actualizarEstado('desktop');
+                actualizarEstado('movil');
+                irATab('desktop');
+
                 modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+
+            function cerrarModal() {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
             }
 
             btnNuevo.addEventListener('click', () => abrirModal(null));
-            btnCerrar.addEventListener('click', () => modal.classList.add('hidden'));
-            btnCancelar.addEventListener('click', () => modal.classList.add('hidden'));
+            btnCerrar.addEventListener('click', cerrarModal);
+            btnCancelar.addEventListener('click', cerrarModal);
 
             document.querySelectorAll('.btn-editar-banner').forEach(btn => {
                 btn.addEventListener('click', () => abrirModal(JSON.parse(btn.dataset.banner)));
@@ -164,7 +478,7 @@ block contenedor
                     const resp = await fetch(url, { method: 'POST', body: fd });
                     const data = await resp.json();
                     if (data.success) {
-                        modal.classList.add('hidden');
+                        cerrarModal();
                         Swal.fire({ icon: 'success', title: data.mensaje, timer: 1800, showConfirmButton: false }).then(() => location.reload());
                     } else {
                         Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });

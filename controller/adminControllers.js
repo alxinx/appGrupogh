@@ -2918,7 +2918,7 @@ const saveProduct = async (req, res, next) => {
 
 
     try {
-        const { idProducto, categorias, variantes_finales, imagenes_borrar } = req.body;
+        const { idProducto, categorias, variantes_finales, imagenes_borrar, variantes_sku, imagenes_color_nuevas, imagenes_color_existentes } = req.body;
         const csrfToken = req.csrfToken();
 
         // 1. Sanitización de Datos
@@ -2938,6 +2938,108 @@ const saveProduct = async (req, res, next) => {
             .trim()
             .toLowerCase()
             .replace(/\b\w/g, c => c.toUpperCase());
+
+        const generarSlugDe = (texto) => texto.toString().toLowerCase().trim()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
+
+        // 1.1 Si hay más de una combinación talla+color, cada una es un PRODUCTO
+        // independiente (su propio SKU, nombre y fotos) — no una variante de un mismo producto.
+        const variacionesSeleccionadas = JSON.parse(variantes_finales || '{}');
+        const skuPorCombinacion = JSON.parse(variantes_sku || '{}');
+        const combos = [];
+        Object.entries(variacionesSeleccionadas).forEach(([talla, colores]) => {
+            (colores || []).forEach(idColor => combos.push({ idTalla: talla, idColor, idAtributos: `${talla}|${idColor}` }));
+        });
+
+        if (combos.length > 1) {
+            const mapaColorNuevas = JSON.parse(imagenes_color_nuevas || '{}'); // fileIndex -> idColor
+            const indicesPorColor = {};
+            Object.entries(mapaColorNuevas).forEach(([idx, idColor]) => {
+                if (!indicesPorColor[idColor]) indicesPorColor[idColor] = [];
+                indicesPorColor[idColor].push(parseInt(idx));
+            });
+
+            const idsAtributos = [...new Set(combos.flatMap(c => [c.idTalla, c.idColor]))];
+            const atributos = await Atributos.findAll({ where: { idAtributo: idsAtributos } });
+            const nombrePorAtributo = Object.fromEntries(atributos.map(a => [String(a.idAtributo), a.valor]));
+
+            const t = await db.transaction();
+            const idsCreados = [];
+            try {
+                for (const combo of combos) {
+                    const skuCombo = (skuPorCombinacion[combo.idAtributos] || '').trim().toUpperCase();
+                    if (!skuCombo) throw new Error(`Falta el SKU para la combinación ${combo.idAtributos}`);
+
+                    const nombreColor = nombrePorAtributo[combo.idColor] || '';
+                    const nombreTalla = nombrePorAtributo[combo.idTalla] || '';
+                    const partesNombre = [nombreProducto, nombreColor];
+                    if (nombreTalla && nombreTalla.toLowerCase() !== 'unica') partesNombre.push(nombreTalla);
+                    const nombreFinal = partesNombre.filter(Boolean).join(' ');
+
+                    const nuevoProducto = await Productos.create({
+                        nombreProducto: nombreFinal,
+                        slug: generarSlugDe(nombreFinal),
+                        sku: skuCombo,
+                        ean: null,
+                        idCategoria: idCategoriaParaDB,
+                        precioVentaPublicoFinal,
+                        precioVentaMayorista,
+                        precioVentaMayoristaSurtido,
+                        descripcion: descripcionLimpia,
+                        activo,
+                        web,
+                        tags: req.body.tags
+                    }, { transaction: t });
+
+                    await VariacionesProducto.create({
+                        idProducto: nuevoProducto.idProducto,
+                        idAtributos: combo.idAtributos,
+                        valor: 0
+                    }, { transaction: t });
+
+                    idsCreados.push({ idProducto: nuevoProducto.idProducto, sku: skuCombo, idColor: combo.idColor });
+                }
+                await t.commit();
+            } catch (errorTransaccion) {
+                await t.rollback();
+                throw errorTransaccion;
+            }
+
+            // Subida de imágenes por producto (fuera de la transacción: son llamadas a R2, no a la BD)
+            if (req.files && req.files.length > 0) {
+                for (const creado of idsCreados) {
+                    const indices = indicesPorColor[creado.idColor] || [];
+                    let esPrimera = true;
+                    for (const idx of indices) {
+                        const file = req.files[idx];
+                        if (!file) continue;
+                        const nombreArchivo = `${creado.sku}-${Date.now()}-${idx}.webp`;
+                        const bufferOptimizado = await sharp(file.buffer)
+                            .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
+                            .webp({ quality: 80 })
+                            .toBuffer();
+                        await new Upload({
+                            client: s3Client,
+                            params: { Bucket: process.env.R2_BUCKET_NAME, Key: `productos/${nombreArchivo}`, Body: bufferOptimizado, ContentType: 'image/webp' }
+                        }).done();
+                        await Imagenes.create({
+                            idProducto: creado.idProducto,
+                            nombreImagen: nombreArchivo,
+                            tipo: esPrimera ? 'principal' : 'galeria'
+                        });
+                        esPrimera = false;
+                    }
+                }
+            }
+
+            return res.json({
+                success: true,
+                mensaje: `${idsCreados.length} productos creados correctamente`,
+                idProducto: idsCreados[0]?.idProducto,
+                idsProductos: idsCreados.map(c => c.idProducto)
+            });
+        }
 
         let producto;
         const datosParaDB = {
@@ -2974,21 +3076,28 @@ const saveProduct = async (req, res, next) => {
 
         const idReal = producto.idProducto;
 
-        // 3. Reconstrucción de Variaciones
+        // 3. Reconstrucción de Variaciones (aquí combos.length es 0 o 1: producto único, sin split)
         await VariacionesProducto.destroy({ where: { idProducto: idReal } });
-        const variacionesSeleccionadas = JSON.parse(variantes_finales || '{}');
         const variacionesFinales = [];
 
         Object.entries(variacionesSeleccionadas).forEach(([talla, colores]) => {
             colores.forEach(idColor => {
+                const idAtributos = `${talla}|${idColor}`;
                 variacionesFinales.push({
                     idProducto: idReal,
-                    idAtributos: `${talla}|${idColor}`,
+                    idAtributos,
+                    sku: skuPorCombinacion[idAtributos] || null,
                     valor: 0
                 });
             });
         });
         if (variacionesFinales.length > 0) await VariacionesProducto.bulkCreate(variacionesFinales);
+
+        // 3.1 Emparejar imágenes ya existentes con su color (modo edición)
+        const mapaColorExistentes = JSON.parse(imagenes_color_existentes || '{}');
+        for (const [idMultimedia, idColor] of Object.entries(mapaColorExistentes)) {
+            await Imagenes.update({ idAtributoColor: idColor }, { where: { idMultimedia } });
+        }
 
         // 4. Borrado de Imágenes (Bloque Independiente)
         if (imagenes_borrar) {
@@ -3011,6 +3120,7 @@ const saveProduct = async (req, res, next) => {
             const tienePrincipal = await Imagenes.findOne({
                 where: { idProducto: idReal, tipo: 'principal' }
             });
+            const mapaColorNuevas = JSON.parse(imagenes_color_nuevas || '{}');
 
             const uploadPromises = req.files.map(async (file, index) => {
                 const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`;
@@ -3033,6 +3143,7 @@ const saveProduct = async (req, res, next) => {
                 return {
                     idProducto: idReal,
                     nombreImagen: nombreArchivo,
+                    idAtributoColor: mapaColorNuevas[index] || null,
                     tipo: (!tienePrincipal && index === 0) ? 'principal' : 'galeria'
                 };
             });
@@ -3045,6 +3156,10 @@ const saveProduct = async (req, res, next) => {
 
     } catch (error) {
 
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            const campo = error.errors?.[0]?.path === 'sku' ? 'Uno de los SKU de las variantes' : 'Un valor único';
+            return res.status(400).json({ mensaje: `${campo} ya está en uso por otro producto o variante.` });
+        }
 
         res.status(500).json({ mensaje: 'Error interno del servidor' });
     }
@@ -3807,15 +3922,41 @@ const filterStoreInventoryJson = async (req, res) => {
 // ─── ETIQUETA SKU (PDF 5.5×2.5 cm landscape) ────────────────────────────────
 const imprimirEtiquetaSKU = async (req, res) => {
     const { idProducto } = req.params;
+    const { ids } = req.query;
 
-    const producto = await Productos.findOne({
-        where: { idProducto },
-        attributes: ['sku', 'nombreProducto']
-    });
-    if (!producto?.sku) return res.status(404).send('Producto no encontrado.');
+    let etiquetas = []; // [{ sku, nombre }]
 
-    const sku = producto.sku;
-    const nombre = producto.nombreProducto;
+    if (ids) {
+        // Varios productos independientes (uno por combinación talla+color creada de una vez)
+        const idsLista = ids.split(',').map(s => s.trim()).filter(Boolean);
+        const productos = await Productos.findAll({
+            where: { idProducto: idsLista },
+            attributes: ['idProducto', 'sku', 'nombreProducto']
+        });
+        // Respetamos el orden en que llegaron los ids, no el orden de la consulta
+        etiquetas = idsLista
+            .map(id => productos.find(p => p.idProducto === id))
+            .filter(Boolean)
+            .map(p => ({ sku: p.sku, nombre: p.nombreProducto }));
+    } else {
+        const producto = await Productos.findOne({
+            where: { idProducto },
+            attributes: ['sku', 'nombreProducto']
+        });
+        if (!producto?.sku) return res.status(404).send('Producto no encontrado.');
+
+        // Compatibilidad con productos antiguos que aún guardan variantes con SKU propio
+        // dentro de un mismo producto (antes de que cada combinación fuera su propio producto).
+        const variantes = await VariacionesProducto.findAll({
+            where: { idProducto },
+            attributes: ['sku']
+        });
+        const skusVariantes = variantes.filter(v => v.sku).map(v => v.sku);
+        etiquetas = (skusVariantes.length > 0 ? skusVariantes : [producto.sku])
+            .map(sku => ({ sku, nombre: producto.nombreProducto }));
+    }
+
+    if (etiquetas.length === 0) return res.status(404).send('Producto no encontrado.');
 
     // 5.5 cm = 155.91 pt (ancho) | 2.5 cm = 70.87 pt (alto)
     const W  = 155.91;
@@ -3823,25 +3964,29 @@ const imprimirEtiquetaSKU = async (req, res) => {
     const mx = 4;
 
     try {
-        const doc = new PDFDocument({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
+        const doc = new PDFDocument({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx }, autoFirstPage: false });
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=sku_${sku}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename=sku_${etiquetas[0].sku}.pdf`);
         doc.pipe(res);
 
-        // Barcode (sin texto incluido, sin título)
-        const buffer = await bwipjs.toBuffer({
-            bcid:        'code128',
-            text:        sku,
-            scale:       2,
-            height:      9,
-            includetext: false,
-        });
-        doc.image(buffer, mx, mx, { width: W - mx * 2 });
+        for (const { sku, nombre } of etiquetas) {
+            doc.addPage({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
 
-        // Nombre del producto centrado bajo el barcode
-        doc.fontSize(10).font('Helvetica-Bold')
-           .text(nombre, mx, 50, { width: W - mx * 3, align: 'center' });
+            // Barcode (sin texto incluido, sin título)
+            const buffer = await bwipjs.toBuffer({
+                bcid:        'code128',
+                text:        sku,
+                scale:       2,
+                height:      9,
+                includetext: false,
+            });
+            doc.image(buffer, mx, mx, { width: W - mx * 2 });
+
+            // Nombre del producto centrado bajo el barcode
+            doc.fontSize(10).font('Helvetica-Bold')
+               .text(nombre, mx, 50, { width: W - mx * 3, align: 'center' });
+        }
 
         doc.end();
     } catch (e) {

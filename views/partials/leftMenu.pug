@@ -78,9 +78,14 @@ aside(
       i(class="fi fi-rr-truck text-lg")
       span Pedidos y Reparto
 
-    a(href="/admin/web/" class=`menu-item ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
-      i(class="fi fi-rr-shop text-lg")
-      span Tienda Web
+    a(href="/admin/web/" class=`menu-item relative h-14 p-0 overflow-hidden ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
+      div(class="menu-alert-normal absolute inset-0 flex items-center gap-3 px-4")
+        i(class="fi fi-rr-shop text-lg")
+        span Tienda Web
+        span(class="animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300") 8
+      div(class="menu-alert-banner absolute inset-0 flex items-center gap-2.5 px-4 bg-gh-primaryHover text-white")
+        i(class="fi fi-rr-bell text-base flex-shrink-0")
+        span(class="text-xs font-semibold leading-snug") Pedidos nuevos por atender
 
     a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
       i(class="fi fi-rr-settings text-lg")

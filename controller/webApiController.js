@@ -1,11 +1,27 @@
 import { Op, fn, col, literal } from 'sequelize';
+import db from '../config/bd.js';
 import {
     BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb,
     Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura,
-    Interesados, PaginasWeb, PuntosDeVenta,
+    Interesados, PaginasWeb, PuntosDeVenta, VisitantesWeb, VisitasProducto,
+    PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb, Empleados, Traslados, DetalleTraslados,
 } from '../models/index.js';
+import { getPublicKey, getCheckoutBaseUrl, generarFirmaIntegridad, verificarChecksumWebhook } from '../helpers/wompi.js';
+
+const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
+
+// Crea o actualiza el visitante anónimo (cookieId) con los datos de identificación recibidos.
+async function upsertVisitante(cookieId, datos) {
+    const [visitante] = await VisitantesWeb.findOrCreate({ where: { cookieId }, defaults: datos });
+    await visitante.update({ ...datos, ultimaVisita: new Date() });
+    return visitante;
+}
 
 const R2 = () => `${process.env.R2_PUBLIC_URL}/productos/`;
+
+// Stock vendible desde la web: solo puntos de venta físicos + el punto "web" dedicado.
+// Bodega (reserva/no lista para despacho) y Tránsito (mercancía en camino) no cuentan.
+const TIPOS_PUNTO_VENDIBLE = ['Punto de venta', 'web'];
 
 // GET /api/web/config
 export const getConfig = async (req, res) => {
@@ -13,7 +29,7 @@ export const getConfig = async (req, res) => {
         const [banners, cenefas, secciones, popup, etiquetas] = await Promise.all([
             BannersWeb.findAll({
                 where: { activo: true },
-                attributes: ['idBanner', 'titulo', 'subtitulo', 'textoBoton', 'linkBoton', 'imagenUrl', 'orden'],
+                attributes: ['idBanner', 'titulo', 'subtitulo', 'textoBoton', 'linkBoton', 'imagenUrl', 'imagenMovilUrl', 'orden'],
                 order: [['orden', 'ASC'], ['createdAt', 'DESC']]
             }),
             CenefasWeb.findAll({
@@ -215,6 +231,13 @@ export const getCatalogo = async (req, res) => {
                 Stock.findAll({
                     where: { idProducto: { [Op.in]: ids } },
                     attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'total']],
+                    include: [{
+                        model: PuntosDeVenta,
+                        as: 'ubicacion',
+                        attributes: [],
+                        where: { tipo: { [Op.in]: TIPOS_PUNTO_VENDIBLE } },
+                        required: true
+                    }],
                     group: ['idProducto'],
                     raw: true
                 }),
@@ -341,10 +364,17 @@ export const getProducto = async (req, res) => {
 
         if (!producto) return res.status(404).json({ success: false, mensaje: 'Producto no encontrado' });
 
-        // Stock global
+        // Stock global — solo puntos de venta vendibles (tienda + web), no bodega ni tránsito.
         const stockRow = await Stock.findOne({
             where: { idProducto: producto.idProducto },
             attributes: [[fn('SUM', col('cantidadExistente')), 'total']],
+            include: [{
+                model: PuntosDeVenta,
+                as: 'ubicacion',
+                attributes: [],
+                where: { tipo: { [Op.in]: TIPOS_PUNTO_VENDIBLE } },
+                required: true
+            }],
             raw: true
         });
         const stockGlobal = parseInt(stockRow?.total) || 0;
@@ -438,7 +468,7 @@ export const getPuntosVenta = async (req, res) => {
 // POST /api/web/interesado
 export const postInteresado = async (req, res) => {
     try {
-        const { nombreCliente, canalContacto, canal, producto } = req.body;
+        const { nombreCliente, canalContacto, canal, producto, cookieId, consentimiento } = req.body;
         if (!nombreCliente?.trim() || !canalContacto || !canal?.trim() || !producto) {
             return res.status(400).json({ success: false, message: 'Faltan campos obligatorios' });
         }
@@ -451,10 +481,467 @@ export const postInteresado = async (req, res) => {
             canal: canal.trim(),
             producto,
         });
+
+        // El aviso de "notificarme" solo autoriza ese contacto puntual; solo se liga a
+        // remarketing (VisitantesWeb) si el visitante marcó explícitamente el consentimiento.
+        if (cookieId && typeof cookieId === 'string' && consentimiento) {
+            const datos = { nombre: nombreCliente.trim(), consentimiento: true, consentimientoFecha: new Date() };
+            if (canalContacto === 'email') datos.email = canal.trim();
+            if (canalContacto === 'whatsapp') datos.telefono = canal.trim();
+            await upsertVisitante(cookieId, datos);
+        }
+
         return res.json({ success: true });
     } catch (e) {
         console.error('webApi.postInteresado:', e);
         return res.status(500).json({ success: false, message: 'Error al guardar' });
+    }
+};
+
+// POST /api/web/visitante/track — registra la visita anónima y, opcionalmente, la vista de un producto.
+export const trackVisita = async (req, res) => {
+    try {
+        const { cookieId, idProducto, utmSource, utmMedium, utmCampaign, referrer } = req.body;
+        if (!cookieId || typeof cookieId !== 'string') {
+            return res.status(400).json({ success: false, message: 'cookieId requerido' });
+        }
+
+        const visitante = await upsertVisitante(cookieId, { utmSource, utmMedium, utmCampaign, referrer });
+
+        if (idProducto) {
+            const existe = await Productos.findByPk(idProducto, { attributes: ['idProducto'] });
+            if (existe) {
+                await VisitasProducto.create({ idProducto, idVisitante: visitante.idVisitante });
+            }
+        }
+
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('webApi.trackVisita:', e);
+        return res.status(500).json({ success: false, message: 'Error al registrar visita' });
+    }
+};
+
+// POST /api/web/visitante/identificar — liga el cookieId anónimo a datos de contacto reales.
+export const identificarVisitante = async (req, res) => {
+    try {
+        const { cookieId, nombre, email, telefono, consentimiento } = req.body;
+        if (!cookieId || typeof cookieId !== 'string') {
+            return res.status(400).json({ success: false, message: 'cookieId requerido' });
+        }
+        if (!email?.trim() && !telefono?.trim()) {
+            return res.status(400).json({ success: false, message: 'Se requiere email o teléfono' });
+        }
+
+        const datos = {};
+        if (nombre?.trim()) datos.nombre = nombre.trim();
+        if (email?.trim()) datos.email = email.trim();
+        if (telefono?.trim()) datos.telefono = telefono.trim();
+        if (consentimiento) {
+            datos.consentimiento = true;
+            datos.consentimientoFecha = new Date();
+        }
+
+        await upsertVisitante(cookieId, datos);
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('webApi.identificarVisitante:', e);
+        return res.status(500).json({ success: false, message: 'Error al guardar' });
+    }
+};
+
+// POST /api/web/pedidos — crea un pedido web (checkout). No procesa pago todavía
+// (eso lo hace la integración con Wompi); solo deja el pedido en 'pendiente_pago'
+// con precios y stock validados en el servidor, nunca confiando en lo que mande el cliente.
+export const crearPedidoWeb = async (req, res) => {
+    try {
+        const {
+            items, tipoEntrega, cookieId, metodoPago,
+            email, telefono, nombreCliente, apellidoCliente, cedula,
+            direccion, apto, ciudad, departamento, notasEntrega,
+            idPuntoVentaRecogida
+        } = req.body;
+
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'El carrito está vacío.' });
+        }
+        if (!['domicilio', 'tienda'].includes(tipoEntrega)) {
+            return res.status(400).json({ success: false, message: 'Tipo de entrega inválido.' });
+        }
+        if (!['contraentrega', 'tarjeta', 'pse', 'nequi'].includes(metodoPago)) {
+            return res.status(400).json({ success: false, message: 'Método de pago inválido.' });
+        }
+        if (!email?.trim() || !telefono?.trim() || !nombreCliente?.trim() || !apellidoCliente?.trim()) {
+            return res.status(400).json({ success: false, message: 'Faltan datos de contacto.' });
+        }
+        if (items.some(i => !i.idProducto || !i.cantidad || Number(i.cantidad) <= 0)) {
+            return res.status(400).json({ success: false, message: 'Hay productos con cantidad inválida.' });
+        }
+
+        if (tipoEntrega === 'domicilio') {
+            if (!direccion?.trim() || !ciudad?.trim() || !departamento?.trim()) {
+                return res.status(400).json({ success: false, message: 'Faltan datos de la dirección de envío.' });
+            }
+        } else {
+            if (!idPuntoVentaRecogida || !cedula?.trim()) {
+                return res.status(400).json({ success: false, message: 'Faltan datos para recoger en tienda.' });
+            }
+            const punto = await PuntosDeVenta.findByPk(idPuntoVentaRecogida);
+            if (!punto) return res.status(400).json({ success: false, message: 'El punto de recogida no es válido.' });
+        }
+
+        // Productos reales (nunca confiar en nombre/precio que venga del cliente)
+        const idsProductos = [...new Set(items.map(i => i.idProducto))];
+        const productos = await Productos.findAll({
+            where: { idProducto: { [Op.in]: idsProductos }, activo: true, web: true }
+        });
+        const productoPorId = Object.fromEntries(productos.map(p => [p.idProducto, p]));
+        const faltante = items.find(i => !productoPorId[i.idProducto]);
+        if (faltante) {
+            return res.status(400).json({ success: false, message: 'Uno de los productos ya no está disponible.' });
+        }
+
+        // Stock vendible real (solo Punto de venta + web, no Bodega/Tránsito)
+        const stockRows = await Stock.findAll({
+            where: { idProducto: { [Op.in]: idsProductos } },
+            attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'total']],
+            include: [{
+                model: PuntosDeVenta, as: 'ubicacion', attributes: [],
+                where: { tipo: { [Op.in]: TIPOS_PUNTO_VENDIBLE } }, required: true
+            }],
+            group: ['idProducto'],
+            raw: true
+        });
+        const stockPorProducto = Object.fromEntries(stockRows.map(r => [r.idProducto, parseInt(r.total) || 0]));
+
+        const cantidadPorProducto = {};
+        for (const item of items) {
+            cantidadPorProducto[item.idProducto] = (cantidadPorProducto[item.idProducto] || 0) + Number(item.cantidad);
+        }
+        for (const [idProducto, cantidadPedida] of Object.entries(cantidadPorProducto)) {
+            const disponible = stockPorProducto[idProducto] || 0;
+            if (disponible < cantidadPedida) {
+                return res.status(400).json({
+                    success: false,
+                    message: `"${productoPorId[idProducto].nombreProducto}" ya no tiene stock suficiente (disponible: ${disponible}).`
+                });
+            }
+        }
+
+        // Precio efectivo — mismo umbral mayorista que ya usa el frontend, recalculado en el servidor
+        const wholesaleMin = parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6;
+        const wholesaleGlobal = process.env.WHOLESALE_PRICE_GLOBAL !== 'false';
+        const totalUnidades = items.reduce((s, i) => s + Number(i.cantidad), 0);
+
+        const detalles = items.map(item => {
+            const producto = productoPorId[item.idProducto];
+            const precioMayorista = parseFloat(producto.precioVentaMayorista) || 0;
+            const esMayorista = wholesaleGlobal
+                ? (wholesaleMin > 0 && totalUnidades >= wholesaleMin)
+                : (wholesaleMin > 0 && Number(item.cantidad) >= wholesaleMin);
+            const valorUnidad = esMayorista && precioMayorista > 0 ? precioMayorista : (parseFloat(producto.precioVentaPublicoFinal) || 0);
+            const subTotal = valorUnidad * Number(item.cantidad);
+            return {
+                idProducto: item.idProducto,
+                talla: item.talla || null,
+                color: item.color || null,
+                cantidad: item.cantidad,
+                valorUnidad,
+                subTotal
+            };
+        });
+
+        const subtotal = detalles.reduce((s, d) => s + d.subTotal, 0);
+        const envioCosto = 0; // el cálculo real de envío se define aparte
+        const total = subtotal + envioCosto;
+
+        let idVisitante = null;
+        if (cookieId) {
+            const visitante = await VisitantesWeb.findOne({ where: { cookieId } });
+            idVisitante = visitante?.idVisitante ?? null;
+        }
+
+        const t = await db.transaction();
+        try {
+            const ultimo = await PedidosWeb.findOne({ order: [['createdAt', 'DESC']], transaction: t });
+            const nro = ultimo ? parseInt(ultimo.numeroPedido.split('-')[1]) + 1 : 10000;
+            const numeroPedido = `GH-${nro}`;
+
+            const pedido = await PedidosWeb.create({
+                numeroPedido,
+                idVisitante,
+                tipoEntrega,
+                idPuntoVentaRecogida: tipoEntrega === 'tienda' ? idPuntoVentaRecogida : null,
+                nombreCliente: nombreCliente.trim(),
+                apellidoCliente: apellidoCliente.trim(),
+                email: email.trim(),
+                telefono: telefono.trim(),
+                cedula: cedula?.trim() || null,
+                direccion: tipoEntrega === 'domicilio' ? direccion.trim() : null,
+                apto: tipoEntrega === 'domicilio' ? (apto?.trim() || null) : null,
+                ciudad: tipoEntrega === 'domicilio' ? ciudad.trim() : null,
+                departamento: tipoEntrega === 'domicilio' ? departamento.trim() : null,
+                notasEntrega: tipoEntrega === 'domicilio' ? (notasEntrega?.trim() || null) : null,
+                metodoPago,
+                subtotal,
+                envio: envioCosto,
+                descuento: 0,
+                total,
+                estado: 'pendiente_pago'
+            }, { transaction: t });
+
+            for (const d of detalles) {
+                await DetallesPedidoWeb.create({ idPedido: pedido.idPedido, ...d }, { transaction: t });
+            }
+
+            await t.commit();
+            return res.json({ success: true, idPedido: pedido.idPedido, numeroPedido: pedido.numeroPedido, total });
+        } catch (e) {
+            await t.rollback();
+            throw e;
+        }
+    } catch (e) {
+        console.error('webApi.crearPedidoWeb:', e);
+        return res.status(500).json({ success: false, message: 'Error al crear el pedido.' });
+    }
+};
+
+// POST /api/web/pedidos/:idPedido/pago — genera el link firmado del Web Checkout de Wompi.
+export const iniciarPagoWompi = async (req, res) => {
+    try {
+        const { idPedido } = req.params;
+        const pedido = await PedidosWeb.findByPk(idPedido);
+        if (!pedido) return res.status(404).json({ success: false, message: 'Pedido no encontrado.' });
+        if (pedido.estado !== 'pendiente_pago') {
+            return res.status(400).json({ success: false, message: 'Este pedido ya no está pendiente de pago.' });
+        }
+
+        const intentosPrevios = await PagosPedidoWeb.count({ where: { idPedido } });
+        const referenciaWompi = intentosPrevios === 0 ? pedido.numeroPedido : `${pedido.numeroPedido}-${intentosPrevios + 1}`;
+        const amountInCents = Math.round(parseFloat(pedido.total) * 100);
+
+        await PagosPedidoWeb.create({
+            idPedido,
+            referenciaWompi,
+            estado: 'PENDING',
+            monto: pedido.total,
+            metodoPago: pedido.metodoPago
+        });
+
+        const firma = generarFirmaIntegridad(referenciaWompi, amountInCents, 'COP');
+        const redirectUrl = `${WEB_STORE_URL}/checkout/resultado?pedido=${pedido.numeroPedido}`;
+
+        const params = new URLSearchParams({
+            'public-key': getPublicKey(),
+            currency: 'COP',
+            'amount-in-cents': String(amountInCents),
+            reference: referenciaWompi,
+            'signature:integrity': firma,
+            'redirect-url': redirectUrl,
+            'customer-data:email': pedido.email
+        });
+
+        return res.json({ success: true, checkoutUrl: `${getCheckoutBaseUrl()}?${params.toString()}` });
+    } catch (e) {
+        console.error('webApi.iniciarPagoWompi:', e);
+        return res.status(500).json({ success: false, message: 'Error al iniciar el pago.' });
+    }
+};
+
+// GET /api/web/pedidos/:numeroPedido/estado — estado público del pedido (para la página de resultado del pago).
+export const consultarEstadoPedido = async (req, res) => {
+    try {
+        const { numeroPedido } = req.params;
+        const pedido = await PedidosWeb.findOne({
+            where: { numeroPedido },
+            attributes: ['idPedido', 'numeroPedido', 'estado', 'total', 'email']
+        });
+        if (!pedido) return res.status(404).json({ success: false, message: 'Pedido no encontrado.' });
+
+        const ultimoPago = await PagosPedidoWeb.findOne({
+            where: { idPedido: pedido.idPedido },
+            order: [['createdAt', 'DESC']],
+            attributes: ['estado']
+        });
+
+        return res.json({
+            success: true,
+            numeroPedido: pedido.numeroPedido,
+            estadoPedido: pedido.estado,
+            estadoPago: ultimoPago?.estado ?? null,
+            total: pedido.total,
+            email: pedido.email
+        });
+    } catch (e) {
+        console.error('webApi.consultarEstadoPedido:', e);
+        return res.status(500).json({ success: false, message: 'Error al consultar el pedido.' });
+    }
+};
+
+const ESTADOS_FINALES_WOMPI = ['APPROVED', 'DECLINED', 'VOIDED', 'ERROR'];
+
+// Traslado automático tienda → Bodega "Pedidos Web" al aprobarse un pago.
+// Descuenta stock real de la(s) tienda(s) origen y lo deja aterrizado en la bodega,
+// exactamente con el mismo mecanismo (FIFO sobre STOCKS) que usa el traslado manual de empleados.
+async function procesarPagoAprobado(pedido) {
+    const [bodegaPedidosWeb, sistemaWeb] = await Promise.all([
+        PuntosDeVenta.findOne({ where: { nombreComercial: 'Pedidos Web' } }),
+        Empleados.findOne({ where: { codigoEmpleado: '00000' } })
+    ]);
+    if (!bodegaPedidosWeb || !sistemaWeb) {
+        throw new Error('Falta configurar la bodega "Pedidos Web" o el empleado "Sistema Web".');
+    }
+
+    const detalles = await DetallesPedidoWeb.findAll({ where: { idPedido: pedido.idPedido } });
+    if (detalles.length === 0) throw new Error(`El pedido ${pedido.numeroPedido} no tiene detalles.`);
+
+    // Por cada producto, la tienda con más stock vendible (regla acordada para el traslado automático).
+    const idsProductos = detalles.map(d => d.idProducto);
+    const stockPorProductoYTienda = await Stock.findAll({
+        where: { idProducto: { [Op.in]: idsProductos } },
+        attributes: ['idProducto', 'idPuntoVenta', [fn('SUM', col('cantidadExistente')), 'total']],
+        include: [{
+            model: PuntosDeVenta, as: 'ubicacion', attributes: [],
+            where: { tipo: { [Op.in]: TIPOS_PUNTO_VENDIBLE } }, required: true
+        }],
+        group: ['idProducto', 'idPuntoVenta'],
+        raw: true
+    });
+
+    const mejorTiendaPorProducto = {};
+    for (const fila of stockPorProductoYTienda) {
+        const total = parseInt(fila.total) || 0;
+        const actual = mejorTiendaPorProducto[fila.idProducto];
+        if (!actual || total > actual.total) {
+            mejorTiendaPorProducto[fila.idProducto] = { idPuntoVenta: fila.idPuntoVenta, total };
+        }
+    }
+
+    const gruposPorTienda = {};
+    for (const detalle of detalles) {
+        const tienda = mejorTiendaPorProducto[detalle.idProducto];
+        if (!tienda) throw new Error(`No hay stock vendible registrado para el producto ${detalle.idProducto} (pedido ${pedido.numeroPedido}).`);
+        (gruposPorTienda[tienda.idPuntoVenta] ??= []).push(detalle);
+    }
+
+    const t = await db.transaction();
+    try {
+        for (const [idOrigen, detallesGrupo] of Object.entries(gruposPorTienda)) {
+            for (const detalle of detallesGrupo) {
+                const filasStock = await Stock.findAll({
+                    where: { idProducto: detalle.idProducto, idPuntoVenta: idOrigen, cantidadExistente: { [Op.gt]: 0 } },
+                    order: [['createdAt', 'ASC']],
+                    lock: t.LOCK.UPDATE,
+                    transaction: t
+                });
+                let restante = parseFloat(detalle.cantidad);
+                for (const fila of filasStock) {
+                    if (restante <= 0) break;
+                    const disponible = parseFloat(fila.cantidadExistente);
+                    if (disponible <= restante) {
+                        await fila.update({ cantidadExistente: 0 }, { transaction: t });
+                        restante -= disponible;
+                    } else {
+                        await fila.update({ cantidadExistente: disponible - restante }, { transaction: t });
+                        restante = 0;
+                    }
+                }
+                if (restante > 0) {
+                    throw new Error(`Stock insuficiente para el producto ${detalle.idProducto} al procesar el pago del pedido ${pedido.numeroPedido}.`);
+                }
+            }
+
+            const ultimo = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction: t });
+            const nro = ultimo ? parseInt(ultimo.codigoTraslado.split('-')[1]) + 1 : 1000;
+
+            const traslado = await Traslados.create({
+                codigoTraslado: `TR-${nro}`,
+                idOrigen,
+                idDestino: bodegaPedidosWeb.idPuntoDeVenta,
+                idUsuarioDespacha: sistemaWeb.idEmpleado,
+                idUsuarioRecibe: sistemaWeb.idEmpleado,
+                estado: 'RECIBIDO',
+                fechaRecepcion: new Date(),
+                idPedidoWeb: pedido.idPedido,
+                notas: `Traslado automático — pago aprobado del pedido web ${pedido.numeroPedido}`
+            }, { transaction: t });
+
+            for (const detalle of detallesGrupo) {
+                await DetalleTraslados.create({
+                    idTraslado: traslado.idTraslado,
+                    idProducto: detalle.idProducto,
+                    cantidad: detalle.cantidad,
+                    estado: 'RECIBIDO'
+                }, { transaction: t });
+
+                await Stock.create({
+                    idPuntoVenta: bodegaPedidosWeb.idPuntoDeVenta,
+                    idProducto: detalle.idProducto,
+                    cantidadExistente: detalle.cantidad,
+                    cantidadOriginal: detalle.cantidad,
+                    valorUnidad: detalle.valorUnidad,
+                    estadoInterno: 'SUELTO'
+                }, { transaction: t });
+            }
+        }
+
+        await pedido.update({ estado: 'en_revision' }, { transaction: t });
+        await t.commit();
+    } catch (e) {
+        await t.rollback();
+        throw e;
+    }
+}
+
+// POST /api/web/webhooks/wompi
+export const webhookWompi = async (req, res) => {
+    try {
+        const payload = req.body;
+
+        if (!verificarChecksumWebhook(payload)) {
+            console.warn('webhookWompi: checksum inválido, evento descartado.', payload?.data?.transaction?.reference);
+            return res.status(400).json({ success: false, message: 'Firma inválida.' });
+        }
+
+        const transaccion = payload?.data?.transaction;
+        if (!transaccion?.reference || !transaccion?.id || !transaccion?.status) {
+            return res.status(400).json({ success: false, message: 'Payload incompleto.' });
+        }
+
+        const pago = await PagosPedidoWeb.findOne({ where: { referenciaWompi: transaccion.reference } });
+        if (!pago) {
+            // No reconocemos esta referencia — no tiene sentido que Wompi reintente algo que nunca vamos a procesar.
+            console.warn('webhookWompi: referencia no encontrada.', transaccion.reference);
+            return res.status(200).json({ success: true });
+        }
+
+        // Idempotencia: mismo evento (misma transacción, mismo estado) ya procesado.
+        if (pago.idTransaccionWompi === transaccion.id && pago.estado === transaccion.status) {
+            return res.json({ success: true });
+        }
+
+        await pago.update({
+            idTransaccionWompi: transaccion.id,
+            estado: transaccion.status,
+            metodoPago: transaccion.payment_method_type || pago.metodoPago,
+            payloadWebhook: JSON.stringify(payload),
+            fechaConfirmacion: ESTADOS_FINALES_WOMPI.includes(transaccion.status) ? new Date() : null
+        });
+
+        const pedido = await PedidosWeb.findByPk(pago.idPedido);
+        if (pedido && pedido.estado === 'pendiente_pago') {
+            if (transaccion.status === 'APPROVED') {
+                await procesarPagoAprobado(pedido);
+            } else if (['DECLINED', 'VOIDED', 'ERROR'].includes(transaccion.status)) {
+                await pedido.update({ estado: 'cancelado' });
+            }
+        }
+
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('webApi.webhookWompi:', e);
+        // 500 (no 200): si fue un error transitorio nuestro, que Wompi reintente más tarde.
+        return res.status(500).json({ success: false });
     }
 };
 

@@ -24,9 +24,13 @@ routes.get('/categorias', csrfProtection, categoriasWeb);
 routes.post('/categorias/toggle/:idCategoria', csrfProtection, toggleCategoriaWeb);
 
 // Banners
+const uploadImagenesBanner = uploadImages.fields([
+    { name: 'imagen', maxCount: 1 },
+    { name: 'imagenMovil', maxCount: 1 }
+]);
 routes.get('/banners', csrfProtection, listaBanners);
-routes.post('/banners/crear', uploadImages.single('imagen'), csrfProtection, crearBanner);
-routes.post('/banners/editar/:idBanner', uploadImages.single('imagen'), csrfProtection, actualizarBanner);
+routes.post('/banners/crear', uploadImagenesBanner, csrfProtection, crearBanner);
+routes.post('/banners/editar/:idBanner', uploadImagenesBanner, csrfProtection, actualizarBanner);
 routes.post('/banners/eliminar/:idBanner', csrfProtection, eliminarBanner);
 
 // Cenefas

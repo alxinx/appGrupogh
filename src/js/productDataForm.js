@@ -399,7 +399,223 @@ actualizarEstadoWeb();
     const formulario = document.querySelector('#formularioProducto');
     if (!formulario) return;
 
-    formulario.addEventListener('submit', async function(e) {
+    async function procederConGuardado() {
+        Swal.fire({
+            title: 'Guardando producto...',
+            text: 'Estamos procesando los datos e imágenes para el inventario.',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        const formData = new FormData(formulario);
+        const token = document.querySelector('input[name="_csrf"]').value;
+        try {
+            const respuesta = await fetch(formulario.action, {
+                method: 'POST',
+                body: formData,
+                headers: { 'x-csrf-token': token }
+
+            });
+
+            if (!respuesta.ok) {
+                const textoError = await respuesta.text();
+                throw new Error("Respuesta del servidor no es JSON");
+            }
+
+            const resultado = await respuesta.json();
+
+            if (resultado.errores) {
+                const mensajes = Object.values(resultado.errores).join('\n');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error de validación',
+                    text: mensajes,
+                    confirmButtonColor: '#EC5FA3'
+                });
+            } else if (resultado.mensaje && !resultado.success) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: resultado.mensaje,
+                    confirmButtonColor: '#EC5FA3'
+                });
+            } else {
+                if (resultado.idsProductos && resultado.idsProductos.length > 1) {
+                    window.open(`/admin/inventario/etiqueta-sku/${resultado.idsProductos[0]}?ids=${resultado.idsProductos.join(',')}`, '_blank');
+                } else if (resultado.idProducto) {
+                    window.open(`/admin/inventario/etiqueta-sku/${resultado.idProducto}`, '_blank');
+                }
+                Swal.fire({
+                    icon: 'success',
+                    title: resultado.mensaje || '¡Producto Guardado!',
+                    text: 'Los cambios se aplicaron correctamente.',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    window.location.href = '/admin/inventario/listado';
+                });
+            }
+
+        } catch (error) {
+            console.error("Error en el envío:", error);
+            Swal.fire('Error crítico', 'No se pudo conectar con el servidor.', 'error');
+        }
+    }
+
+    // --- 8.1 CONFIRMACIÓN DE SKU AUTOGENERADO POR COMBINACIÓN ---
+    function nombreTallaPorId(idTalla) {
+        const el = document.querySelector(`.talla-trigger[value="${idTalla}"]`);
+        return el ? el.dataset.nombre : 'S/N';
+    }
+    function nombreColorPorId(idColor) {
+        const el = document.querySelector(`.color-checkbox[value="${idColor}"]`);
+        return el ? el.dataset.nombre : 'Color';
+    }
+    function codigoColorPorId(idColor) {
+        const el = document.querySelector(`.color-checkbox[value="${idColor}"]`);
+        const swatch = el?.closest('label')?.querySelector('div[style*="background-color"]');
+        return swatch ? swatch.style.backgroundColor : '#ccc';
+    }
+
+    // Miniaturas actualmente en preview-container: nuevas (dataset.fileName) o existentes (.btn-delete-existente[data-id])
+    function obtenerMiniaturasDisponibles() {
+        const contenedor = document.getElementById('preview-container');
+        if (!contenedor) return [];
+        const miniaturas = [];
+        let indiceNuevo = 0;
+        Array.from(contenedor.children).forEach(card => {
+            if (card.classList.contains('hidden')) return; // marcada para borrar
+            const img = card.querySelector('img');
+            if (!img) return; // slot de "agregar más"
+            const btnExistente = card.querySelector('.btn-delete-existente');
+            if (btnExistente) {
+                miniaturas.push({ key: `existente:${btnExistente.dataset.id}`, src: img.src });
+            } else if (card.dataset.fileName) {
+                miniaturas.push({ key: `nuevo:${indiceNuevo}`, src: img.src });
+                indiceNuevo++;
+            }
+        });
+        return miniaturas;
+    }
+
+    function abrirModalConfirmacionSku(variantesActuales) {
+        const modal = document.getElementById('modalConfirmSku');
+        const listaSku = document.getElementById('listaSkuCombinaciones');
+        const listaColores = document.getElementById('listaColoresImagenes');
+        const skuBase = (document.getElementById('sku')?.value || 'PROD').trim().toUpperCase();
+
+        // 1. Construir combinaciones y SKU sugerido
+        const combos = [];
+        const coloresUnicos = new Set();
+        let contador = 1;
+        Object.entries(variantesActuales).forEach(([idTalla, colores]) => {
+            (colores || []).forEach(idColor => {
+                combos.push({
+                    idAtributos: `${idTalla}|${idColor}`,
+                    nombreTalla: nombreTallaPorId(idTalla),
+                    idColor,
+                    nombreColor: nombreColorPorId(idColor),
+                    skuSugerido: `${skuBase}-${String(contador).padStart(2, '0')}`
+                });
+                coloresUnicos.add(idColor);
+                contador++;
+            });
+        });
+
+        listaSku.innerHTML = combos.map(c => `
+            <div class="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2">
+                <span class="text-xs font-bold text-gray-500 flex-1">Talla ${c.nombreTalla} · ${c.nombreColor}</span>
+                <input type="text" class="input-sku-combo field-text w-44 text-sm uppercase" data-key="${c.idAtributos}" value="${c.skuSugerido}">
+            </div>
+        `).join('');
+
+        // 2. Emparejar imágenes por color
+        const miniaturas = obtenerMiniaturasDisponibles();
+        const imagenesPorColor = {}; // idColor -> Set(keys)
+
+        listaColores.innerHTML = Array.from(coloresUnicos).map(idColor => `
+            <div class="border border-gray-100 rounded-xl p-3">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="w-4 h-4 rounded-full inline-block shadow-sm" style="background-color:${codigoColorPorId(idColor)}"></span>
+                    <span class="text-xs font-bold uppercase">${nombreColorPorId(idColor)}</span>
+                </div>
+                <div class="flex flex-wrap gap-2" data-color-thumbs="${idColor}">
+                    ${miniaturas.length === 0
+                        ? '<span class="text-xs text-gray-300 italic">No hay imágenes subidas todavía</span>'
+                        : miniaturas.map(m => `
+                            <button type="button" class="thumb-color-toggle w-12 h-12 rounded-lg overflow-hidden border-2 border-transparent" data-img-key="${m.key}" data-color="${idColor}">
+                                <img src="${m.src}" class="w-full h-full object-cover">
+                            </button>
+                        `).join('')
+                    }
+                </div>
+            </div>
+        `).join('');
+
+        listaColores.querySelectorAll('.thumb-color-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idColor = btn.dataset.color;
+                const key = btn.dataset.imgKey;
+                if (!imagenesPorColor[idColor]) imagenesPorColor[idColor] = new Set();
+                if (imagenesPorColor[idColor].has(key)) {
+                    imagenesPorColor[idColor].delete(key);
+                    btn.classList.remove('border-pink-500');
+                } else {
+                    imagenesPorColor[idColor].add(key);
+                    btn.classList.add('border-pink-500');
+                }
+            });
+        });
+
+        modal.classList.remove('hidden');
+
+        const cerrar = () => modal.classList.add('hidden');
+        document.getElementById('cerrarModalSku').onclick = cerrar;
+
+        document.getElementById('confirmarSkuGuardar').onclick = () => {
+            const inputs = listaSku.querySelectorAll('.input-sku-combo');
+            const variantesSku = {};
+            const skusVistos = new Set();
+            let hayError = false;
+
+            inputs.forEach(input => {
+                const valor = input.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '');
+                input.value = valor;
+                if (!valor || skusVistos.has(valor)) hayError = true;
+                skusVistos.add(valor);
+                variantesSku[input.dataset.key] = valor;
+            });
+
+            if (hayError) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'SKU inválidos',
+                    text: 'Cada combinación necesita un SKU único y no vacío.',
+                    confirmButtonColor: '#EC5FA3'
+                });
+                return;
+            }
+
+            const imagenesColorNuevas = {};
+            const imagenesColorExistentes = {};
+            Object.entries(imagenesPorColor).forEach(([idColor, keys]) => {
+                keys.forEach(key => {
+                    const [tipo, valor] = key.split(':');
+                    if (tipo === 'nuevo') imagenesColorNuevas[valor] = idColor;
+                    else imagenesColorExistentes[valor] = idColor;
+                });
+            });
+
+            document.getElementById('variantes_sku').value = JSON.stringify(variantesSku);
+            document.getElementById('imagenes_color_nuevas').value = JSON.stringify(imagenesColorNuevas);
+            document.getElementById('imagenes_color_existentes').value = JSON.stringify(imagenesColorExistentes);
+
+            cerrar();
+            procederConGuardado();
+        };
+    }
+
+    formulario.addEventListener('submit', function(e) {
         e.preventDefault();
 
         const limpiarPrecio = (val) => parseInt(String(val).replace(/\D/g, '')) || 0;
@@ -426,64 +642,15 @@ actualizarEstadoWeb();
             return;
         }
 
-        Swal.fire({
-            title: 'Guardando producto...',
-            text: 'Estamos procesando los datos e imágenes para el inventario.',
-            allowOutsideClick: false,
-            didOpen: () => { Swal.showLoading(); }
-        });
+        const variantesActuales = JSON.parse(document.getElementById('variantes_finales')?.value || '{}');
+        const totalCombos = Object.values(variantesActuales).reduce((acc, colores) => acc + (colores?.length || 0), 0);
 
-        const formData = new FormData(formulario);
-        const token = document.querySelector('input[name="_csrf"]').value;
-        try {
-            const respuesta = await fetch(formulario.action, {
-                method: 'POST',
-                body: formData,
-                headers: { 'x-csrf-token': token }
-                
-            });
-
-            if (!respuesta.ok) {
-                const textoError = await respuesta.text();
-                throw new Error("Respuesta del servidor no es JSON");
-            }
-
-            const resultado = await respuesta.json();
-
-            if (resultado.errores) {
-                const mensajes = Object.values(resultado.errores).join('\n');
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error de validación',
-                    text: mensajes,
-                    confirmButtonColor: '#EC5FA3'
-                });
-            } else if (resultado.mensaje && !resultado.success) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: resultado.mensaje,
-                    confirmButtonColor: '#EC5FA3'
-                });
-            } else {
-                if (resultado.idProducto) {
-                    window.open(`/admin/inventario/etiqueta-sku/${resultado.idProducto}`, '_blank');
-                }
-                Swal.fire({
-                    icon: 'success',
-                    title: '¡Producto Guardado!',
-                    text: 'Los cambios se aplicaron correctamente.',
-                    timer: 2000,
-                    showConfirmButton: false
-                }).then(() => {
-                    window.location.href = '/admin/inventario/listado';
-                });
-            }
-
-        } catch (error) {
-            console.error("Error en el envío:", error);
-            Swal.fire('Error crítico', 'No se pudo conectar con el servidor.', 'error');
+        if (totalCombos > 1) {
+            abrirModalConfirmacionSku(variantesActuales);
+            return;
         }
+
+        procederConGuardado();
     });
 })();
 

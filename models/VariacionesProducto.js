@@ -21,6 +21,11 @@ const VariacionesProducto = db.define('VARIACION_PRODUCTO', {
         type: DataTypes.STRING(100),
         allowNull: false,
     },
+    sku: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+        unique: true
+    },
     valor: {
         type: DataTypes.STRING(100),
         allowNull: false

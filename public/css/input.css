@@ -31,6 +31,42 @@
   }
 }
 
+@keyframes badgePulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+.animate-badge-pulse {
+  animation: badgePulse 1.6s ease-in-out infinite;
+}
+
+/* Aviso rotativo del menú "Tienda Web": cada 10s, el contenido normal se
+   desliza hacia la izquierda y sale, mientras un aviso magenta entra desde
+   la derecha; luego ambos regresan a su posición original. */
+@keyframes menuAlertSlideOut {
+  0%, 65% { transform: translateX(0); opacity: 1; }
+  72%, 88% { transform: translateX(-100%); opacity: 0; }
+  95%, 100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes menuAlertSlideIn {
+  0%, 65% { transform: translateX(100%); opacity: 0; }
+  72%, 88% { transform: translateX(0); opacity: 1; }
+  95%, 100% { transform: translateX(100%); opacity: 0; }
+}
+
+.menu-alert-normal {
+  animation: menuAlertSlideOut 10s ease-in-out infinite;
+}
+
+.menu-alert-banner {
+  animation: menuAlertSlideIn 10s ease-in-out infinite;
+}
+
 
 .bgbody  {
   @apply bg-gradient-to-b from-rose-100 from-25% to-purple-100 to-100% 

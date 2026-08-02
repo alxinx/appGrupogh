@@ -40,7 +40,13 @@ const Traslados = db.define('TRASLADOS', {
         type: DataTypes.ENUM('PENDIENTE', 'EN_TRANSITO', 'RECIBIDO', 'ANULADO', 'EN_CONTROVERSIA', 'DEVUELTO'),
         defaultValue: 'PENDIENTE'
     },
-    notas: DataTypes.TEXT
+    notas: DataTypes.TEXT,
+    idPedidoWeb: {
+        // Se llena solo cuando el traslado lo generó automáticamente un pago web aprobado —
+        // para que en incidencias/reportes quede claro que ese movimiento es por un pedido de la tienda online.
+        type: DataTypes.UUID,
+        allowNull: true
+    }
 }, {
     tableName: 'TRASLADOS',
     timestamps: true

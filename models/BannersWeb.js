@@ -32,6 +32,15 @@ const BannersWeb = db.define('BANNERS_WEB', {
         type: DataTypes.STRING(255),
         allowNull: true
     },
+    imagenMovilUrl: {
+        // Opcional — si no se sube, el frontend usa la imagen de escritorio también en móvil.
+        type: DataTypes.STRING(500),
+        allowNull: true
+    },
+    imagenMovilKey: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
     orden: {
         type: DataTypes.INTEGER,
         defaultValue: 0

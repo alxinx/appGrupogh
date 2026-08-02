@@ -4,7 +4,10 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
     //- COLUMNA IZQUIERDA
     input(type="hidden", name="_csrf" value = csrfToken)
     input(type="hidden", name="idProducto" value=producto ? producto.idProducto : '')
-    
+    input(type="hidden", name="variantes_sku" id="variantes_sku" value="{}")
+    input(type="hidden", name="imagenes_color_nuevas" id="imagenes_color_nuevas" value="{}")
+    input(type="hidden", name="imagenes_color_existentes" id="imagenes_color_existentes" value="{}")
+
 
     div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
         
@@ -141,6 +144,26 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                 button#guardarColores(type="button" class="w-full mt-8 b btn btn-primary") Guardar Colores para esta Talla
 
 
+        //- MODAL DE CONFIRMACIÓN DE SKU AUTOGENERADO
+        div#modalConfirmSku(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4")
+            div(class="bg-white rounded-3xl p-8 w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto")
+                div.flex.justify-between.items-center.mb-6
+                    h2.h2 Confirma los SKU generados
+                    button#cerrarModalSku(type="button" class="text-gray-400 cursor-pointer hover:text-red-500")
+                        i.fi-rr-cross-circle.text-2xl
+
+                p(class="text-sm text-gray-500 mb-4") Detectamos varias combinaciones de talla y color. Revisa o ajusta el SKU de cada una antes de guardar.
+
+                div#listaSkuCombinaciones(class="space-y-2 mb-6")
+                    //- JS inyecta aquí un input por combinación
+
+                div(class="border-t border-gray-100 pt-4")
+                    h3(class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3") Emparejar imágenes por color (opcional)
+                    p(class="text-xs text-gray-400 mb-3") Elige qué imágenes ya subidas corresponden a cada color. Se comparten entre todas las tallas de ese color.
+                    div#listaColoresImagenes(class="space-y-4")
+                        //- JS inyecta aquí un bloque por color con las miniaturas para elegir
+
+                button#confirmarSkuGuardar(type="button" class="w-full mt-8 btn btn-primary") Confirmar y Guardar
 
 
 
