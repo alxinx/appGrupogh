@@ -1,10 +1,10 @@
 import { Op } from 'sequelize';
-import { Empleados, PuntosDeVenta, CajaTienda, UserPermisos, PermisosRecursos, PermisosAcciones } from '../models/index.js';
+import { Empleados, PuntosDeVenta, CajaTienda, UserPermisos, PermisosRecursos, PermisosAcciones, PedidosWeb } from '../models/index.js';
 
 const API_PATH = /\/(json|sse|pdf|api)\//;
 
 // Prefijos de rutas de página dentro de /store que están protegidas por recursos
-const PAGINAS_PREFIJOS = ['/traslados', '/inventario', '/storebehivors'];
+const PAGINAS_PREFIJOS = ['/traslados', '/inventario', '/storebehivors', '/pedidos-web'];
 
 const esRutaPagina = (path) =>
     path === '/' || PAGINAS_PREFIJOS.some(p => path === p || path.startsWith(p + '/'));
@@ -74,6 +74,12 @@ export const cargarPuntoDeVenta = async (req, res, next) => {
                 res.locals.puedeFacturar      = rows.some(
                     r => r['recurso.folder'] === '/' && r['accion.nombreAccion'] === 'CREATE'
                 );
+
+                // Para el aviso animado de "Pedidos Web" en el menú lateral (misma mecánica que
+                // el ítem "Tienda Web" del panel admin) — disponible en todas las páginas de tienda.
+                res.locals.pedidosWebPendientesCount = req.idPuntoDeVenta
+                    ? await PedidosWeb.count({ where: { idTiendaFacturacion: req.idPuntoDeVenta, estado: 'en_revision', idFacturaCliente: null } })
+                    : 0;
 
                 const tieneAcceso = carpetasPermitidas.some(folder =>
                     folder === '/'

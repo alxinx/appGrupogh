@@ -12,9 +12,12 @@ block contenedor
 
                             //- HEADER
                             div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center justify-between")
-                                div
-                                    h1(class="text-xl font-bold text-slate-800") Entidades Bancarias
-                                    p(class="text-xs text-slate-400 mt-0.5") Gestiona los métodos de pago disponibles en el POS
+                                div(class="flex items-center gap-4")
+                                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                        img(src="/img/avatars/banco.webp" alt="Entidades Bancarias" class="w-17 h-17 object-contain")
+                                    div
+                                        h1(class="text-xl font-bold text-slate-800") Entidades Bancarias
+                                        p(class="text-xs text-slate-400 mt-0.5") Gestiona los métodos de pago disponibles en el POS
 
                             //- CUERPO: dos columnas
                             div(class="col-span-12 grid grid-cols-12 gap-4 items-start")

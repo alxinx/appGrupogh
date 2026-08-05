@@ -11,18 +11,22 @@ block contenedor
                         div(class="mainDashboard")
 
                             //- ── HEADER ─────────────────────────────────────────────────────────────
-                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
-                                div(class="flex items-center gap-4")
-                                    a(href="/admin/web/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
-                                        i(class="fi fi-rr-arrow-left text-slate-600")
-                                    div(class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-200 to-pink-400 flex items-center justify-center flex-shrink-0")
-                                        i(class="fi fi-rr-picture text-white")
-                                    div
-                                        h1(class="font-bold text-slate-800 text-lg leading-tight") Banners Hero
-                                        p(class="text-xs text-slate-400") Imágenes principales del carrusel de la página de inicio
-                                button#btn-nuevo-banner(type="button" class="btn btn-primary text-xs py-1.5 px-4")
-                                    i(class="fi fi-rr-add")
-                                    | Nuevo banner
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap")
+                                div(class="flex items-center gap-4 min-w-0")
+                                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                        img(src="/img/avatars/baner.webp" alt="Banners Hero" class="w-20 h-20 object-contain")
+                                    div(class="min-w-0")
+                                        h1(class="h1 text-left mb-0") Banners Hero
+                                        p(class="text-sm text-slate-400") Imágenes principales del carrusel de la página de inicio
+
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(href="/admin/web/")
+                                        button(class="btn btn-outline flex items-center gap-2")
+                                            i(class="fi fi-rr-arrow-left")
+                                            | Volver
+                                    button#btn-nuevo-banner(type="button" class="btn btn-primary text-xs py-1.5 px-4")
+                                        i(class="fi fi-rr-add")
+                                        | Nuevo banner
 
                             //- ── LISTA BANNERS ───────────────────────────────────────────────────────
                             div(class="col-span-12 cards cardsWhite p-6")

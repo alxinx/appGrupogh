@@ -1,7 +1,14 @@
 div(class="h-full p-4 grid grid-cols-12 gap-6")
     //- SECCIÓN IZQUIERDA: BUSCADOR Y PRODUCTOS (8 Columnas)
     div(class="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-y-auto")
-        
+
+        //- Pedidos web asignados, pendientes de despachar
+        div#pedidos-web-banner(class="hidden bg-gh-primarySoft shadow-inner rounded-2xl p-4")
+            div(class="flex items-center gap-2 mb-3")
+                i(class="fi fi-rr-shopping-bag text-gh-primaryHover")
+                span(class="text-sm font-bold text-gh-grayText") Pedidos web por despachar
+            div#pedidos-web-lista(class="flex flex-col gap-2")
+
         //- Buscador Gigante
         div(class="bg-white/70 backdrop-blur-md rounded-[1.5rem] p-6 shadow-sm border border-white")
             input(id="codigo" name="codigo" type="text" placeholder="Ingresa el SKU, nombre o serial..." autofocus class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none")

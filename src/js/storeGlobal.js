@@ -146,6 +146,24 @@
             }, 60 * 60 * 1000);
         });
 
+        sseSource.addEventListener('new_pedido_web', (e) => {
+            const { numeroPedido } = JSON.parse(e.data);
+
+            Swal.fire({
+                icon:               'info',
+                title:              '🛍️ ¡Nuevo pedido web!',
+                html:               `Te asignaron el pedido <strong>${numeroPedido}</strong> para despachar.`,
+                confirmButtonText:  'Entendido',
+                confirmButtonColor: '#EC5FA3',
+                timer:              8000,
+                timerProgressBar:   true,
+                position:           'top-end',
+                toast:              false
+            });
+
+            if (typeof window.__recargarPedidosWebPendientes === 'function') window.__recargarPedidosWebPendientes();
+        });
+
         sseSource.addEventListener('traslado_devuelto', (e) => {
             const { codigo } = JSON.parse(e.data);
             mostrarBannerDevuelto(codigo);

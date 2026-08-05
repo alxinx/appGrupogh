@@ -42,6 +42,21 @@ aside(
       i(class="fi fi-rr-paper-plane text-lg")
       span Traslados
 
+    if pedidosWebPendientesCount && pedidosWebPendientesCount > 0
+      a(href="/store/pedidos-web" class=`menu-item relative h-14 p-0 overflow-hidden ${currentPath === '/pedidos-web' ? 'active' : ''}`)
+        div(class="menu-alert-normal absolute inset-0 flex items-center gap-3 px-4")
+          i(class="fi fi-rr-shopping-bag text-lg")
+          span Pedidos Web
+          span(class="animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300")= pedidosWebPendientesCount
+        div(class="menu-alert-banner absolute inset-0 flex items-center gap-2.5 px-4 bg-gh-primaryHover text-white")
+          i(class="fi fi-rr-bell text-base flex-shrink-0")
+          span(class="text-xs font-semibold leading-snug") Pedidos web por despachar
+    else
+      a(href="/store/pedidos-web"
+        class=`menu-item ${currentPath === '/pedidos-web' ? 'active' : ''}`)
+        i(class="fi fi-rr-shopping-bag text-lg")
+        span Pedidos Web
+
     details(class="group" data-folder="/storebehivors" style=vis('/storebehivors'))
       summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
         div(class="flex items-center gap-3")

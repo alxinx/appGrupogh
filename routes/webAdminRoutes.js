@@ -11,7 +11,9 @@ import {
     listaSecciones, crearSeccion, actualizarSeccion, eliminarSeccion,
     gestionPopup, actualizarPopup,
     listaEtiquetas, crearEtiqueta, actualizarEtiqueta, eliminarEtiqueta,
-    listaPaginas, nuevaPaginaForm, editarPaginaForm, crearPagina, actualizarPagina, eliminarPagina
+    listaPaginas, nuevaPaginaForm, editarPaginaForm, crearPagina, actualizarPagina, eliminarPagina,
+    paginaPedidosWeb, jsonPedidosWeb, jsonDetallePedidoWeb, exportarPedidosWeb,
+    paginaDetallePedidoWeb, asignarTiendaPedidoWeb, cancelarPedidoWeb
 } from '../controller/webAdminController.js';
 
 import uploadImages from '../middlewares/uploadImages.js';
@@ -62,5 +64,14 @@ routes.get('/paginas/:idPagina/editar', csrfProtection, editarPaginaForm);
 routes.post('/paginas/crear', csrfProtection, crearPagina);
 routes.post('/paginas/:idPagina/editar', csrfProtection, actualizarPagina);
 routes.post('/paginas/:idPagina/eliminar', csrfProtection, eliminarPagina);
+
+// Pedidos web
+routes.get('/pedidos', paginaPedidosWeb);
+routes.get('/pedidos/json', jsonPedidosWeb);
+routes.get('/pedidos/exportar', exportarPedidosWeb);
+routes.get('/pedidos/:idPedido', csrfProtection, paginaDetallePedidoWeb);
+routes.get('/pedidos/:idPedido/json', jsonDetallePedidoWeb);
+routes.post('/pedidos/:idPedido/asignar-tienda', csrfProtection, asignarTiendaPedidoWeb);
+routes.post('/pedidos/:idPedido/cancelar', csrfProtection, cancelarPedidoWeb);
 
 export default routes;

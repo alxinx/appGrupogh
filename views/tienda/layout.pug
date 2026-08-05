@@ -95,6 +95,7 @@ block contenedor
         window.__cajaAbierta          = !window.__SIN_CAJA__;
         window.__CAJAS_PENDIENTES__   = !{JSON.stringify(cajaDelDiaAnterior ? 1 : 0)};
         window.__PUEDE_FACTURAR__     = !{JSON.stringify(!!puedeFacturar)};
+        window.__PEDIDOS_WEB_PENDIENTES__ = !{JSON.stringify(pedidosWebPendientes || [])};
 
     script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
     script(src="/js/helpers.js")
@@ -109,6 +110,19 @@ block contenedor
                 title: '📦 Traslado pendiente',
                 html: 'Tienes <strong>!{trasladosPendientes}</strong> traslado!{plural} por recibir.<br><br><a href="/store/traslados/get" style="color:#EC5FA3;font-weight:bold;text-decoration:underline;">Ver traslados →</a>',
                 timer: 5000,
+                timerProgressBar: true,
+                showConfirmButton: false,
+                position: 'center'
+            });
+
+    if pedidosWebPendientes && pedidosWebPendientes.length > 0
+        - const plural = pedidosWebPendientes.length > 1 ? 's' : ''
+        script.
+            Swal.fire({
+                icon: 'info',
+                title: '🛍️ Pedido web por despachar',
+                html: 'Tienes <strong>!{pedidosWebPendientes.length}</strong> pedido!{plural} web asignado!{plural}, listo!{plural} para cargar al carrito y facturar.',
+                timer: 6000,
                 timerProgressBar: true,
                 showConfirmButton: false,
                 position: 'center'

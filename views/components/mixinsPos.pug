@@ -99,6 +99,7 @@ mixin tarjetaClienteFidelizado(idCliente, nombre, documento, imagen)
         h2(class="text-[10px] font-bold text-gh-primary uppercase tracking-widest mb-1") Datos del Cliente
         h4(id="cli-display-nombre" class="text-lg font-bold text-slate-800 leading-tight truncate")= nombre
         p(id="cli-display-doc" class="text-xs font-semibold text-slate-500 uppercase tracking-tighter")= documento
+        p#cli-pedido-web-info(class="hidden text-[11px] font-bold text-gh-primaryHover mt-1")
 
       //- Botón para abrir el Modal de Edición
       div(class="col-span-3 flex justify-end")

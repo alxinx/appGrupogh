@@ -41,7 +41,11 @@ import {
     validarEmpleadoTraslado,
     trasladarDesdePerfil,
     getTrasladosAlertaJSON,
-    validarEmpleadoTienda
+    validarEmpleadoTienda,
+    getPedidosWebPendientesJSON,
+    getPedidoWebParaCargarJSON,
+    pedidosWebStorePage,
+    getPedidosWebListaJSON
 } from '../controller/storeControllers.js';
 import { buscarEmpleadoPorCodigo } from '../controller/adminControllers.js';
 import { imprimirComprobanteTraslado } from '../controller/dosificacionController.js';
@@ -62,6 +66,7 @@ routes.use(cargarPuntoDeVenta);
 routes.get('/', csrfProtection, dashboardStores);
 routes.get('/traslados/get', csrfProtection, getTraslados);
 routes.get('/inventario/lista', csrfProtection, getInventarioLista);
+routes.get('/pedidos-web', csrfProtection, pedidosWebStorePage);
 routes.get('/inventario/perfilProducto/:idProducto', csrfProtection, getPerfilProducto);
 
 // SSE (sin CSRF — es GET long-lived)
@@ -83,6 +88,9 @@ routes.get('/json/clientes/buscar', buscarClientePorDoc);
 routes.get('/json/municipios/:deptoId', getMunicipiosStoreJSON);
 routes.get('/json/entidades', getEntidadesJSON);
 routes.get('/json/traslados/buscar-sku', buscarProductoPorSKU);
+routes.get('/json/pedidos-web/pendientes', getPedidosWebPendientesJSON);
+routes.get('/json/pedidos-web/lista', getPedidosWebListaJSON);
+routes.get('/json/pedidos-web/:idPedido/cargar', getPedidoWebParaCargarJSON);
 
 // APIs JSON — traslados
 routes.get('/traslados/pendientes', getPendientesJSON);
