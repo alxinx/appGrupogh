@@ -165,6 +165,24 @@ mixin modalFinalizarVenta()
         div(class="w-1/2 flex flex-col px-8 py-6")
           p(class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4") Métodos de Pago
 
+          //- ── PAGO WEB (solo lectura) ──────────────────────────────────────
+          //- Aparece únicamente al facturar un pedido web. El cobro ya lo hizo Wompi, así que
+          //- el monto y el método no se digitan ni se pueden editar: se muestran como constancia.
+          div(id="fv-pago-web" class="hidden mb-3 rounded-[1rem] border-2 border-emerald-200 bg-emerald-50/60")
+            div(class="flex items-center justify-between p-4")
+              div(class="flex items-center gap-3")
+                div(class="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center")
+                  i(class="fi-rr-globe text-emerald-600")
+                div
+                  p(class="text-xs font-black text-gray-800 uppercase") Pago en línea
+                  p(id="fv-pago-web-metodo" class="text-[10px] text-gray-500 font-medium") —
+              div(class="text-right")
+                p(id="fv-pago-web-valor" class="font-black text-emerald-700 text-lg leading-none") $0
+                span(class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider") Cobrado
+            div(class="px-4 pb-3 flex items-center gap-2 text-[10px] text-gray-500")
+              i(class="fi-rr-lock text-gray-400")
+              span(id="fv-pago-web-ref") Confirmado por la pasarela — no requiere cobro en caja
+
           //- EFECTIVO
           div(id="fv-metodo-efectivo" class="mb-3 bg-gray-50 rounded-[1rem] border-2 border-transparent transition-all")
             div(id="fv-efectivo-header" class="flex items-center justify-between p-4 cursor-pointer select-none")

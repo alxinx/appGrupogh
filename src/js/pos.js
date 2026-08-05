@@ -191,6 +191,10 @@ import ciiuData from '../json/ciiu.json';
     // ─── CARRITO MANAGER ──────────────────────────────────────────────────────
     // Estado aislado por tab (memoria JS — cada tab tiene su propio contexto)
     const cart = new Map(); // idProducto → item
+    let pedidoWebActivo = null; // idPedido de PEDIDOS_WEB que se está despachando en esta orden, si aplica
+    // Pago ya cobrado por la pasarela para ese pedido. El cajero no lo digita ni lo puede editar:
+    // el backend lo reconstruye desde PAGOS_PEDIDO_WEB al facturar. Acá solo se muestra.
+    let pagoWebActivo = null;
     const WHOLESALE_MIN = parseInt(document.getElementById('drop-zone')?.dataset.wholesaleMin) || 6;
 
     const cartList      = document.getElementById('cart-list');
@@ -248,6 +252,138 @@ import ciiuData from '../json/ciiu.json';
             });
         }
         renderCarrito();
+    };
+
+    // ── Pedidos web asignados a esta tienda (banner + carga al carrito) ───────
+    let pedidosWebPendientesLocal = Array.isArray(window.__PEDIDOS_WEB_PENDIENTES__) ? window.__PEDIDOS_WEB_PENDIENTES__ : [];
+
+    const ETIQUETA_METODO_PAGO = { tarjeta: 'Tarjeta', pse: 'PSE', nequi: 'Nequi', contraentrega: 'Contraentrega' };
+    const ETIQUETA_ENTREGA_WEB = { domicilio: 'Domicilio', tienda: 'Punto de venta' };
+
+    const renderPedidosWebBanner = () => {
+        const banner = document.getElementById('pedidos-web-banner');
+        const lista  = document.getElementById('pedidos-web-lista');
+        if (!banner || !lista) return;
+
+        if (!pedidosWebPendientesLocal.length) {
+            banner.classList.add('hidden');
+            lista.innerHTML = '';
+            return;
+        }
+        banner.classList.remove('hidden');
+        lista.innerHTML = pedidosWebPendientesLocal.map(p => `
+            <div class="flex items-center gap-4 bg-white rounded-2xl px-4 py-3">
+                <div class="w-14 h-14 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700">
+                    <img src="/img/avatars/pedido.webp" alt="Pedido" class="w-11 h-11 object-contain">
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap mb-1">
+                        <h4 class="text-base font-bold text-slate-800">${p.numeroPedido}</h4>
+                        <span class="status-chip status-active">${ETIQUETA_METODO_PAGO[p.metodoPago] || p.metodoPago}</span>
+                        <span class="status-chip status-pending">${ETIQUETA_ENTREGA_WEB[p.tipoEntrega] || p.tipoEntrega}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-sm text-gray-500 truncate">
+                        <i class="fi fi-rr-user"></i>
+                        <span class="truncate">${p.nombreCliente}</span>
+                        <span>·</span>
+                        <span class="font-bold text-gh-grayText">$${fmt(p.total)}</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-cargar-pedido-web btn btn-primary flex-shrink-0 flex items-center gap-2" data-id="${p.idPedido}">
+                    <i class="fi fi-rr-shopping-bag"></i>
+                    Cargar en el carrito
+                </button>
+            </div>`).join('');
+
+        lista.querySelectorAll('.btn-cargar-pedido-web').forEach(btn => {
+            btn.addEventListener('click', () => cargarPedidoWebEnCarrito(btn.dataset.id, btn));
+        });
+    };
+
+    // Intenta emparejar el pedido con un cliente ya registrado (por cédula); si no hay
+    // coincidencia, solo muestra el nombre a modo informativo — no se inventa un cliente.
+    const vincularClientePedidoWeb = async (data) => {
+        const elNombre = document.getElementById('cli-display-nombre');
+        const elDoc    = document.getElementById('cli-display-doc');
+
+        if (data.cedula) {
+            try {
+                const resp = await fetch(`/store/json/clientes/buscar?doc=${encodeURIComponent(data.cedula)}`);
+                const encontrado = await resp.json();
+                if (encontrado.success && encontrado.cliente) {
+                    const cli = encontrado.cliente;
+                    const nombreCompleto = cli.razon_social || `${cli.primer_nombre || ''} ${cli.primer_apellido || ''}`.trim();
+                    if (inputIdCliente) inputIdCliente.value = cli.idCliente;
+                    const idHidden = document.getElementById('cli-id-hidden');
+                    if (idHidden) idHidden.value = cli.idCliente;
+                    if (elNombre) elNombre.textContent = nombreCompleto || data.nombreCliente;
+                    if (elDoc)    elDoc.textContent    = cli.numero_doc || data.cedula;
+                    return;
+                }
+            } catch (_) { /* sigue al fallback informativo */ }
+        }
+
+        // Sin coincidencia (o sin cédula) — se factura al cliente genérico, solo se informa el nombre.
+        if (elNombre) elNombre.textContent = data.nombreCliente;
+        if (elDoc)    elDoc.textContent    = 'Pedido web — sin registrar';
+    };
+
+    const cargarPedidoWebEnCarrito = async (idPedido, btn) => {
+        if (bloquearSiSinCaja()) return;
+        if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+
+        try {
+            const res  = await fetch(`/store/json/pedidos-web/${idPedido}/cargar`);
+            const data = await res.json();
+            if (!data.success) {
+                window.showToast?.(data.mensaje || 'No se pudo cargar el pedido.', 'error');
+                if (btn) { btn.disabled = false; btn.textContent = 'Cargar en el carrito'; }
+                return;
+            }
+
+            data.items.forEach(it => addToCart(it, it.cantidadPedida));
+            pedidoWebActivo = idPedido;
+            pagoWebActivo  = data.pagoWeb || null;
+
+            await vincularClientePedidoWeb(data);
+
+            const elPedidoWebInfo = document.getElementById('cli-pedido-web-info');
+            if (elPedidoWebInfo) {
+                elPedidoWebInfo.textContent = `Pedido ${data.numeroPedido} · Pagado con ${ETIQUETA_METODO_PAGO[data.metodoPago] || data.metodoPago}`;
+                elPedidoWebInfo.classList.remove('hidden');
+            }
+
+            pedidosWebPendientesLocal = pedidosWebPendientesLocal.filter(p => p.idPedido !== idPedido);
+            renderPedidosWebBanner();
+
+            window.showToast?.(`Pedido ${data.numeroPedido} cargado en el carrito.`, 'success');
+        } catch (e) {
+            console.error('cargarPedidoWebEnCarrito:', e);
+            window.showToast?.('Error de conexión al cargar el pedido.', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Cargar en el carrito'; }
+        }
+    };
+
+    renderPedidosWebBanner();
+
+    // Llegada desde /store/pedidos-web con "Cargar en el carrito" → carga automática al entrar.
+    const idPedidoWebDesdeUrl = new URLSearchParams(window.location.search).get('cargarPedido');
+    if (idPedidoWebDesdeUrl) {
+        cargarPedidoWebEnCarrito(idPedidoWebDesdeUrl);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('cargarPedido');
+        window.history.replaceState({}, '', url);
+    }
+
+    window.__recargarPedidosWebPendientes = async () => {
+        try {
+            const res  = await fetch('/store/json/pedidos-web/pendientes');
+            const data = await res.json();
+            if (data.success) {
+                pedidosWebPendientesLocal = data.pedidos;
+                renderPedidosWebBanner();
+            }
+        } catch (_) {}
     };
 
     // ── Actualizar cantidad (+ o -) ──────────────────────────────────────────
@@ -397,7 +533,7 @@ import ciiuData from '../json/ciiu.json';
             cancelButtonText:  'Cancelar',
             confirmButtonColor: '#EC5FA3'
         });
-        if (isConfirmed) { cart.clear(); renderCarrito(); }
+        if (isConfirmed) { cart.clear(); pedidoWebActivo = null; pagoWebActivo = null; renderCarrito(); }
     });
 
     // ── Agregar desde catálogo (click en botón) ──────────────────────────────
@@ -735,6 +871,8 @@ import ciiuData from '../json/ciiu.json';
         const elDoc    = document.getElementById('cli-display-doc');
         if (elNombre) elNombre.textContent = CLIENTE_GENERICO.nombre;
         if (elDoc)    elDoc.textContent    = CLIENTE_GENERICO.doc;
+        const elPedidoWebInfo = document.getElementById('cli-pedido-web-info');
+        if (elPedidoWebInfo) { elPedidoWebInfo.textContent = ''; elPedidoWebInfo.classList.add('hidden'); }
 
         const idHidden = document.getElementById('cli-id-hidden');
         if (idHidden) idHidden.value = CLIENTE_GENERICO.idCliente;
@@ -1098,7 +1236,37 @@ import ciiuData from '../json/ciiu.json';
         window.initMoneyInput?.(document.getElementById('fv-efectivo-monto'));
 
         // ── Abrir ──────────────────────────────────────────────────────────────
-        const abrirFV = () => {
+        // Bloque de solo lectura con el pago que ya cobró la pasarela. Cuando existe, los métodos
+        // manuales se ocultan: el cajero no está recibiendo plata, solo emitiendo la factura.
+        const pintarPagoWeb = () => {
+            const caja = document.getElementById('fv-pago-web');
+            if (!caja) return;
+
+            const metodosManuales = ['efectivo', 'transferencia', 'tarjeta', 'credito']
+                .map(m => document.getElementById(`fv-metodo-${m}`));
+
+            if (!pagoWebActivo) {
+                caja.classList.add('hidden');
+                // 'transferencia', 'tarjeta' y 'credito' los muestra cargarEntidades() según
+                // las entidades disponibles, así que acá solo se restituye efectivo.
+                document.getElementById('fv-metodo-efectivo')?.classList.remove('hidden');
+                return;
+            }
+
+            caja.classList.remove('hidden');
+            metodosManuales.forEach(el => el?.classList.add('hidden'));
+
+            const fmtCop = (n) => new Intl.NumberFormat('es-CO').format(Math.round(n));
+            document.getElementById('fv-pago-web-metodo').textContent = pagoWebActivo.etiqueta || 'Pago en línea';
+            document.getElementById('fv-pago-web-valor').textContent  = `$${fmtCop(pagoWebActivo.valor)}`;
+
+            const ref = pagoWebActivo.idTransaccion || pagoWebActivo.referencia;
+            document.getElementById('fv-pago-web-ref').textContent = ref
+                ? `Transacción ${ref}`
+                : 'Confirmado por la pasarela — no requiere cobro en caja';
+        };
+
+        const abrirFV = async () => {
             if (!cart.size) {
                 Swal.fire({ icon: 'info', title: 'Orden vacía', text: 'Agrega productos antes de procesar la factura.', confirmButtonColor: '#EC5FA3' });
                 return;
@@ -1106,8 +1274,12 @@ import ciiuData from '../json/ciiu.json';
             poblarCliente();
             poblarProductos();
             actualizarTotalesFV();
-            cargarEntidades();
+            // Se espera a cargarEntidades: al terminar vuelve a mostrar las tarjetas de
+            // transferencia/tarjeta/crédito, así que pintarPagoWeb tiene que correr después
+            // para poder ocultarlas cuando el pedido ya viene pago.
+            await cargarEntidades();
             resetearPagos();
+            pintarPagoWeb();
             modalFV.classList.remove('hidden');
             modalFV.classList.add('flex');
         };
@@ -1521,7 +1693,8 @@ import ciiuData from '../json/ciiu.json';
             const transferencia = calcularTransferencia();
             const tarjeta       = calcularTarjeta();
             const credito       = calcularCredito();
-            const suma          = efectivo + transferencia + tarjeta + credito;
+            const pagoEnLinea   = pagoWebActivo?.valor || 0;
+            const suma          = efectivo + transferencia + tarjeta + credito + pagoEnLinea;
             const total         = calcularSubtotal();
 
             const elEf = document.getElementById('fv-resumen-efectivo-val');
@@ -1717,7 +1890,7 @@ import ciiuData from '../json/ciiu.json';
                 const resp = await fetch('/store/facturas/procesar', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body:    JSON.stringify({ idCliente, idEmpleado, items, pagos: pagosPayload })
+                    body:    JSON.stringify({ idCliente, idEmpleado, items, pagos: pagosPayload, idPedidoWeb: pedidoWebActivo })
                 });
                 const data = await resp.json();
 
@@ -1732,6 +1905,8 @@ import ciiuData from '../json/ciiu.json';
                 window.open(`/store/facturas/${data.idFacturaCliente}/tirilla`, '_blank');
                 cerrarFV();
                 cart.clear();
+                pedidoWebActivo = null;
+                pagoWebActivo   = null;
                 renderCarrito();
                 resetCliente();
 

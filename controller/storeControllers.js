@@ -7,7 +7,8 @@ import {
     Atributos, VariacionesProducto, Entidades,
     FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente,
     DetallesPagosFactura, RegimenFacturacion, Egresos,
-    CajaTienda, UserPermisos, PermisosAcciones, PermisosRecursos
+    CajaTienda, UserPermisos, PermisosAcciones, PermisosRecursos,
+    PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import PDFDocument from 'pdfkit';
@@ -24,6 +25,8 @@ import { resolverIds } from '../middlewares/verificarPermisoEmpleado.js';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
 import sharp from 'sharp';
+import { crearConCodigo } from '../helpers/secuencias.js';
+import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
 
@@ -38,7 +41,7 @@ const dashboardStores = async (req, res) => {
         limiteCaja.setHours(0, 0, 0, 0);
     }
 
-    const [trasladosPendientes, departamentos, clienteRaw, cajaDelDiaAnterior] = await Promise.all([
+    const [trasladosPendientes, departamentos, clienteRaw, cajaDelDiaAnterior, pedidosWebPendientes] = await Promise.all([
         idPuntoDeVenta
             ? Traslados.count({ where: { idDestino: idPuntoDeVenta, estado: 'EN_TRANSITO' } })
             : 0,
@@ -56,7 +59,15 @@ const dashboardStores = async (req, res) => {
                 attributes: ['idCajaTienda', 'fechaApertura'],
                 raw: true
               })
-            : null
+            : null,
+        idPuntoDeVenta
+            ? PedidosWeb.findAll({
+                where: { idTiendaFacturacion: idPuntoDeVenta, estado: 'trasladado', idFacturaCliente: null },
+                attributes: ['idPedido', 'numeroPedido', 'nombreCliente', 'apellidoCliente', 'total', 'metodoPago', 'tipoEntrega'],
+                order: [['createdAt', 'ASC']],
+                raw: true
+              })
+            : []
     ]);
 
     const clienteGenerico = clienteRaw || {
@@ -76,7 +87,15 @@ const dashboardStores = async (req, res) => {
         departamentos,
         clienteGenerico,
         cajaMenorDefault: parseFloat(process.env.PETTY_CASH_FOUND) || 0,
-        cajaDelDiaAnterior: cajaDelDiaAnterior || null
+        cajaDelDiaAnterior: cajaDelDiaAnterior || null,
+        pedidosWebPendientes: pedidosWebPendientes.map(p => ({
+            idPedido: p.idPedido,
+            numeroPedido: p.numeroPedido,
+            nombreCliente: `${p.nombreCliente} ${p.apellidoCliente}`,
+            total: p.total,
+            metodoPago: p.metodoPago,
+            tipoEntrega: p.tipoEntrega
+        }))
     });
 };
 
@@ -134,6 +153,164 @@ const _enviarEstado = async (idPdv, res) => {
         });
         sendEvent(res, 'state', { pendientes, controversias });
     } catch (_) {}
+};
+
+// ─── PEDIDOS WEB (asignados a esta tienda para despachar) ───────────────────
+
+const getPedidosWebPendientesJSON = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    try {
+        const pedidos = await PedidosWeb.findAll({
+            where: { idTiendaFacturacion: idPdv, estado: 'trasladado', idFacturaCliente: null },
+            attributes: ['idPedido', 'numeroPedido', 'nombreCliente', 'apellidoCliente', 'total', 'metodoPago', 'tipoEntrega'],
+            order: [['createdAt', 'ASC']],
+            raw: true
+        });
+        return res.json({
+            success: true,
+            pedidos: pedidos.map(p => ({
+                idPedido: p.idPedido,
+                numeroPedido: p.numeroPedido,
+                nombreCliente: `${p.nombreCliente} ${p.apellidoCliente}`,
+                total: p.total,
+                metodoPago: p.metodoPago,
+                tipoEntrega: p.tipoEntrega
+            }))
+        });
+    } catch (e) {
+        console.error('getPedidosWebPendientesJSON:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// Devuelve los ítems del pedido en el mismo formato que usa el buscador del POS
+// (buscarPosProducto), listos para pasarle a addToCart() en el cliente.
+const getPedidoWebParaCargarJSON = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    const { idPedido } = req.params;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    try {
+        const pedido = await PedidosWeb.findOne({
+            where: { idPedido, idTiendaFacturacion: idPdv, estado: 'trasladado', idFacturaCliente: null },
+            include: [
+                { model: DetallesPedidoWeb, as: 'detalles' },
+                { model: PagosPedidoWeb, as: 'pagos', required: false }
+            ]
+        });
+        if (!pedido) return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado o ya no está pendiente para esta tienda.' });
+        if (!pedido.detalles.length) return res.status(400).json({ success: false, mensaje: 'El pedido no tiene productos.' });
+
+        const idsProductos = pedido.detalles.map(d => d.idProducto);
+        const [productos, stockRows] = await Promise.all([
+            Productos.findAll({
+                where: { idProducto: { [Op.in]: idsProductos } },
+                attributes: ['idProducto', 'nombreProducto', 'sku', 'precioVentaMayorista', 'precioVentaPublicoFinal'],
+                include: [{ model: Imagenes, as: 'imagenes', attributes: ['nombreImagen'], limit: 1, required: false }]
+            }),
+            Stock.findAll({
+                where: { idPuntoVenta: idPdv, idProducto: { [Op.in]: idsProductos }, cantidadExistente: { [Op.gt]: 0 } },
+                attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stock']],
+                group: ['idProducto'],
+                raw: true
+            })
+        ]);
+        const mapProducto = new Map(productos.map(p => [p.idProducto, p]));
+        const mapStock = Object.fromEntries(stockRows.map(r => [r.idProducto, parseInt(r.stock) || 0]));
+        const r2 = `${process.env.R2_PUBLIC_URL}/productos/`;
+
+        const items = pedido.detalles.map(d => {
+            const prod = mapProducto.get(d.idProducto);
+            if (!prod) return null;
+            const img = prod.imagenes?.[0]?.nombreImagen;
+            return {
+                idProducto: prod.idProducto,
+                nombreProducto: prod.nombreProducto,
+                sku: prod.sku,
+                precioVentaMayorista: parseFloat(prod.precioVentaMayorista) || 0,
+                precioVentaPublicoFinal: parseFloat(prod.precioVentaPublicoFinal) || 0,
+                stock: mapStock[prod.idProducto] || 0,
+                imagen: img ? `${r2}${img}` : '/img/image-default.webp',
+                cantidadPedida: Number(d.cantidad)
+            };
+        }).filter(Boolean);
+
+        // Pago que ya cobró la pasarela. El POS lo muestra bloqueado: el cajero no está
+        // recibiendo plata, solo deja constancia de lo que Wompi confirmó.
+        const pagoWeb = await resolverPagoWebParaFactura(pedido);
+
+        return res.json({
+            success: true,
+            numeroPedido: pedido.numeroPedido,
+            nombreCliente: `${pedido.nombreCliente} ${pedido.apellidoCliente}`,
+            cedula: pedido.cedula,
+            metodoPago: pedido.metodoPago,
+            pagoWeb,
+            items
+        });
+    } catch (e) {
+        console.error('getPedidoWebParaCargarJSON:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al cargar el pedido.' });
+    }
+};
+
+const pedidosWebStorePage = async (req, res) => {
+    return res.render('./tienda/pedidosWeb/lista', {
+        pagina: 'Pedidos Web',
+        csrfToken: req.csrfToken(),
+        currentPath: '/pedidos-web'
+    });
+};
+
+const ESTADOS_PEDIDO_WEB_STORE = ['pendiente_pago', 'en_revision', 'trasladado', 'facturado', 'cancelado'];
+
+// Listado paginado de todos los pedidos web alguna vez asignados a esta tienda (no solo los pendientes).
+const getPedidosWebListaJSON = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    const { estado = '' } = req.query;
+    const pagina  = Math.max(1, parseInt(req.query.pagina) || 1);
+    const limite  = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+    const offset  = (pagina - 1) * limite;
+
+    try {
+        const where = { idTiendaFacturacion: idPdv };
+        if (estado && ESTADOS_PEDIDO_WEB_STORE.includes(estado)) where.estado = estado;
+
+        const { count, rows } = await PedidosWeb.findAndCountAll({
+            where,
+            attributes: ['idPedido', 'numeroPedido', 'nombreCliente', 'apellidoCliente', 'email', 'telefono', 'metodoPago', 'tipoEntrega', 'total', 'estado', 'idFacturaCliente', 'createdAt'],
+            order: [['createdAt', 'DESC']],
+            limit: limite,
+            offset
+        });
+
+        return res.json({
+            success: true,
+            pedidos: rows.map(p => ({
+                idPedido: p.idPedido,
+                numeroPedido: p.numeroPedido,
+                nombreCliente: `${p.nombreCliente} ${p.apellidoCliente}`,
+                email: p.email,
+                telefono: p.telefono,
+                metodoPago: p.metodoPago,
+                tipoEntrega: p.tipoEntrega,
+                total: p.total,
+                estado: p.estado,
+                idFacturaCliente: p.idFacturaCliente,
+                createdAt: p.createdAt
+            })),
+            totalPaginas: Math.ceil(count / limite),
+            paginaActual: pagina,
+            total: count
+        });
+    } catch (e) {
+        console.error('getPedidosWebListaJSON:', e);
+        return res.status(500).json({ success: false });
+    }
 };
 
 // ─── APIs JSON ───────────────────────────────────────────────────────────────
@@ -316,18 +493,14 @@ const _crearStockRow = async (idPuntoVenta, { idPack, idProducto }, cantidad, tr
 };
 
 const _crearTraslado = async (idOrigen, idDestino, idEmpleado, notas, transaction) => {
-    const ultimo = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction });
-    const nro    = ultimo ? parseInt(ultimo.codigoTraslado.split('-')[1]) + 1 : 1000;
-    const codigo = `TR-${nro}`;
-    const traslado = await Traslados.create({
-        codigoTraslado:    codigo,
+    const traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
         idOrigen,
         idDestino,
         idUsuarioDespacha: idEmpleado,
         notas:             notas || null,
         estado:            'EN_TRANSITO'
-    }, { transaction });
-    return { traslado, codigo };
+    }, transaction);
+    return { traslado, codigo: traslado.codigoTraslado };
 };
 
 const _broadcastEstadoTraslado = async (idDestino, idOrigen = null) => {
@@ -1259,7 +1432,7 @@ const fmtCOP = n => Math.round(n).toLocaleString('es-CO');
 // ─── PROCESAR FACTURA ─────────────────────────────────────────────────────────
 const procesarFactura = async (req, res) => {
   try {
-    const { idCliente, idEmpleado, items, pagos } = req.body;
+    const { idCliente, idEmpleado, items, pagos, idPedidoWeb } = req.body;
     const idPuntoDeVenta = req.idPuntoDeVenta;
     const WHOLESALE_MIN  = parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6;
 
@@ -1285,9 +1458,33 @@ const procesarFactura = async (req, res) => {
         if (!Number.isInteger(qty) || qty <= 0)
             return res.status(400).json({ success: false, mensaje: `Cantidad inválida para producto ${it.idProducto}.` });
     }
-    if (!Array.isArray(pagos) || pagos.length === 0)
+    // Si la orden viene de un pedido web, el pago NO lo digita el cajero: ya lo cobró la pasarela.
+    // Se reconstruye desde PAGOS_PEDIDO_WEB y se ignora por completo lo que haya mandado el
+    // cliente, para que ni un bug del front ni una petición manipulada puedan cambiar el monto
+    // o la entidad con la que queda registrada una venta ya cobrada.
+    let pagosEfectivos = pagos;
+    let pagoWebFactura = null;
+    if (idPedidoWeb) {
+        const pedidoWeb = await PedidosWeb.findOne({
+            where: { idPedido: idPedidoWeb, idTiendaFacturacion: idPuntoDeVenta, estado: 'trasladado', idFacturaCliente: null }
+        });
+        if (!pedidoWeb)
+            return res.status(400).json({ success: false, mensaje: 'El pedido web no está disponible para facturar en esta tienda.' });
+
+        pagoWebFactura = await resolverPagoWebParaFactura(pedidoWeb);
+        if (pagoWebFactura) {
+            pagosEfectivos = [{
+                idEntidad: pagoWebFactura.idEntidad,
+                valor: pagoWebFactura.valor,
+                // Queda la transacción de Wompi como referencia del pago, para poder conciliar.
+                nroReferencia: pagoWebFactura.idTransaccion || pagoWebFactura.referencia || null
+            }];
+        }
+    }
+
+    if (!Array.isArray(pagosEfectivos) || pagosEfectivos.length === 0)
         return res.status(400).json({ success: false, mensaje: 'Sin métodos de pago.' });
-    for (const p of pagos) {
+    for (const p of pagosEfectivos) {
         const val = Number(p.valor);
         if (!Number.isFinite(val) || val <= 0)
             return res.status(400).json({ success: false, mensaje: 'Valor de pago inválido.' });
@@ -1323,7 +1520,7 @@ const procesarFactura = async (req, res) => {
         return { idProducto: it.idProducto, nombreProducto: prod.nombreProducto, cantidad: qty, valorUnidad: precio, subTotal, total: subTotal };
     });
     totalOrden = parseFloat(totalOrden.toFixed(2));
-    const sumaPagos = parseFloat(pagos.reduce((s, p) => s + Number(p.valor), 0).toFixed(2));
+    const sumaPagos = parseFloat(pagosEfectivos.reduce((s, p) => s + Number(p.valor), 0).toFixed(2));
     if (Math.abs(sumaPagos - totalOrden) > 1)
         return res.status(400).json({ success: false, mensaje: `Suma de pagos ($${sumaPagos}) ≠ total orden ($${totalOrden}).` });
 
@@ -1380,6 +1577,15 @@ const procesarFactura = async (req, res) => {
             { where: { idRegimenFacturacion: regimen.idRegimenFacturacion }, transaction: t }
         );
 
+        // ── 6.5 Si esta venta viene de un pedido web asignado a esta tienda, se cierra el ciclo ──
+        // (condicionado a estado/tienda para no pisar un pedido ya facturado por otro proceso en paralelo).
+        if (idPedidoWeb && typeof idPedidoWeb === 'string') {
+            await PedidosWeb.update(
+                { estado: 'facturado', idFacturaCliente: factura.idFacturaCliente, fechaCambioEstado: new Date() },
+                { where: { idPedido: idPedidoWeb, idTiendaFacturacion: idPuntoDeVenta, estado: 'trasladado', idFacturaCliente: null }, transaction: t }
+            );
+        }
+
         // ── 7. Detalles de factura ────────────────────────────────────────────
         const detallesCreados = [];
         for (const it of itemsProcesados) {
@@ -1395,7 +1601,7 @@ const procesarFactura = async (req, res) => {
         }
 
         // ── 8. Detalles de pagos ──────────────────────────────────────────────
-        const idEntidades  = pagos.filter(p => p.idEntidad != null).map(p => Number(p.idEntidad));
+        const idEntidades  = pagosEfectivos.filter(p => p.idEntidad != null).map(p => Number(p.idEntidad));
         const entidadesMap = new Map();
         if (idEntidades.length) {
             const ents = await Entidades.findAll({
@@ -1405,7 +1611,7 @@ const procesarFactura = async (req, res) => {
             });
             ents.forEach(e => entidadesMap.set(e.idEntidad, e.tipoEntidad));
         }
-        for (const p of pagos) {
+        for (const p of pagosEfectivos) {
             const metodoPago = p.idEntidad != null
                 ? (entidadesMap.get(Number(p.idEntidad)) || 'Efectivo')
                 : 'Efectivo';
@@ -1586,6 +1792,15 @@ const getTirillaPDF = async (req, res) => {
             include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
         });
 
+        // Si esta factura salió de un pedido de la tienda web, la tirilla lo destaca: quien la
+        // recibe (cliente o auditoría) tiene que poder distinguirla de una venta de mostrador y
+        // rastrearla hasta la transacción de la pasarela.
+        const pedidoWeb = await PedidosWeb.findOne({
+            where: { idFacturaCliente: id },
+            include: [{ model: PagosPedidoWeb, as: 'pagos', required: false }]
+        });
+        const pagoWebTirilla = pedidoWeb ? await resolverPagoWebParaFactura(pedidoWeb) : null;
+
         const municipio = factura.puntoDeVenta?.ciudad
             ? await Municipios.findOne({ where: { id: factura.puntoDeVenta.ciudad }, attributes: ['nombre'], raw: true })
             : null;
@@ -1604,7 +1819,9 @@ const getTirillaPDF = async (req, res) => {
         const MARGIN = 8;
         const CW     = W - MARGIN * 2;
         const LOGO_SIZE = 60;
-        const estH   = 350 + factura.detalles.length * 24 + pagosFactura.length * 18 + 100 + LOGO_SIZE + 10;
+        // +55 cuando lleva el sello VENTA WEB, para que no se corte la tirilla.
+        const estH   = 350 + factura.detalles.length * 24 + pagosFactura.length * 18 + 100 + LOGO_SIZE + 10
+                     + (pedidoWeb ? 55 : 0);
 
         const doc    = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
         const chunks = [];
@@ -1652,6 +1869,32 @@ const getTirillaPDF = async (req, res) => {
             ? `${factura.vendedor.PrimerNombre} ${factura.vendedor.PrimerApellido}`.trim()
             : 'N/A';
         doc.text(`Vendedor: ${nomVendedor}`, MARGIN, doc.y, { width: CW });
+
+        // ── Sello VENTA WEB ───────────────────────────────────────────────────
+        if (pedidoWeb) {
+            doc.moveDown(0.4);
+
+            const tieneTx = !!(pagoWebTirilla?.idTransaccion);
+            const altoCaja = tieneTx ? 46 : 34;
+            const yCaja = doc.y;
+
+            doc.save();
+            doc.lineWidth(1.2).rect(MARGIN, yCaja, CW, altoCaja).stroke('#000');
+
+            doc.font('Helvetica-Bold').fontSize(13)
+               .text('VENTA WEB', MARGIN, yCaja + 5, { width: CW, align: 'center', lineBreak: false });
+
+            doc.font('Helvetica-Bold').fontSize(7)
+               .text(`Pedido ${pedidoWeb.numeroPedido}`, MARGIN, yCaja + 21, { width: CW, align: 'center', lineBreak: false });
+
+            if (tieneTx) {
+                doc.font('Helvetica').fontSize(6)
+                   .text(`Transacción ${pagoWebTirilla.idTransaccion}`, MARGIN + 2, yCaja + 31, { width: CW - 4, align: 'center', lineBreak: false });
+            }
+            doc.restore();
+
+            doc.y = yCaja + altoCaja + 4;
+        }
 
         doc.moveDown(0.3); hr();
 
@@ -2912,6 +3155,10 @@ export {
     getTraslados,
     getInventarioLista,
     sseConnect,
+    getPedidosWebPendientesJSON,
+    getPedidoWebParaCargarJSON,
+    pedidosWebStorePage,
+    getPedidosWebListaJSON,
     getPendientesJSON,
     getHistorialJSON,
     getDetalleTrasladoJSON,
