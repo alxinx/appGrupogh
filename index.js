@@ -11,6 +11,7 @@ import webApiRoutes from "./routes/webApiRoutes.js"
 import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
+import { cargarContadoresAdmin } from './middleware/adminMenuMiddleware.js';
 
 
 dotenv.config();
@@ -76,8 +77,8 @@ app.use((req, res, next) => {
 // 4. Rutas
 app.use("/pagina", webRouters)
 app.use("/", loginRoutes); // LOGIN
-app.use("/admin", rutaProtegida, verificarRol('ADMIN'), adminRoutes); // ADMINISTRADOR
-app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), webAdminRoutes); // CMS E-COMMERCE
+app.use("/admin", rutaProtegida, verificarRol('ADMIN'), cargarContadoresAdmin, adminRoutes); // ADMINISTRADOR
+app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), cargarContadoresAdmin, webAdminRoutes); // CMS E-COMMERCE
 app.use("/api/web", webApiRoutes); // API PÚBLICA TIENDA WEB
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS
 

@@ -1,0 +1,134 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- ── HEADER ─────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap")
+                                div(class="flex items-center gap-4")
+                                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                        img(src="/img/avatars/pedido.webp" alt="Pedidos" class="w-20 h-20 object-contain")
+                                    div
+                                        h1(class="h1 text-left mb-0") Pedidos
+                                        p(class="text-sm text-slate-400") Gestiona y revisa todos los pedidos de tu tienda
+
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(onclick='history.back()')
+                                        button(class="btn btn-outline flex items-center gap-2")
+                                            i(class="fi fi-rr-arrow-left")
+                                            | Volver
+                                    button#btn-exportar-pedidos(type="button" class="btn btn-secondary text-xs py-1.5 px-4")
+                                        i(class="fi fi-rr-download")
+                                        | Exportar
+
+                            //- ── TARJETAS DE ESTADÍSTICAS ───────────────────────────────────────────
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col")
+                                    div(class="flex items-center gap-4 mb-4")
+                                        div(class="w-24 h-24 rounded-full bg-gradient-to-br from-purple-100 to-gh-lila flex items-center justify-center flex-shrink-0 shadow-lg shadow-purple-400/50")
+                                            img(src="/img/avatars/pddo.webp" alt="Pedidos nuevos" class="w-24 h-24 object-contain")
+                                        div
+                                            p(class="text-sm font-semibold text-slate-600") Pedidos nuevos
+                                            p(class="text-3xl font-black text-slate-800")= stats.pedidosNuevosHoy
+                                            p(class="text-[11px] text-slate-400") Hoy
+                                    a#atajo-pedidos-nuevos(href="#" class="mt-auto text-xs font-bold text-emerald-500 hover:text-emerald-600 flex items-center justify-center gap-1")
+                                        | Ver pedidos nuevos
+                                        i(class="fi fi-rr-arrow-right text-[10px]")
+
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col")
+                                    div(class="flex items-center gap-4 mb-4")
+                                        div(class="w-24 h-24 rounded-full bg-gradient-to-br from-gray-50 to-gray-300 flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-400/50")
+                                            img(src="/img/avatars/cancelado.webp" alt="Pedidos cancelados" class="w-24 h-24 object-contain")
+                                        div
+                                            p(class="text-sm font-semibold text-slate-600") Cancelados
+                                            p(class="text-3xl font-black text-slate-800")= stats.canceladosMes
+                                            p(class="text-[11px] text-slate-400") Este mes
+                                    a#atajo-pedidos-cancelados(href="#" class="mt-auto text-xs font-bold text-red-500 hover:text-red-600 flex items-center justify-center gap-1")
+                                        | Ver pedidos cancelados
+                                        i(class="fi fi-rr-arrow-right text-[10px]")
+
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col")
+                                    div(class="flex items-center gap-4 mb-4")
+                                        div(class="w-20 h-20 rounded-2xl bg-purple-50 flex items-center justify-center flex-shrink-0")
+                                            i(class="fi fi-rr-dollar text-gh-lila text-5xl")
+                                        div
+                                            p(class="text-sm font-semibold text-slate-600") Total en ventas
+                                            p(class="text-3xl font-black text-slate-800")= '$' + Number(stats.ventasMes).toLocaleString('es-CO')
+                                            p(class="text-[11px] text-slate-400") Este mes · pedidos facturados
+                                    a#atajo-pedidos-ventas(href="#" class="mt-auto text-xs font-bold text-gh-lila hover:opacity-80 flex items-center justify-center gap-1")
+                                        | Ver pedidos facturados
+                                        i(class="fi fi-rr-arrow-right text-[10px]")
+
+                            //- ── FILTROS ─────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white rounded-2xl border border-slate-100 shadow-sm p-4")
+                                div(class="flex flex-wrap items-end gap-3")
+                                    div(class="flex-1 min-w-[220px] relative")
+                                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Buscar
+                                        i(class="fi fi-rr-search absolute left-3 top-1/2 translate-y-1 text-slate-300 text-xs")
+                                        input#pedido-search(type="text" placeholder="Número de pedido, cliente o email..." class="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40")
+
+                                    div(class="space-y-1")
+                                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Estado
+                                        select#pedido-estado-filtro(class="px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40")
+                                            option(value="") Todos
+                                            option(value="pendiente_pago") Pendiente de pago
+                                            option(value="en_revision") En revisión
+                                            option(value="trasladado") Trasladado a tienda
+                                            option(value="facturado") Facturado / Despachado
+                                            option(value="cancelado") Cancelado
+
+                                    div(class="space-y-1")
+                                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Tipo de entrega
+                                        select#pedido-entrega-filtro(class="px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40")
+                                            option(value="") Todos
+                                            option(value="domicilio") Domicilio
+                                            option(value="tienda") Punto de venta
+
+                                    div(class="space-y-1")
+                                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Fecha
+                                        select#pedido-fecha-filtro(class="px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40")
+                                            option(value="hoy") Hoy
+                                            option(value="7dias") Últimos 7 días
+                                            option(value="30dias" selected="selected") Últimos 30 días
+                                            option(value="mes") Este mes
+                                            option(value="") Todos
+
+                                    button#pedido-limpiar-filtros(type="button" class="btn btn-secondary text-xs py-2 px-4")
+                                        i(class="fi fi-rr-refresh")
+                                        | Limpiar filtros
+
+                            //- ── TABLA ───────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden")
+                                div(class="overflow-x-auto")
+                                    table(class="w-full text-left border-collapse text-sm")
+                                        thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
+                                            tr
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 whitespace-nowrap") Pedido
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600") Cliente
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600") Contacto
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600") Entrega
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600") Dirección
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 whitespace-nowrap") Ciudad / Dpto
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 text-center") Estado
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 text-right") Total
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 whitespace-nowrap") Fecha
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 text-center") Acciones
+                                        tbody#pedidos-tbody
+                                            tr
+                                                td(colspan="9" class="px-4 py-10 text-center text-slate-400 text-sm")
+                                                    i(class="fi fi-rr-spinner animate-spin mr-2")
+                                                    | Cargando pedidos...
+
+                                div#pedidos-paginacion(class="flex justify-center py-4")
+
+        script(src="/js/helpers.js")
+        script(src="/js/paginador.js")
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/adminPedidosWeb.js")

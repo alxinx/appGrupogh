@@ -1,0 +1,142 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div#detalle-pedido-root(class="mainDashboard" data-id=idPedido)
+                            input(type="hidden" name="_csrf" value=csrfToken)
+
+                            //- ── HEADER ─────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap")
+                                div(class="flex items-center gap-4 min-w-0")
+                                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                        img(src="/img/avatars/pedido.webp" alt="Pedido" class="w-20 h-20 object-contain")
+                                    div(class="min-w-0")
+                                        div(class="flex items-center gap-2 flex-wrap")
+                                            h1#pedido-numero(class="h1 text-left mb-0") Pedido
+                                            span#pedido-badge-estado
+                                        p#pedido-fecha-realizado(class="text-sm text-slate-400") —
+
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(href="/admin/web/pedidos")
+                                        button(class="btn btn-outline flex items-center gap-2")
+                                            i(class="fi fi-rr-arrow-left")
+                                            | Volver
+                                    //- Tiempo que lleva el pedido en su estado actual (cuenta en vivo)
+                                    div#pedido-cronometro(class="hidden items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200" title="Tiempo en el estado actual")
+                                        i(class="fi fi-rr-clock text-gh-primaryHover")
+                                        div(class="leading-tight")
+                                            p#cronometro-valor(class="text-sm font-bold text-slate-700 tabular-nums") —
+                                            p#cronometro-desde(class="text-[10px] text-slate-400") —
+
+                            //- ── TARJETAS SUPERIORES ────────────────────────────────────────────────
+                            div(class="col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-4")
+
+                                //- Datos del cliente
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5")
+                                    p(class="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3")
+                                        i(class="fi fi-rr-user text-gh-primaryHover")
+                                        | Datos del cliente
+                                    p(class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5") Nombre completo
+                                    //- capitalize es solo de presentación: en PEDIDOS_WEB se conserva lo que digitó el cliente
+                                    p#cliente-nombre(class="text-sm text-slate-700 mb-2 capitalize") —
+                                    p(class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5") Identificación
+                                    p#cliente-documento(class="text-sm text-slate-700 mb-2 font-mono") —
+                                    p(class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5") Email
+                                    p#cliente-email(class="text-sm text-slate-700 mb-2") —
+                                    p(class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5") Teléfono / WhatsApp
+                                    p#cliente-tel-wrap(class="text-sm text-slate-700 flex items-center gap-1.5") —
+                                    div#cliente-entrega
+
+                                //- Método de pago
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5")
+                                    p(class="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3")
+                                        i(class="fi fi-rr-credit-card text-gh-primaryHover")
+                                        | Método de pago
+                                    div(class="flex items-center justify-between mb-3")
+                                        p#pago-metodo(class="text-sm font-semibold text-slate-700") —
+                                        span#pago-estado
+                                    p(class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5") Referencia
+                                    p#pago-referencia(class="text-sm text-slate-700 font-mono mb-2") —
+                                    p(class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5") Fecha de confirmación
+                                    p#pago-fecha(class="text-sm text-slate-700 mb-3") —
+                                    p(class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5") Total pagado
+                                    p#pago-total(class="text-2xl font-black text-gh-primaryHover") —
+
+                                //- Resumen del pedido
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5")
+                                    p(class="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3")
+                                        i(class="fi fi-rr-shopping-bag text-gh-primaryHover")
+                                        | Resumen del pedido
+                                    div(class="space-y-2 text-sm")
+                                        div(class="flex justify-between")
+                                            span(class="text-slate-500") Número de pedido
+                                            span#resumen-numero(class="font-semibold text-slate-700") —
+                                        div(class="flex justify-between items-center")
+                                            span(class="text-slate-500") Estado actual
+                                            span#resumen-estado
+                                        div(class="flex justify-between")
+                                            span(class="text-slate-500") Total productos
+                                            span#resumen-productos(class="font-semibold text-slate-700") —
+                                        div(class="flex justify-between")
+                                            span(class="text-slate-500") Total unidades
+                                            span#resumen-unidades(class="font-semibold text-slate-700") —
+                                        div(class="flex justify-between pt-2 border-t border-slate-100")
+                                            span(class="font-bold text-slate-700") Total del pedido
+                                            span#resumen-total(class="font-black text-slate-800") —
+
+                            //- ── PRODUCTOS ───────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden")
+                                div(class="p-5 pb-0")
+                                    p(class="flex items-center gap-2 text-sm font-bold text-slate-800")
+                                        i(class="fi fi-rr-box text-gh-primaryHover")
+                                        | Productos del pedido
+                                div(class="overflow-x-auto mt-3")
+                                    table(class="w-full text-left border-collapse text-sm")
+                                        thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
+                                            tr
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600") Producto
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600") Referencia
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600") Precio unitario
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 text-center") Cantidad
+                                                th(class="px-4 py-3 text-xs font-semibold text-gray-600 text-right") Total
+                                        tbody#productos-tbody
+                                            tr
+                                                td(colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm")
+                                                    i(class="fi fi-rr-spinner animate-spin mr-2")
+                                                    | Cargando...
+
+                            //- ── TRASLADO ────────────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white rounded-2xl border border-slate-100 shadow-sm p-5")
+                                p(class="flex items-center gap-2 text-sm font-bold text-slate-800 mb-1")
+                                    i(class="fi fi-rr-truck-side text-gh-primaryHover")
+                                    | Traslado a bodega y asignación de tienda
+                                p(class="text-xs text-slate-400 mb-4") El traslado a la bodega web se genera automáticamente al confirmarse el pago; acá asignás la venta a la tienda que la va a despachar.
+                                div#traslado-contenido(class="space-y-3")
+
+                            div(class="col-span-12 grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4")
+
+                                //- ── SEGUIMIENTO ─────────────────────────────────────────────────────
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5")
+                                    p(class="flex items-center gap-2 text-sm font-bold text-slate-800 mb-4")
+                                        i(class="fi fi-rr-route text-gh-primaryHover")
+                                        | Seguimiento del pedido
+                                    div#seguimiento-contenido
+
+                                //- ── ACCIONES RÁPIDAS ────────────────────────────────────────────────
+                                div(class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5")
+                                    p(class="flex items-center gap-2 text-sm font-bold text-slate-800 mb-4")
+                                        i(class="fi fi-rr-bolt text-gh-primaryHover")
+                                        | Acciones rápidas
+                                    button#btn-cancelar-pedido(type="button" class="btn btn-danger w-full text-sm hidden")
+                                        i(class="fi fi-rr-cross-circle")
+                                        | Cancelar pedido
+
+        script(src="/js/helpers.js")
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/adminPedidoDetalle.js")
