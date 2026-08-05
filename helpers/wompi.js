@@ -30,9 +30,15 @@ function resolverPath(obj, path) {
 
 // Checksum del webhook: concatenación de los valores en signature.properties (en ese orden)
 // + timestamp + events secret, todo a SHA256. Se compara sin distinguir mayúsculas/minúsculas.
+//
+// OJO con el timestamp: va en la RAÍZ del evento, no dentro de `signature`. El objeto
+// `signature` que manda Wompi trae únicamente { checksum, properties }. Verificado contra un
+// evento real de sandbox (transaction.updated, ref GH-10005): usando payload.timestamp el
+// checksum calculado reproduce exactamente el recibido; usando signature.timestamp la función
+// salía por el guard de arriba y rechazaba todos los eventos legítimos con "Firma inválida".
 export function verificarChecksumWebhook(payload) {
-    const { data, signature } = payload || {};
-    if (!data || !signature?.properties || !signature?.checksum || signature?.timestamp == null) {
+    const { data, signature, timestamp } = payload || {};
+    if (!data || !signature?.properties || !signature?.checksum || timestamp == null) {
         return false;
     }
 
@@ -41,7 +47,7 @@ export function verificarChecksumWebhook(payload) {
         return valor == null ? '' : String(valor);
     });
 
-    const cadena = valores.join('') + String(signature.timestamp) + EVENTS_SECRET;
+    const cadena = valores.join('') + String(timestamp) + EVENTS_SECRET;
     const checksumCalculado = crypto.createHash('sha256').update(cadena).digest('hex');
 
     return checksumCalculado.toLowerCase() === String(signature.checksum).toLowerCase();
