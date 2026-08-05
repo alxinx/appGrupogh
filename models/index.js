@@ -48,6 +48,7 @@ import PaginasWeb from './PaginasWeb.js'
 import VisitantesWeb from './VisitantesWeb.js'
 import VisitasProducto from './VisitasProducto.js'
 import PedidosWeb from './PedidosWeb.js'
+import Secuencias from './Secuencias.js'
 import DetallesPedidoWeb from './DetallesPedidoWeb.js'
 import PagosPedidoWeb from './PagosPedidoWeb.js'
 //ASOCIACIONES
@@ -246,6 +247,7 @@ PedidosWeb.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoVentaRecogida', as: 'p
 PedidosWeb.belongsTo(PuntosDeVenta, { foreignKey: 'idTiendaFacturacion', as: 'tiendaFacturacion' });
 PedidosWeb.belongsTo(Empleados, { foreignKey: 'idOperadorRevisor', as: 'operadorRevisor' });
 PedidosWeb.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente', as: 'factura' });
+PedidosWeb.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
 
 PedidosWeb.hasMany(DetallesPedidoWeb, { foreignKey: 'idPedido', as: 'detalles' });
 DetallesPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
@@ -282,6 +284,7 @@ export {
   VisitantesWeb,
   VisitasProducto,
   PedidosWeb,
+  Secuencias,
   DetallesPedidoWeb,
   PagosPedidoWeb,
 }

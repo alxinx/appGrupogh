@@ -5,10 +5,25 @@ import {
     Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura,
     Interesados, PaginasWeb, PuntosDeVenta, VisitantesWeb, VisitasProducto,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb, Empleados, Traslados, DetalleTraslados,
+    Clientes, ClientesTributario, ClientesUbicacion,
 } from '../models/index.js';
 import { getPublicKey, getCheckoutBaseUrl, generarFirmaIntegridad, verificarChecksumWebhook } from '../helpers/wompi.js';
+import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
+import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
 
 const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
+
+// Tipos de documento aceptados en el checkout web, con el mismo vocabulario que CLIENTES
+// y que el formulario de admin/clientes/nuevo. Una persona jurídica siempre es NIT.
+const TIPOS_DOC_NATURAL = ['CC', 'CE', 'TI', 'PP'];
+const TIPOS_DOC_JURIDICA = ['NIT'];
+
+// Texto que ve el comprador cuando su documento ya estaba registrado con otro correo/teléfono.
+// Los datos de CLIENTES mandan; el comprador no puede cambiarlos desde la web.
+function mensajeDatosDifieren() {
+    const contacto = process.env.SOPORTE_WHATSAPP || process.env.SOPORTE_EMAIL;
+    return `Este documento ya estaba registrado con nosotros, pero con un correo o teléfono diferente al que ingresaste. Tu pedido se procesó con los datos que ya teníamos registrados. Si necesitás actualizarlos, comunicate con la tienda${contacto ? ` al ${contacto}` : ''}.`;
+}
 
 // Crea o actualiza el visitante anónimo (cookieId) con los datos de identificación recibidos.
 async function upsertVisitante(cookieId, datos) {
@@ -558,6 +573,7 @@ export const crearPedidoWeb = async (req, res) => {
         const {
             items, tipoEntrega, cookieId, metodoPago,
             email, telefono, nombreCliente, apellidoCliente, cedula,
+            tipoPersona, tipoDocumento, digitoVerif, razonSocial, direccionFacturacion,
             direccion, apto, ciudad, departamento, notasEntrega,
             idPuntoVentaRecogida
         } = req.body;
@@ -583,12 +599,50 @@ export const crearPedidoWeb = async (req, res) => {
                 return res.status(400).json({ success: false, message: 'Faltan datos de la dirección de envío.' });
             }
         } else {
-            if (!idPuntoVentaRecogida || !cedula?.trim()) {
+            if (!idPuntoVentaRecogida) {
                 return res.status(400).json({ success: false, message: 'Faltan datos para recoger en tienda.' });
             }
             const punto = await PuntosDeVenta.findByPk(idPuntoVentaRecogida);
             if (!punto) return res.status(400).json({ success: false, message: 'El punto de recogida no es válido.' });
         }
+
+        // ── Identificación para facturación ──────────────────────────────────────
+        // El número de documento es obligatorio siempre (no solo para recoger en tienda) — sin él
+        // no se puede generar la factura electrónica cuando la tienda despache el pedido.
+        const esEmpresa = tipoPersona === 'J';
+        const tipoDoc = esEmpresa ? 'NIT' : (tipoDocumento || 'CC');
+        const tiposValidos = esEmpresa ? TIPOS_DOC_JURIDICA : TIPOS_DOC_NATURAL;
+        if (!tiposValidos.includes(tipoDoc)) {
+            return res.status(400).json({ success: false, message: 'Tipo de documento inválido.' });
+        }
+        if (!cedula?.trim()) {
+            return res.status(400).json({ success: false, message: 'El número de documento es obligatorio.' });
+        }
+        if (esEmpresa && !razonSocial?.trim()) {
+            return res.status(400).json({ success: false, message: 'La razón social es obligatoria.' });
+        }
+        // La dirección se necesita para la factura. En domicilio se reusa la de envío;
+        // en recogida en tienda hay que pedirla aparte.
+        const direccionFactura = tipoEntrega === 'domicilio'
+            ? direccion.trim()
+            : direccionFacturacion?.trim();
+        if (!direccionFactura) {
+            return res.status(400).json({ success: false, message: 'La dirección de facturación es obligatoria.' });
+        }
+
+        // ¿El documento ya está registrado? Los datos de CLIENTES mandan sobre lo que digitó el
+        // comprador (el visitante web no es una fuente confiable). Solo se detecta la diferencia
+        // acá para poder avisarle al final; el cliente no se crea ni se actualiza todavía —
+        // eso pasa únicamente cuando la pasarela confirma el pago.
+        const clienteExistente = await Clientes.findOne({
+            where: { numero_doc: cedula.trim() },
+            attributes: ['idCliente', 'tipo_documento', 'email', 'telefono']
+        });
+        const datosClienteDifieren = !!clienteExistente && (
+            (clienteExistente.tipo_documento || '') !== tipoDoc ||
+            (clienteExistente.email || '').toLowerCase() !== email.trim().toLowerCase() ||
+            (clienteExistente.telefono || '') !== telefono.trim()
+        );
 
         // Productos reales (nunca confiar en nombre/precio que venga del cliente)
         const idsProductos = [...new Set(items.map(i => i.idProducto))];
@@ -663,9 +717,11 @@ export const crearPedidoWeb = async (req, res) => {
 
         const t = await db.transaction();
         try {
-            const ultimo = await PedidosWeb.findOne({ order: [['createdAt', 'DESC']], transaction: t });
-            const nro = ultimo ? parseInt(ultimo.numeroPedido.split('-')[1]) + 1 : 10000;
-            const numeroPedido = `GH-${nro}`;
+            // El número sale del contador de SECUENCIAS, que serializa a los checkouts
+            // simultáneos con un bloqueo de fila. Antes se leía el último pedido con
+            // ORDER BY createdAt DESC y se le sumaba 1: dos compras en el mismo segundo
+            // calculaban el mismo número y la segunda moría con un 500 (con el cliente ya pagando).
+            const numeroPedido = `GH-${await siguienteNumero('pedido_web', t)}`;
 
             const pedido = await PedidosWeb.create({
                 numeroPedido,
@@ -676,7 +732,13 @@ export const crearPedidoWeb = async (req, res) => {
                 apellidoCliente: apellidoCliente.trim(),
                 email: email.trim(),
                 telefono: telefono.trim(),
-                cedula: cedula?.trim() || null,
+                cedula: cedula.trim(),
+                tipoPersona: esEmpresa ? 'J' : 'N',
+                tipoDocumento: tipoDoc,
+                digitoVerif: esEmpresa ? (digitoVerif?.trim() || null) : null,
+                razonSocial: esEmpresa ? razonSocial.trim() : null,
+                direccionFacturacion: direccionFactura,
+                datosClienteDifieren,
                 direccion: tipoEntrega === 'domicilio' ? direccion.trim() : null,
                 apto: tipoEntrega === 'domicilio' ? (apto?.trim() || null) : null,
                 ciudad: tipoEntrega === 'domicilio' ? ciudad.trim() : null,
@@ -687,7 +749,8 @@ export const crearPedidoWeb = async (req, res) => {
                 envio: envioCosto,
                 descuento: 0,
                 total,
-                estado: 'pendiente_pago'
+                estado: 'pendiente_pago',
+                fechaCambioEstado: new Date()
             }, { transaction: t });
 
             for (const d of detalles) {
@@ -695,7 +758,13 @@ export const crearPedidoWeb = async (req, res) => {
             }
 
             await t.commit();
-            return res.json({ success: true, idPedido: pedido.idPedido, numeroPedido: pedido.numeroPedido, total });
+            return res.json({
+                success: true,
+                idPedido: pedido.idPedido,
+                numeroPedido: pedido.numeroPedido,
+                total,
+                avisoCliente: datosClienteDifieren ? mensajeDatosDifieren() : null
+            });
         } catch (e) {
             await t.rollback();
             throw e;
@@ -754,7 +823,7 @@ export const consultarEstadoPedido = async (req, res) => {
         const { numeroPedido } = req.params;
         const pedido = await PedidosWeb.findOne({
             where: { numeroPedido },
-            attributes: ['idPedido', 'numeroPedido', 'estado', 'total', 'email']
+            attributes: ['idPedido', 'numeroPedido', 'estado', 'total', 'email', 'datosClienteDifieren']
         });
         if (!pedido) return res.status(404).json({ success: false, message: 'Pedido no encontrado.' });
 
@@ -770,7 +839,8 @@ export const consultarEstadoPedido = async (req, res) => {
             estadoPedido: pedido.estado,
             estadoPago: ultimoPago?.estado ?? null,
             total: pedido.total,
-            email: pedido.email
+            email: pedido.email,
+            avisoCliente: pedido.datosClienteDifieren ? mensajeDatosDifieren() : null
         });
     } catch (e) {
         console.error('webApi.consultarEstadoPedido:', e);
@@ -779,6 +849,84 @@ export const consultarEstadoPedido = async (req, res) => {
 };
 
 const ESTADOS_FINALES_WOMPI = ['APPROVED', 'DECLINED', 'VOIDED', 'ERROR'];
+
+// Capitaliza igual que saveCliente (admin) y guardarCliente (POS), para que un cliente creado
+// desde la web no quede escrito distinto a uno creado desde el panel.
+const aTitulo = (s) => s
+    ? s.trim().toLowerCase().replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1))
+    : null;
+
+// Parte un nombre libre ("juan carlos") en los dos campos que usa CLIENTES, ya capitalizado.
+function partirNombre(valor) {
+    const partes = (valor || '').trim().split(/\s+/).filter(Boolean);
+    if (partes.length === 0) return [null, null];
+    return [aTitulo(partes[0]), aTitulo(partes.slice(1).join(' ')) || null];
+}
+
+// Resuelve el cliente de un pedido web y lo deja vinculado en PEDIDOS_WEB.idCliente.
+// Se llama ÚNICAMENTE desde procesarPagoAprobado, es decir cuando la pasarela ya confirmó
+// el pago — un pedido en 'pendiente_pago', rechazado o contraentrega nunca crea un cliente.
+//
+// Regla de negocio: si el documento ya existe, los datos de CLIENTES son los que valen y no se
+// sobreescriben con lo que digitó el comprador (a diferencia del POS, donde el vendedor sí es
+// una fuente confiable y guardarCliente sí actualiza). Solo se crea el cliente si es nuevo.
+export async function resolverClienteDePedido(pedido, t) {
+    const numeroDoc = (pedido.cedula || '').trim();
+    if (!numeroDoc) return null;
+
+    const existente = await Clientes.findOne({
+        where: { numero_doc: numeroDoc },
+        attributes: ['idCliente'],
+        transaction: t
+    });
+    if (existente) return existente.idCliente;
+
+    const esEmpresa = pedido.tipoPersona === 'J';
+    const [primerNombre, segundoNombre] = partirNombre(pedido.nombreCliente);
+    const [primerApellido, segundoApellido] = partirNombre(pedido.apellidoCliente);
+
+    const cliente = await Clientes.create({
+        tipo_persona:     esEmpresa ? 'J' : 'N',
+        tipo_documento:   pedido.tipoDocumento || (esEmpresa ? 'NIT' : 'CC'),
+        numero_doc:       numeroDoc,
+        digito_verif:     esEmpresa ? (pedido.digitoVerif || null) : null,
+        razon_social:     esEmpresa ? aTitulo(pedido.razonSocial) : null,
+        primer_nombre:    esEmpresa ? null : primerNombre,
+        segundo_nombre:   esEmpresa ? null : segundoNombre,
+        primer_apellido:  esEmpresa ? null : primerApellido,
+        segundo_apellido: esEmpresa ? null : segundoApellido,
+        email:            pedido.email?.trim().toLowerCase() || null,
+        telefono:         pedido.telefono?.trim() || null,
+        genero:           null, // no se pide en el checkout web
+        activo:           true,
+        credito:          false
+    }, { transaction: t });
+
+    // Régimen por defecto igual al del alta manual de un cliente nuevo en admin (49 = no
+    // responsable de IVA). La tienda lo ajusta desde el panel si el cliente resulta ser otro.
+    await ClientesTributario.create({
+        idCliente:          cliente.idCliente,
+        regimen_fiscal:     '49',
+        gran_contribuyente: false,
+        autorretenedor:     false,
+        agente_retencion:   false,
+        obligado_aduanero:  false
+    }, { transaction: t });
+
+    // La ciudad/departamento del checkout son texto libre (no hay selector de DANE en la web),
+    // así que se guardan como nombre y los IDs quedan nulos para que la tienda los normalice.
+    if (pedido.direccionFacturacion) {
+        await ClientesUbicacion.create({
+            idCliente:          cliente.idCliente,
+            direccion:          pedido.direccionFacturacion,
+            nombreMunicipio:    pedido.ciudad || null,
+            nombreDepartamento: pedido.departamento || null,
+            es_principal:       true
+        }, { transaction: t });
+    }
+
+    return cliente.idCliente;
+}
 
 // Traslado automático tienda → Bodega "Pedidos Web" al aprobarse un pago.
 // Descuenta stock real de la(s) tienda(s) origen y lo deja aterrizado en la bodega,
@@ -851,11 +999,7 @@ async function procesarPagoAprobado(pedido) {
                 }
             }
 
-            const ultimo = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction: t });
-            const nro = ultimo ? parseInt(ultimo.codigoTraslado.split('-')[1]) + 1 : 1000;
-
-            const traslado = await Traslados.create({
-                codigoTraslado: `TR-${nro}`,
+            const traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
                 idOrigen,
                 idDestino: bodegaPedidosWeb.idPuntoDeVenta,
                 idUsuarioDespacha: sistemaWeb.idEmpleado,
@@ -864,7 +1008,7 @@ async function procesarPagoAprobado(pedido) {
                 fechaRecepcion: new Date(),
                 idPedidoWeb: pedido.idPedido,
                 notas: `Traslado automático — pago aprobado del pedido web ${pedido.numeroPedido}`
-            }, { transaction: t });
+            }, t);
 
             for (const detalle of detallesGrupo) {
                 await DetalleTraslados.create({
@@ -885,8 +1029,14 @@ async function procesarPagoAprobado(pedido) {
             }
         }
 
-        await pedido.update({ estado: 'en_revision' }, { transaction: t });
+        // El pago está confirmado: recién acá el comprador se convierte en cliente.
+        const idCliente = await resolverClienteDePedido(pedido, t);
+
+        await pedido.update({ estado: 'en_revision', idCliente, fechaCambioEstado: new Date() }, { transaction: t });
         await t.commit();
+
+        // Entró un pedido nuevo por atender: que el badge del menú admin lo muestre enseguida.
+        invalidarContadoresAdmin();
     } catch (e) {
         await t.rollback();
         throw e;
@@ -933,7 +1083,7 @@ export const webhookWompi = async (req, res) => {
             if (transaccion.status === 'APPROVED') {
                 await procesarPagoAprobado(pedido);
             } else if (['DECLINED', 'VOIDED', 'ERROR'].includes(transaccion.status)) {
-                await pedido.update({ estado: 'cancelado' });
+                await pedido.update({ estado: 'cancelado', fechaCambioEstado: new Date() });
             }
         }
 
