@@ -11,6 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
 import { broadcast } from '../helpers/sseManager.js';
+import { crearConCodigo } from '../helpers/secuencias.js';
 
 dotenv.config()
 
@@ -498,25 +499,15 @@ const trasladarPacks = async (req, res) => {
         });
 
         // 2. Generar Código de Traslado Único
-        const ultimoTraslado = await Traslados.findOne({
-            order: [['createdAt', 'DESC']],
-            transaction: t
-        });
-        const nroSiguiente = ultimoTraslado ? parseInt(ultimoTraslado.codigoTraslado.split('-')[1]) + 1 : 1000;
-        const nuevoCodigo = `TR-${nroSiguiente}`;
-
         // 3. Crear el Registro del Traslado (Encabezado)
         // Usamos req.usuario que ya viene inyectado por tu middleware de autenticación
-
-
-        const traslado = await Traslados.create({
-            codigoTraslado: nuevoCodigo,
+        const traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
             idOrigen: 'PRODUCCION',
             idDestino: idDestino,
             idUsuarioDespacha: idEmpleadoDespacha,
             notas: notas || null,
             estado: 'EN_TRANSITO'
-        }, { transaction: t });
+        }, t);
 
         // 4. Procesar cada Pack seleccionado en la tabla
         for (const pack of recordsPacks) {

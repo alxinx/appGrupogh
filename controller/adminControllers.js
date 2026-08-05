@@ -25,6 +25,7 @@ import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
 import { resolverIds } from '../middlewares/verificarPermisoEmpleado.js';
+import { crearConCodigo } from '../helpers/secuencias.js';
 
 
 dotenv.config();
@@ -981,18 +982,13 @@ const trasladarProductoAdmin = async (req, res) => {
             }
         }
 
-        const ultimo = await Traslados.findOne({ order: [['createdAt', 'DESC']], transaction: t });
-        const nro    = ultimo ? parseInt(ultimo.codigoTraslado.split('-')[1]) + 1 : 1000;
-        const codigo = `TR-${nro}`;
-
-        const traslado = await Traslados.create({
-            codigoTraslado:    codigo,
+        const traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
             idOrigen,
             idDestino,
             idUsuarioDespacha: idAdmin,
             notas:             notas || null,
             estado:            'EN_TRANSITO'
-        }, { transaction: t });
+        }, t);
 
         await DetalleTraslados.create({
             idTraslado: traslado.idTraslado,
