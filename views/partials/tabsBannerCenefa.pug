@@ -1,0 +1,23 @@
+//- Pestañas de la sección "Contenido del encabezado" de la tienda web.
+//- Banners y cenefas se administran en páginas separadas (cada una con su propio CRUD),
+//- pero conceptualmente son lo mismo para el operador: lo que se ve arriba del sitio.
+//- Este partial las presenta como dos pestañas.
+//-
+//- Se incluye desde views/administrador/web/{banners,cenefas}.pug y se apoya en
+//- `currentPath`, que ambos controladores ya pasan a la vista ('/banners' o '/cenefas').
+//- Recibe `activa` explícita para no depender de cómo venga currentPath.
+mixin tabsBannerCenefa(activa)
+    div(class="col-span-12 -mt-2")
+        div(class="flex items-center gap-1 bg-white/70 backdrop-blur-md rounded-2xl p-1.5 w-fit")
+            a(
+                href="/admin/web/banners"
+                class=`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-colors ${activa === 'banners' ? 'bg-gh-primaryHover text-white shadow-sm' : 'text-slate-500 hover:text-gh-primaryHover hover:bg-slate-50'}`
+            )
+                i(class="fi fi-rr-picture")
+                | Banners
+            a(
+                href="/admin/web/cenefas"
+                class=`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-colors ${activa === 'cenefas' ? 'bg-gh-primaryHover text-white shadow-sm' : 'text-slate-500 hover:text-gh-primaryHover hover:bg-slate-50'}`
+            )
+                i(class="fi fi-rr-rectangle-horizontal")
+                | Cenefas
