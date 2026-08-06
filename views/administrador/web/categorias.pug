@@ -53,6 +53,51 @@ block contenedor
                                                         )
                                                         div(class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pink-500")
 
+                                                //- Portada para el home de la tienda web ("Comprá por estilo").
+                                                //- Solo las categorías padre aparecen en esa sección.
+                                                div(class="px-4 pt-3 pb-2")
+                                                    div(class="flex items-start gap-3")
+                                                        //- El tamaño va en `style` a propósito, no solo en clases: si output.css
+                                                        //- queda desactualizado (falta correr `npm run css`), las clases
+                                                        //- arbitrarias no existen, la caja se queda sin alto y la imagen se
+                                                        //- pinta a tamaño natural, desbordando la tarjeta y tapando los botones.
+                                                        div(
+                                                            class=`portada-cat-${cat.idCategoria} relative rounded-lg overflow-hidden flex-shrink-0 border border-slate-200 ${cat.imagen ? '' : 'bg-gradient-to-b from-slate-100 to-slate-300'}`
+                                                            style="width:54px;height:72px;overflow:hidden;flex:none"
+                                                        )
+                                                            if cat.imagen
+                                                                img(
+                                                                    src=cat.imagen
+                                                                    alt=cat.nombreCategoria
+                                                                    class="w-full h-full object-cover"
+                                                                    style="width:100%;height:100%;object-fit:cover;display:block"
+                                                                )
+                                                            else
+                                                                span(class="absolute inset-0 flex items-center justify-center text-slate-400")
+                                                                    i(class="fi fi-rr-picture text-sm")
+                                                        div(class="min-w-0 flex-1")
+                                                            p(class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1") Portada web
+                                                            div(class="flex flex-wrap items-center gap-1.5")
+                                                                label(class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gh-primarySoft text-gh-primaryHover text-[11px] font-bold cursor-pointer hover:brightness-95 transition")
+                                                                    i(class="fi fi-rr-upload text-[10px]")
+                                                                    span= cat.imagen ? 'Cambiar' : 'Subir'
+                                                                    input(
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        class="hidden input-portada-cat"
+                                                                        data-id=cat.idCategoria
+                                                                        data-nombre=cat.nombreCategoria
+                                                                    )
+                                                                if cat.imagen
+                                                                    button(
+                                                                        type="button"
+                                                                        class="btn-quitar-portada inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-[11px] font-bold hover:border-red-300 hover:text-red-500 transition"
+                                                                        data-id=cat.idCategoria
+                                                                    )
+                                                                        i(class="fi fi-rr-trash text-[10px]")
+                                                                        | Quitar
+                                                            p(class="text-[10px] text-slate-400 mt-1.5 leading-snug") Vertical (3:4). Sin imagen se muestra el recuadro gris.
+
                                                 //- Subcategorías
                                                 if cat.Subcategorias && cat.Subcategorias.length > 0
                                                     div(class="divide-y divide-slate-50 flex-1")
@@ -103,6 +148,94 @@ block contenedor
                         }
                     } catch {
                         this.checked = !this.checked;
+                    }
+                });
+            });
+
+            // ── Portada de categoría ────────────────────────────────────────
+            const MAX_MB = 2;   // mismo tope que multer en el backend
+
+            function pintarPortada(id, url) {
+                const caja = document.querySelector('.portada-cat-' + id);
+                if (!caja) return;
+                caja.classList.remove('bg-gradient-to-b', 'from-slate-100', 'to-slate-300');
+                // style inline igual que en el markup: garantiza la miniatura aunque
+                // output.css no tenga las clases arbitrarias compiladas.
+                caja.innerHTML = '<img src="' + url + '?v=' + Date.now() + '" class="w-full h-full object-cover"'
+                               + ' style="width:100%;height:100%;object-fit:cover;display:block">';
+            }
+
+            document.querySelectorAll('.input-portada-cat').forEach(input => {
+                input.addEventListener('change', async function () {
+                    const archivo = this.files[0];
+                    if (!archivo) return;
+                    const id = this.dataset.id;
+
+                    if (archivo.size > MAX_MB * 1024 * 1024) {
+                        Swal.fire({ icon: 'warning', title: 'Imagen muy pesada', text: 'El máximo es ' + MAX_MB + ' MB.' });
+                        this.value = '';
+                        return;
+                    }
+
+                    const datos = new FormData();
+                    datos.append('imagen', archivo);
+                    datos.append('_csrf', csrfToken);
+
+                    try {
+                        const resp = await fetch('/admin/web/categorias/' + id + '/imagen', { method: 'POST', body: datos });
+
+                        // Si la respuesta no es JSON (403 de CSRF, 413 de tamaño, error del proxy),
+                        // resp.json() reventaria y el catch mostraria "error de red", que despista.
+                        // Mejor leer el codigo y decir que paso de verdad.
+                        const tipo = resp.headers.get('content-type') || '';
+                        if (!tipo.includes('application/json')) {
+                            const motivo = resp.status === 403 ? 'Tu sesión expiró. Recargá la página e intentá de nuevo.'
+                                         : resp.status === 413 ? 'La imagen supera el tamaño permitido (2 MB).'
+                                         : 'El servidor respondió ' + resp.status + '.';
+                            Swal.fire({ icon: 'error', title: 'No se pudo subir', text: motivo });
+                            return;
+                        }
+
+                        const data = await resp.json();
+                        if (data.success) {
+                            pintarPortada(id, data.imagen);
+                            Swal.fire({ icon: 'success', title: 'Portada actualizada', timer: 1400, showConfirmButton: false })
+                                .then(() => location.reload());
+                        } else {
+                            Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+                        }
+                    } catch (e) {
+                        Swal.fire({ icon: 'error', title: 'Error de conexión', text: 'No se pudo contactar al servidor: ' + e.message });
+                    }
+                    this.value = '';
+                });
+            });
+
+            document.querySelectorAll('.btn-quitar-portada').forEach(btn => {
+                btn.addEventListener('click', async function () {
+                    const id = this.dataset.id;
+                    const { isConfirmed } = await Swal.fire({
+                        icon: 'warning',
+                        title: '¿Quitar la portada?',
+                        text: 'La categoría volverá a mostrarse con el recuadro gris en la tienda web.',
+                        showCancelButton: true,
+                        confirmButtonText: 'Quitar',
+                        cancelButtonText: 'Cancelar',
+                        confirmButtonColor: '#ef4444'
+                    });
+                    if (!isConfirmed) return;
+
+                    try {
+                        const resp = await fetch('/admin/web/categorias/' + id + '/imagen/quitar', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ _csrf: csrfToken })
+                        });
+                        const data = await resp.json();
+                        if (data.success) location.reload();
+                        else Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
+                    } catch {
+                        Swal.fire({ icon: 'error', title: 'Error de red' });
                     }
                 });
             });

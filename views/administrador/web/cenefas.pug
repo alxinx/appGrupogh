@@ -1,4 +1,5 @@
 extends ../../layout/index
+include ../../partials/tabsBannerCenefa
 block contenedor
     body(class="bg-gray-100 min-h-screen")
         main(class="flex-1 overflow-y-auto")
@@ -17,6 +18,8 @@ block contenedor
                                 div
                                     h1(class="text-xl font-bold text-slate-800") Cenefas / Barras de anuncio
                                     p(class="text-xs text-slate-400 mt-0.5") Barras de texto en la parte superior de la tienda web
+
+                            +tabsBannerCenefa('cenefas')
 
                             //- CUERPO: dos columnas
                             div(class="col-span-12 grid grid-cols-12 gap-4 items-start")

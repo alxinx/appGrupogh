@@ -94,7 +94,7 @@ export const getCategorias = async (req, res) => {
     try {
         const todas = await Categorias.findAll({
             where: { webActiva: true },
-            attributes: ['idCategoria', 'nombreCategoria', 'tipo', 'idPadre'],
+            attributes: ['idCategoria', 'nombreCategoria', 'tipo', 'idPadre', 'imagen'],
             order: [['nombreCategoria', 'ASC']]
         });
 
@@ -119,6 +119,8 @@ export const getCategorias = async (req, res) => {
                 nombreCategoria: c.nombreCategoria,
                 tipo:            c.tipo,
                 idPadre:         c.idPadre,
+                // Portada de la categoria para el home; null si no le cargaron ninguna.
+                imagen:          c.imagen || null,
                 totalProductos:  mapaConteo[String(c.idCategoria)] ?? 0,
                 subcategorias:   subs
                     .filter(s => s.idPadre === c.idCategoria)

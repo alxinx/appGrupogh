@@ -1,4 +1,5 @@
 extends ../../layout/index
+include ../../partials/tabsBannerCenefa
 block contenedor
     body(class="bg-gray-100 min-h-screen")
         main(class="flex-1 overflow-y-auto")
@@ -27,6 +28,8 @@ block contenedor
                                     button#btn-nuevo-banner(type="button" class="btn btn-primary text-xs py-1.5 px-4")
                                         i(class="fi fi-rr-add")
                                         | Nuevo banner
+
+                            +tabsBannerCenefa('banners')
 
                             //- ── LISTA BANNERS ───────────────────────────────────────────────────────
                             div(class="col-span-12 cards cardsWhite p-6")
