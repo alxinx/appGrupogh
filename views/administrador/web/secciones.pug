@@ -268,10 +268,20 @@ block contenedor
                     });
                     if (!isConfirmed) return;
 
-                    const fd = new FormData();
-                    fd.append('_csrf', csrfToken);
+                    // El token va en la cabecera 'csrf-token', no en un FormData: la ruta de
+                    // eliminar no lleva multer (no sube archivos), así que nada parsearía un
+                    // cuerpo multipart y csurf no encontraría el token. Mismo patrón que cenefas.
                     try {
-                        const resp = await fetch(`/admin/web/secciones/eliminar/${btn.dataset.id}`, { method: 'POST', body: fd });
+                        const resp = await fetch(`/admin/web/secciones/eliminar/${btn.dataset.id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                            body: JSON.stringify({})
+                        });
+                        // Solo se lanza si la respuesta no es JSON (p. ej. el 403 en HTML de csurf).
+                        // Un 404 con JSON sí se deja pasar para mostrar el mensaje del controlador.
+                        if (!resp.headers.get('content-type')?.includes('application/json')) {
+                            throw new Error(`El servidor respondió ${resp.status}.`);
+                        }
                         const data = await resp.json();
                         if (data.success) {
                             await Swal.fire({ icon: 'success', title: data.mensaje, timer: 1400, showConfirmButton: false, confirmButtonColor: '#EC5FA3' });
@@ -279,8 +289,8 @@ block contenedor
                         } else {
                             Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
                         }
-                    } catch {
-                        Swal.fire({ icon: 'error', title: 'Error de red', confirmButtonColor: '#EC5FA3' });
+                    } catch (error) {
+                        Swal.fire({ icon: 'error', title: 'No se pudo eliminar', text: error.message, confirmButtonColor: '#EC5FA3' });
                     }
                 });
             });
