@@ -5,7 +5,7 @@ const csrfProtection = csrf({ cookie: true });
 
 import {
     dashboardWeb,
-    categoriasWeb, toggleCategoriaWeb,
+    categoriasWeb, toggleCategoriaWeb, subirImagenCategoria, quitarImagenCategoria,
     listaBanners, crearBanner, actualizarBanner, eliminarBanner,
     listaCenefas, crearCenefa, actualizarCenefa, eliminarCenefa,
     listaSecciones, crearSeccion, actualizarSeccion, eliminarSeccion,
@@ -24,6 +24,8 @@ routes.get('/', dashboardWeb);
 // Categorías
 routes.get('/categorias', csrfProtection, categoriasWeb);
 routes.post('/categorias/toggle/:idCategoria', csrfProtection, toggleCategoriaWeb);
+routes.post('/categorias/:idCategoria/imagen', uploadImages.single('imagen'), csrfProtection, subirImagenCategoria);
+routes.post('/categorias/:idCategoria/imagen/quitar', csrfProtection, quitarImagenCategoria);
 
 // Banners
 const uploadImagenesBanner = uploadImages.fields([

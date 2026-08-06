@@ -170,6 +170,62 @@ export const toggleCategoriaWeb = async (req, res) => {
     return res.json({ success: true, webActiva: cat.webActiva });
 };
 
+// POST /admin/web/categorias/:idCategoria/imagen — portada de la categoría para el home web.
+// Formato vertical (3:4) porque las tarjetas de "Comprá por estilo" son altas.
+export const subirImagenCategoria = async (req, res) => {
+    try {
+        const { idCategoria } = req.params;
+        const cat = await Categorias.findByPk(idCategoria);
+        if (!cat) return res.status(404).json({ success: false, mensaje: 'Categoría no encontrada.' });
+        if (!req.file) return res.status(400).json({ success: false, mensaje: 'No se recibió ninguna imagen.' });
+
+        // validarYConvertirImagenWebp decodifica de verdad el archivo: no basta con el
+        // mimetype que declara el navegador.
+        await validarYConvertirImagenWebp(req.file.buffer);
+
+        const buffer = await sharp(req.file.buffer)
+            .resize(800, 1066, { fit: 'cover', position: 'attention' })
+            .webp({ quality: 82 })
+            .toBuffer();
+
+        const key = `web/categorias/${idCategoria}-${Date.now()}.webp`;
+        const url = await subirImagenR2(buffer, key, 'image/webp');
+
+        // La anterior se borra después de que la nueva ya subió, para no dejar la categoría
+        // sin imagen si la subida falla.
+        const keyAnterior = cat.imagenKey;
+        await cat.update({ imagen: url, imagenKey: key });
+        if (keyAnterior) await eliminarImagenR2(keyAnterior);
+
+        return res.json({ success: true, imagen: url, mensaje: 'Imagen actualizada.' });
+    } catch (e) {
+        console.error('subirImagenCategoria:', e);
+        const esImagenInvalida = e.message?.includes('imagen válida');
+        return res.status(esImagenInvalida ? 400 : 500).json({
+            success: false,
+            mensaje: esImagenInvalida ? e.message : 'Error al subir la imagen.'
+        });
+    }
+};
+
+// DELETE lógico: quita la portada y vuelve al recuadro con degradado en la web.
+export const quitarImagenCategoria = async (req, res) => {
+    try {
+        const { idCategoria } = req.params;
+        const cat = await Categorias.findByPk(idCategoria);
+        if (!cat) return res.status(404).json({ success: false, mensaje: 'Categoría no encontrada.' });
+
+        const keyAnterior = cat.imagenKey;
+        await cat.update({ imagen: null, imagenKey: null });
+        if (keyAnterior) await eliminarImagenR2(keyAnterior);
+
+        return res.json({ success: true, mensaje: 'Imagen eliminada.' });
+    } catch (e) {
+        console.error('quitarImagenCategoria:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al eliminar la imagen.' });
+    }
+};
+
 // ─── BANNERS ─────────────────────────────────────────────────────────────────
 
 export const listaBanners = async (req, res) => {
