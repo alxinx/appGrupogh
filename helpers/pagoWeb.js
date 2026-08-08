@@ -40,6 +40,27 @@ async function getIdEntidadWompi() {
 export async function resolverPagoWebParaFactura(pedido) {
     if (!pedido || pedido.metodoPago === 'contraentrega') return null;
 
+    // Transferencia por QR: no hay pasarela. El pago lo confirmó a mano un operador desde el
+    // panel, con el número de voucher y el valor que vio en el extracto. Ese voucher es el que
+    // la tienda necesita en su cuadre para conciliar, así que viaja tal cual a la factura.
+    //
+    // La entidad es la del QR (Bancolombia, Nequi…) y no efectivo: la plata entró a la cuenta
+    // del negocio, nunca al cajón de la tienda — mismo criterio que con Wompi.
+    if (pedido.metodoPago === 'qr') {
+        if (!pedido.pagoQrReferencia || !pedido.idEntidadPagoQr) return null;
+
+        const entidad = await Entidades.findByPk(pedido.idEntidadPagoQr, { attributes: ['idEntidad', 'nombreEntidad'] });
+        return {
+            idEntidad:     pedido.idEntidadPagoQr,
+            nombreEntidad: entidad?.nombreEntidad || 'Transferencia',
+            valor:         parseFloat(pedido.pagoQrValor) || parseFloat(pedido.total) || 0,
+            metodoWompi:   null,
+            etiqueta:      `Transferencia por QR${entidad ? ` · ${entidad.nombreEntidad}` : ''}`,
+            idTransaccion: pedido.pagoQrReferencia,
+            referencia:    pedido.pagoQrReferencia
+        };
+    }
+
     const pagos = pedido.pagos ?? await PagosPedidoWeb.findAll({ where: { idPedido: pedido.idPedido } });
     const aprobado = pagos.find(p => p.estado === 'APPROVED');
     if (!aprobado) return null;

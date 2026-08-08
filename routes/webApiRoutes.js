@@ -1,5 +1,9 @@
 import express from 'express';
-import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, getPaginaBySlug, getPuntosVenta, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi } from '../controller/webApiController.js';
+import apiRateLimit from '../middlewares/apiRateLimit.js';
+import { recibirComprobante } from '../middlewares/uploadComprobante.js';
+import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, getPaginaBySlug, getPuntosVenta, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi, subirComprobantePagoWeb } from '../controller/webApiController.js';
+
+import { listarEntidadesQrPublico, getQrPagoPublico } from '../controller/qrPagoControllers.js';
 
 const routes = express.Router();
 
@@ -17,5 +21,13 @@ routes.post('/pedidos',                crearPedidoWeb);
 routes.post('/pedidos/:idPedido/pago', iniciarPagoWompi);
 routes.get('/pedidos/:numeroPedido/estado', consultarEstadoPedido);
 routes.post('/webhooks/wompi', webhookWompi);
+
+// Pago por QR — solo lectura. Devuelve URLs firmadas de corta vida, nunca el object key.
+routes.get('/pagos/qr',            listarEntidadesQrPublico);
+routes.get('/pagos/qr/:idEntidad', getQrPagoPublico);
+
+// Comprobante de la transferencia por QR. Público (el checkout no tiene sesión), acotado
+// en el controlador a pedidos 'pendiente_pago' con metodoPago='qr' y con rate limit por IP.
+routes.post('/pedidos/:idPedido/comprobante', apiRateLimit, recibirComprobante, subirComprobantePagoWeb);
 
 export default routes;

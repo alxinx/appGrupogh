@@ -3,8 +3,9 @@ import db from '../config/bd.js';
 import {
     Categorias, BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb, PaginasWeb, Productos, Imagenes, VisitasProducto,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb, PuntosDeVenta, Municipios, Departamentos, Traslados, DetalleTraslados, Empleados, Stock,
-    VisitantesWeb
+    VisitantesWeb, Entidades, PedidosWebHistorialEstado
 } from '../models/index.js';
+import { procesarPagoAprobado } from './webApiController.js';
 import s3Client from '../config/r2.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -14,6 +15,7 @@ import { descontarStockFifo, siguienteCodigoTraslado } from '../helpers/traslado
 import { mailPedidoCancelado } from '../helpers/mailPedidoCancelado.js';
 import { broadcast } from '../helpers/sseManager.js';
 import { inicioDelDiaBogota } from '../helpers/fechas.js';
+import { wherePorAtender, whereEsperandoAlCliente } from '../helpers/pedidosWeb.js';
 import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
 
 const R2_BUCKET = process.env.R2_BUCKET_NAME;
@@ -58,7 +60,7 @@ export const dashboardWeb = async (req, res) => {
     // tienda espera ver. El resto son fotos del estado actual, sin filtro de fecha.
     const inicioHoy = inicioDelDiaBogota();
 
-    const [porEstado, cerradosHoy] = await Promise.all([
+    const [porEstado, cerradosHoy, porAtender, esperandoCliente] = await Promise.all([
         PedidosWeb.findAll({
             attributes: ['estado', [fn('COUNT', col('idPedido')), 'total']],
             where: { estado: { [Op.in]: ['pendiente_pago', 'en_revision', 'trasladado'] } },
@@ -73,17 +75,22 @@ export const dashboardWeb = async (req, res) => {
             },
             group: ['estado'],
             raw: true
-        })
+        }),
+        // Mismo criterio que el badge del menú (helpers/pedidosWeb.js), no un conteo aparte.
+        PedidosWeb.count({ where: wherePorAtender() }),
+        PedidosWeb.count({ where: whereEsperandoAlCliente() })
     ]);
 
     const conteo = (filas, estado) => Number(filas.find(f => f.estado === estado)?.total || 0);
 
     const resumenPedidos = {
-        // Pago confirmado y todavía sin tienda asignada: son los que requieren acción del admin.
-        nuevos:         conteo(porEstado, 'en_revision'),
+        // Esperan acción del admin: pago confirmado sin tienda asignada, o transferencia
+        // por QR con comprobante adjunto que hay que verificar.
+        nuevos:         porAtender,
         // Ya trasladados a una tienda, esperando que la tienda los facture.
         enProceso:      conteo(porEstado, 'trasladado'),
-        pendientesPago: conteo(porEstado, 'pendiente_pago'),
+        // Los que siguen esperando al comprador (sin comprobante ni pago confirmado).
+        pendientesPago: esperandoCliente,
         completadosHoy: conteo(cerradosHoy, 'facturado'),
         canceladosHoy:  conteo(cerradosHoy, 'cancelado')
     };
@@ -715,6 +722,11 @@ export const jsonDetallePedidoWeb = async (req, res) => {
                 { model: PuntosDeVenta, as: 'puntoRecogida', attributes: ['nombreComercial', 'direccionPrincipal'], required: false },
                 { model: PuntosDeVenta, as: 'tiendaFacturacion', attributes: ['nombreComercial'], required: false },
                 { model: PagosPedidoWeb, as: 'pagos', attributes: ['estado', 'metodoPago', 'monto', 'referenciaWompi', 'idTransaccionWompi', 'fechaConfirmacion', 'createdAt'], required: false },
+                { model: Entidades, as: 'entidadPagoQr', attributes: ['nombreEntidad', 'tipoEntidad'], required: false },
+                {
+                    model: PedidosWebHistorialEstado, as: 'historialEstado', required: false,
+                    attributes: ['estadoAnterior', 'estadoNuevo', 'nombreEmpleado', 'codigoEmpleado', 'motivo', 'createdAt']
+                },
                 {
                     model: DetallesPedidoWeb, as: 'detalles', required: false,
                     include: [{
@@ -762,6 +774,28 @@ export const jsonDetallePedidoWeb = async (req, res) => {
                 estado: pedido.estado,
                 tipoEntrega: pedido.tipoEntrega,
                 metodoPago: pedido.metodoPago,
+                // Pago por QR: a qué entidad transfirió y la captura que adjuntó, para
+                // que el operador pueda cotejar contra el extracto bancario.
+                entidadPagoQr: pedido.entidadPagoQr?.nombreEntidad || null,
+                comprobantePago: pedido.comprobantePagoKey ? `${R2_BASE}/${pedido.comprobantePagoKey}` : null,
+                comprobantePagoAt: pedido.comprobantePagoAt,
+                // Voucher digitado por el operador al confirmar el pago. Es el mismo número
+                // que va a ver la tienda en su cuadre de caja cuando facture el pedido.
+                pagoQrReferencia: pedido.pagoQrReferencia,
+                pagoQrValor: pedido.pagoQrValor,
+                fechaRevision: pedido.fechaRevision,
+                // Quién movió el pedido a mano y cuándo. Orden cronológico.
+                historialEstado: (pedido.historialEstado || [])
+                    .slice()
+                    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+                    .map(h => ({
+                        estadoAnterior: h.estadoAnterior,
+                        estadoNuevo:    h.estadoNuevo,
+                        empleado:       h.nombreEmpleado,
+                        codigoEmpleado: h.codigoEmpleado,
+                        motivo:         h.motivo,
+                        fecha:          h.createdAt
+                    })),
                 nombreCliente: `${pedido.nombreCliente} ${pedido.apellidoCliente}`,
                 email: pedido.email,
                 telefono: pedido.telefono,
@@ -930,6 +964,98 @@ export const asignarTiendaPedidoWeb = async (req, res) => {
 };
 
 // POST /admin/web/pedidos/:idPedido/cancelar
+// Deja constancia de quién movió el pedido y desde qué sesión. Se llama siempre dentro
+// de la misma transacción que el cambio de estado: o queda el cambio con su registro, o no
+// queda nada.
+async function registrarCambioEstado({ pedido, estadoAnterior, estadoNuevo, req, motivo }, transaction) {
+    const emp = req.empleadoVerificado;
+    return PedidosWebHistorialEstado.create({
+        idPedido:       pedido.idPedido,
+        estadoAnterior,
+        estadoNuevo,
+        idEmpleado:     emp?.idEmpleado || null,
+        nombreEmpleado: emp?.nombre || null,
+        codigoEmpleado: emp?.codigoEmpleado || null,
+        idUsuario:      req.usuario?.idUsuario || null,
+        motivo:         motivo ? String(motivo).slice(0, 255) : null
+    }, { transaction });
+}
+
+// POST /admin/web/pedidos/:idPedido/confirmar-pago
+// Confirma a mano un pago que ninguna pasarela va a confirmar: transferencia por QR o
+// contraentrega. Exige código de empleado — es la persona que dice haber visto la plata.
+export const confirmarPagoPedidoWeb = async (req, res) => {
+    try {
+        const { idPedido } = req.params;
+        const nota = req.body?.nota?.trim() || null;
+
+        const pedido = await PedidosWeb.findByPk(idPedido);
+        if (!pedido) return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado.' });
+
+        if (pedido.estado !== 'pendiente_pago') {
+            return res.status(409).json({
+                success: false,
+                mensaje: `Solo se puede confirmar el pago de un pedido pendiente. Este está en "${ETIQUETA_ESTADO_PEDIDO[pedido.estado] || pedido.estado}".`
+            });
+        }
+
+        // Número del voucher y valor transferido. Son obligatorios: sin ellos la tienda que
+        // despache no puede conciliar el pago en su cuadre de caja, que es el punto de pedirlos.
+        const referencia = String(req.body?.nroTransaccion || '').trim();
+        if (!referencia) {
+            return res.status(422).json({ success: false, mensaje: 'Indicá el número de transacción del comprobante.' });
+        }
+        if (referencia.length > 50) {
+            return res.status(422).json({ success: false, mensaje: 'El número de transacción es demasiado largo (máx. 50 caracteres).' });
+        }
+
+        const valor = Number(req.body?.valor);
+        if (!Number.isFinite(valor) || valor <= 0) {
+            return res.status(422).json({ success: false, mensaje: 'El valor transferido no es válido.' });
+        }
+
+        // procesarPagoAprobado descuenta stock, crea el traslado a la bodega web, resuelve
+        // el cliente y deja el pedido en 'en_revision' — todo dentro de su propia transacción.
+        // Si algo falla ahí (ej. stock insuficiente) lanza y no se toca nada más.
+        await procesarPagoAprobado(pedido);
+
+        await PedidosWeb.update(
+            {
+                idOperadorRevisor: req.empleadoVerificado?.idEmpleado || null,
+                fechaRevision:     new Date(),
+                pagoQrReferencia:  referencia,
+                pagoQrValor:       valor
+            },
+            { where: { idPedido } }
+        );
+
+        // El monto transferido se anota en la bitácora aunque no coincida con el total: si hay
+        // diferencia, tiene que quedar rastro de quién la aceptó.
+        const totalPedido = Number(pedido.total);
+        const difiere = Math.abs(valor - totalPedido) > 0.01;
+        const detalleMonto = difiere
+            ? ` · transferido $${valor.toLocaleString('es-CO')} sobre un total de $${totalPedido.toLocaleString('es-CO')}`
+            : '';
+
+        await registrarCambioEstado({
+            pedido, estadoAnterior: 'pendiente_pago', estadoNuevo: 'en_revision', req,
+            motivo: `${nota || 'Pago confirmado manualmente'} · voucher ${referencia}${detalleMonto}`
+        });
+
+        invalidarContadoresAdmin();
+
+        return res.json({
+            success: true,
+            mensaje: `Pago confirmado por ${req.empleadoVerificado?.nombre}. El pedido pasó a revisión.`
+        });
+    } catch (e) {
+        console.error('confirmarPagoPedidoWeb:', e);
+        // Los errores de procesarPagoAprobado son informativos para el operador
+        // (falta stock, falta la bodega "Pedidos Web" configurada).
+        return res.status(500).json({ success: false, mensaje: e.message || 'Error al confirmar el pago.' });
+    }
+};
+
 export const cancelarPedidoWeb = async (req, res) => {
     try {
         const { idPedido } = req.params;
@@ -941,7 +1067,7 @@ export const cancelarPedidoWeb = async (req, res) => {
         }
 
         const pedido = await PedidosWeb.findByPk(idPedido, {
-            attributes: ['idPedido', 'numeroPedido', 'email', 'nombreCliente', 'apellidoCliente', 'total', 'createdAt'],
+            attributes: ['idPedido', 'numeroPedido', 'email', 'nombreCliente', 'apellidoCliente', 'total', 'createdAt', 'estado'],
             include: [{
                 model: DetallesPedidoWeb, as: 'detalles', required: false,
                 include: [{
@@ -964,6 +1090,16 @@ export const cancelarPedidoWeb = async (req, res) => {
         if (filasAfectadas === 0) {
             return res.status(400).json({ success: false, mensaje: 'El pedido ya está facturado o cancelado, o no existe.' });
         }
+
+        // Quién canceló y por qué. Va después del update condicional: solo se registra si
+        // la cancelación efectivamente ocurrió.
+        await PedidosWeb.update(
+            { idOperadorRevisor: req.empleadoVerificado?.idEmpleado || null, fechaRevision: new Date() },
+            { where: { idPedido } }
+        );
+        await registrarCambioEstado({
+            pedido, estadoAnterior: pedido.estado, estadoNuevo: 'cancelado', req, motivo: razonRechazo
+        });
 
         // El correo es informativo — si falla el envío no se revierte la cancelación, solo se registra.
         try {

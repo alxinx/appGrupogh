@@ -2,14 +2,18 @@ import { Op, fn, col, literal } from 'sequelize';
 import db from '../config/bd.js';
 import {
     BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb,
-    Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura,
+    Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura, FacturaClientes,
     Interesados, PaginasWeb, PuntosDeVenta, VisitantesWeb, VisitasProducto,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb, Empleados, Traslados, DetalleTraslados,
-    Clientes, ClientesTributario, ClientesUbicacion,
+    Clientes, ClientesTributario, ClientesUbicacion, Entidades,
 } from '../models/index.js';
 import { getPublicKey, getCheckoutBaseUrl, generarFirmaIntegridad, verificarChecksumWebhook } from '../helpers/wompi.js';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
 import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
+import { Upload } from '@aws-sdk/lib-storage';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import s3Client from '../config/r2.js';
+import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
 
 const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
 
@@ -134,6 +138,54 @@ export const getCategorias = async (req, res) => {
     }
 };
 
+// Top 10 productos más vendidos (unidades facturadas) en los últimos 30 días.
+// Solo cuentan las facturas liquidadas: una factura pendiente todavía no es una venta
+// cobrada, así que no debe empujar un producto al ranking (mismo criterio que el resto
+// del sistema con FacturaClientes.estado).
+// Es un ranking global del catálogo web, no depende de la página ni del filtro que
+// esté viendo el comprador: el badge "Top en ventas" debe significar lo mismo en
+// todas las vistas. Se cachea en memoria porque el catálogo se pagina y no tiene
+// sentido recalcular el ranking en cada página.
+const TOP_VENTAS_LIMITE = 10;
+const TOP_VENTAS_TTL_MS = 10 * 60 * 1000;
+let _topVentas = { ids: new Set(), expira: 0 };
+
+async function obtenerTopVentas() {
+    if (Date.now() < _topVentas.expira) return _topVentas.ids;
+
+    const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const filas = await DetallesFactura.findAll({
+        where: { createdAt: { [Op.gte]: hace30 } },
+        attributes: ['idProducto', [fn('SUM', col('cantidad')), 'total']],
+        include: [
+            {
+                model: Productos,
+                as: 'producto',
+                attributes: [],
+                where: { activo: true, web: true },
+                required: true
+            },
+            {
+                model: FacturaClientes,
+                as: 'factura',
+                attributes: [],
+                where: { estado: 'liquidada' },
+                required: true
+            }
+        ],
+        group: ['DETALLES_FACTURA.idProducto'],
+        order: [[literal('total'), 'DESC']],
+        limit: TOP_VENTAS_LIMITE,
+        raw: true
+    });
+
+    _topVentas = {
+        ids: new Set(filas.map(r => r.idProducto)),
+        expira: Date.now() + TOP_VENTAS_TTL_MS
+    };
+    return _topVentas.ids;
+}
+
 // GET /api/web/productos?categoria&q&orden&pagina&limite&talla&color&precioMin&precioMax
 export const getCatalogo = async (req, res) => {
     try {
@@ -203,6 +255,11 @@ export const getCatalogo = async (req, res) => {
             ];
         }
 
+        // Todos los criterios cierran con idProducto para que el orden sea TOTAL. Sin ese
+        // desempate, las filas empatadas (14 productos comparten un mismo precio) quedan en
+        // orden indefinido entre consultas, y con LIMIT/OFFSET el scroll infinito recibe el
+        // mismo producto en dos páginas — de ahí el "two children with the same key" del front.
+        const DESEMPATE = ['idProducto', 'ASC'];
         const ordenMap = {
             'nombre_asc': [
                 // Suma de unidades vendidas en los últimos 30 días
@@ -212,12 +269,13 @@ export const getCatalogo = async (req, res) => {
                     WHERE df.idProducto = PRODUCTOS.idProducto
                     AND df.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                 ) DESC`),
-                ['nombreProducto', 'ASC']
+                ['nombreProducto', 'ASC'],
+                DESEMPATE
             ],
-            'nombre_desc': [['nombreProducto', 'DESC']],
-            'precio_asc':  [['precioVentaPublicoFinal', 'ASC']],
-            'precio_desc': [['precioVentaPublicoFinal', 'DESC']],
-            'nuevo':       [['createdAt', 'DESC']]
+            'nombre_desc': [['nombreProducto', 'DESC'], DESEMPATE],
+            'precio_asc':  [['precioVentaPublicoFinal', 'ASC'], DESEMPATE],
+            'precio_desc': [['precioVentaPublicoFinal', 'DESC'], DESEMPATE],
+            'nuevo':       [['createdAt', 'DESC'], DESEMPATE]
         };
         const order = ordenMap[orden] ?? ordenMap['nombre_asc'];
 
@@ -240,6 +298,7 @@ export const getCatalogo = async (req, res) => {
 
         // Stock global por producto
         const ids = rows.map(p => p.idProducto);
+        const topVentas = await obtenerTopVentas();
         let mapaStock = {};
         let mapaVentas = {};
         if (ids.length) {
@@ -281,7 +340,8 @@ export const getCatalogo = async (req, res) => {
                 idCategoria:      p.idCategoria,
                 imagen:           img ? `${r2}${img}` : null,
                 stockGlobal:      mapaStock[p.idProducto]  ?? 0,
-                unidadesVendidas: mapaVentas[p.idProducto] ?? 0
+                unidadesVendidas: mapaVentas[p.idProducto] ?? 0,
+                esTopVentas:      topVentas.has(p.idProducto)
             };
         });
 
@@ -577,7 +637,7 @@ export const crearPedidoWeb = async (req, res) => {
             email, telefono, nombreCliente, apellidoCliente, cedula,
             tipoPersona, tipoDocumento, digitoVerif, razonSocial, direccionFacturacion,
             direccion, apto, ciudad, departamento, notasEntrega,
-            idPuntoVentaRecogida
+            idPuntoVentaRecogida, idEntidadPagoQr
         } = req.body;
 
         if (!Array.isArray(items) || items.length === 0) {
@@ -586,8 +646,21 @@ export const crearPedidoWeb = async (req, res) => {
         if (!['domicilio', 'tienda'].includes(tipoEntrega)) {
             return res.status(400).json({ success: false, message: 'Tipo de entrega inválido.' });
         }
-        if (!['contraentrega', 'tarjeta', 'pse', 'nequi'].includes(metodoPago)) {
+        if (!['contraentrega', 'tarjeta', 'pse', 'nequi', 'qr'].includes(metodoPago)) {
             return res.status(400).json({ success: false, message: 'Método de pago inválido.' });
+        }
+
+        // Pago por QR: la entidad tiene que estar realmente habilitada en este momento.
+        // No basta con que el cliente mande un id — podría venir de una página vieja o manipulada.
+        let entidadQr = null;
+        if (metodoPago === 'qr') {
+            entidadQr = await Entidades.findOne({
+                where: { idEntidad: idEntidadPagoQr, qrEnabled: true, qrStatus: 'active' },
+                attributes: ['idEntidad']
+            });
+            if (!entidadQr) {
+                return res.status(400).json({ success: false, message: 'El método de pago por QR no está disponible en este momento.' });
+            }
         }
         if (!email?.trim() || !telefono?.trim() || !nombreCliente?.trim() || !apellidoCliente?.trim()) {
             return res.status(400).json({ success: false, message: 'Faltan datos de contacto.' });
@@ -747,6 +820,7 @@ export const crearPedidoWeb = async (req, res) => {
                 departamento: tipoEntrega === 'domicilio' ? departamento.trim() : null,
                 notasEntrega: tipoEntrega === 'domicilio' ? (notasEntrega?.trim() || null) : null,
                 metodoPago,
+                idEntidadPagoQr: entidadQr?.idEntidad || null,
                 subtotal,
                 envio: envioCosto,
                 descuento: 0,
@@ -933,7 +1007,11 @@ export async function resolverClienteDePedido(pedido, t) {
 // Traslado automático tienda → Bodega "Pedidos Web" al aprobarse un pago.
 // Descuenta stock real de la(s) tienda(s) origen y lo deja aterrizado en la bodega,
 // exactamente con el mismo mecanismo (FIFO sobre STOCKS) que usa el traslado manual de empleados.
-async function procesarPagoAprobado(pedido) {
+// Exportada para que el panel admin pueda confirmar a mano un pago que ninguna pasarela
+// va a confirmar (transferencia por QR, contraentrega). El efecto tiene que ser idéntico
+// al de un pago aprobado por Wompi: descontar stock, trasladar a la bodega web, resolver
+// el cliente y dejar el pedido en 'en_revision'.
+export async function procesarPagoAprobado(pedido) {
     const [bodegaPedidosWeb, sistemaWeb] = await Promise.all([
         PuntosDeVenta.findOne({ where: { nombreComercial: 'Pedidos Web' } }),
         Empleados.findOne({ where: { codigoEmpleado: '00000' } })
@@ -1097,3 +1175,70 @@ export const webhookWompi = async (req, res) => {
     }
 };
 
+
+// ─── COMPROBANTE DE PAGO POR QR ──────────────────────────────────────────────
+// POST /api/web/pedidos/:idPedido/comprobante
+//
+// El pago por QR es una transferencia manual: no hay webhook que la confirme, así que
+// el comprador adjunta la captura y un operador la coteja contra el extracto bancario.
+// El pedido NO cambia de estado — sigue en 'pendiente_pago' hasta que un humano verifique.
+//
+// Endpoint público (lo consume el checkout sin sesión), por eso está acotado: solo
+// acepta pedidos que están en 'pendiente_pago' y que eligieron pagar por QR.
+export const subirComprobantePagoWeb = async (req, res) => {
+    const { idPedido } = req.params;
+    try {
+        const pedido = await PedidosWeb.findByPk(idPedido);
+        if (!pedido) {
+            return res.status(404).json({ success: false, message: 'Pedido no encontrado.' });
+        }
+        if (pedido.metodoPago !== 'qr' || pedido.estado !== 'pendiente_pago') {
+            return res.status(409).json({ success: false, message: 'Este pedido no admite comprobante de pago.' });
+        }
+        if (!req.file?.buffer?.length) {
+            return res.status(422).json({ success: false, message: 'No se recibió ninguna imagen.' });
+        }
+
+        // Verificación del lado del servidor: magic bytes + dimensiones. El Content-Type
+        // que manda el navegador no se toma como evidencia de nada.
+        const validacion = await validarImagen(req.file.buffer, { minLado: 150, maxBytes: 5 * 1024 * 1024 });
+        if (!validacion.ok) {
+            return res.status(422).json({ success: false, message: validacion.mensaje });
+        }
+
+        // Siempre WebP. Se limita el ancho: una captura de celular no necesita 4000px
+        // para que el operador lea el monto y la referencia.
+        const webp = await aWebp(req.file.buffer, { calidad: 82, anchoMaximo: 1600 });
+
+        const keyAnterior = pedido.comprobantePagoKey;
+        const key = `confirmaciones_pagos/web/${pedido.numeroPedido}-${Date.now()}.webp`;
+
+        await new Upload({
+            client: s3Client,
+            params: {
+                Bucket: process.env.R2_BUCKET_NAME,
+                Key: key,
+                Body: webp,
+                ContentType: 'image/webp'
+            }
+        }).done();
+
+        await pedido.update({ comprobantePagoKey: key, comprobantePagoAt: new Date() });
+
+        // Si reemplazó un comprobante anterior, se borra el viejo para no dejar basura.
+        if (keyAnterior && keyAnterior !== key) {
+            s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: keyAnterior }))
+                .catch(e => console.error('subirComprobantePagoWeb [limpieza]:', e.message));
+        }
+
+        invalidarContadoresAdmin();
+
+        return res.json({
+            success: true,
+            message: 'Comprobante recibido. Vamos a verificar la transferencia y te confirmamos el pedido.'
+        });
+    } catch (e) {
+        console.error('webApi.subirComprobantePagoWeb:', e);
+        return res.status(500).json({ success: false, message: 'No pudimos guardar el comprobante.' });
+    }
+};

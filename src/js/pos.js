@@ -222,10 +222,34 @@ import ciiuData from '../json/ciiu.json';
     const getPrecioItem = (item) => getModo() === 'mayorista' ? item.precioMayorista : item.precioDetal;
 
     // ── Agregar o incrementar ────────────────────────────────────────────────
+    // Un pedido web cargado es inmodificable: el cliente ya pagó una lista concreta de
+    // productos. El backend además reconstruye artículos y cliente desde el pedido e ignora
+    // lo que mande el POS, así que esto es solo para no dejar al cajero intentarlo en vano.
+    let cargandoPedidoWeb = false;
+
+    // Deja el botón de cliente acorde al estado: en un pedido web el cliente ya viene
+    // definido por la compra y no se puede tocar.
+    const sincronizarBotonCliente = () => {
+        const btn = document.getElementById('btn-abrir-modal-cliente');
+        if (!btn) return;
+        const bloqueado = !!pedidoWebActivo;
+        btn.disabled = bloqueado;
+        btn.classList.toggle('opacity-40', bloqueado);
+        btn.classList.toggle('cursor-not-allowed', bloqueado);
+        btn.title = bloqueado ? 'El cliente de un pedido web no se puede cambiar' : '';
+    };
+
+    const bloqueadoPorPedidoWeb = (accion = 'modificar esta orden') => {
+        if (!pedidoWebActivo || cargandoPedidoWeb) return false;
+        window.showToast?.(`No podés ${accion}: es un pedido web ya pagado. Vaciá la orden si necesitás empezar de cero.`, 'warning');
+        return true;
+    };
+
     const addToCart = (p, qty = 1) => {
         if (!p?.idProducto || qty < 1) return;
 
         if (bloquearSiSinCaja()) return;
+        if (bloqueadoPorPedidoWeb('agregar productos')) return;
 
         if (cart.has(p.idProducto)) {
             const item = cart.get(p.idProducto);
@@ -341,8 +365,16 @@ import ciiuData from '../json/ciiu.json';
                 return;
             }
 
-            data.items.forEach(it => addToCart(it, it.cantidadPedida));
-            pedidoWebActivo = idPedido;
+            // La carga inicial sí puede escribir en el carrito; a partir de ahí queda bloqueado.
+            cargandoPedidoWeb = true;
+            try {
+                data.items.forEach(it => addToCart(it, it.cantidadPedida));
+                pedidoWebActivo = idPedido;
+            } finally {
+                cargandoPedidoWeb = false;
+            }
+            renderCarrito();
+            sincronizarBotonCliente();
             pagoWebActivo  = data.pagoWeb || null;
 
             await vincularClientePedidoWeb(data);
@@ -389,6 +421,7 @@ import ciiuData from '../json/ciiu.json';
     // ── Actualizar cantidad (+ o -) ──────────────────────────────────────────
     const updateQty = async (idProducto, delta) => {
         if (!cart.has(idProducto)) return;
+        if (bloqueadoPorPedidoWeb('cambiar las cantidades')) return;
         const item = cart.get(idProducto);
         const nueva = item.cantidad + delta;
 
@@ -417,6 +450,7 @@ import ciiuData from '../json/ciiu.json';
 
     // ── Eliminar directo ─────────────────────────────────────────────────────
     const removeFromCart = (idProducto) => {
+        if (bloqueadoPorPedidoWeb('quitar productos')) return;
         cart.delete(idProducto);
         renderCarrito();
     };
@@ -426,6 +460,34 @@ import ciiuData from '../json/ciiu.json';
         const precio = getPrecioItem(item);
         const total  = precio * item.cantidad;
         const atMax  = item.cantidad >= item.stock;
+        // Sin controles cuando es un pedido web: mostrar botones que no hacen nada
+        // confunde más que ayudar. Se ve la cantidad, y ya.
+        const bloqueado = !!pedidoWebActivo;
+
+        const controlesCantidad = bloqueado
+            ? `<span class="text-xs font-black text-gh-grayText bg-gray-100/50 rounded-xl px-3 py-1.5 border border-gray-100">
+                   ${item.cantidad} und.
+               </span>`
+            : `<div class="flex items-center gap-3 bg-gray-100/50 rounded-xl px-2.5 py-1.5 border border-gray-100">
+                    <button class="btn-qty-minus text-gray-400 hover:text-gh-primary flex items-center transition-transform active:scale-90 cursor-pointer"
+                            data-id="${item.idProducto}">
+                        <i class="fi-rr-minus-small"></i>
+                    </button>
+                    <span class="text-xs font-black w-5 text-center qty-display text-gh-grayText">${item.cantidad}</span>
+                    <button class="btn-qty-plus flex items-center transition-transform active:scale-90 ${atMax ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-gh-primary cursor-pointer'}"
+                            data-id="${item.idProducto}" ${atMax ? 'disabled' : ''}>
+                        <i class="fi-rr-plus-small"></i>
+                    </button>
+               </div>`;
+
+        const botonEliminar = bloqueado
+            ? `<span class="text-gray-300 p-1 flex-shrink-0" title="Un pedido web no se puede modificar">
+                   <i class="fi-rr-lock text-sm"></i>
+               </span>`
+            : `<button class="btn-remove-item text-gray-400 cursor-pointer hover:text-red-500 transition-colors p-1 flex-shrink-0"
+                       data-id="${item.idProducto}" title="Eliminar">
+                    <i class="fi-rr-trash-xmark text-lg"></i>
+               </button>`;
 
         return `
         <div class="flex gap-4 p-2 bg-white rounded-[0.5rem] group border border-white/60 transition-all shadow-sm hover:shadow-md"
@@ -439,23 +501,10 @@ import ciiuData from '../json/ciiu.json';
                         <h4 class="text-sm font-bold text-gray-900 leading-tight truncate">${item.nombre}</h4>
                         <p class="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-wider">SKU: ${item.sku}</p>
                     </div>
-                    <button class="btn-remove-item text-gray-400 cursor-pointer hover:text-red-500 transition-colors p-1 flex-shrink-0"
-                            data-id="${item.idProducto}" title="Eliminar">
-                        <i class="fi-rr-trash-xmark text-lg"></i>
-                    </button>
+                    ${botonEliminar}
                 </div>
                 <div class="flex items-center justify-between mt-4">
-                    <div class="flex items-center gap-3 bg-gray-100/50 rounded-xl px-2.5 py-1.5 border border-gray-100">
-                        <button class="btn-qty-minus text-gray-400 hover:text-gh-primary flex items-center transition-transform active:scale-90 cursor-pointer"
-                                data-id="${item.idProducto}">
-                            <i class="fi-rr-minus-small"></i>
-                        </button>
-                        <span class="text-xs font-black w-5 text-center qty-display text-gh-grayText">${item.cantidad}</span>
-                        <button class="btn-qty-plus flex items-center transition-transform active:scale-90 ${atMax ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-gh-primary cursor-pointer'}"
-                                data-id="${item.idProducto}" ${atMax ? 'disabled' : ''}>
-                            <i class="fi-rr-plus-small"></i>
-                        </button>
-                    </div>
+                    ${controlesCantidad}
                     <div class="text-right">
                         <p class="text-[10px] text-gray-400 font-medium leading-none mb-1">Unid: $${fmt(precio)}</p>
                         <p class="font-bold text-base text-gh-grayText leading-none">$${fmt(total)}</p>
@@ -533,7 +582,10 @@ import ciiuData from '../json/ciiu.json';
             cancelButtonText:  'Cancelar',
             confirmButtonColor: '#EC5FA3'
         });
-        if (isConfirmed) { cart.clear(); pedidoWebActivo = null; pagoWebActivo = null; renderCarrito(); }
+        if (isConfirmed) {
+            cart.clear(); pedidoWebActivo = null; pagoWebActivo = null;
+            renderCarrito(); sincronizarBotonCliente();
+        }
     });
 
     // ── Agregar desde catálogo (click en botón) ──────────────────────────────
@@ -665,6 +717,7 @@ import ciiuData from '../json/ciiu.json';
 
     // ── Abrir / cerrar ────────────────────────────────────────────────────────
     const abrirModalCliente = () => {
+        if (bloqueadoPorPedidoWeb('cambiar el cliente')) return;
         if (!modalCliente) return;
         const h = document.getElementById('cli-id-hidden');
         if (h) h.value = inputIdCliente?.value || '0';
@@ -1247,8 +1300,8 @@ import ciiuData from '../json/ciiu.json';
 
             if (!pagoWebActivo) {
                 caja.classList.add('hidden');
-                // 'transferencia', 'tarjeta' y 'credito' los muestra cargarEntidades() según
-                // las entidades disponibles, así que acá solo se restituye efectivo.
+                // Las otras tres tarjetas ya las restituyó cargarEntidades() según las
+                // entidades disponibles; efectivo no depende de ninguna entidad.
                 document.getElementById('fv-metodo-efectivo')?.classList.remove('hidden');
                 return;
             }
@@ -1412,8 +1465,25 @@ import ciiuData from '../json/ciiu.json';
         });
 
         // ── Entidades ──────────────────────────────────────────────────────────
+        // Muestra u oculta cada tarjeta de método según haya entidades de ese tipo.
+        // Va aparte a propósito: pintarPagoWeb las oculta al facturar un pedido web, y en la
+        // venta siguiente hay que restituirlas. Si esto viviera solo dentro del fetch, el
+        // camino de cache saldría antes de tocarlas y los métodos quedarían ocultos hasta
+        // recargar la página.
+        const aplicarVisibilidadMetodos = () => {
+            const tarjetas = [
+                ['fv-metodo-transferencia', transferenciasData],
+                ['fv-metodo-tarjeta',       tarjetaData],
+                ['fv-metodo-credito',       creditoData]
+            ];
+            for (const [id, datos] of tarjetas) {
+                document.getElementById(id)?.classList.toggle('hidden', datos.length === 0);
+            }
+        };
+
         const cargarEntidades = async () => {
             if (transferenciasData.length || tarjetaData.length || creditoData.length) {
+                aplicarVisibilidadMetodos();
                 renderTransferencias();
                 renderTarjeta();
                 renderCredito();
@@ -1426,12 +1496,7 @@ import ciiuData from '../json/ciiu.json';
                     transferenciasData = data.entidades.filter(e => e.tipoEntidad === 'Banco' || e.tipoEntidad === 'Billetera Virtual');
                     tarjetaData        = data.entidades.filter(e => e.tipoEntidad === 'Tarjeta Credito');
                     creditoData        = data.entidades.filter(e => e.tipoEntidad === 'Entidad Crediticia');
-                    const cardTransf  = document.getElementById('fv-metodo-transferencia');
-                    const cardTarjeta = document.getElementById('fv-metodo-tarjeta');
-                    const cardCredito = document.getElementById('fv-metodo-credito');
-                    if (transferenciasData.length && cardTransf)  cardTransf.classList.remove('hidden');
-                    if (tarjetaData.length && cardTarjeta)        cardTarjeta.classList.remove('hidden');
-                    if (creditoData.length && cardCredito)        cardCredito.classList.remove('hidden');
+                    aplicarVisibilidadMetodos();
                     renderTransferencias();
                     renderTarjeta();
                     renderCredito();
@@ -1906,6 +1971,7 @@ import ciiuData from '../json/ciiu.json';
                 cerrarFV();
                 cart.clear();
                 pedidoWebActivo = null;
+                sincronizarBotonCliente();
                 pagoWebActivo   = null;
                 renderCarrito();
                 resetCliente();

@@ -34,6 +34,7 @@ import ClientesTributario from './ClientesTributario.js'
 import ClientesUbicacion from './ClientesUbicacion.js'
 import CajaTienda from './CajaTienda.js'
 import Entidades from './Entidades.js'
+import EntidadesQrHistorial from './EntidadesQrHistorial.js'
 import FacturaClientes from './FacturaClientes.js'
 import DetallesFactura from './DetallesFactura.js'
 import DetallesImpuestosFacturaCliente from './DetallesImpuestosFacturaCliente.js'
@@ -48,6 +49,7 @@ import PaginasWeb from './PaginasWeb.js'
 import VisitantesWeb from './VisitantesWeb.js'
 import VisitasProducto from './VisitasProducto.js'
 import PedidosWeb from './PedidosWeb.js'
+import PedidosWebHistorialEstado from './PedidosWebHistorialEstado.js'
 import Secuencias from './Secuencias.js'
 import DetallesPedidoWeb from './DetallesPedidoWeb.js'
 import PagosPedidoWeb from './PagosPedidoWeb.js'
@@ -191,6 +193,12 @@ DetallesPagosFactura.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente'
 DetallesPagosFactura.belongsTo(Entidades, { foreignKey: 'idEntidad', as: 'entidad' });
 Entidades.hasMany(DetallesPagosFactura, { foreignKey: 'idEntidad' });
 
+// ─── Historial del QR de pago por entidad ────────────────────────────────────
+Entidades.hasMany(EntidadesQrHistorial, { foreignKey: 'idEntidad', as: 'historialQr' });
+EntidadesQrHistorial.belongsTo(Entidades, { foreignKey: 'idEntidad', as: 'entidad' });
+EntidadesQrHistorial.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
+Entidades.belongsTo(Usuarios, { foreignKey: 'qrUploadedBy', as: 'qrAutor' });
+
 // ─── Permisos de usuario ──────────────────────────────────────────────────────
 Usuarios.hasMany(UserPermisos, { foreignKey: 'idUsuario', as: 'accesos' });
 UserPermisos.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
@@ -248,6 +256,14 @@ PedidosWeb.belongsTo(PuntosDeVenta, { foreignKey: 'idTiendaFacturacion', as: 'ti
 PedidosWeb.belongsTo(Empleados, { foreignKey: 'idOperadorRevisor', as: 'operadorRevisor' });
 PedidosWeb.belongsTo(FacturaClientes, { foreignKey: 'idFacturaCliente', as: 'factura' });
 PedidosWeb.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
+// Entidad a la que el comprador transfirió cuando eligió pagar por QR
+PedidosWeb.belongsTo(Entidades, { foreignKey: 'idEntidadPagoQr', as: 'entidadPagoQr' });
+
+// ─── Bitácora de cambios de estado hechos a mano desde el panel ──────────────
+PedidosWeb.hasMany(PedidosWebHistorialEstado, { foreignKey: 'idPedido', as: 'historialEstado' });
+PedidosWebHistorialEstado.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
+PedidosWebHistorialEstado.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
+PedidosWebHistorialEstado.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
 
 PedidosWeb.hasMany(DetallesPedidoWeb, { foreignKey: 'idPedido', as: 'detalles' });
 DetallesPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
@@ -272,7 +288,7 @@ export {
   Traslados, DetalleTraslados, InsidenciaTraslado,
   Imagenes, Documentacion, Empleados,
   Clientes, ClientesTributario, ClientesUbicacion,
-  CajaTienda, Entidades,
+  CajaTienda, Entidades, EntidadesQrHistorial,
   FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura,
   Egresos,
   PermisosRecursos, PermisosAcciones, UserPermisos,
@@ -283,7 +299,7 @@ export {
   PaginasWeb,
   VisitantesWeb,
   VisitasProducto,
-  PedidosWeb,
+  PedidosWeb, PedidosWebHistorialEstado,
   Secuencias,
   DetallesPedidoWeb,
   PagosPedidoWeb,

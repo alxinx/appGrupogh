@@ -12,7 +12,7 @@
     };
     const ETIQUETA_ENTREGA = { domicilio: 'Domicilio', tienda: 'Punto de venta' };
     // Lo que el cliente eligió en el checkout web (PEDIDOS_WEB.metodoPago).
-    const ETIQUETA_METODO_PAGO = { contraentrega: 'Contraentrega', tarjeta: 'Tarjeta', pse: 'PSE', nequi: 'Nequi' };
+    const ETIQUETA_METODO_PAGO = { contraentrega: 'Contraentrega', tarjeta: 'Tarjeta', pse: 'PSE', nequi: 'Nequi', qr: 'Transferencia por QR' };
     // Lo que Wompi reporta que realmente se usó (payment_method_type, en PAGOS_PEDIDO_WEB.metodoPago).
     // No siempre coincide con lo anterior: en la pasarela el cliente puede cambiar de método.
     const ETIQUETA_METODO_WOMPI = {
@@ -25,13 +25,68 @@
     // Método realmente cobrado si Wompi ya lo reportó; si no, lo que eligió el cliente.
     const metodoPagoHtml = (pedido, ultimoPago) => {
         const real = ultimoPago?.metodoPago;
-        const elegido = ETIQUETA_METODO_PAGO[pedido.metodoPago] || pedido.metodoPago || '—';
+        let elegido = ETIQUETA_METODO_PAGO[pedido.metodoPago] || pedido.metodoPago || '—';
+        // En un pago por QR importa a qué cuenta transfirió: es donde hay que buscar el movimiento.
+        if (pedido.metodoPago === 'qr' && pedido.entidadPagoQr) {
+            elegido += ` <span class="text-xs font-normal text-slate-400">· ${pedido.entidadPagoQr}</span>`;
+        }
         if (!real) return elegido;
         const etiquetaReal = ETIQUETA_METODO_WOMPI[real] || real;
         // Si difieren, se muestran ambos: el operador tiene que poder cuadrar contra Wompi.
         if (etiquetaReal.toLowerCase() === elegido.toLowerCase()) return etiquetaReal;
         return `${etiquetaReal} <span class="text-xs font-normal text-slate-400">(eligió ${elegido})</span>`;
     };
+
+    // ── Comprobante de la transferencia por QR ────────────────────────────────
+    // Solo aparece si el comprador adjuntó una captura. Es lo que el operador coteja
+    // contra el extracto bancario antes de dar el pedido por pagado.
+    const renderComprobante = (p) => {
+        const cont = document.getElementById('pago-comprobante');
+        if (!cont) return;
+
+        if (!p.comprobantePago) {
+            cont.classList.add('hidden');
+            cont.innerHTML = '';
+            return;
+        }
+
+        const subido = p.comprobantePagoAt ? fmtFechaHora(p.comprobantePagoAt) : null;
+        cont.innerHTML = `
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Comprobante del cliente</p>
+            <div class="flex items-start gap-3">
+                <button type="button" class="js-ver-comprobante group relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex-shrink-0 cursor-zoom-in"
+                        data-url="${p.comprobantePago}" title="Ver comprobante en grande">
+                    <img src="${p.comprobantePago}" alt="Comprobante de pago" class="w-full h-full object-cover">
+                    <span class="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-colors">
+                        <i class="fi fi-rr-search text-white opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                    </span>
+                </button>
+                <div class="min-w-0 flex-1 text-xs text-slate-500 space-y-1">
+                    <p>${subido ? `Subido el ${subido.fecha} · ${subido.hora}` : 'Fecha de subida no registrada'}</p>
+                    <p class="text-amber-600 font-semibold">Verifica la transferencia en el extracto antes de dar el pedido por pagado.</p>
+                </div>
+            </div>`;
+        cont.classList.remove('hidden');
+    };
+
+    // ── Visor del comprobante ─────────────────────────────────────────────────
+    const lightbox = document.getElementById('lightbox-comprobante');
+
+    const cerrarLightbox = () => lightbox?.classList.add('hidden');
+
+    lightbox?.querySelectorAll('[data-cerrar-lightbox]').forEach(el => el.addEventListener('click', cerrarLightbox));
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && lightbox && !lightbox.classList.contains('hidden')) cerrarLightbox();
+    });
+
+    // Delegado: la miniatura se re-renderiza cada vez que se recarga el pedido.
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.js-ver-comprobante');
+        if (!btn || !lightbox) return;
+        document.getElementById('lightbox-comprobante-img').src = btn.dataset.url;
+        document.getElementById('lightbox-comprobante-abrir').href = btn.dataset.url;
+        lightbox.classList.remove('hidden');
+    });
 
     // "hace 2 h 15 min" — se recalcula cada segundo desde fechaCambioEstado.
     const tiempoTranscurrido = (desde) => {
@@ -309,13 +364,26 @@
 
             const ultimoPago = p.pagos[p.pagos.length - 1];
             document.getElementById('pago-metodo').innerHTML = metodoPagoHtml(p, ultimoPago);
+            // Un pago por QR no pasa por la pasarela: no hay "intentos", hay una verificación
+            // manual. Decir "sin intentos de pago" sobre un pedido ya confirmado desinforma.
+            const pagoQrConfirmado = !ultimoPago && p.pagoQrReferencia;
             document.getElementById('pago-estado').innerHTML = ultimoPago
                 ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${ultimoPago.estado === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : ultimoPago.estado === 'DECLINED' || ultimoPago.estado === 'ERROR' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}">${ultimoPago.estado}</span>`
-                : '<span class="text-xs text-slate-400">Sin intentos de pago</span>';
+                : pagoQrConfirmado
+                    ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">Verificado a mano</span>'
+                    : '<span class="text-xs text-slate-400">Sin intentos de pago</span>';
             document.getElementById('pago-total').textContent = fmtCOP(p.total);
-            document.getElementById('pago-referencia').textContent = ultimoPago?.referencia || '—';
-            const fechaPago = ultimoPago?.fechaConfirmacion ? fmtFechaHora(ultimoPago.fechaConfirmacion) : null;
+            // Para un pago por QR la referencia es el voucher que digitó el operador.
+            document.getElementById('pago-referencia').textContent =
+                ultimoPago?.referencia || p.pagoQrReferencia || '—';
+            // Un pago por QR no tiene confirmación de pasarela: la fecha es la de la revisión manual.
+            const fechaPago = ultimoPago?.fechaConfirmacion
+                ? fmtFechaHora(ultimoPago.fechaConfirmacion)
+                : (p.pagoQrReferencia && p.fechaRevision ? fmtFechaHora(p.fechaRevision) : null);
             document.getElementById('pago-fecha').textContent = fechaPago ? `${fechaPago.fecha} · ${fechaPago.hora}` : '—';
+
+            totalPedidoActual = Number(p.total) || 0;
+            renderComprobante(p);
 
             document.getElementById('resumen-numero').textContent = p.numeroPedido;
             document.getElementById('resumen-estado').innerHTML = estadoBadgeHtml(p.estado);
@@ -328,11 +396,184 @@
             renderTraslado(p);
             renderSeguimiento(p);
 
+            renderHistorialEstado(p);
+
+            const cerrado = p.estado === 'facturado' || p.estado === 'cancelado';
             const btnCancelar = document.getElementById('btn-cancelar-pedido');
-            if (btnCancelar) btnCancelar.classList.toggle('hidden', p.estado === 'facturado' || p.estado === 'cancelado');
+            if (btnCancelar) btnCancelar.classList.toggle('hidden', cerrado);
+
+            // Confirmar el pago solo tiene sentido mientras nadie lo haya cobrado todavía.
+            const btnPagar = document.getElementById('btn-confirmar-pago');
+            if (btnPagar) btnPagar.classList.toggle('hidden', p.estado !== 'pendiente_pago');
+
+            // El bloque completo se oculta en un pedido cerrado: sin botones no tiene
+            // sentido dejar el separador ni la nota del código de empleado.
+            document.getElementById('acciones-estado')?.classList.toggle('hidden', cerrado);
         } catch (e) {
             console.error(e);
         }
+    }
+
+    // ── Historial de cambios manuales ─────────────────────────────────────────
+    const renderHistorialEstado = (p) => {
+        const card  = document.getElementById('card-historial-estado');
+        const lista = document.getElementById('historial-estado-lista');
+        if (!card || !lista) return;
+
+        const filas = p.historialEstado || [];
+        if (!filas.length) {
+            card.classList.add('hidden');
+            lista.innerHTML = '';
+            return;
+        }
+
+        lista.innerHTML = filas.map(h => {
+            const f = fmtFechaHora(h.fecha);
+            const paso = `${ESTADO_MAP[h.estadoAnterior]?.label || h.estadoAnterior} → ${ESTADO_MAP[h.estadoNuevo]?.label || h.estadoNuevo}`;
+            return `
+            <li class="flex gap-3">
+                <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${h.estadoNuevo === 'cancelado' ? 'bg-red-400' : 'bg-emerald-400'}"></span>
+                <div class="min-w-0 flex-1">
+                    <p class="text-xs font-bold text-slate-700">${paso}</p>
+                    <p class="text-[11px] text-slate-500">
+                        ${h.empleado || 'Empleado no registrado'}${h.codigoEmpleado ? ` · cód. ${h.codigoEmpleado}` : ''}
+                    </p>
+                    <p class="text-[11px] text-slate-400">${f.fecha} · ${f.hora}</p>
+                    ${h.motivo ? `<p class="mt-1 text-[11px] text-slate-500 bg-slate-50 rounded-lg px-2 py-1">${h.motivo}</p>` : ''}
+                </div>
+            </li>`;
+        }).join('');
+        card.classList.remove('hidden');
+    };
+
+    // Pide el código de empleado antes de una acción sensible.
+    // Devuelve el código, o null si el operador cerró el diálogo.
+    async function pedirCodigoEmpleado({ titulo, html, textoConfirmar, color }) {
+        const { value } = await Swal.fire({
+            icon: 'question',
+            title: titulo,
+            html: `${html}
+                <p style="text-align:left; font-size:12px; color:#64748b; margin:14px 0 4px;">
+                    Código del empleado que autoriza:
+                </p>`,
+            input: 'password',
+            inputPlaceholder: 'Código de empleado',
+            inputAttributes: { autocomplete: 'off', 'aria-label': 'Código de empleado' },
+            inputValidator: (v) => (!v || !v.trim()) && 'Ingresá el código del empleado.',
+            showCancelButton: true,
+            confirmButtonText: textoConfirmar,
+            cancelButtonText: 'Volver',
+            confirmButtonColor: color
+        });
+        return value?.trim() || null;
+    }
+
+    // El backend cierra la sesión tras 5 códigos fallidos (igual que el POS).
+    const manejarRespuestaSensible = async (data, onOk) => {
+        if (data.success) return onOk();
+        if (data.logout) {
+            await Swal.fire({ icon: 'error', title: 'Sesión cerrada', text: data.mensaje });
+            window.location.href = '/';
+            return;
+        }
+        Swal.fire({ icon: 'error', title: 'No se pudo completar', text: data.mensaje });
+    };
+
+    // Guarda el total del pedido para precargar el valor transferido en el modal.
+    let totalPedidoActual = 0;
+
+    // `previos` re-abre el formulario con lo ya digitado cuando el operador elige corregir
+    // el valor: no tiene por qué volver a teclear el número de voucher.
+    async function confirmarPago(previos = null) {
+        const totalFmt = fmtCOP(totalPedidoActual);
+
+        // Tres datos en un solo paso: voucher, valor y código de empleado. SweetAlert solo
+        // trae un input nativo, así que el formulario va en el html y se lee en preConfirm.
+        const { value: datos } = await Swal.fire({
+            icon: 'question',
+            title: '¿Confirmar que el pedido está pagado?',
+            html: `
+                <p style="text-align:left; font-size:13px; color:#64748b;">
+                    Se va a descontar el stock y generar el traslado a la bodega web. El pedido pasa a
+                    <strong>En revisión</strong>.
+                </p>
+                <p style="text-align:left; font-size:13px; background:#FEF3C7; color:#92400E; padding:8px 12px; border-radius:8px; margin:10px 0 4px;">
+                    <strong>⚠️ Verificá el movimiento en el extracto bancario</strong> antes de confirmar. Esta acción mueve inventario real.
+                </p>
+
+                <label style="display:block; text-align:left; font-size:12px; color:#64748b; margin:14px 0 4px;">
+                    Número de transacción del comprobante:
+                </label>
+                <input id="swal-nro-transaccion" class="swal2-input" style="margin:0; width:100%;"
+                       placeholder="Ej: 123456789" maxlength="50" autocomplete="off">
+
+                <label style="display:block; text-align:left; font-size:12px; color:#64748b; margin:14px 0 4px;">
+                    Valor transferido:
+                </label>
+                <input id="swal-valor" class="swal2-input" style="margin:0; width:100%;"
+                       inputmode="numeric" autocomplete="off">
+                <p style="text-align:left; font-size:11px; color:#94a3b8; margin:4px 0 0;">
+                    Total del pedido: ${totalFmt}. Cambialo solo si transfirieron otra cifra.
+                </p>
+
+                <label style="display:block; text-align:left; font-size:12px; color:#64748b; margin:14px 0 4px;">
+                    Código del empleado que autoriza:
+                </label>
+                <input id="swal-codigo" type="password" class="swal2-input" style="margin:0; width:100%;"
+                       placeholder="Código de empleado" autocomplete="off">`,
+            didOpen: () => {
+                // El valor llega precargado con el total; el operador solo lo toca si difiere.
+                document.getElementById('swal-valor').value = previos?.valor ?? totalPedidoActual;
+                const nro = document.getElementById('swal-nro-transaccion');
+                nro.value = previos?.nroTransaccion ?? '';
+                // El código nunca se recuerda: es la autorización, se vuelve a pedir siempre.
+                (previos ? document.getElementById('swal-valor') : nro).focus();
+            },
+            preConfirm: () => {
+                const nroTransaccion = document.getElementById('swal-nro-transaccion').value.trim();
+                const valorCrudo     = document.getElementById('swal-valor').value.trim();
+                const codigoEmpleado = document.getElementById('swal-codigo').value.trim();
+
+                if (!nroTransaccion) return Swal.showValidationMessage('Ingresá el número de transacción.');
+                // Se aceptan separadores de miles por si lo copian del comprobante.
+                const valor = Number(valorCrudo.replace(/[^\d]/g, ''));
+                if (!valor || valor <= 0) return Swal.showValidationMessage('Ingresá un valor transferido válido.');
+                if (!codigoEmpleado) return Swal.showValidationMessage('Ingresá el código del empleado.');
+
+                return { nroTransaccion, valor, codigoEmpleado };
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Sí, está pagado',
+            cancelButtonText: 'Volver',
+            confirmButtonColor: '#10b981'
+        });
+        if (!datos) return;
+
+        // Diferencia contra el total: se avisa, pero la decisión es del operador.
+        if (Math.abs(datos.valor - totalPedidoActual) > 0.01) {
+            const { isConfirmed } = await Swal.fire({
+                icon: 'warning',
+                title: 'El valor no coincide',
+                html: `Vas a registrar <strong>${fmtCOP(datos.valor)}</strong> sobre un total de
+                       <strong>${totalFmt}</strong>. Queda anotado en el historial del pedido.`,
+                showCancelButton: true,
+                confirmButtonText: 'Confirmar igual',
+                cancelButtonText: 'Corregir',
+                confirmButtonColor: '#10b981'
+            });
+            if (!isConfirmed) return confirmarPago(datos);
+        }
+
+        const res = await fetch(`/admin/web/pedidos/${idPedidoActual()}/confirmar-pago`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...datos, _csrf: document.querySelector('[name=_csrf]').value })
+        });
+        const data = await res.json();
+        await manejarRespuestaSensible(data, async () => {
+            await Swal.fire({ icon: 'success', title: 'Pago confirmado', text: data.mensaje, timer: 2600, showConfirmButton: false });
+            cargarPedido();
+        });
     }
 
     async function cancelarPedido() {
@@ -357,23 +598,33 @@
         });
         if (!razonRechazo) return;
 
+        const codigoEmpleado = await pedirCodigoEmpleado({
+            titulo: 'Autorizá la cancelación',
+            html: `
+                <p style="text-align:left; font-size:13px; color:#64748b;">
+                    Queda registrado quién canceló el pedido.
+                </p>`,
+            textoConfirmar: 'Cancelar pedido',
+            color: '#ef4444'
+        });
+        if (!codigoEmpleado) return;
+
         const res = await fetch(`/admin/web/pedidos/${idPedidoActual()}/cancelar`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ razonRechazo, _csrf: document.querySelector('[name=_csrf]').value })
+            body: JSON.stringify({ razonRechazo, codigoEmpleado, _csrf: document.querySelector('[name=_csrf]').value })
         });
         const data = await res.json();
-        if (data.success) {
+        await manejarRespuestaSensible(data, async () => {
             await Swal.fire({ icon: 'success', title: 'Pedido cancelado', text: 'Le enviamos un correo al cliente con el motivo.', timer: 2200, showConfirmButton: false });
             cargarPedido();
-        } else {
-            Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });
-        }
+        });
     }
 
     document.addEventListener('DOMContentLoaded', () => {
         if (!document.getElementById('detalle-pedido-root')) return;
         document.getElementById('btn-cancelar-pedido')?.addEventListener('click', cancelarPedido);
+        document.getElementById('btn-confirmar-pago')?.addEventListener('click', confirmarPago);
         cargarPedido();
     });
 })();

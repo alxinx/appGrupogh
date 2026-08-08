@@ -76,8 +76,42 @@ const PedidosWeb = db.define('PEDIDOS_WEB', {
 
     // ── Pago ─────────────────────────────────────────────────────────────
     metodoPago: {
-        type: DataTypes.ENUM('contraentrega', 'tarjeta', 'pse', 'nequi'),
+        type: DataTypes.ENUM('contraentrega', 'tarjeta', 'pse', 'nequi', 'qr'),
         allowNull: false
+    },
+
+    // ── Pago por QR (transferencia manual, sin webhook que la confirme) ──
+    // A qué entidad transfirió el cliente: sin esto el operador no sabe en qué
+    // cuenta buscar el movimiento.
+    idEntidadPagoQr: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'ENTIDADES', key: 'idEntidad' },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
+    },
+    // Ruta del objeto en el bucket público (grupo-gh), no una URL completa: la base
+    // sale de R2_PUBLIC_URL al servir, igual que DOCUMENTACION.keyName e IMAGENES.
+    comprobantePagoKey: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    comprobantePagoAt: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    // Número de transacción del voucher que digita el operador al dar el pago por bueno.
+    // Viaja hasta DETALLES_PAGOS_FACTURA.nroReferencia cuando la tienda factura el pedido,
+    // que es lo que aparece en su cuadre de caja para conciliar contra el extracto.
+    pagoQrReferencia: {
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
+    // Valor realmente transferido. Por defecto es el total del pedido, pero el operador
+    // puede corregirlo si el cliente transfirió otra cifra.
+    pagoQrValor: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
     },
 
     // ── Montos ───────────────────────────────────────────────────────────

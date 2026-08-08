@@ -21,8 +21,11 @@ block contenedor
                 div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-6 flex flex-wrap items-end gap-3")
                     div(class="space-y-1")
                         label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Estado
+                        //- "Por despachar" es 'trasladado', no 'en_revision': un pedido en revisión
+                        //- todavía no tiene tienda asignada, así que esta lista (filtrada por
+                        //- idTiendaFacturacion) nunca puede devolver uno y el filtro salía vacío.
                         select#pw-estado-filtro(class="field-text")
-                            option(value="en_revision" selected="selected") Por despachar
+                            option(value="trasladado" selected="selected") Por despachar
                             option(value="facturado") Facturados
                             option(value="cancelado") Cancelados
                             option(value="") Todos

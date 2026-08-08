@@ -20,6 +20,7 @@ getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierr
 getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda,
 trasladarProductoAdmin } from "../controller/adminControllers.js"
 import { getTirillaPDF } from "../controller/storeControllers.js"
+import { subirQrEntidad, toggleQrEntidad, previewQrEntidad } from "../controller/qrPagoControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
@@ -29,6 +30,8 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
 import uploadImages from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
+import { recibirQr } from '../middlewares/uploadQr.js';
+import qrUploadRateLimit from '../middlewares/qrUploadRateLimit.js';
 import apiRateLimit from '../middlewares/apiRateLimit.js';
 
 
@@ -73,6 +76,13 @@ routes.post('/bankentities/crear', csrfProtection, crearEntidad);
 routes.post('/bankentities/toggle/:id', csrfProtection, toggleEntidad);
 routes.get('/bankentities/detallesEntidad/:idEntidad', csrfProtection, verDetallesEntidad);
 routes.post('/bankentities/editar/:idEntidad', csrfProtection, editarEntidad);
+
+// QR de pago web — solo admin autenticado (la app monta este router detrás de
+// rutaProtegida + verificarRol('ADMIN')). El rate limit va antes de multer para
+// no gastar ancho de banda ni memoria en subidas que ya están por encima del tope.
+routes.get('/bankentities/:idEntidad/qr', csrfProtection, previewQrEntidad);
+routes.post('/bankentities/:idEntidad/qr', qrUploadRateLimit, recibirQr, subirQrEntidad);
+routes.post('/bankentities/:idEntidad/qr/toggle', csrfProtection, toggleQrEntidad);
 routes.get('/api/bankentities/:idEntidad/transacciones', getTransaccionesEntidad);
 
 //PROVEDORES

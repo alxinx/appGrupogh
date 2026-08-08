@@ -37,6 +37,7 @@ block contenedor
                                                         th(class="px-8 py-4 text-center text-gray-600") Nombre
                                                         th(class="px-2 text-center text-gray-600") Tipo
                                                         th(class="px-2 text-center text-gray-600") Recibir pagos POS
+                                                        th(class="px-2 text-center text-gray-600") Pago web por QR
                                                         th(class="px-8 text-center text-gray-600") Acción
 
                                                 tbody#tabla-entidades(class="divide-y divide-slate-100")
@@ -58,6 +59,32 @@ block contenedor
                                                                     span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500")
                                                                         span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
                                                                         | Inactivo
+
+                                                            //- Pago web por QR — solo aplica a Banco y Billetera Virtual
+                                                            td(class="px-6 py-5 text-center")
+                                                                if ent.tipoEntidad === 'Banco' || ent.tipoEntidad === 'Billetera Virtual'
+                                                                    div(class="flex flex-col items-center gap-2")
+                                                                        label(class="flex items-center cursor-pointer" title="Activar pago web por QR")
+                                                                            input.switch-qr(
+                                                                                type="checkbox"
+                                                                                class="sr-only"
+                                                                                data-id=ent.idEntidad
+                                                                                data-nombre=ent.nombreEntidad
+                                                                                data-status=ent.qrStatus || ''
+                                                                                checked=!!ent.qrEnabled
+                                                                            )
+                                                                            span.switch
+                                                                                span.switch-thumb
+                                                                        if ent.qrStatus === 'compromised'
+                                                                            button(type="button" class="btn-qr-gestionar inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-full" data-id=ent.idEntidad data-nombre=ent.nombreEntidad)
+                                                                                i(class="fi fi-rr-exclamation text-[10px]")
+                                                                                | Comprometido
+                                                                        else if ent.qrStatus
+                                                                            button(type="button" class="btn-qr-gestionar text-[10px] font-bold text-slate-500 hover:text-gh-primaryHover underline underline-offset-2" data-id=ent.idEntidad data-nombre=ent.nombreEntidad) Ver / cambiar QR
+                                                                        else
+                                                                            span(class="text-[10px] text-slate-400") Sin QR cargado
+                                                                else
+                                                                    span(class="text-xs text-slate-300") —
 
                                                             td(class="px-8 py-5 text-center")
                                                                 a(href=`/admin/bankentities/detallesEntidad/${ent.idEntidad}` class="btn btn-secondary text-xs")
@@ -117,6 +144,59 @@ block contenedor
                                             class="w-full py-3 bg-gh-primary text-white rounded-2xl font-bold text-sm hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer"
                                         ) Guardar entidad
 
+        //- ── MODAL: QR DE PAGO WEB ────────────────────────────────────────────
+        div#modal-qr(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4")
+            div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-qr)
+            div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto")
+                div(class="px-6 pt-6 pb-4 border-b border-slate-100")
+                    div(class="flex items-start justify-between gap-3")
+                        div
+                            h3(class="font-bold text-slate-800") Pago web por QR
+                            p#modal-qr-entidad(class="text-xs text-slate-400 mt-0.5") —
+                        button(type="button" class="text-slate-300 hover:text-slate-500 transition-colors" data-cerrar-qr)
+                            i(class="fi fi-rr-cross-small text-xl")
+
+                div(class="px-6 py-5 space-y-4")
+                    //- QR actual (URL firmada, se pide al abrir el modal)
+                    div#modal-qr-actual(class="hidden")
+                        p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2") QR actual
+                        div(class="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100")
+                            img#modal-qr-img(src="" alt="QR de pago actual" class="w-24 h-24 object-contain rounded-lg bg-white border border-slate-200")
+                            div(class="min-w-0 flex-1 text-xs text-slate-500 space-y-1")
+                                p#modal-qr-estado(class="font-bold") —
+                                p#modal-qr-fecha —
+                                p#modal-qr-autor(class="truncate") —
+                                p(class="text-[10px] text-slate-400 pt-1") El enlace de esta imagen expira en minutos y no es público.
+
+                    //- Selector de imagen
+                    div
+                        p(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2") Nueva imagen del QR
+                        label(for="modal-qr-file" class="group cursor-pointer block")
+                            div#modal-qr-drop(class="inputUpload py-6")
+                                img#modal-qr-preview(class="hidden w-32 h-32 object-contain mb-3 rounded-lg bg-white border border-slate-200")
+                                i#modal-qr-icono(class="fi fi-rr-qrcode text-3xl text-gh-primaryHover mb-2")
+                                p#modal-qr-nombre-archivo(class="text-xs font-semibold text-slate-600") Selecciona la imagen del QR
+                                p(class="text-[10px] text-slate-400 mt-1") JPG, PNG o WebP · máx. 2 MB · mínimo 200×200 px
+                        input#modal-qr-file(type="file" accept="image/jpeg,image/png,image/webp" class="hidden")
+
+                    div(class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl")
+                        i(class="fi fi-rr-shield-check text-amber-500 mt-0.5")
+                        p(class="text-[11px] text-amber-700 leading-snug")
+                            | Se verifica que la imagen contenga un QR legible antes de publicarla. El operador recibe un aviso por cada cambio.
+
+                    label(class="flex items-center justify-between gap-3 px-3 py-3 bg-white rounded-xl border border-slate-200 cursor-pointer")
+                        div
+                            p(class="text-xs font-semibold text-slate-700") Publicar en el checkout
+                            p(class="text-[10px] text-slate-400 mt-0.5") Si lo dejas apagado, el QR queda guardado pero no visible
+                        span(class="flex items-center")
+                            input#modal-qr-publicar(type="checkbox" class="sr-only" checked)
+                            span.switch
+                                span.switch-thumb
+
+                div(class="px-6 pb-6 flex gap-2")
+                    button(type="button" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors" data-cerrar-qr) Cancelar
+                    button#modal-qr-subir(type="button" class="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled) Verificar y subir
+
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
             (function () {
@@ -173,10 +253,23 @@ block contenedor
                         const fila = document.createElement('tr');
                         fila.className = 'border-b border-gray-100 hover:bg-gray-100 transition-colors';
                         fila.dataset.id = ent.idEntidad;
+                        // Celda de QR: solo Banco y Billetera Virtual pueden recibir pagos por QR.
+                        const admiteQr = ent.tipoEntidad === 'Banco' || ent.tipoEntidad === 'Billetera Virtual';
+                        const celdaQr = admiteQr
+                            ? `<div class="flex flex-col items-center gap-2">
+                                   <label class="flex items-center cursor-pointer" title="Activar pago web por QR">
+                                       <input type="checkbox" class="switch-qr sr-only" data-id="${ent.idEntidad}" data-nombre="${ent.nombreEntidad}" data-status="">
+                                       <span class="switch"><span class="switch-thumb"></span></span>
+                                   </label>
+                                   <span class="text-[10px] text-slate-400">Sin QR cargado</span>
+                               </div>`
+                            : `<span class="text-xs text-slate-300">—</span>`;
+
                         fila.innerHTML = `
                             <td class="px-8 py-5"><p class="font-bold text-slate-800">${ent.nombreEntidad}</p></td>
                             <td class="px-6 py-5 text-center">${badge}</td>
                             <td class="px-6 py-5 text-center">${estado}</td>
+                            <td class="px-6 py-5 text-center">${celdaQr}</td>
                             <td class="px-8 py-5 text-center">${btnToggle}</td>`;
                         tabla.appendChild(fila);
 
@@ -237,5 +330,205 @@ block contenedor
                     } catch (err) {
                         Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#EC5FA3' });
                     }
+                });
+            })();
+
+        script.
+            // ── QR DE PAGO WEB ────────────────────────────────────────────────
+            (function () {
+                const csrf   = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const tabla  = document.getElementById('tabla-entidades');
+                const modal  = document.getElementById('modal-qr');
+                if (!tabla || !modal) return;
+
+                const elEntidad  = document.getElementById('modal-qr-entidad');
+                const elActual   = document.getElementById('modal-qr-actual');
+                const elImg      = document.getElementById('modal-qr-img');
+                const elEstado   = document.getElementById('modal-qr-estado');
+                const elFecha    = document.getElementById('modal-qr-fecha');
+                const elAutor    = document.getElementById('modal-qr-autor');
+                const inputFile  = document.getElementById('modal-qr-file');
+                const preview    = document.getElementById('modal-qr-preview');
+                const icono      = document.getElementById('modal-qr-icono');
+                const nombreArch = document.getElementById('modal-qr-nombre-archivo');
+                const chkPublicar= document.getElementById('modal-qr-publicar');
+                const btnSubir   = document.getElementById('modal-qr-subir');
+
+                let idActivo = null;
+                let urlPreviewLocal = null;
+
+                const ETIQUETA_ESTADO = {
+                    active:      'Activo',
+                    replaced:    'Reemplazado',
+                    compromised: 'Comprometido — no se está sirviendo',
+                };
+
+                const fmtFecha = (v) => v
+                    ? new Date(v).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
+                    : '—';
+
+                // ── Modal ─────────────────────────────────────────────────────
+                const limpiarPreviewLocal = () => {
+                    if (urlPreviewLocal) URL.revokeObjectURL(urlPreviewLocal);
+                    urlPreviewLocal = null;
+                    inputFile.value = '';
+                    preview.classList.add('hidden');
+                    preview.removeAttribute('src');
+                    icono.classList.remove('hidden');
+                    nombreArch.textContent = 'Selecciona la imagen del QR';
+                    btnSubir.disabled = true;
+                };
+
+                const cerrarModal = () => {
+                    modal.classList.add('hidden');
+                    elActual.classList.add('hidden');
+                    elImg.removeAttribute('src');
+                    idActivo = null;
+                    limpiarPreviewLocal();
+                };
+
+                modal.querySelectorAll('[data-cerrar-qr]').forEach(el => el.addEventListener('click', cerrarModal));
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && !modal.classList.contains('hidden')) cerrarModal();
+                });
+
+                const abrirModal = async (id, nombre) => {
+                    idActivo = id;
+                    elEntidad.textContent = nombre;
+                    chkPublicar.checked = true;
+                    limpiarPreviewLocal();
+                    modal.classList.remove('hidden');
+
+                    // El QR actual se pide al abrir: la URL firmada es de corta vida,
+                    // así que no tiene sentido tenerla precargada en la página.
+                    try {
+                        const d = await fetch(`/admin/bankentities/${id}/qr`, { headers: { 'Accept': 'application/json' } }).then(r => r.json());
+                        if (!d.success || !d.tieneQr) return;
+                        elImg.src            = d.url;
+                        elEstado.textContent = ETIQUETA_ESTADO[d.qrStatus] || '—';
+                        elEstado.className   = `font-bold ${d.qrStatus === 'compromised' ? 'text-red-600' : 'text-emerald-600'}`;
+                        elFecha.textContent  = `Subido: ${fmtFecha(d.qrUploadedAt)}`;
+                        elAutor.textContent  = d.subidoPor ? `Por: ${d.subidoPor}` : 'Autor no registrado';
+                        elActual.classList.remove('hidden');
+                    } catch (_) { /* sin preview, se puede subir igual */ }
+                };
+
+                inputFile.addEventListener('change', () => {
+                    const file = inputFile.files?.[0];
+                    if (!file) return limpiarPreviewLocal();
+
+                    if (file.size > 2 * 1024 * 1024) {
+                        limpiarPreviewLocal();
+                        return Swal.fire({ icon: 'warning', title: 'Imagen muy pesada', text: 'El máximo permitido es 2 MB.', confirmButtonColor: '#EC5FA3' });
+                    }
+
+                    if (urlPreviewLocal) URL.revokeObjectURL(urlPreviewLocal);
+                    urlPreviewLocal = URL.createObjectURL(file);
+                    preview.src = urlPreviewLocal;
+                    preview.classList.remove('hidden');
+                    icono.classList.add('hidden');
+                    nombreArch.textContent = file.name;
+                    btnSubir.disabled = false;
+                });
+
+                // ── Estado pintado en la fila ─────────────────────────────────
+                const pintarFila = (id, { qrEnabled, qrStatus }) => {
+                    const sw = tabla.querySelector(`.switch-qr[data-id="${id}"]`);
+                    if (!sw) return;
+                    sw.checked = !!qrEnabled;
+                    sw.dataset.status = qrStatus || '';
+
+                    const celda = sw.closest('td');
+                    const pie   = celda?.querySelector('.btn-qr-gestionar, span.text-\\[10px\\]');
+                    if (!pie) return;
+
+                    const nombre = sw.dataset.nombre;
+                    if (qrStatus === 'compromised') {
+                        pie.outerHTML = `<button type="button" class="btn-qr-gestionar inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-full" data-id="${id}" data-nombre="${nombre}"><i class="fi fi-rr-exclamation text-[10px]"></i>Comprometido</button>`;
+                    } else if (qrStatus) {
+                        pie.outerHTML = `<button type="button" class="btn-qr-gestionar text-[10px] font-bold text-slate-500 hover:text-gh-primaryHover underline underline-offset-2" data-id="${id}" data-nombre="${nombre}">Ver / cambiar QR</button>`;
+                    } else {
+                        pie.outerHTML = `<span class="text-[10px] text-slate-400">Sin QR cargado</span>`;
+                    }
+                };
+
+                // ── Subida ────────────────────────────────────────────────────
+                btnSubir.addEventListener('click', async () => {
+                    const file = inputFile.files?.[0];
+                    if (!file || !idActivo) return;
+
+                    btnSubir.disabled    = true;
+                    btnSubir.textContent = 'Verificando...';
+
+                    try {
+                        const fd = new FormData();
+                        fd.append('qr', file);
+                        fd.append('qrEnabled', chkPublicar.checked ? 'true' : 'false');
+
+                        const r = await fetch(`/admin/bankentities/${idActivo}/qr`, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+                            body: fd
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje || 'No se pudo subir el QR.');
+
+                        pintarFila(idActivo, d.qr);
+                        cerrarModal();
+                        Swal.fire({ icon: 'success', title: 'QR verificado', text: d.mensaje, confirmButtonColor: '#EC5FA3', timer: 3500, timerProgressBar: true });
+                    } catch (err) {
+                        Swal.fire({ icon: 'error', title: 'No se pudo publicar', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    } finally {
+                        btnSubir.disabled    = !inputFile.files?.[0];
+                        btnSubir.textContent = 'Verificar y subir';
+                    }
+                });
+
+                // ── Switch por fila ───────────────────────────────────────────
+                tabla.addEventListener('change', async (e) => {
+                    const sw = e.target.closest('.switch-qr');
+                    if (!sw) return;
+
+                    const id     = sw.dataset.id;
+                    const nombre = sw.dataset.nombre;
+                    const status = sw.dataset.status;
+                    const quiereEncender = sw.checked;
+
+                    // Encender sin QR cargado no tiene sentido: se abre el selector.
+                    if (quiereEncender && !status) {
+                        sw.checked = false;
+                        return abrirModal(id, nombre);
+                    }
+
+                    // Un QR comprometido no se vuelve a encender: hay que reemplazarlo.
+                    if (quiereEncender && status === 'compromised') {
+                        sw.checked = false;
+                        await Swal.fire({
+                            icon: 'warning',
+                            title: 'QR comprometido',
+                            text: 'Este QR fue deshabilitado automáticamente porque el archivo no coincide con el registrado. Sube uno nuevo para reemplazarlo.',
+                            confirmButtonColor: '#EC5FA3'
+                        });
+                        return abrirModal(id, nombre);
+                    }
+
+                    try {
+                        const r = await fetch(`/admin/bankentities/${id}/qr/toggle`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                            body: JSON.stringify({ qrEnabled: quiereEncender })
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje || 'No se pudo actualizar.');
+                    } catch (err) {
+                        sw.checked = !quiereEncender; // revierte el switch si el backend rechazó
+                        Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    }
+                });
+
+                // ── Botón "Ver / cambiar QR" ──────────────────────────────────
+                tabla.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.btn-qr-gestionar');
+                    if (btn) abrirModal(btn.dataset.id, btn.dataset.nombre);
                 });
             })();

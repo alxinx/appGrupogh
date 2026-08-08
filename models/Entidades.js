@@ -21,6 +21,42 @@ const Entidades = db.define('ENTIDADES', {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false
+    },
+
+    // ── QR de pago web ────────────────────────────────────────────────────────
+    // Solo se guarda la ruta del objeto en R2 (bucket privado). Nunca una URL
+    // pública ni firmada: la URL se genera al vuelo y expira en minutos.
+    qrObjectKey: {
+        type: DataTypes.STRING(255),
+        allowNull: true // null hasta que se suba el primer QR
+    },
+    qrHashSha256: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
+    qrEnabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false // explícito: nadie puede pagar hasta que el admin lo habilite a propósito
+    },
+    qrUploadedAt: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    qrUploadedBy: {
+        // FK a USUARIOS.idUsuario, que en este proyecto es UUID (no INTEGER).
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+            model: 'USUARIOS',
+            key: 'idUsuario'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
+    },
+    qrStatus: {
+        type: DataTypes.ENUM('active', 'replaced', 'compromised'),
+        allowNull: true
     }
 }, {
     tableName: 'ENTIDADES',

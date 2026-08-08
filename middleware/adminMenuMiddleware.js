@@ -1,12 +1,13 @@
 import { PedidosWeb } from '../models/index.js';
+import { wherePorAtender } from '../helpers/pedidosWeb.js';
 
 // El menú lateral del admin (views/partials/leftMenu.pug) se renderiza en todas las páginas del
 // panel y muestra un contador de pedidos web por atender. Como el partial no recibe los datos de
 // cada controlador, el contador se expone acá en res.locals para que esté disponible en todos.
 //
-// "Por atender" = 'en_revision': el pago ya está confirmado pero al pedido todavía no se le
-// asignó tienda, que es justo la acción que le toca al admin. Mismo criterio que la tarjeta
-// "Pedidos nuevos" del dashboard, para que los dos números coincidan siempre.
+// El criterio de "por atender" vive en helpers/pedidosWeb.js y lo comparte con la tarjeta
+// "Pedidos nuevos" del dashboard, para que los dos números coincidan siempre. Incluye los
+// pedidos por QR que ya tienen comprobante adjunto: ésos también esperan una acción del admin.
 //
 // Cache corto: son muchas páginas y el dato no necesita ser exacto al segundo. Se invalida solo
 // por tiempo; el dashboard sí consulta en vivo.
@@ -18,7 +19,7 @@ export const cargarContadoresAdmin = async (req, res, next) => {
         const ahora = Date.now();
         if (ahora >= cache.expira) {
             cache = {
-                valor: await PedidosWeb.count({ where: { estado: 'en_revision' } }),
+                valor: await PedidosWeb.count({ where: wherePorAtender() }),
                 expira: ahora + TTL_MS
             };
         }

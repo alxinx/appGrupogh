@@ -13,8 +13,10 @@ import {
     listaEtiquetas, crearEtiqueta, actualizarEtiqueta, eliminarEtiqueta,
     listaPaginas, nuevaPaginaForm, editarPaginaForm, crearPagina, actualizarPagina, eliminarPagina,
     paginaPedidosWeb, jsonPedidosWeb, jsonDetallePedidoWeb, exportarPedidosWeb,
-    paginaDetallePedidoWeb, asignarTiendaPedidoWeb, cancelarPedidoWeb
+    paginaDetallePedidoWeb, asignarTiendaPedidoWeb, cancelarPedidoWeb, confirmarPagoPedidoWeb
 } from '../controller/webAdminController.js';
+
+import verificarCodigoEmpleadoAdmin from '../middlewares/verificarCodigoEmpleadoAdmin.js';
 
 import uploadImages from '../middlewares/uploadImages.js';
 
@@ -74,6 +76,9 @@ routes.get('/pedidos/exportar', exportarPedidosWeb);
 routes.get('/pedidos/:idPedido', csrfProtection, paginaDetallePedidoWeb);
 routes.get('/pedidos/:idPedido/json', jsonDetallePedidoWeb);
 routes.post('/pedidos/:idPedido/asignar-tienda', csrfProtection, asignarTiendaPedidoWeb);
-routes.post('/pedidos/:idPedido/cancelar', csrfProtection, cancelarPedidoWeb);
+// Cambios de estado hechos a mano: además del CSRF exigen código de empleado, para que
+// quede registrado quién dio el pedido por pagado o quién lo canceló.
+routes.post('/pedidos/:idPedido/confirmar-pago', csrfProtection, verificarCodigoEmpleadoAdmin, confirmarPagoPedidoWeb);
+routes.post('/pedidos/:idPedido/cancelar', csrfProtection, verificarCodigoEmpleadoAdmin, cancelarPedidoWeb);
 
 export default routes;

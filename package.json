@@ -11,7 +11,9 @@
     "db:ver-productos": "node ./seed/limpiarProductos.js",
     "db:limpiar-productos": "node ./seed/limpiarProductos.js --borrar",
     "db:ver-traslados": "node ./seed/limpiarTraslados.js",
-    "db:limpiar-traslados": "node ./seed/limpiarTraslados.js --borrar"
+    "db:limpiar-traslados": "node ./seed/limpiarTraslados.js --borrar",
+    "db:migrar-qr": "node ./seed/migracionQrEntidades.js",
+    "db:migrar-pago-qr": "node ./seed/migracionPagoQrPedidos.js"
   },
   "keywords": [
     "contable"
@@ -22,6 +24,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.974.0",
     "@aws-sdk/lib-storage": "^3.974.0",
+    "@aws-sdk/s3-request-presigner": "^3.1105.0",
     "@flaticon/flaticon-uicons": "^3.3.1",
     "@tailwindcss/cli": "^4.0.17",
     "bcrypt": "^6.0.0",
@@ -35,6 +38,7 @@
     "express-validator": "^7.3.1",
     "fs": "^0.0.1-security",
     "jsonwebtoken": "^9.0.3",
+    "jsqr": "^1.4.0",
     "multer": "^2.0.2",
     "mysql2": "^3.16.0",
     "nodemailer": "^8.0.1",

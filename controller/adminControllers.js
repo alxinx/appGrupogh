@@ -1006,7 +1006,9 @@ const trasladarProductoAdmin = async (req, res) => {
 
         return res.json({ success: true, idTraslado: traslado.idTraslado, codigo });
     } catch (e) {
-        await t.rollback();
+        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
+        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
+        if (!t.finished) await t.rollback().catch(() => {});
         console.error('trasladarProductoAdmin:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
@@ -1877,7 +1879,7 @@ const getClientePerfil = async (req, res) => {
                 raw: true,
                 attributes: ['idCliente','tipo_persona','tipo_documento','numero_doc',
                              'primer_nombre','primer_apellido','razon_social',
-                             'email','telefono','genero','activo','credito']
+                             'email','telefono','genero','activo','credito','createdAt']
             }),
 
             db.query(`
@@ -1889,8 +1891,10 @@ const getClientePerfil = async (req, res) => {
 
             db.query(`
                 SELECT MAX(fc.fechaEmision) AS ultimaCompra,
+                       COUNT(DISTINCT fc.idFacturaCliente) AS totalPedidos,
                        COALESCE(SUM(df.total), 0) AS totalComprado,
-                       COALESCE(SUM(CASE WHEN fc.estado = 'pendiente' THEN df.total ELSE 0 END), 0) AS cartera
+                       COALESCE(SUM(CASE WHEN fc.estado = 'pendiente' THEN df.total ELSE 0 END), 0) AS cartera,
+                       COALESCE(SUM(CASE WHEN fc.estado = 'liquidada' THEN df.total ELSE 0 END), 0) AS totalPagado
                 FROM FACTURA_CLIENTES fc
                 INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
                 WHERE fc.idCliente = :idCliente
@@ -1931,8 +1935,10 @@ const getClientePerfil = async (req, res) => {
             ubicacion: ubi,
             stats: {
                 ultimaCompra:  st.ultimaCompra || null,
+                totalPedidos:  parseInt(st.totalPedidos)    || 0,
                 totalComprado: parseFloat(st.totalComprado) || 0,
                 cartera:       parseFloat(st.cartera)       || 0,
+                totalPagado:   parseFloat(st.totalPagado)   || 0,
                 vendedor:      vendedorRows[0]?.vendedor?.trim() || null
             },
             esVip,
@@ -1993,15 +1999,17 @@ const getClienteHistorial = async (req, res) => {
         const [rows, countRows] = await Promise.all([
             db.query(`
                 SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura,
-                       fc.fechaEmision, fc.estado,
+                       fc.fechaEmision, fc.horaEmision, fc.estado,
                        SUM(df.total) AS total,
+                       GROUP_CONCAT(DISTINCT p.nombreProducto ORDER BY p.nombreProducto SEPARATOR ', ') AS concepto,
                        TRIM(CONCAT(COALESCE(e.PrimerNombre,''), ' ', COALESCE(e.PrimerApellido,''))) AS vendedor
                 FROM FACTURA_CLIENTES fc
                 INNER JOIN DETALLES_FACTURA df ON df.idFacturaCliente = fc.idFacturaCliente
+                LEFT JOIN PRODUCTOS p ON p.idProducto = df.idProducto
                 LEFT JOIN EMPLEADOS e ON e.idEmpleado = fc.idEmpleado
                 WHERE fc.idCliente = :idCliente
                 GROUP BY fc.idFacturaCliente, fc.prefijo, fc.numeroFactura,
-                         fc.fechaEmision, fc.estado, e.PrimerNombre, e.PrimerApellido
+                         fc.fechaEmision, fc.horaEmision, fc.estado, e.PrimerNombre, e.PrimerApellido
                 ORDER BY fc.createdAt DESC
                 LIMIT :limite OFFSET :offset
             `, { replacements: { idCliente, limite, offset }, type: db.QueryTypes.SELECT }),
@@ -4572,7 +4580,16 @@ const cambiarEstadoEmpleado = async (req, res) => {
 // ─── ENTIDADES BANCARIAS ──────────────────────────────────────────────────────
 const listarEntidades = async (req, res) => {
     try {
-        const entidades = await Entidades.findAll({ order: [['recibirPagosPos', 'DESC'], ['nombreEntidad', 'ASC']], raw: true });
+        const entidades = await Entidades.findAll({
+            attributes: [
+                'idEntidad', 'nombreEntidad', 'tipoEntidad', 'recibirPagosPos',
+                // Estado del QR de pago web. qrObjectKey NO se envía a la vista:
+                // la ruta del objeto en R2 no sale del backend.
+                'qrEnabled', 'qrStatus', 'qrUploadedAt'
+            ],
+            order: [['recibirPagosPos', 'DESC'], ['nombreEntidad', 'ASC']],
+            raw: true
+        });
         return res.render('./administrador/bankentities/listado', {
             pagina: 'Entidades Bancarias',
             csrfToken: req.csrfToken(),

@@ -665,7 +665,9 @@ const aceptarTrasladoAPI = async (req, res) => {
 
         return res.json({ success: true, estado: nuevoEstado });
     } catch (e) {
-        await t.rollback();
+        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
+        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
+        if (!t.finished) await t.rollback().catch(() => {});
         console.error('Error al aceptar traslado:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
@@ -885,7 +887,9 @@ const trasladarDesdeStoreAPI = async (req, res) => {
 
         return res.json({ success: true, idTraslado: traslado.idTraslado, codigo: nuevoCodigo });
     } catch (e) {
-        await t.rollback();
+        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
+        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
+        if (!t.finished) await t.rollback().catch(() => {});
         console.error('trasladarDesdeStoreAPI:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
@@ -968,7 +972,9 @@ const resolverControversiaAPI = async (req, res) => {
 
         return res.json({ success: true });
     } catch (e) {
-        await t.rollback();
+        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
+        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
+        if (!t.finished) await t.rollback().catch(() => {});
         console.error('Error al resolver controversia:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
@@ -1463,6 +1469,9 @@ const procesarFactura = async (req, res) => {
     // cliente, para que ni un bug del front ni una petición manipulada puedan cambiar el monto
     // o la entidad con la que queda registrada una venta ya cobrada.
     let pagosEfectivos = pagos;
+    let itemsEfectivos = items;
+    let idClienteEfectivo = idCliente;
+    let detallesWeb = null;
     let pagoWebFactura = null;
     if (idPedidoWeb) {
         const pedidoWeb = await PedidosWeb.findOne({
@@ -1471,12 +1480,27 @@ const procesarFactura = async (req, res) => {
         if (!pedidoWeb)
             return res.status(400).json({ success: false, mensaje: 'El pedido web no está disponible para facturar en esta tienda.' });
 
+        // Un pedido web es inmodificable desde el POS: el cliente ya pagó una lista concreta de
+        // productos a un precio concreto. Ni los artículos ni el cliente se toman del body — se
+        // reconstruyen desde el pedido, igual que ya se hacía con el pago. Así ni un bug del
+        // front ni una petición manipulada pueden facturar algo distinto a lo que se compró.
+        detallesWeb = await DetallesPedidoWeb.findAll({ where: { idPedido: pedidoWeb.idPedido }, raw: true });
+        if (!detallesWeb.length)
+            return res.status(400).json({ success: false, mensaje: 'El pedido web no tiene artículos.' });
+
+        itemsEfectivos = detallesWeb.map(d => ({ idProducto: d.idProducto, cantidad: parseInt(d.cantidad) }));
+
+        // El cliente sale del pedido (lo resolvió procesarPagoAprobado al confirmar el pago).
+        // Si el pedido no alcanzó a vincular uno, se respeta el que mande el POS.
+        if (pedidoWeb.idCliente) idClienteEfectivo = pedidoWeb.idCliente;
+
         pagoWebFactura = await resolverPagoWebParaFactura(pedidoWeb);
         if (pagoWebFactura) {
             pagosEfectivos = [{
                 idEntidad: pagoWebFactura.idEntidad,
                 valor: pagoWebFactura.valor,
-                // Queda la transacción de Wompi como referencia del pago, para poder conciliar.
+                // Queda la transacción de la pasarela (o el voucher del QR) como referencia
+                // del pago, para poder conciliar en el cuadre de caja.
                 nroReferencia: pagoWebFactura.idTransaccion || pagoWebFactura.referencia || null
             }];
         }
@@ -1495,26 +1519,30 @@ const procesarFactura = async (req, res) => {
     }
 
     // ── 2. Verificar suma de pagos = total de la orden ────────────────────────
-    const idProductos = [...new Set(items.map(i => i.idProducto))];
+    const idProductos = [...new Set(itemsEfectivos.map(i => i.idProducto))];
     const productos   = await Productos.findAll({
         where: { idProducto: idProductos },
         attributes: ['idProducto', 'nombreProducto', 'precioVentaMayorista', 'precioVentaPublicoFinal'],
         raw: true
     });
     const prodMap = new Map(productos.map(p => [p.idProducto, p]));
-    for (const it of items)
+    for (const it of itemsEfectivos)
         if (!prodMap.has(it.idProducto))
             return res.status(400).json({ success: false, mensaje: `Producto no encontrado: ${it.idProducto}.` });
 
-    const totalCantidad   = items.reduce((s, i) => s + parseInt(i.cantidad), 0);
+    const totalCantidad   = itemsEfectivos.reduce((s, i) => s + parseInt(i.cantidad), 0);
     const esMayorista     = totalCantidad >= WHOLESALE_MIN;
+    // En un pedido web el precio es el que el cliente ya pagó, no el vigente hoy en el POS:
+    // la factura tiene que cuadrar contra el pago que entró. Para una venta de mostrador se
+    // calcula normal, con la regla de mayorista.
+    const precioWebPorProducto = new Map((detallesWeb || []).map(d => [d.idProducto, parseFloat(d.valorUnidad)]));
     let   totalOrden      = 0;
-    const itemsProcesados = items.map(it => {
+    const itemsProcesados = itemsEfectivos.map(it => {
         const prod    = prodMap.get(it.idProducto);
         const qty     = parseInt(it.cantidad);
-        const precio  = esMayorista
-            ? parseFloat(prod.precioVentaMayorista)
-            : parseFloat(prod.precioVentaPublicoFinal);
+        const precio  = precioWebPorProducto.has(it.idProducto)
+            ? precioWebPorProducto.get(it.idProducto)
+            : (esMayorista ? parseFloat(prod.precioVentaMayorista) : parseFloat(prod.precioVentaPublicoFinal));
         const subTotal = parseFloat((precio * qty).toFixed(2));
         totalOrden    += subTotal;
         return { idProducto: it.idProducto, nombreProducto: prod.nombreProducto, cantidad: qty, valorUnidad: precio, subTotal, total: subTotal };
@@ -1525,7 +1553,7 @@ const procesarFactura = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: `Suma de pagos ($${sumaPagos}) ≠ total orden ($${totalOrden}).` });
 
     // ── 3. Verificar cliente ──────────────────────────────────────────────────
-    const clienteExiste = await Clientes.count({ where: { idCliente: idCliente.trim() } });
+    const clienteExiste = await Clientes.count({ where: { idCliente: idClienteEfectivo.trim() } });
     if (!clienteExiste)
         return res.status(400).json({ success: false, mensaje: 'Cliente no encontrado.' });
 
@@ -1561,7 +1589,7 @@ const procesarFactura = async (req, res) => {
 
         // ── 6. Crear factura ──────────────────────────────────────────────────
         const factura = await FacturaClientes.create({
-            idCliente:            idCliente.trim(),
+            idCliente:            idClienteEfectivo.trim(),
             idRegimenFacturacion: regimen.idRegimenFacturacion,
             idPuntoDeVenta,
             idEmpleado:           _idEmpleado,
@@ -1757,7 +1785,10 @@ const procesarFactura = async (req, res) => {
         return res.json({ success: true, idFacturaCliente: factura.idFacturaCliente, ...(redirigirCierre ? { redirigirCierre: true } : {}) });
 
     } catch (error) {
-        await t.rollback();
+        // El try tiene trabajo después del commit (descuento de cupo extemporáneo): si algo
+        // falla ahí, la transacción ya está cerrada y un rollback lanzaría otro error,
+        // dejando la petición sin respuesta.
+        if (!t.finished) await t.rollback().catch(() => {});
         console.error('procesarFactura [transacción]:', error);
         return res.status(500).json({ success: false, mensaje: 'Error interno al procesar la factura.' });
     }
@@ -2114,7 +2145,9 @@ const crearTrasladoSueltos = async (req, res) => {
 
         return res.json({ success: true, idTraslado: traslado.idTraslado, codigo: nuevoCodigo });
     } catch (e) {
-        await t.rollback();
+        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
+        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
+        if (!t.finished) await t.rollback().catch(() => {});
         console.error('crearTrasladoSueltos:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
@@ -2780,7 +2813,9 @@ const verificarTrasladosExpirados = async () => {
                     codigo:      traslado.codigoTraslado
                 });
             } catch (e) {
-                await t.rollback();
+                // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
+                // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
+                if (!t.finished) await t.rollback().catch(() => {});
                 console.error('verificarTrasladosExpirados traslado', traslado.idTraslado, e);
             }
         }

@@ -484,7 +484,8 @@ const trasladarPacks = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'El código del empleado responsable es obligatorio.' });
     }
     const t = await db.transaction();
-
+    // Se declara afuera porque el bloque post-commit (abajo) lo necesita.
+    let traslado;
 
     try {
         // 1. Obtener los packs con sus detalles
@@ -501,7 +502,7 @@ const trasladarPacks = async (req, res) => {
         // 2. Generar Código de Traslado Único
         // 3. Crear el Registro del Traslado (Encabezado)
         // Usamos req.usuario que ya viene inyectado por tu middleware de autenticación
-        const traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
+        traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
             idOrigen: 'PRODUCCION',
             idDestino: idDestino,
             idUsuarioDespacha: idEmpleadoDespacha,
@@ -524,23 +525,36 @@ const trasladarPacks = async (req, res) => {
 
         await t.commit();
 
-        // Notificar en tiempo real al punto de venta destino
+    } catch (error) {
+        // Solo se revierte si la transacción sigue viva: intentar hacer rollback sobre una ya
+        // confirmada lanza otro error dentro del catch y deja la petición sin respuesta.
+        if (!t.finished) await t.rollback().catch(() => {});
+        console.error("Error en traslado:", error);
+        return res.status(500).json({ success: false, mensaje: 'Error interno' });
+    }
+
+    // ── Post-commit ───────────────────────────────────────────────────────────
+    // El traslado YA está guardado. Nada de acá abajo puede impedir que el cliente
+    // reciba su respuesta: sin ella el POS se queda esperando y no abre el comprobante.
+    try {
         const pendientes = await Traslados.count({
             where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
         });
         broadcast(idDestino, 'new_traslado', {
-            codigo: nuevoCodigo,
+            codigo: traslado.codigoTraslado,
             idTraslado: traslado.idTraslado,
             pendientes
         });
-
-        res.json({ success: true, mensaje: 'Traslado exitoso', codigo: nuevoCodigo, idTraslado: traslado.idTraslado });
-
     } catch (error) {
-        await t.rollback();
-        console.error("Error en traslado:", error);
-        res.status(500).json({ success: false, mensaje: 'Error interno' });
+        console.error('trasladarPacks [notificación post-commit]:', error);
     }
+
+    return res.json({
+        success: true,
+        mensaje: 'Traslado exitoso',
+        codigo: traslado.codigoTraslado,
+        idTraslado: traslado.idTraslado
+    });
 };
 
 const imprimirEtiquetasLote = async (req, res) => {

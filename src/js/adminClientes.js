@@ -9,6 +9,35 @@
         return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
+    const capitalizar = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
+    // "Cliente desde junio 2025" — createdAt viene como datetime ISO completo
+    const fmtMesAnio = (val) => {
+        if (!val) return null;
+        const d = new Date(val);
+        if (isNaN(d)) return null;
+        return `${d.toLocaleDateString('es-CO', { month: 'long' })} ${d.getFullYear()}`;
+    };
+
+    // Descompone una fecha DATEONLY en las tres líneas de la píldora de fecha
+    const partesFecha = (val) => {
+        if (!val) return { dia: '—', mesAnio: '' };
+        const d = new Date(val + 'T00:00:00');
+        if (isNaN(d)) return { dia: '—', mesAnio: '' };
+        const mes = d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '');
+        return { dia: String(d.getDate()).padStart(2, '0'), mesAnio: `${capitalizar(mes)} ${d.getFullYear()}` };
+    };
+
+    // horaEmision llega como TIME de MySQL ("10:42:00")
+    const fmtHora = (val) => {
+        if (!val) return '';
+        const [h, m] = String(val).split(':');
+        if (h === undefined || m === undefined) return '';
+        const d = new Date();
+        d.setHours(parseInt(h), parseInt(m), 0, 0);
+        return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+    };
+
     // ─── STATS TARJETAS ───────────────────────────────────────────────────────
     const countUp = (el, to, formateador) => {
         if (!el) return;
@@ -89,33 +118,38 @@
     // ─── PANEL: CRÉDITO ──────────────────────────────────────────────────────
     let creditoActivo = false;
 
+    const BTN_ACCION_BASE = 'flex flex-col items-center gap-2 py-3 px-1 w-full transition-colors';
+    const TILE_BASE       = 'w-9 h-9 rounded-xl flex items-center justify-center';
+    const LABEL_BASE      = 'text-[10px] font-bold leading-tight text-center';
+
     const actualizarBtnCredito = (credito, puedeActivar) => {
         const btn   = document.getElementById('panel-btn-credito');
+        const tile  = document.getElementById('panel-credito-tile');
         const icon  = document.getElementById('panel-credito-icon');
         const label = document.getElementById('panel-credito-label');
         if (!btn) return;
 
         if (credito) {
             // Ya tiene crédito activado
-            btn.disabled = true;
-            btn.className = 'flex flex-col items-center gap-1.5 py-3 px-1 transition-colors w-full cursor-default';
-            btn.style.background = '';
-            if (icon)  { icon.className  = 'fi fi-rr-badge-check text-lg text-emerald-500'; }
-            if (label) { label.textContent = 'Con crédito'; label.className = 'text-[10px] text-emerald-500 font-bold leading-tight text-center'; }
+            btn.disabled  = true;
+            btn.className = `${BTN_ACCION_BASE} cursor-default`;
+            if (tile)  tile.className = `${TILE_BASE} bg-emerald-50`;
+            if (icon)  icon.className = 'fi fi-rr-badge-check text-sm text-emerald-500 flex items-center justify-center';
+            if (label) { label.textContent = 'Con crédito'; label.className = `${LABEL_BASE} text-emerald-500`; }
         } else if (!puedeActivar) {
             // Sin permiso
-            btn.disabled = true;
-            btn.className = 'flex flex-col items-center gap-1.5 py-3 px-1 transition-colors w-full cursor-not-allowed shadow-inner bg-slate-100';
-            btn.style.background = '';
-            if (icon)  { icon.className  = 'fi fi-rr-lock text-lg text-slate-300'; }
-            if (label) { label.textContent = 'Sin permiso'; label.className = 'text-[10px] text-slate-300 font-medium leading-tight text-center'; }
+            btn.disabled  = true;
+            btn.className = `${BTN_ACCION_BASE} cursor-not-allowed`;
+            if (tile)  tile.className = `${TILE_BASE} bg-slate-100`;
+            if (icon)  icon.className = 'fi fi-rr-lock text-sm text-slate-300 flex items-center justify-center';
+            if (label) { label.textContent = 'Sin permiso'; label.className = `${LABEL_BASE} text-slate-300`; }
         } else {
             // Puede activar
-            btn.disabled = false;
-            btn.className = 'flex flex-col items-center gap-1.5 py-3 px-1 hover:bg-slate-50 transition-colors w-full cursor-pointer';
-            btn.style.background = '';
-            if (icon)  { icon.className  = 'fi fi-rr-hand-holding-usd text-lg text-slate-500'; }
-            if (label) { label.textContent = 'Activar crédito'; label.className = 'text-[10px] text-slate-500 font-medium leading-tight text-center'; }
+            btn.disabled  = false;
+            btn.className = `${BTN_ACCION_BASE} hover:bg-slate-50 cursor-pointer`;
+            if (tile)  tile.className = `${TILE_BASE} bg-violet-50`;
+            if (icon)  icon.className = 'fi fi-rr-hand-holding-usd text-sm text-violet-500 flex items-center justify-center';
+            if (label) { label.textContent = 'Activar crédito'; label.className = `${LABEL_BASE} text-slate-700`; }
         }
     };
 
@@ -181,11 +215,22 @@
             setTexto('panel-nombre', nombre || '—');
             setTexto('panel-doc', `${cliente.tipo_documento} ${cliente.numero_doc}`);
 
+            const desde = fmtMesAnio(cliente.createdAt);
+            setTexto('panel-desde', desde ? `Cliente desde ${desde}` : 'Sin fecha de registro');
+
             const vipEl = document.getElementById('panel-vip');
             if (vipEl) {
                 vipEl.classList.toggle('hidden', !esVip);
-                vipEl.classList.toggle('flex', esVip);
+                vipEl.classList.toggle('inline-flex', esVip);
             }
+
+            // Cifras del header y de la fila de indicadores
+            const nroPedidos = String(stats.totalPedidos ?? 0);
+            setTexto('panel-hd-pedidos', nroPedidos);
+            setTexto('panel-hd-total',   fmtCOP(stats.totalComprado));
+            setTexto('panel-saldo',      fmtCOP(stats.cartera));
+            setTexto('panel-compras',    nroPedidos);
+            setTexto('panel-pagado',     fmtCOP(stats.totalPagado));
 
             // WhatsApp
             const wspEl = document.getElementById('panel-btn-wsp');
@@ -232,30 +277,60 @@
         const pag  = document.getElementById('panel-historial-pag');
         if (!list || !idCliente) return;
 
-        list.innerHTML = `<li class="text-center py-6 text-xs text-slate-400"><i class="fi fi-rr-spinner animate-spin mr-1"></i> Cargando...</li>`;
+        list.innerHTML = `<li class="bg-white rounded-2xl border border-slate-100 text-center py-6 text-xs text-slate-400"><i class="fi fi-rr-spinner animate-spin mr-1"></i> Cargando...</li>`;
 
         try {
             const d = await fetch(`/admin/api/clientes/${idCliente}/historial?pagina=${pagina}`).then(r => r.json());
             if (!d.success) return;
 
             if (!d.facturas.length) {
-                list.innerHTML = `<li class="text-center py-6 text-xs text-slate-400">Sin compras registradas</li>`;
+                list.innerHTML = `<li class="bg-white rounded-2xl border border-slate-100 text-center py-8 text-xs text-slate-400">Sin compras registradas</li>`;
                 return;
             }
 
             list.innerHTML = d.facturas.map(f => {
-                const estado = f.estado === 'liquidada'
-                    ? `<span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Liquidada</span>`
-                    : `<span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">Pendiente</span>`;
+                const { dia, mesAnio } = partesFecha(f.fechaEmision);
+                const hora    = fmtHora(f.horaEmision);
+                const estado  = f.estado === 'liquidada'
+                    ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
+                           <i class="fi fi-rr-check-circle text-[11px] w-3 shrink-0 flex items-center justify-center"></i>Liquidada
+                       </span>`
+                    : `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+                           <i class="fi fi-rr-clock text-[11px] w-3 shrink-0 flex items-center justify-center"></i>Pendiente
+                       </span>`;
                 return `
-                <li class="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
-                    <div class="min-w-0">
-                        <p class="text-xs font-bold text-slate-700">${f.prefijo || ''}${f.numeroFactura || '—'}</p>
-                        <p class="text-[10px] text-slate-400">${fmtFecha(f.fechaEmision)} · ${f.vendedor?.trim() || '—'}</p>
+                <li class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                    <div class="flex items-start gap-3">
+                        <div class="w-14 shrink-0 rounded-xl bg-pink-50 border border-pink-100 py-2 flex flex-col items-center gap-1">
+                            <i class="fi fi-rr-calendar text-sm text-[#EC5FA3] flex items-center justify-center"></i>
+                            <span class="text-lg font-black text-slate-800 leading-none">${dia}</span>
+                            <span class="text-[9px] font-semibold text-slate-500 leading-none">${mesAnio}</span>
+                            ${hora ? `<span class="text-[9px] text-slate-400 leading-none">${hora}</span>` : ''}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-black text-slate-800 leading-tight truncate">Factura ${f.prefijo || '#'}${f.numeroFactura || '—'}</p>
+                            <div class="mt-1.5 space-y-1">
+                                <p class="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                    <i class="fi fi-rr-user text-[11px] w-3.5 shrink-0 flex items-center justify-center text-slate-300"></i>
+                                    <span class="truncate">${f.vendedor?.trim() || '—'}</span>
+                                </p>
+                                <p class="flex items-start gap-1.5 text-[11px] text-slate-500">
+                                    <i class="fi fi-rr-comment text-[11px] w-3.5 shrink-0 flex items-center justify-center text-slate-300 mt-px"></i>
+                                    <span class="line-clamp-2">${f.concepto || 'Sin detalle de productos'}</span>
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="flex flex-col items-end gap-1 ml-2 shrink-0">
-                        <span class="text-xs font-black text-slate-700">${fmtCOP(f.total)}</span>
-                        ${estado}
+                    <div class="mt-3 pt-2.5 border-t border-dashed border-slate-200 flex items-center justify-between gap-2">
+                        <span class="text-base font-black text-slate-800">${fmtCOP(f.total)}</span>
+                        <div class="flex items-center gap-2 shrink-0">
+                            ${estado}
+                            <a href="/admin/api/factura/${f.idFacturaCliente}/tirilla" target="_blank" rel="noopener"
+                               class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-xl border border-pink-200 bg-white text-[#EC5FA3] text-[11px] font-bold hover:bg-pink-50 transition-colors"
+                               title="Ver tirilla PDF">
+                                <i class="fi fi-rr-file-pdf text-[11px] w-3 shrink-0 flex items-center justify-center"></i>PDF
+                            </a>
+                        </div>
                     </div>
                 </li>`;
             }).join('');
