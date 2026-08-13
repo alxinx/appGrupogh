@@ -3,6 +3,7 @@ import {validationResult } from "express-validator";
 import {Usuarios} from '../models/index.js'
 import { generarId, generarJwt } from '../helpers/genToken.js'
 import { redireccion } from "../helpers/redireccion.js";
+import { registrarFalloLogin, limpiarIntentosLogin, intentosRestantes } from "../middlewares/loginRateLimit.js";
 
 const adminLogin = (req, res)=>{
     res.render("./auth/login", {
@@ -32,6 +33,14 @@ const forgotLogin = (req, res)=>{
 //-----------------------------[POST]--------------------------------//
 
 const registerLoginPost = async (req,res)=>{
+
+    // Este endpoint crea usuarios con permisos ADMIN. Queda cerrado salvo que se habilite
+    // explícitamente con REGISTRO_ABIERTO=true, que es algo que solo tiene sentido en local
+    // para crear el primer administrador.
+    if (process.env.REGISTRO_ABIERTO !== 'true') {
+        console.warn(`[login] intento de registro con el alta cerrada · ip=${req.ip}`);
+        return res.status(404).send('No encontrado');
+    }
 
     const erroresValidacion = validationResult(req);
     const { nombreUsuario, apellidoUsuario, emailUsuario, password } = req.body;
@@ -115,30 +124,40 @@ const loginUser = async (req, res)=>{
      }
 
 
-     //Verifico que exista el usuario
-     const usuario = await Usuarios.findOne({
-        where : {emailUsuario}
-     })
-     if(!usuario){
-        return res.status(200).render("./auth/login",{
+     // Un solo mensaje para "no existe" y "contraseña incorrecta". Distinguirlos permitía
+     // enumerar qué correos tienen cuenta, que es el paso previo a un ataque de fuerza bruta.
+     const credencialesInvalidas = (motivo) => {
+        registrarFalloLogin(req);
+        const restantes = intentosRestantes(req);
+        console.warn(`[login] intento fallido · ip=${req.ip} · correo=${String(emailUsuario || '').trim().toLowerCase()} · motivo=${motivo} · restantes=${restantes}`);
+
+        return res.status(401).render("./auth/login",{
             titulo : 'Login',
             csrfToken : req.csrfToken(),
-            errores  : {msg : 'No encuentro el usuario 🤔'}
-        })
-     }
-
-
-     //Verifico que el usuario si tenga la contraseña correcta. 
-     if(!usuario.checkPassword(password)){
-        return res.status(200).render("./auth/login",{
-            titulo : 'Login',
-            csrfToken : req.csrfToken(),
-            errores  : {msg : 'la contraseña no es correcta 🚨'},
+            errores  : {
+                msg : restantes <= 2 && restantes > 0
+                    ? `Correo o contraseña incorrectos. Te queda${restantes !== 1 ? 'n' : ''} ${restantes} intento${restantes !== 1 ? 's' : ''}.`
+                    : 'Correo o contraseña incorrectos.'
+            },
             usuario : {
                 emailUsuario : emailUsuario,
             }
         })
      }
+
+     //Verifico que exista el usuario
+     const usuario = await Usuarios.findOne({
+        where : {emailUsuario}
+     })
+     if(!usuario) return credencialesInvalidas('usuario inexistente');
+
+     //Verifico que el usuario si tenga la contraseña correcta.
+     if(!(await usuario.checkPassword(password))) return credencialesInvalidas('contraseña incorrecta');
+
+     // Credenciales correctas: se limpian los contadores para que un error anterior
+     // no siga penalizando a este usuario ni a su IP.
+     limpiarIntentosLogin(req);
+     console.info(`[login] sesión iniciada · ip=${req.ip} · correo=${usuario.emailUsuario} · rol=${usuario.permisos}`);
 
 
      //Inicio la sesion con jwt

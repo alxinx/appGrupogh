@@ -54,3 +54,6 @@ Thumbs.db
 
 #MD
 *.MD
+
+# Documentos de diseño / notas internas
+.documents/

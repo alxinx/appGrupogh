@@ -19,6 +19,12 @@ dotenv.config();
 const app = express();
 const port = process.env.APP_PORT;
 
+// Detrás de Nginx o Cloudflare, req.ip devuelve la IP del proxy para todo el mundo: el
+// limitador del login bloquearía a todos los usuarios a la vez, y apiRateLimit trataría al
+// tráfico entero como un solo cliente. TRUST_PROXY declara cuántos saltos de confianza hay.
+// En local va en 0 (sin proxy) para que nadie pueda falsear su IP con X-Forwarded-For.
+app.set('trust proxy', parseInt(process.env.TRUST_PROXY) || 0);
+
 // Conexión a la Base de Datos
 try {
     if (process.env.DB_SYNC === "true") {
