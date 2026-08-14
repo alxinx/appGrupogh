@@ -7,6 +7,7 @@ import Categorias from './Categorias.js'
 import Atributos from './Atributos.js'
 import VariacionesProducto from './VariacionesProducto.js'
 import Productos from './Productos.js'
+import Familia from './Familia.js'
 import Imagenes from './Imagenes.js'; import Documentacion from './Documentacion.js'
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
 import Traslados from './Traslados.js'; import DetalleTraslados from './DetalleTraslados.js'
@@ -55,6 +56,17 @@ import DetallesPedidoWeb from './DetallesPedidoWeb.js'
 import PagosPedidoWeb from './PagosPedidoWeb.js'
 //ASOCIACIONES
 
+// Una familia agrupa las variantes del mismo artículo. El nombre vive en FAMILIA;
+// PRODUCTOS solo referencia la fila, así renombrarla no toca ningún producto.
+Familia.hasMany(Productos, {
+  as: 'productos',
+  foreignKey: 'idFamilia'
+});
+
+Productos.belongsTo(Familia, {
+  as: 'familia',
+  foreignKey: 'idFamilia'
+});
 
 Productos.hasMany(Imagenes, {
   as: 'imagenes',
@@ -303,4 +315,5 @@ export {
   Secuencias,
   DetallesPedidoWeb,
   PagosPedidoWeb,
+  Familia,
 }

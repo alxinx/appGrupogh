@@ -3,7 +3,7 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
+checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
@@ -185,6 +185,9 @@ routes.get('/json/municipios/:departamentoId', municipiosJson)
 routes.get('/json/categorias/:idCategoria', categoriasJson);
 routes.get('/json/sku/:checkSku', skuJson);
 routes.get('/json/ean/:checkEan', eanJson);
+// Sugerencia de familia mientras se escribe el nombre del producto (querystring, no params:
+// el nombre lleva espacios y acentos).
+routes.get('/json/familia/sugerencias', familiaSugerenciasJson);
 routes.get('/json/productos/', filterProductListJson)
 routes.get('/json/imageProduct/:idProducto', jsonImageProduct)
 routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)

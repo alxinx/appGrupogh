@@ -23,6 +23,12 @@ const Productos = db.define('PRODUCTOS', {
         allowNull: true,
         defaultValue: "0"
     },
+    // FK a FAMILIA. El nombre de la familia NO se guarda acá: vive una sola vez en su
+    // tabla, así renombrarla no obliga a tocar todos sus productos.
+    idFamilia: {
+        type: DataTypes.UUID,
+        allowNull: true // un producto puede no pertenecer a ninguna familia
+    },
     precioVentaMayorista: {
         type: DataTypes.DECIMAL(10, 2),
         defaultValue: 0,
@@ -59,6 +65,7 @@ const Productos = db.define('PRODUCTOS', {
         }
     }
     },
+    
     tags : {
         type : DataTypes.STRING(255),
         allowNull : true
@@ -82,8 +89,14 @@ const Productos = db.define('PRODUCTOS', {
     indexes: [
         {
             // EL NOMBRE AQUÍ DEBE SER EXACTAMENTE EL MISMO QUE EL DEL CAMPO ARRIBA
-            fields: ['idCategoria'] 
-        } 
+            fields: ['idCategoria']
+        },
+        {
+            // No único: varios productos comparten familia. El índice es para listar los
+            // productos de una familia sin recorrer la tabla entera.
+            name: 'productos_familia_idx',
+            fields: ['idFamilia']
+        }
     ]
 });
 

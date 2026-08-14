@@ -772,3 +772,114 @@ actualizarEstadoWeb();
         }
     });
 })();
+
+// ─── SUGERENCIA DE FAMILIA ────────────────────────────────────────────────────
+// Regla: la familia se llama como el producto ("BLUSA VERONIKA") y agrupa sus variantes.
+// Mientras se escribe el nombre, se buscan productos parecidos y se ofrece la familia que
+// ya usan — o crear una nueva con el nombre escrito. Nunca escribe el campo por su cuenta:
+// el usuario decide con un clic, para no pisar una familia elegida a mano.
+(() => {
+    'use strict';
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const inputNombre  = document.getElementById('nombreProducto');
+        const inputFamilia = document.getElementById('familia');
+        const panel        = document.getElementById('sugerenciaFamilia');
+        if (!inputNombre || !inputFamilia || !panel) return;
+
+        const idProducto = document.querySelector('input[name="idProducto"]')?.value || '';
+        // Nombres que el usuario ya descartó: no se vuelve a insistir con el mismo texto.
+        const ignorados = new Set();
+        let ultimaPeticion = 0;
+
+        const ocultar = () => { panel.classList.add('hidden'); panel.innerHTML = ''; };
+
+        const aplicar = (valor) => {
+            inputFamilia.value = valor;
+            inputFamilia.dispatchEvent(new Event('change', { bubbles: true }));
+            ocultar();
+        };
+
+        const pintar = (data, nombreConsultado) => {
+            const yaTiene = inputFamilia.value.trim().toUpperCase();
+            const opciones = [];
+
+            // Familias que ya usan los productos parecidos: lo más probable es que sea una de ésas.
+            data.familias.forEach(f => {
+                if (f.familia === yaTiene) return;
+                opciones.push({
+                    valor: f.familia,
+                    etiqueta: `Usar ${f.familia}`,
+                    detalle: `${f.productos} producto${f.productos === 1 ? '' : 's'} ya en esta familia`
+                });
+            });
+
+            // Si no hay ninguna, se propone crearla con el nombre escrito (la regla).
+            const propuesta = (data.prefijo || nombreConsultado || '').trim();
+            if (!opciones.length && propuesta && propuesta !== yaTiene) {
+                opciones.push({
+                    valor: propuesta,
+                    etiqueta: `Crear ${propuesta}`,
+                    detalle: data.parecidos
+                        ? `${data.parecidos} producto${data.parecidos === 1 ? '' : 's'} con nombre parecido, ninguno tiene familia`
+                        : 'Nueva familia con el nombre del producto'
+                });
+            }
+
+            if (!opciones.length) return ocultar();
+
+            panel.innerHTML = `
+                <div class="rounded-xl border border-purple-200 bg-purple-50/60 p-3">
+                    <p class="text-[11px] font-bold text-purple-700 uppercase tracking-wide mb-2">
+                        <i class="fi fi-rr-bulb"></i> Sugerencia de familia
+                    </p>
+                    <div class="flex flex-col gap-2">
+                        ${opciones.map(o => `
+                            <button type="button" class="sug-familia text-left rounded-lg bg-white border border-purple-200 px-3 py-2 hover:bg-purple-100/60 transition-colors cursor-pointer"
+                                    data-valor="${o.valor.replace(/"/g, '&quot;')}">
+                                <span class="block text-xs font-bold text-purple-700">${o.etiqueta}</span>
+                                <span class="block text-[10px] text-gray-500">${o.detalle}</span>
+                            </button>`).join('')}
+                        <button type="button" id="sug-familia-ignorar"
+                                class="text-[10px] font-bold text-gray-400 hover:text-gray-600 uppercase tracking-wide cursor-pointer self-start">
+                            Ignorar
+                        </button>
+                    </div>
+                </div>`;
+            panel.classList.remove('hidden');
+
+            panel.querySelectorAll('.sug-familia').forEach(b => {
+                b.addEventListener('click', () => aplicar(b.dataset.valor));
+            });
+            document.getElementById('sug-familia-ignorar')?.addEventListener('click', () => {
+                ignorados.add(nombreConsultado);
+                ocultar();
+            });
+        };
+
+        const consultar = async () => {
+            const nombre = inputNombre.value.trim();
+            if (nombre.length < 3 || ignorados.has(nombre)) return ocultar();
+
+            // Las respuestas pueden llegar desordenadas al tipear rápido: solo se pinta la última.
+            const token = ++ultimaPeticion;
+            try {
+                const params = new URLSearchParams({ nombre });
+                if (idProducto) params.set('idProducto', idProducto);
+                const res  = await fetch(`/admin/json/familia/sugerencias?${params}`);
+                const data = await res.json();
+                if (token !== ultimaPeticion || !data.success) return;
+                pintar(data, nombre);
+            } catch (_) { /* sugerir es opcional: si falla, el formulario sigue igual */ }
+        };
+
+        let timer;
+        inputNombre.addEventListener('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(consultar, 350);
+        });
+
+        // Al editar un producto que quedó sin familia, se ofrece la de sus hermanos al abrir.
+        if (!inputFamilia.value.trim() && inputNombre.value.trim().length >= 3) consultar();
+    });
+})();

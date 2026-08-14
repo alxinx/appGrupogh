@@ -62,6 +62,24 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                 input(class="field-text" type="text" name="ean" id="ean" placeholder="Código de barras" value = (producto && producto.ean) ? producto.ean : "")
                 #errorEan
 
+        //- FAMILIA
+        div(class="col-span-12 md:col-span-3")
+            label.label FAMILIA
+                //- Agrupa las variantes del mismo artículo: "Blusa Greicy - Rojo" y
+                //- "- Negro" comparten BLUSA GREICY. Se envía el NOMBRE; el backend lo
+                //- resuelve a una fila de FAMILIA (la crea si no existe) y guarda la FK.
+                //- Vacío NO queda sin familia: el backend la deduce del nombre del producto.
+                input(class="field-text uppercase" type="text" name="familia" id="familia" maxlength="100" placeholder="Se deduce del nombre" list="familias-existentes" value = (producto && producto.familia) ? producto.familia.nombreFamilia : "")
+                p(class="text-[10px] text-gray-400 mt-1") Si lo dejás vacío se toma del nombre del producto.
+                //- Autocompletado nativo con las familias que ya existen: evita crear
+                //- "BLUSA GREICY 2" por no recordar el nombre exacto.
+                datalist#familias-existentes
+                    each f in (familias || [])
+                        option(value=f.nombreFamilia)
+                #errorFamilia
+                //- Lo llena productDataForm.js con lo que responde /admin/json/familia/sugerencias
+                #sugerenciaFamilia(class="hidden mt-2")
+
         //- PRECIOS PARA MAYORISTA
         div(class="col-span-12 md:col-span-3")
             label.label PRECIO MAYORISTA

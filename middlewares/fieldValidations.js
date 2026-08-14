@@ -59,6 +59,14 @@ const productBasicValidation = [
         .isLength({min: 2})
         .customSanitizer(value => value.toUpperCase().replace(/[^A-Z0-9-_]/g, ''))
         .withMessage('🚨 El Sku debe ser válido o mayor a 2 caracteres. '),
+    // Opcional: vacía llega como '' y el setter del modelo la guarda como NULL, así todos
+    // los productos sin familia quedan fuera de cualquier agrupación en vez de compartir ''.
+    // El tope es el mismo que nombreProducto porque la familia se propone desde el nombre.
+    check('familia')
+        .trim()
+        .optional({ checkFalsy: true })
+        .isLength({ max: 100 })
+        .withMessage('🚨 La familia no puede superar los 100 caracteres.'),
     check('precioVentaMayorista')
         .customSanitizer(value => parseInt(String(value).replace(/\D/g, '')) || 0)
         .custom(value => value > 0)

@@ -13,14 +13,14 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
 import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
-import { limpiarPrecio, sanitizarHTML, getAvailability } from '../helpers/helpers.js'
+import { limpiarPrecio, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
@@ -322,6 +322,9 @@ const dashboardInventorys = async (req, res) => {
     //Obtengo los atributos
     const atributos = await Atributos.findAll()
     const categorias = await Categorias.findAll()
+    // Familias existentes para el datalist del formulario: escribir el nombre exacto de una
+    // que ya existe es lo que hace que el producto caiga en ese grupo y no en uno nuevo.
+    const familias = await Familia.findAll({ attributes: ['idFamilia', 'nombreFamilia'], order: [['nombreFamilia', 'ASC']] })
 
 
     return res.status(201).render('./administrador/inventarios/new', {
@@ -334,6 +337,7 @@ const dashboardInventorys = async (req, res) => {
         atributosSeleccionados: [],
         atributos,
         categorias,
+        familias,
         btnName: "Guardar Producto"
 
     })
@@ -1080,12 +1084,16 @@ const editarProducto = async (req, res) => {
 
 
     try {
-        const [categorias, atributos, producto, variacionesDb] = await Promise.all([
+        const [categorias, atributos, familias, producto, variacionesDb] = await Promise.all([
             Categorias.findAll(),
             Atributos.findAll(),
+            Familia.findAll({ attributes: ['idFamilia', 'nombreFamilia'], order: [['nombreFamilia', 'ASC']] }),
             Productos.findByPk(idProducto, {
                 include: [
                     { association: 'imagenes' },
+                    // El nombre de la familia vive en FAMILIA: sin este include el formulario
+                    // no tiene qué mostrar en el campo al editar.
+                    { association: 'familia' },
                 ],
             },
             ),
@@ -1128,6 +1136,7 @@ const editarProducto = async (req, res) => {
             atributosSeleccionados: atributosIds,
             variantesJson: variantesJson,
             categorias,
+            familias,
             categoriasSeleccionadas: categoriasId,
             producto,
             subPath: process.env.R2_PUBLIC_URL,
@@ -2912,6 +2921,21 @@ const postNuevaTienda = async (req, res) => {
 
 
 
+// Resuelve el NOMBRE de una familia a su fila en FAMILIA, creándola si no existe.
+// Devuelve null cuando no hay nombre: el producto queda sin agrupar, que es válido.
+// El nombre se normaliza en el modelo, así que dos grafías distintas de lo mismo caen
+// siempre en la misma fila y no se duplican familias por diferencias de tipeo.
+const resolverIdFamilia = async (nombre, transaction = null) => {
+    const limpio = normalizarFamilia(nombre);
+    if (!limpio) return null;
+    const [fila] = await Familia.findOrCreate({
+        where:    { nombreFamilia: limpio },
+        defaults: { nombreFamilia: limpio },
+        ...(transaction ? { transaction } : {})
+    });
+    return fila.idFamilia;
+};
+
 const saveProduct = async (req, res, next) => {
     const errores = validationResult(req);
     if (!errores.isEmpty()) {
@@ -2956,6 +2980,21 @@ const saveProduct = async (req, res, next) => {
             (colores || []).forEach(idColor => combos.push({ idTalla: talla, idColor, idAtributos: `${talla}|${idColor}` }));
         });
 
+        // Regla: TODO producto queda en una familia. El formulario manda el NOMBRE; acá se
+        // resuelve a la fila de FAMILIA (se crea si no existe) y se guarda la FK.
+        //
+        // Si el campo viene vacío se deduce del nombre del producto, y de dónde se saca
+        // depende del tipo de alta:
+        //   · varias combinaciones talla×color → el nombre tecleado ES el artículo
+        //     ("Blusa Greicy"), porque el color se le agrega después a cada variante.
+        //   · producto único → el nombre ya incluye la variante ("Blusa Greicy - Rojo"),
+        //     así que se toma el prefijo; usarlo entero daría una familia por producto.
+        //
+        // En ambos casos findOrCreate hace que caiga en la familia existente si ya la hay.
+        const nombreFamilia = normalizarFamilia(req.body.familia)
+            || (combos.length > 1 ? familiaDesdeNombre(nombreProducto) : prefijoFamilia(nombreProducto));
+        const idFamiliaParaDB = await resolverIdFamilia(nombreFamilia);
+
         if (combos.length > 1) {
             const mapaColorNuevas = JSON.parse(imagenes_color_nuevas || '{}'); // fileIndex -> idColor
             const indicesPorColor = {};
@@ -2986,6 +3025,10 @@ const saveProduct = async (req, res, next) => {
                         slug: generarSlugDe(nombreFinal),
                         sku: skuCombo,
                         ean: null,
+                        // Todas las combinaciones de esta alta son el mismo artículo, así que
+                        // comparten familia. Si el usuario no puso una, se propone el nombre
+                        // base del producto — que es exactamente lo que las agrupa.
+                        idFamilia: idFamiliaParaDB,
                         idCategoria: idCategoriaParaDB,
                         precioVentaPublicoFinal,
                         precioVentaMayorista,
@@ -3051,6 +3094,7 @@ const saveProduct = async (req, res, next) => {
             slug,
             sku: req.body.sku,
             ean: req.body.ean,
+            idFamilia: idFamiliaParaDB,
             idCategoria: idCategoriaParaDB,
             precioVentaPublicoFinal,
             precioVentaMayorista,
@@ -3161,7 +3205,15 @@ const saveProduct = async (req, res, next) => {
     } catch (error) {
 
         if (error.name === 'SequelizeUniqueConstraintError') {
-            const campo = error.errors?.[0]?.path === 'sku' ? 'Uno de los SKU de las variantes' : 'Un valor único';
+            // Nombrar el campo: con "un valor único ya está en uso" el usuario no sabe cuál
+            // corregir. Ojo con el `path`: es el nombre del ÍNDICE que rechazó MySQL, no el
+            // del campo — coincide con la columna solo cuando el índice es autogenerado.
+            // (`familia` no aparece acá: su índice no es único, varios productos la comparten.)
+            const ETIQUETA_CAMPO_UNICO = {
+                sku: 'Uno de los SKU de las variantes',
+                ean: 'El EAN'
+            };
+            const campo = ETIQUETA_CAMPO_UNICO[error.errors?.[0]?.path] || 'Un valor único';
             return res.status(400).json({ mensaje: `${campo} ya está en uso por otro producto o variante.` });
         }
 
@@ -3331,6 +3383,64 @@ const skuJson = async (req, res) => {
     }
 }
 
+
+// Sugerencia de familia a partir del nombre que se está escribiendo.
+//
+// Los nombres del catálogo comparten prefijo y se diferencian al final por el color o la
+// talla ("Blusa Greicy - Rojo", "Blusa Greicy - Negro"), así que el prefijo de las primeras
+// palabras es lo que identifica al artículo. Con dos palabras alcanza para separar
+// "Blusa Greicy" de "Blusa Polo Ny" sin dejar afuera a los hermanos.
+const familiaSugerenciasJson = async (req, res) => {
+    try {
+        const nombre = normalizarFamilia(req.query.nombre);
+        // Sin al menos dos palabras el prefijo sería tan corto que traería medio catálogo.
+        if (!nombre) return res.json({ success: true, prefijo: null, familias: [], parecidos: 0 });
+
+        const prefijo = prefijoFamilia(nombre);
+        if (!prefijo || prefijo.length < 3) return res.json({ success: true, prefijo: null, familias: [], parecidos: 0 });
+
+        // `escape` de los comodines: un nombre con % o _ buscaría cualquier cosa.
+        const patron = prefijo.replace(/[%_\\]/g, c => `\\${c}`) + '%';
+
+        // El LIMIT acota el trabajo aunque el prefijo sea muy común; para sugerir alcanza.
+        // La colación por defecto de MySQL es case-insensitive, así que no hace falta UPPER().
+        // El include trae el nombre de la familia en la MISMA consulta (sin N+1).
+        const parecidos = await Productos.findAll({
+            where: {
+                nombreProducto: { [Op.like]: patron },
+                // Al editar, el propio producto no es un "parecido" de sí mismo.
+                ...(req.query.idProducto ? { idProducto: { [Op.ne]: req.query.idProducto } } : {})
+            },
+            attributes: ['idProducto', 'nombreProducto', 'idFamilia'],
+            include: [{ model: Familia, as: 'familia', attributes: ['idFamilia', 'nombreFamilia'], required: false }],
+            limit: 50
+        });
+
+        // Se agrupa en memoria sobre un máximo de 50 filas ya traídas: una consulta, sin N+1.
+        const conteo = new Map();
+        parecidos.forEach(p => {
+            if (!p.familia) return;
+            const clave = p.familia.idFamilia;
+            const actual = conteo.get(clave) || { idFamilia: clave, familia: p.familia.nombreFamilia, productos: 0 };
+            actual.productos += 1;
+            conteo.set(clave, actual);
+        });
+
+        const familias = [...conteo.values()].sort((a, b) => b.productos - a.productos);
+
+        return res.json({
+            success:   true,
+            prefijo,                      // familia propuesta si todavía no existe ninguna
+            familias,                     // familias ya usadas por productos parecidos
+            parecidos: parecidos.length,
+            ejemplos:  parecidos.slice(0, 5).map(p => p.nombreProducto)
+
+        });
+    } catch (error) {
+        console.error('[familiaSugerencias]', error);
+        return res.status(500).json({ success: false, mensaje: 'Error en el servidor' });
+    }
+};
 
 const eanJson = async (req, res) => {
     const { checkEan } = req.params;
@@ -5600,6 +5710,7 @@ export {
     categoriasJson,
     skuJson,
     eanJson,
+    familiaSugerenciasJson,
     filterProductListJson,
     jsonImageProduct,
     jsonUnicidad,
