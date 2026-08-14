@@ -280,9 +280,14 @@ import ciiuData from '../json/ciiu.json';
 
     // ── Pedidos web asignados a esta tienda (banner + carga al carrito) ───────
     let pedidosWebPendientesLocal = Array.isArray(window.__PEDIDOS_WEB_PENDIENTES__) ? window.__PEDIDOS_WEB_PENDIENTES__ : [];
+    // Pedido cuyo botón está en "Cargando..." mientras se resuelve el fetch.
+    let idPedidoWebCargando = null;
 
-    const ETIQUETA_METODO_PAGO = { tarjeta: 'Tarjeta', pse: 'PSE', nequi: 'Nequi', contraentrega: 'Contraentrega' };
+    // 'qr' faltaba en el mapa y salía crudo en pantalla — es un método real del ENUM de PEDIDOS_WEB.
+    const ETIQUETA_METODO_PAGO = { tarjeta: 'Tarjeta', pse: 'PSE', nequi: 'Nequi', qr: 'Transferencia', contraentrega: 'Contraentrega' };
     const ETIQUETA_ENTREGA_WEB = { domicilio: 'Domicilio', tienda: 'Punto de venta' };
+    const ICONO_METODO_PAGO    = { tarjeta: 'fi-rr-credit-card', pse: 'fi-rr-bank', nequi: 'fi-rr-mobile-notch', qr: 'fi-rr-qrcode', contraentrega: 'fi-rr-money-bill-wave' };
+    const ICONO_ENTREGA_WEB    = { domicilio: 'fi-rr-home', tienda: 'fi-rr-shop' };
 
     const renderPedidosWebBanner = () => {
         const banner = document.getElementById('pedidos-web-banner');
@@ -295,16 +300,63 @@ import ciiuData from '../json/ciiu.json';
             return;
         }
         banner.classList.remove('hidden');
-        lista.innerHTML = pedidosWebPendientesLocal.map(p => `
-            <div class="flex items-center gap-4 bg-white rounded-2xl px-4 py-3">
+        lista.innerHTML = pedidosWebPendientesLocal.map(p => {
+            const esActivo = pedidoWebActivo === p.idPedido;
+            const cargando = idPedidoWebCargando === p.idPedido;
+            // Un pedido web se despacha de a uno: la orden representa UNA compra ya pagada.
+            // Con otro pedido cargado, el resto queda deshabilitado hasta facturarlo o vaciar
+            // la orden — el estado se decide acá y no filtrando la lista, porque el SSE de
+            // "nuevo pedido web" la reemplaza entera con lo que responde el servidor.
+            const bloqueado = !!pedidoWebActivo && !esActivo;
+
+            // Contraentrega es el único método donde la plata todavía no entró: marcarlo
+            // "Pagado" haría que el vendedor entregue sin cobrar.
+            const chipPago = p.metodoPago === 'contraentrega'
+                ? `<span class="status-chip status-pending">
+                       <i class="fi fi-rr-money-bill-wave"></i>
+                       Cobrar al entregar
+                   </span>`
+                : `<span class="status-chip status-active">
+                       <i class="fi fi-rr-check-circle"></i>
+                       Pagado
+                   </span>`;
+
+            let accion;
+            if (esActivo) {
+                accion = `<span class="status-chip status-active flex-shrink-0">
+                        <i class="fi fi-rr-check-circle"></i>
+                        En la orden
+                    </span>`;
+            } else if (cargando) {
+                accion = `<button type="button" class="btn btn-primary flex-shrink-0 flex items-center gap-2 opacity-60 cursor-not-allowed" disabled>
+                        <i class="fi fi-rr-spinner animate-spin"></i>
+                        Cargando...
+                    </button>`;
+            } else {
+                accion = `<button type="button" class="btn-cargar-pedido-web btn btn-primary flex-shrink-0 flex items-center gap-2${bloqueado ? ' opacity-40 cursor-not-allowed' : ''}"
+                            data-id="${p.idPedido}"${bloqueado ? ' disabled title="Ya hay un pedido web en la orden: facturalo o vaciá la orden para cargar este"' : ''}>
+                        <i class="fi fi-rr-shopping-bag"></i>
+                        Cargar en el carrito
+                    </button>`;
+            }
+
+            return `
+            <div class="flex items-center gap-4 bg-white rounded-2xl px-4 py-3${bloqueado ? ' opacity-60' : ''}">
                 <div class="w-14 h-14 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700">
                     <img src="/img/avatars/pedido.webp" alt="Pedido" class="w-11 h-11 object-contain">
                 </div>
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap mb-1">
                         <h4 class="text-base font-bold text-slate-800">${p.numeroPedido}</h4>
-                        <span class="status-chip status-active">${ETIQUETA_METODO_PAGO[p.metodoPago] || p.metodoPago}</span>
-                        <span class="status-chip status-pending">${ETIQUETA_ENTREGA_WEB[p.tipoEntrega] || p.tipoEntrega}</span>
+                        ${chipPago}
+                        <span class="status-chip status-neutral">
+                            <i class="fi ${ICONO_METODO_PAGO[p.metodoPago] || 'fi-rr-credit-card'}"></i>
+                            ${ETIQUETA_METODO_PAGO[p.metodoPago] || p.metodoPago}
+                        </span>
+                        <span class="status-chip status-info">
+                            <i class="fi ${ICONO_ENTREGA_WEB[p.tipoEntrega] || 'fi-rr-marker'}"></i>
+                            ${ETIQUETA_ENTREGA_WEB[p.tipoEntrega] || p.tipoEntrega}
+                        </span>
                     </div>
                     <div class="flex items-center gap-1.5 text-sm text-gray-500 truncate">
                         <i class="fi fi-rr-user"></i>
@@ -313,14 +365,12 @@ import ciiuData from '../json/ciiu.json';
                         <span class="font-bold text-gh-grayText">$${fmt(p.total)}</span>
                     </div>
                 </div>
-                <button type="button" class="btn-cargar-pedido-web btn btn-primary flex-shrink-0 flex items-center gap-2" data-id="${p.idPedido}">
-                    <i class="fi fi-rr-shopping-bag"></i>
-                    Cargar en el carrito
-                </button>
-            </div>`).join('');
+                ${accion}
+            </div>`;
+        }).join('');
 
         lista.querySelectorAll('.btn-cargar-pedido-web').forEach(btn => {
-            btn.addEventListener('click', () => cargarPedidoWebEnCarrito(btn.dataset.id, btn));
+            btn.addEventListener('click', () => cargarPedidoWebEnCarrito(btn.dataset.id));
         });
     };
 
@@ -352,16 +402,29 @@ import ciiuData from '../json/ciiu.json';
         if (elDoc)    elDoc.textContent    = 'Pedido web — sin registrar';
     };
 
-    const cargarPedidoWebEnCarrito = async (idPedido, btn) => {
+    const cargarPedidoWebEnCarrito = async (idPedido) => {
         if (bloquearSiSinCaja()) return;
-        if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+
+        // Solo un pedido web por orden. Sin esta guardia, cargar un segundo pedido mezclaba
+        // sus productos con los del primero (la carga inicial pasa por encima del bloqueo de
+        // addToCart) y dejaba pedidoWebActivo apuntando solo al último: el primero quedaba
+        // sin facturar, fuera del carrito y fuera de la vista.
+        if (pedidoWebActivo) {
+            if (pedidoWebActivo !== idPedido) {
+                window.showToast?.('Ya hay un pedido web en la orden. Facturalo o vaciá la orden antes de cargar otro.', 'warning');
+            }
+            return;
+        }
+        if (idPedidoWebCargando) return;
+
+        idPedidoWebCargando = idPedido;
+        renderPedidosWebBanner();
 
         try {
             const res  = await fetch(`/store/json/pedidos-web/${idPedido}/cargar`);
             const data = await res.json();
             if (!data.success) {
                 window.showToast?.(data.mensaje || 'No se pudo cargar el pedido.', 'error');
-                if (btn) { btn.disabled = false; btn.textContent = 'Cargar en el carrito'; }
                 return;
             }
 
@@ -385,14 +448,13 @@ import ciiuData from '../json/ciiu.json';
                 elPedidoWebInfo.classList.remove('hidden');
             }
 
-            pedidosWebPendientesLocal = pedidosWebPendientesLocal.filter(p => p.idPedido !== idPedido);
-            renderPedidosWebBanner();
-
             window.showToast?.(`Pedido ${data.numeroPedido} cargado en el carrito.`, 'success');
         } catch (e) {
             console.error('cargarPedidoWebEnCarrito:', e);
             window.showToast?.('Error de conexión al cargar el pedido.', 'error');
-            if (btn) { btn.disabled = false; btn.textContent = 'Cargar en el carrito'; }
+        } finally {
+            idPedidoWebCargando = null;
+            renderPedidosWebBanner();
         }
     };
 
@@ -585,6 +647,8 @@ import ciiuData from '../json/ciiu.json';
         if (isConfirmed) {
             cart.clear(); pedidoWebActivo = null; pagoWebActivo = null;
             renderCarrito(); sincronizarBotonCliente();
+            // El pedido vuelve a estar disponible y el resto se re-habilita.
+            renderPedidosWebBanner();
         }
     });
 
@@ -1975,6 +2039,9 @@ import ciiuData from '../json/ciiu.json';
                 pagoWebActivo   = null;
                 renderCarrito();
                 resetCliente();
+                // El pedido facturado ya no está 'trasladado': se relee del servidor para que
+                // salga del banner y el siguiente quede habilitado.
+                window.__recargarPedidosWebPendientes?.();
 
                 if (data.redirigirCierre) {
                     await Swal.fire({

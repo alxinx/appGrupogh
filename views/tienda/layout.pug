@@ -70,11 +70,16 @@ block contenedor
                         label(class="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2") Código de Empleado
                         div(class="relative")
                             i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none")
+                            //- Es un código de empleado, no una credencial: se enmascara para que
+                            //- no se lea por encima del hombro, pero no debe guardarse ni
+                            //- autocompletarse. Con type="password" a secas Chrome tomaba la
+                            //- página por un login y ofrecía contraseñas guardadas en el buscador
+                            //- del POS; "one-time-code" le dice que no hay nada que guardar acá.
                             input#input-codigo-apertura(
                                 type="password"
                                 placeholder="••••••"
                                 maxlength="10"
-                                autocomplete="off"
+                                autocomplete="one-time-code"
                                 class="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
                             )
                         div#apertura-empleado-info(class="hidden mt-2 text-xs font-medium px-1")

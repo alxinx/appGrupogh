@@ -283,10 +283,11 @@ mixin modalFinalizarVenta()
           div(class="flex-1 min-w-0")
             p(class="text-[10px] font-bold text-gray-400 uppercase mb-1") Vendedor
             div(class="flex items-center gap-2")
+              //- Código de empleado, no credencial: ver nota en tienda/layout.pug.
               input(
                 id="fv-empleado-codigo"
                 type="password"
-                autocomplete="off"
+                autocomplete="one-time-code"
                 placeholder="••••••"
                 class="input input-bordered w-full rounded-xl text-sm font-bold uppercase tracking-widest"
               )

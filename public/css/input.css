@@ -678,6 +678,40 @@
     @apply border-pink-200 bg-pink-100/60 text-pink-700;
   }
 
+  /* Dato neutro que no es un estado (medio de pago, referencia): no debe competir
+     por atención con los chips de estado que sí lo son. */
+  .status-neutral {
+    @apply border-gray-200 bg-gray-50/60 text-gray-600;
+  }
+
+  .status-neutral .status-dot {
+    @apply bg-gray-400;
+  }
+
+  .status-neutral:hover {
+    @apply border-gray-200 bg-gray-100/60 text-gray-700;
+  }
+
+  .status-info {
+    @apply border-purple-200 bg-purple-50/60 text-purple-700;
+  }
+
+  .status-info .status-dot {
+    @apply bg-purple-500;
+  }
+
+  .status-info:hover {
+    @apply border-purple-200 bg-purple-100/60 text-purple-700;
+  }
+
+  /* El buscador del POS es type="search" para que Chrome no lo tome por un campo de
+     usuario y ofrezca contraseñas guardadas. Eso trae la "X" nativa de WebKit, que en un
+     campo centrado de 4xl queda descolgada — se oculta sin perder el motivo del cambio. */
+  #codigo::-webkit-search-cancel-button,
+  #codigo::-webkit-search-decoration {
+    @apply appearance-none hidden;
+  }
+
 
   .onDot {
   /* Usando la utilidad de color de la v4 y sombra con opacidad nativa */
