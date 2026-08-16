@@ -8,6 +8,7 @@ import Atributos from './Atributos.js'
 import VariacionesProducto from './VariacionesProducto.js'
 import Productos from './Productos.js'
 import Familia from './Familia.js'
+import ReservasCarrito from './ReservasCarrito.js'
 import Imagenes from './Imagenes.js'; import Documentacion from './Documentacion.js'
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
 import Traslados from './Traslados.js'; import DetalleTraslados from './DetalleTraslados.js'
@@ -67,6 +68,11 @@ Productos.belongsTo(Familia, {
   as: 'familia',
   foreignKey: 'idFamilia'
 });
+
+// Intenciones de compra vivas (carrito web / orden de POS) sobre un producto.
+Productos.hasMany(ReservasCarrito, { as: 'reservas', foreignKey: 'idProducto' });
+ReservasCarrito.belongsTo(Productos, { as: 'producto', foreignKey: 'idProducto' });
+ReservasCarrito.belongsTo(PuntosDeVenta, { as: 'puntoDeVenta', foreignKey: 'idPuntoDeVenta' });
 
 Productos.hasMany(Imagenes, {
   as: 'imagenes',
@@ -316,4 +322,5 @@ export {
   DetallesPedidoWeb,
   PagosPedidoWeb,
   Familia,
+  ReservasCarrito,
 }

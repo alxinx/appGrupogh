@@ -37,12 +37,19 @@ div(id="modalTraslado" class="fixed inset-0 z-50 hidden")
                 div(class="space-y-2")
                     label(class="text-xs font-bold text-slate-400 uppercase tracking-wider block ml-1") Código del empleado responsable *
                     div(class="relative")
+                        //- Enmascarado: es una credencial operativa que autoriza mover
+                        //- mercancía, y se digita con gente alrededor.
+                        //- autocomplete="one-time-code" y no "off": Chrome ignora "off" para
+                        //- el gestor de contraseñas, y con un type=password suelto tomaba la
+                        //- página por un login y ofrecía credenciales guardadas. Este valor le
+                        //- dice que es un código de un solo uso, sin nada que guardar.
                         input(
-                            type="text"
+                            type="password"
                             id="codigoEmpleadoDespacha"
-                            placeholder="Ej: 12345"
+                            placeholder="•••••"
                             maxlength="5"
-                            autocomplete="off"
+                            inputmode="numeric"
+                            autocomplete="one-time-code"
                             class="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-mono font-medium focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20 transition-all uppercase tracking-widest"
                         )
                         span(class="fi-rr-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg")

@@ -36,7 +36,7 @@ div(class="overflow-x-auto")
                     | Cargando facturas...
 
 //- Paginación
-div#billing-paginacion(class="flex justify-center pt-3")
+div#billing-paginacion
 
 //- ID del PDV para el script
 input(type="hidden" id="billing-pdv-id" value=pdv)
@@ -66,8 +66,10 @@ div#modal-extemporanea(class="hidden fixed inset-0 z-50 flex items-center justif
                 )
             div(class="space-y-1")
                 label(for="ext-codigo-empleado" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Código de empleado
+                //- "off" lo ignora Chrome para el gestor de contraseñas; con este valor
+                //- entiende que no hay credencial que guardar ni autocompletar.
                 input#ext-codigo-empleado(
-                    type="password" autocomplete="off"
+                    type="password" autocomplete="one-time-code"
                     placeholder="Código de acceso"
                     class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40"
                 )

@@ -14,7 +14,9 @@
     "db:limpiar-traslados": "node ./seed/limpiarTraslados.js --borrar",
     "db:migrar-qr": "node ./seed/migracionQrEntidades.js",
     "db:migrar-pago-qr": "node ./seed/migracionPagoQrPedidos.js",
-    "db:migrar-familia": "node ./seed/migracionFamiliaProductos.js"
+    "db:migrar-familia": "node ./seed/migracionFamiliaProductos.js",
+    "db:migrar-reservas": "node ./seed/migracionReservasCarrito.js",
+    "db:migrar-slug": "node ./seed/migracionSlugUnico.js"
   },
   "keywords": [
     "contable"

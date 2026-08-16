@@ -5,12 +5,12 @@
         const container = document.getElementById('toast-container');
         if (!container) return;
 
-        const colores = {
-            info:    'bg-white border-blue-400',
-            success: 'bg-white border-emerald-400',
-            warning: 'bg-white border-amber-400',
-            error:   'bg-white border-red-400'
-        };
+        // Mismo tratamiento que el aviso de la tienda web: tarjeta blanca, borde de marca
+        // de 2px y esquinas 2xl. Un operador y un cliente que ven la misma situación
+        // reciben la misma señal visual, aunque estén en aplicaciones distintas.
+        //
+        // El icono sí conserva su color por tipo: el borde da identidad de marca, pero el
+        // vendedor tiene que distinguir de un vistazo un error de un aviso.
         const iconos = {
             info:    'fi-rr-info text-blue-500',
             success: 'fi-rr-check text-emerald-500',
@@ -20,14 +20,14 @@
 
         const toast = document.createElement('div');
         toast.className = [
-            'flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border-l-4 pointer-events-auto',
-            'max-w-xs w-full transition-all duration-300 opacity-0 translate-y-2',
-            colores[tipo] || colores.info
+            'flex items-start gap-3 px-4 py-3.5 rounded-2xl bg-white border-2 border-gh-magenta pointer-events-auto',
+            'shadow-xl shadow-gh-magenta/20',
+            'max-w-xs w-full transition-all duration-300 opacity-0 translate-y-2'
         ].join(' ');
 
         toast.innerHTML = `
             <i class="fi ${iconos[tipo] || iconos.info} text-base flex-shrink-0 mt-0.5"></i>
-            <span class="text-sm text-slate-700 font-medium flex-1">${msg}</span>
+            <span class="text-sm text-slate-700 font-medium flex-1 leading-snug">${msg}</span>
             <button class="text-slate-400 hover:text-slate-600 flex-shrink-0" onclick="this.closest('.toast-item').remove()">
                 <i class="fi fi-rr-cross-small text-sm"></i>
             </button>`;

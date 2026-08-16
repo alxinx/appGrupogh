@@ -9,6 +9,7 @@ export default {
         dropdownBtn: './src/js/dropdownBtn',
         steepForms: './src/js/steepForms.js',
         productDataForm: '/src/js/productDataForm.js',
+        editorMetaDescripcion: '/src/js/editorMetaDescripcion.js',
         productList: '/src/js/productList.js',
         paginador: '/src/js/paginador.js',
         helpers: '/src/js/helpers.js',

@@ -37,6 +37,9 @@
             const paginacionContenedor = '#paginacionPacks';
 
             let filteredPacks = window.initialPacks || [];
+            // La selección vive acá y no en los checkboxes del DOM: la tabla se repinta al
+            // paginar, filtrar o buscar, y con el estado en el DOM se perdía todo lo marcado.
+            const seleccionados = new Set();
             let currentPage = 1;
             const itemsPerPage = 10;
 
@@ -80,7 +83,7 @@
 
                     const esTrasladable = pack.estado === 'EMPACADO';
                     const checkboxHTML = esTrasladable 
-                        ? `<input type="checkbox" name="selectedPack" value="${pack.idPack}" class="checkbox-pack w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover">`
+                        ? `<input type="checkbox" name="selectedPack" value="${pack.idPack}" ${seleccionados.has(pack.idPack) ? 'checked' : ''} class="checkbox-pack w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover">`
                         : `<span class="fi-rr-lock text-slate-300" title="No disponible para traslado"></span>`;
 
                     return `
@@ -128,7 +131,6 @@
                 // Re-bind events to new checkboxes
                 bindCheckboxes();
                 updateBtnVisibility();
-                selectAll.checked = false;
 
                 // Bind botones de historial
                 document.querySelectorAll('.btn-ver-historial').forEach(btn => {
@@ -139,36 +141,92 @@
             };
 
             const bindCheckboxes = () => {
-                const checkboxes = document.querySelectorAll('.checkbox-pack');
-                checkboxes.forEach(cb => {
-                    cb.addEventListener('change', updateBtnVisibility);
+                document.querySelectorAll('.checkbox-pack').forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        if (cb.checked) seleccionados.add(cb.value);
+                        else seleccionados.delete(cb.value);
+                        updateBtnVisibility();
+                    });
                 });
             };
 
             const updateBtnVisibility = () => {
-                const selected = document.querySelectorAll('.checkbox-pack:checked');
-                if (selected.length > 0) {
-                    btnTrasladar.classList.remove('hidden');
-                } else {
-                    btnTrasladar.classList.add('hidden');
-                }
+                const n = seleccionados.size;
+                btnTrasladar.classList.toggle('hidden', n === 0);
+                // El total incluye lo elegido en otras páginas o escondido por un filtro,
+                // así que hay que decirlo: si no, el botón parece contar de más.
+                const etiqueta = btnTrasladar.querySelector('[data-conteo]');
+                if (etiqueta) etiqueta.textContent = n ? ` (${n})` : '';
+
+                // "Seleccionar todo" refleja solo lo visible en la página actual.
+                const visibles = [...document.querySelectorAll('.checkbox-pack')];
+                selectAll.checked = visibles.length > 0 && visibles.every(cb => cb.checked);
+                selectAll.indeterminate = !selectAll.checked && visibles.some(cb => cb.checked);
             };
 
             selectAll.addEventListener('change', () => {
-
-                const checkboxesVisibles = document.querySelectorAll('.checkbox-pack:not([style*="display: none"])');
-                checkboxesVisibles.forEach(cb => cb.checked = selectAll.checked);
+                // Aplica solo a los bultos de la página que se está viendo.
+                document.querySelectorAll('.checkbox-pack').forEach(cb => {
+                    cb.checked = selectAll.checked;
+                    if (cb.checked) seleccionados.add(cb.value);
+                    else seleccionados.delete(cb.value);
+                });
                 updateBtnVisibility();
             });
 
-            busquedaInput.addEventListener('input', (e) => {
-                const term = e.target.value.toLowerCase();
-                filteredPacks = window.initialPacks.filter(p =>
-                    p.codigoEtiqueta.toLowerCase().includes(term) ||
-                    p.numLote.toString().includes(term)
-                );
+            // ── Filtros de lote, tipo y estado ────────────────────────────────
+            const fLote   = document.querySelector('#filtroLote');
+            const fTipo   = document.querySelector('#filtroTipo');
+            const fEstado = document.querySelector('#filtroEstado');
+            const btnLimpiar = document.querySelector('#limpiarFiltrosPack');
+            const contador   = document.querySelector('#contadorPacks');
+            const todos = () => window.initialPacks || [];
+
+            // Las opciones salen de los datos reales, no de una lista fija: si mañana
+            // aparece un tipo o estado nuevo, el filtro lo muestra sin tocar código.
+            const llenar = (select, valores, etiqueta) => {
+                if (!select) return;
+                const actual = select.value;
+                select.innerHTML = `<option value="">${etiqueta}</option>` +
+                    valores.map(v => `<option value="${v}">${etiqueta === 'Todos los lotes' ? 'LT-' + v : v}</option>`).join('');
+                if (valores.includes(actual) || actual === '') select.value = actual;
+            };
+            const unicos = (fn, numerico = false) => {
+                const vals = [...new Set(todos().map(fn).filter(v => v !== null && v !== undefined && v !== ''))];
+                return numerico ? vals.sort((a, b) => a - b).map(String) : vals.sort();
+            };
+            llenar(fLote,   unicos(p => p.numLote, true), 'Todos los lotes');
+            llenar(fTipo,   unicos(p => p.tipo),          'Todos los tipos');
+            llenar(fEstado, unicos(p => p.estado),        'Todos los estados');
+
+            const aplicarFiltros = () => {
+                const term = (busquedaInput?.value || '').toLowerCase().trim();
+                // "LT-2" en el buscador también debe funcionar, no solo el número suelto.
+                const termLote = term.replace(/^lt-?/, '');
+                filteredPacks = todos().filter(p => {
+                    if (fLote?.value   && String(p.numLote) !== fLote.value)   return false;
+                    if (fTipo?.value   && p.tipo   !== fTipo.value)            return false;
+                    if (fEstado?.value && p.estado !== fEstado.value)          return false;
+                    if (!term) return true;
+                    return (p.codigoEtiqueta || '').toLowerCase().includes(term)
+                        || String(p.numLote).includes(termLote);
+                });
+                const hayFiltro = !!(fLote?.value || fTipo?.value || fEstado?.value || term);
+                btnLimpiar?.classList.toggle('hidden', !hayFiltro);
+                if (contador) contador.textContent = hayFiltro
+                    ? `${filteredPacks.length} de ${todos().length} bultos`
+                    : `${todos().length} bultos`;
                 renderTable(1);
+            };
+
+            busquedaInput?.addEventListener('input', aplicarFiltros);
+            [fLote, fTipo, fEstado].forEach(sel => sel?.addEventListener('change', aplicarFiltros));
+            btnLimpiar?.addEventListener('click', () => {
+                if (busquedaInput) busquedaInput.value = '';
+                [fLote, fTipo, fEstado].forEach(sel => { if (sel) sel.value = ''; });
+                aplicarFiltros();
             });
+            aplicarFiltros();
 
             // Lógica del Modal
             const modal = document.querySelector('#modalTraslado');
@@ -214,8 +272,7 @@
             });
 
             btnTrasladar.addEventListener('click', async () => {
-                const selected = document.querySelectorAll('.checkbox-pack:checked');
-                countSpan.innerText = selected.length;
+                countSpan.innerText = seleccionados.size;
                 inputCodigo.value = '';
                 textareaNotas.value = '';
                 resetEmpleado();
@@ -254,7 +311,7 @@
                     return;
                 }
 
-                const selectedPacks = Array.from(document.querySelectorAll('.checkbox-pack:checked')).map(cb => cb.value);
+                const selectedPacks = [...seleccionados];
                 const notas = textareaNotas?.value?.trim() || '';
 
                 confirmBtn.disabled = true;

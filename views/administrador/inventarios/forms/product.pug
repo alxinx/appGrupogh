@@ -227,7 +227,21 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                     input#tags(type="text" name="tags" class="field-text w-full" placeholder="ej: seda, nuevo, oferta" value = (producto && producto.tags) ? producto.tags : "")
                 div
                     label(class="label uppercase") Meta Descripción
-                    textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-20 resize-none field-text" placeholder="Breve descripción para buscadores...")=(producto && producto.descripcion) ? producto.descripcion : ""
+                    //- Barra de formato. Inserta las etiquetas en el textarea; el HTML queda
+                    //- a la vista para poder corregirlo a mano.
+                    div#meta-toolbar(class="flex flex-wrap items-center gap-1 mb-2")
+                        each b in [{a:'negrita',t:'B',c:'font-black',d:'Negrita'},{a:'cursiva',t:'I',c:'italic font-serif',d:'Cursiva'},{a:'parrafo',t:'¶',c:'',d:'Párrafo'},{a:'subtitulo',t:'H3',c:'font-bold',d:'Subtítulo'},{a:'lista',t:'• —',c:'',d:'Lista'},{a:'salto',t:'↵',c:'',d:'Salto de línea'},{a:'enlace',t:'🔗',c:'',d:'Enlace'}]
+                            button(type="button" data-accion=b.a title=b.d class="h-8 min-w-8 px-2 rounded-lg border border-gh-grayBorder bg-white text-xs text-gh-grayText hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer " + b.c)= b.t
+                    //- El '=' de Pug escapa el contenido: dentro del textarea las etiquetas se
+                    //- ven como texto editable y nunca se interpretan como HTML de esta página.
+                    textarea#meta_descripcion(name="descripcion" class="input-gray w-full h-28 resize-y field-text font-mono text-xs" placeholder="Breve descripción para buscadores. Podés usar <strong>, <em>, <p>, <ul>…")=(producto && producto.descripcion) ? producto.descripcion : ""
+                    div(class="flex items-center justify-between mt-1")
+                        span#meta-contador(class="text-[10px] text-gray-400")
+                        span(class="text-[10px] text-gray-400") Se permiten: b · i · em · strong · p · br · ul · ol · li · h3 · h4 · a
+                    //- Vista previa con el MISMO filtro que aplica el servidor al guardar.
+                    div(class="mt-2")
+                        span(class="text-[10px] uppercase tracking-widest text-gray-400") Vista previa
+                        div#meta-preview(class="mt-1 p-3 rounded-xl border border-dashed border-gh-grayBorder bg-white text-sm text-gh-grayText [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h3]:font-bold [&_h3]:mb-1 [&_a]:text-gh-primaryHover [&_a]:underline")
 
         
         div(class="min-h-[150px]")

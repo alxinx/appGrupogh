@@ -54,11 +54,25 @@ const storeBasicTaxDataValidation = [
 
 const productBasicValidation = [
     check("nombreProducto").trim().isLength({min : 2}).withMessage('🚨 Necesito saber como llamarás al producto '),
+    // Cuántas combinaciones talla×color trae el alta. Con más de una, cada combinación se
+    // guarda como un producto aparte con SU PROPIO SKU (el que se digita en el modal), así
+    // que el SKU de la cabecera queda de sobra: solo se usa como base para sugerirlos.
     check('sku')
         .trim()
-        .isLength({min: 2})
-        .customSanitizer(value => value.toUpperCase().replace(/[^A-Z0-9-_]/g, ''))
-        .withMessage('🚨 El Sku debe ser válido o mayor a 2 caracteres. '),
+        .customSanitizer(value => String(value || '').toUpperCase().replace(/[^A-Z0-9-_]/g, ''))
+        .custom((valor, { req }) => {
+            let combos = 0;
+            try {
+                const sel = JSON.parse(req.body?.variantes_finales || '{}');
+                combos = Object.values(sel).reduce((n, colores) => n + (colores?.length || 0), 0);
+            } catch { combos = 0; }
+
+            // Producto único: el SKU es obligatorio, es su identificador.
+            if (combos <= 1 && valor.length < 2) {
+                throw new Error('🚨 El Sku debe ser válido o mayor a 2 caracteres. ');
+            }
+            return true;
+        }),
     // Opcional: vacía llega como '' y el setter del modelo la guarda como NULL, así todos
     // los productos sin familia quedan fuera de cualquier agrupación en vez de compartir ''.
     // El tope es el mismo que nombreProducto porque la familia se propone desde el nombre.

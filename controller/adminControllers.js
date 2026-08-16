@@ -2921,6 +2921,30 @@ const postNuevaTienda = async (req, res) => {
 
 
 
+/**
+ * Devuelve un slug libre. Si el base ya existe en otro producto, numera: -2, -3…
+ *
+ * El slug es la URL pública del producto y la tienda lo resuelve con findOne. Dos productos
+ * con el mismo slug no dan error en ningún lado: simplemente uno de los dos deja de ser
+ * alcanzable desde la web, en silencio.
+ */
+const slugUnico = async (base, { idProductoActual = null, transaction = null } = {}) => {
+    const limpio = (base || '').trim() || 'producto';
+    let candidato = limpio;
+    let n = 2;
+    // Bucle acotado: con más de 50 homónimos hay un problema de datos, no de nombres.
+    while (n < 50) {
+        const donde = { slug: candidato };
+        if (idProductoActual) donde.idProducto = { [Op.ne]: idProductoActual };
+        const choca = await Productos.findOne({ where: donde, attributes: ['idProducto'], ...(transaction ? { transaction } : {}) });
+        if (!choca) return candidato;
+        candidato = `${limpio}-${n}`;
+        n++;
+    }
+    // Último recurso: sufijo de tiempo. Feo, pero nunca choca ni pierde el producto.
+    return `${limpio}-${Date.now().toString(36)}`;
+};
+
 // Resuelve el NOMBRE de una familia a su fila en FAMILIA, creándola si no existe.
 // Devuelve null cuando no hay nombre: el producto queda sin agrupar, que es válido.
 // El nombre se normaliza en el modelo, así que dos grafías distintas de lo mismo caen
@@ -3022,7 +3046,7 @@ const saveProduct = async (req, res, next) => {
 
                     const nuevoProducto = await Productos.create({
                         nombreProducto: nombreFinal,
-                        slug: generarSlugDe(nombreFinal),
+                        slug: await slugUnico(generarSlugDe(nombreFinal), { transaction: t }),
                         sku: skuCombo,
                         ean: null,
                         // Todas las combinaciones de esta alta son el mismo artículo, así que
@@ -3089,9 +3113,12 @@ const saveProduct = async (req, res, next) => {
         }
 
         let producto;
+        // También acá: el slug viene del formulario y puede repetir el de otro producto.
+        // Al editar se excluye el propio, para que conservar su slug no cuente como choque.
+        const slugLibre = await slugUnico(slug, { idProductoActual: idProducto || null });
         const datosParaDB = {
             nombreProducto,
-            slug,
+            slug: slugLibre,
             sku: req.body.sku,
             ean: req.body.ean,
             idFamilia: idFamiliaParaDB,
@@ -4076,6 +4103,13 @@ const imprimirEtiquetaSKU = async (req, res) => {
     const W  = 155.91;
     const H  = 70.87;
     const mx = 4;
+    // Reparto vertical de la etiqueta. El alto de las barras se fija acá y NO se deja
+    // que salga de la proporción del PNG: el ancho del código depende de cuántos
+    // caracteres tenga el SKU, así que un SKU largo daba barras más bajas que uno corto
+    // y la etiqueta cambiaba de aspecto entre productos.
+    const ALTO_TEXTO   = 12;              // una línea a 10 pt
+    const Y_TEXTO      = H - mx - ALTO_TEXTO;
+    const ALTO_BARRAS  = Y_TEXTO - mx - 2; // las barras bajan hasta 2 pt antes del nombre
 
     try {
         const doc = new PDFDocument({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx }, autoFirstPage: false });
@@ -4095,11 +4129,13 @@ const imprimirEtiquetaSKU = async (req, res) => {
                 height:      9,
                 includetext: false,
             });
-            doc.image(buffer, mx, mx, { width: W - mx * 2 });
+            // width + height juntos: se estira al área exacta. Un código de barras admite
+            // el estirado vertical — el lector mide el ANCHO de las barras, no su alto.
+            doc.image(buffer, mx, mx, { width: W - mx * 2, height: ALTO_BARRAS });
 
-            // Nombre del producto centrado bajo el barcode
+            // Nombre del producto centrado, pegado al pie de las barras
             doc.fontSize(10).font('Helvetica-Bold')
-               .text(nombre, mx, 50, { width: W - mx * 3, align: 'center' });
+               .text(nombre, mx, Y_TEXTO, { width: W - mx * 2, align: 'center', lineBreak: false, ellipsis: true });
         }
 
         doc.end();

@@ -28,7 +28,7 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
-import uploadImages from '../middlewares/uploadImages.js';
+import uploadImages, { MAX_IMAGENES } from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
 import { recibirQr } from '../middlewares/uploadQr.js';
 import qrUploadRateLimit from '../middlewares/qrUploadRateLimit.js';
@@ -141,7 +141,7 @@ routes.post('/tiendas/new/', saveStoreBasic)
 
 
 routes.post('/inventario/ingreso',
-    uploadImages.array('imagenes', 10),
+    uploadImages.array('imagenes', MAX_IMAGENES),
     csrfProtection,
     productBasicValidation,
     saveProduct
@@ -170,7 +170,7 @@ routes.post('/dosificaciones/trasladar', csrfProtection, trasladarPacks);
 
 
 routes.post('/inventario/editar/:idProducto',
-    uploadImages.array('imagenes', 10),
+    uploadImages.array('imagenes', MAX_IMAGENES),
     csrfProtection,
     productBasicValidation,
     saveProduct);

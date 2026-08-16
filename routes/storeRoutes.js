@@ -16,6 +16,8 @@ import {
     trasladarDesdeStoreAPI,
     getPerfilProducto,
     buscarPosProducto,
+    sincronizarReservasPos,
+    liberarReservasPos,
     getPosProductoJSON,
     buscarClientePorDoc,
     getMunicipiosStoreJSON,
@@ -83,6 +85,9 @@ routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
 routes.get('/json/personal/validar/:codigo', validarEmpleadoTienda);
 routes.get('/json/destinos', getDestinosJSON);
 routes.get('/json/pos/buscar', buscarPosProducto);
+// Reservas blandas del POS: avisan competencia por el producto, no bloquean stock.
+routes.post('/json/pos/reservas', sincronizarReservasPos);
+routes.delete('/json/pos/reservas', liberarReservasPos);
 routes.get('/json/pos/producto/:idProducto', getPosProductoJSON);
 routes.get('/json/clientes/buscar', buscarClientePorDoc);
 routes.get('/json/municipios/:deptoId', getMunicipiosStoreJSON);

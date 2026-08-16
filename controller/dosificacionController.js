@@ -220,8 +220,32 @@ const obtenerDosificacionesPaginadas = async (req, res) => {
         //     const busquedaLimpia = query.startsWith('D') ? query.substring(1) : query;
         //     whereCondition.idDosificacion = { [Op.like]: `${busquedaLimpia}%` };
         // }
-        if (query !== 'all') {
-            whereCondition.codigo = { [Op.like]: `%${query}%` };
+        // La tabla NO tiene columna 'codigo': el código que se ve (D1A2B) se arma con los
+        // primeros 4 del UUID. Buscar por 'codigo' lanzaba un error de SQL y la lista
+        // quedaba vacía, que es lo que se veía como "no filtra nada".
+        let idsPorLote = null;
+        if (query && query !== 'all') {
+            const limpio = query.trim();
+            // "LT-2" o "2" -> lotes. Se resuelve a qué dosificaciones pertenecen.
+            const mLote = limpio.match(/^(?:LT-?)?(\d+)$/i);
+            if (mLote) {
+                const packs = await Pack.findAll({
+                    where: { numLote: parseInt(mLote[1]) },
+                    attributes: ['idDosificacion'],
+                    group: ['idDosificacion'],
+                    raw: true
+                });
+                idsPorLote = packs.map(p => p.idDosificacion);
+            }
+
+            // "D1A2B" o el UUID: el código visible son los primeros 4 caracteres.
+            const sinPrefijo = limpio.replace(/^D/i, '');
+            const condiciones = [{ idDosificacion: { [Op.like]: `${sinPrefijo}%` } }];
+            if (idsPorLote?.length) condiciones.push({ idDosificacion: { [Op.in]: idsPorLote } });
+            // Sin coincidencias por lote, la búsqueda numérica no debe traer todo.
+            if (mLote && !idsPorLote?.length) condiciones.length = 0;
+
+            whereCondition[Op.or] = condiciones.length ? condiciones : [{ idDosificacion: null }];
         }
         // if (estado) whereCondition.estado = estado.toUpperCase();
         if (estado !== '') {
@@ -273,7 +297,13 @@ const verDosificacion = async (req, res) => {
                     as: 'DETALLES_PACKs',
                     include: [{ model: Productos, as: 'producto' }]
                 }]
-            }]
+            }],
+            // De LT-1 en adelante. Esta consulta alimenta `packs`, la lista plana de la
+            // tabla; sin orden explícito MySQL devolvía los bultos como le convenía.
+            // El idPack desempata: numLote se repite entre bultos del mismo lote y sin un
+            // criterio único el orden no es estable entre consultas.
+            order: [[{ model: Pack, as: 'PACKs' }, 'numLote', 'ASC'],
+                    [{ model: Pack, as: 'PACKs' }, 'idPack', 'ASC']]
         });
 
         if (!dose) {
@@ -364,7 +394,12 @@ const obtenerMetadataDose = async (req, res) => {
                     as: 'DETALLES_PACKs',
                     include: [{ model: Productos, as: 'producto' }]
                 }]
-            }]
+            }],
+            // Lotes de menor a mayor. El idPack cierra el orden porque numLote se repite
+            // entre bultos del mismo lote, y sin un criterio único MySQL no garantiza
+            // el mismo orden entre consultas.
+            order: [[{ model: Pack, as: 'PACKs' }, 'numLote', 'ASC'],
+                    [{ model: Pack, as: 'PACKs' }, 'idPack', 'ASC']]
         });
 
         if (!dose) return res.status(404).json({ error: 'No encontrada' });

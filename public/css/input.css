@@ -9,6 +9,9 @@
   --color-gh-primarySoft: #FDE7F2;
   --color-gh-grayText: #4B5563;
   --color-gh-lila: #bc8be0;
+  /* Magenta de la tienda web (grupoghweb). Se trae al panel para que los avisos se vean
+     iguales en los dos lados: el operador y el cliente reciben la misma señal visual. */
+  --color-gh-magenta: #D4158F;
   --color-gh-grayBorder: #E5E7EB;
   --color-card-light: #FFFFFF;
   --color-card-dark: #1A1926;

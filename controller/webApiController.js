@@ -5,7 +5,7 @@ import {
     Categorias, Productos, Imagenes, Stock, Atributos, VariacionesProducto, DetallesFactura, FacturaClientes,
     Interesados, PaginasWeb, PuntosDeVenta, VisitantesWeb, VisitasProducto,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb, Empleados, Traslados, DetalleTraslados,
-    Clientes, ClientesTributario, ClientesUbicacion, Entidades,
+    Clientes, ClientesTributario, ClientesUbicacion, Entidades, Familia,
 } from '../models/index.js';
 import { getPublicKey, getCheckoutBaseUrl, generarFirmaIntegridad, verificarChecksumWebhook } from '../helpers/wompi.js';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
@@ -14,6 +14,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import s3Client from '../config/r2.js';
 import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
+import { sincronizarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
 
 const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
 
@@ -41,6 +42,35 @@ const R2 = () => `${process.env.R2_PUBLIC_URL}/productos/`;
 // Stock vendible desde la web: solo puntos de venta físicos + el punto "web" dedicado.
 // Bodega (reserva/no lista para despacho) y Tránsito (mercancía en camino) no cuentan.
 const TIPOS_PUNTO_VENDIBLE = ['Punto de venta', 'web'];
+
+// Clave laxa para emparejar nombres de color escritos distinto: sin tildes, sin espacios
+// ni signos, en mayúsculas. Así "Vino Tinto" y "Vinotinto" son lo mismo.
+const claveColor = (texto) => String(texto || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// Hoy NINGÚN producto tiene variación de tipo COLOR cargada: el color solo está en el
+// nombre ("Top Berlin Vino Tinto"). Como la familia es el nombre sin el color, lo que
+// sobra al quitarle el prefijo de la familia ES el color de ese hermano.
+// Si algún día se cargan variaciones COLOR de verdad, ésas mandan (ver getProducto).
+const colorDesdeNombre = (nombreProducto, nombreFamilia) => {
+    const claveFam = claveColor(nombreFamilia);
+    if (!claveFam) return null;
+    const palabras = String(nombreProducto || '').trim().split(/\s+/);
+    // Se van consumiendo palabras del principio hasta cubrir el nombre de la familia;
+    // el resto es el color. Compara por clave para tolerar guiones y dobles espacios.
+    let acumulado = '';
+    let i = 0;
+    while (i < palabras.length && claveColor(acumulado).length < claveFam.length) {
+        acumulado += ' ' + palabras[i];
+        i++;
+    }
+    const resto = palabras.slice(i).join(' ')
+        .replace(/^[\s\-–—:+/]+/, '')          // separadores sobrantes
+        .replace(/^color(es)?\s+/i, '')        // "- Color Negro" → "Negro"
+        .trim();
+    return resto || null;
+};
 
 // GET /api/web/config
 export const getConfig = async (req, res) => {
@@ -428,7 +458,7 @@ export const getProducto = async (req, res) => {
                 web: true
             },
             attributes: [
-                'idProducto', 'nombreProducto', 'slug', 'idCategoria',
+                'idProducto', 'nombreProducto', 'slug', 'idCategoria', 'idFamilia',
                 'precioVentaPublicoFinal', 'precioVentaMayorista', 'tax', 'sku', 'tags', 'descripcion'
             ],
             include: [{
@@ -441,10 +471,50 @@ export const getProducto = async (req, res) => {
 
         if (!producto) return res.status(404).json({ success: false, mensaje: 'Producto no encontrado' });
 
-        // Stock global — solo puntos de venta vendibles (tienda + web), no bodega ni tránsito.
-        const stockRow = await Stock.findOne({
-            where: { idProducto: producto.idProducto },
-            attributes: [[fn('SUM', col('cantidadExistente')), 'total']],
+        // ── La familia completa ──────────────────────────────────────────────
+        // Cada color de un artículo es un PRODUCTO aparte, con su propio stock, sus fotos y
+        // su SKU; lo que los une es idFamilia. La ficha necesita a todos los hermanos para
+        // ofrecer los colores sin cambiar de página.
+        //
+        // Todo lo que sigue se resuelve para la familia entera en un número FIJO de
+        // consultas (3), no una por hermano — el producto abierto es uno más de la lista.
+        const [hermanos, familiaRow] = producto.idFamilia
+            ? await Promise.all([
+                Productos.findAll({
+                    where: { idFamilia: producto.idFamilia, activo: true, web: true },
+                    attributes: ['idProducto', 'nombreProducto', 'slug', 'precioVentaPublicoFinal', 'precioVentaMayorista'],
+                    include: [{ model: Imagenes, as: 'imagenes', attributes: ['nombreImagen', 'tipo'], required: false }],
+                    order: [['nombreProducto', 'ASC'], ['idProducto', 'ASC']]
+                }),
+                Familia.findByPk(producto.idFamilia, { attributes: ['nombreFamilia'], raw: true })
+            ])
+            : [[producto], null];
+
+        // Paleta completa (tabla chica) para ponerle el color real al selector cuando el
+        // nombre del color del producto se pueda emparejar con uno de ATRIBUTOS.
+        const paleta = new Map(
+            (await Atributos.findAll({ where: { tipo: 'COLOR' }, attributes: ['valor', 'codigo1'], raw: true }))
+                .map(a => [claveColor(a.valor), a.codigo1])
+        );
+        const hexDeColor = (nombre) => {
+            const clave = claveColor(nombre);
+            if (!clave) return null;
+            if (paleta.has(clave)) return paleta.get(clave);
+            // "Rosado" no está en la paleta pero "Rosa" sí: se acepta el prefijo más largo.
+            let mejor = null;
+            for (const [k, hex] of paleta) {
+                if (!hex || !(clave.startsWith(k) || k.startsWith(clave))) continue;
+                if (!mejor || k.length > mejor.k.length) mejor = { k, hex };
+            }
+            return mejor?.hex ?? null;
+        };
+
+        const idsFamilia = hermanos.map(h => h.idProducto);
+
+        // Stock por producto — solo puntos de venta vendibles (tienda + web), no bodega ni tránsito.
+        const filasStock = await Stock.findAll({
+            where: { idProducto: { [Op.in]: idsFamilia } },
+            attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'total']],
             include: [{
                 model: PuntosDeVenta,
                 as: 'ubicacion',
@@ -452,29 +522,47 @@ export const getProducto = async (req, res) => {
                 where: { tipo: { [Op.in]: TIPOS_PUNTO_VENDIBLE } },
                 required: true
             }],
+            // El alias de la tabla es el nombre del define ('STOCKS'), no el del modelo.
+            group: ['STOCKS.idProducto'],
             raw: true
         });
-        const stockGlobal = parseInt(stockRow?.total) || 0;
+        const stockPorProducto = new Map(filasStock.map(f => [f.idProducto, parseInt(f.total) || 0]));
 
-        // Variaciones → ids de atributos únicos
+        // Variaciones de toda la familia → ids de atributos únicos
         const variaciones = await VariacionesProducto.findAll({
-            where: { idProducto: producto.idProducto },
-            attributes: ['idAtributos'],
+            where: { idProducto: { [Op.in]: idsFamilia } },
+            attributes: ['idProducto', 'idAtributos'],
             raw: true
         });
         const atributoIds = [...new Set(variaciones.map(v => parseInt(v.idAtributos)).filter(Boolean))];
 
-        let colores = [];
-        let tallas  = [];
+        const atributosPorId = new Map();
         if (atributoIds.length) {
             const atributos = await Atributos.findAll({
                 where: { idAtributo: { [Op.in]: atributoIds } },
                 attributes: ['idAtributo', 'tipo', 'valor', 'codigo1'],
                 raw: true
             });
-            colores = atributos.filter(a => a.tipo === 'COLOR').map(a => ({ idAtributo: a.idAtributo, valor: a.valor, codigo1: a.codigo1 }));
-            tallas  = atributos.filter(a => a.tipo === 'TALLA').map(a => ({ idAtributo: a.idAtributo, valor: a.valor }));
+            atributos.forEach(a => atributosPorId.set(a.idAtributo, a));
         }
+
+        // Atributos agrupados por producto, ya separados en color y talla.
+        const atributosDeProducto = (idProducto) => {
+            const vistos = new Set();
+            const colores = [], tallas = [];
+            for (const v of variaciones) {
+                if (v.idProducto !== idProducto) continue;
+                const a = atributosPorId.get(parseInt(v.idAtributos));
+                if (!a || vistos.has(a.idAtributo)) continue;
+                vistos.add(a.idAtributo);
+                if (a.tipo === 'COLOR')      colores.push({ idAtributo: a.idAtributo, valor: a.valor, codigo1: a.codigo1 });
+                else if (a.tipo === 'TALLA') tallas.push({ idAtributo: a.idAtributo, valor: a.valor });
+            }
+            return { colores, tallas };
+        };
+
+        const stockGlobal = stockPorProducto.get(producto.idProducto) || 0;
+        const { colores, tallas } = atributosDeProducto(producto.idProducto);
 
         // Nombre de categoría — idCategoria puede ser "padre|hijo", tomamos el hijo si existe
         const catId = parseInt(String(producto.idCategoria).split('|').pop()) || parseInt(producto.idCategoria);
@@ -502,7 +590,35 @@ export const getProducto = async (req, res) => {
                 imagen:         producto.imagenes[0] ? `${r2}${producto.imagenes[0].nombreImagen}` : null,
                 stockGlobal,
                 colores,
-                tallas
+                tallas,
+                idFamilia: producto.idFamilia,
+                // Los hermanos de familia, el abierto incluido. El front arma con esto el
+                // selector de color: cada entrada trae SU stock, SUS fotos y SU idProducto,
+                // que es el que tiene que ir al carrito si el comprador cambia de color —
+                // si se mandara el id del producto abierto se vendería el color equivocado.
+                familia: familiaRow?.nombreFamilia ?? null,
+                familiares: hermanos.map(h => {
+                    const { colores: c, tallas: t } = atributosDeProducto(h.idProducto);
+                    const imgs = (h.imagenes || []).map(i => `${r2}${i.nombreImagen}`);
+                    // La variación COLOR cargada manda; si no hay (hoy no hay ninguna en la
+                    // base), se deduce del nombre restándole el de la familia.
+                    const nombreColor = c[0]?.valor ?? colorDesdeNombre(h.nombreProducto, familiaRow?.nombreFamilia);
+                    return {
+                        idProducto:      h.idProducto,
+                        nombreProducto:  h.nombreProducto,
+                        slug:            h.slug,
+                        precio:          parseFloat(h.precioVentaPublicoFinal) || 0,
+                        precioMayorista: parseFloat(h.precioVentaMayorista) || 0,
+                        imagen:          imgs[0] ?? null,
+                        imagenes:        imgs,
+                        stockGlobal:     stockPorProducto.get(h.idProducto) || 0,
+                        color:           nombreColor,
+                        colorHex:        c[0]?.codigo1 ?? hexDeColor(nombreColor),
+                        colores:         c,
+                        tallas:          t,
+                        esActual:        h.idProducto === producto.idProducto
+                    };
+                })
             }
         });
     } catch (e) {
@@ -1114,12 +1230,23 @@ export async function procesarPagoAprobado(pedido) {
 
         await pedido.update({ estado: 'en_revision', idCliente, fechaCambioEstado: new Date() }, { transaction: t });
         await t.commit();
+    } catch (e) {
+        // Blindado: si el commit ya pasó, este rollback fallaría y taparía el error real.
+        if (!t.finished) await t.rollback().catch(() => {});
+        throw e;
+    }
 
+    // ── Después del commit y FUERA del try ──────────────────────────────────
+    // Nada de esto puede tumbar una venta ya confirmada, y un throw acá dispararía un
+    // rollback sobre una transacción cerrada dejando la petición colgada.
+    try {
         // Entró un pedido nuevo por atender: que el badge del menú admin lo muestre enseguida.
         invalidarContadoresAdmin();
+        // El stock bajó: se podan los carritos ajenos que ya no alcanzan. Cada titular se
+        // entera (y se le corrige el carrito) en su próxima sincronización.
+        await reconciliarPorVenta(idsProductos);
     } catch (e) {
-        await t.rollback();
-        throw e;
+        console.error('[procesarPagoAprobado] post-commit:', e.message);
     }
 }
 
@@ -1240,5 +1367,54 @@ export const subirComprobantePagoWeb = async (req, res) => {
     } catch (e) {
         console.error('webApi.subirComprobantePagoWeb:', e);
         return res.status(500).json({ success: false, message: 'No pudimos guardar el comprobante.' });
+    }
+};
+
+// ─── Reservas blandas de carrito ──────────────────────────────────────────────
+// No bloquean stock: la unidad es del primero que confirme. Solo permiten avisar al
+// comprador que hay competencia por esa prenda, en la web y en el POS.
+
+// POST /api/web/carrito/reservas
+// El carrito web vive en localStorage, así que el servidor solo se entera si el cliente
+// se lo cuenta. Cada cambio del carrito llama acá y de paso renueva la vigencia.
+export const sincronizarReservasWeb = async (req, res) => {
+    try {
+        const { cookieId, items } = req.body;
+        if (!cookieId || typeof cookieId !== 'string') {
+            return res.status(400).json({ success: false, message: 'Falta el identificador de visitante.' });
+        }
+        // Antes de registrar nada se recorta lo que ya no alcanza: si otro cliente o el POS
+        // se llevó las últimas unidades, este carrito tiene que enterarse ahora y no al pagar.
+        const { items: ajustados, ajustes } = await ajustarPorStock(Array.isArray(items) ? items : []);
+
+        await sincronizarReservas({ origen: 'web', referencia: cookieId, items: ajustados });
+
+        // Se responde la demanda ajena de lo que quedó cargado: el cliente ya puede
+        // pintar el aviso sin una segunda petición.
+        const demanda = await demandaDeOtrosJson(
+            ajustados.map(i => i.idProducto),
+            { origen: 'web', referencia: cookieId }
+        );
+        return res.json({ success: true, demanda, ajustes });
+    } catch (e) {
+        console.error('webApi.sincronizarReservasWeb:', e);
+        return res.status(500).json({ success: false, message: 'Error al registrar el carrito.' });
+    }
+};
+
+// GET /api/web/carrito/demanda?ids=a,b,c&cookieId=xxx
+// Cuántas personas más tienen estos productos cargados ahora mismo.
+export const demandaCarritoWeb = async (req, res) => {
+    try {
+        const ids = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (!ids.length) return res.json({ success: true, demanda: {} });
+        const demanda = await demandaDeOtrosJson(ids, {
+            origen: 'web',
+            referencia: req.query.cookieId ? String(req.query.cookieId) : null
+        });
+        return res.json({ success: true, demanda });
+    } catch (e) {
+        console.error('webApi.demandaCarritoWeb:', e);
+        return res.status(500).json({ success: false, message: 'Error al consultar la demanda.' });
     }
 };

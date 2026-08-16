@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cookieParser from "cookie-parser";
 import loginRoutes from "./routes/loginRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js"
+import { MAX_IMAGENES, MAX_BYTES_IMAGEN } from "./middlewares/uploadImages.js"
 import storeRoutes from "./routes/storeRoutes.js"
 import webRouters from "./routes/webRoutes.js"
 import webAdminRoutes from "./routes/webAdminRoutes.js"
@@ -88,7 +89,28 @@ app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), cargarContadoresAdmi
 app.use("/api/web", webApiRoutes); // API PÚBLICA TIENDA WEB
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS
 
-// 5. CSRF error handler
+// 5. Errores de subida de archivos (multer)
+// Sin esto, superar el límite terminaba en el manejador por defecto de Express, que
+// responde HTML; el formulario espera JSON y lo mostraba como "no se pudo conectar con
+// el servidor" — un mensaje que manda a buscar el problema en el lugar equivocado.
+app.use((err, req, res, next) => {
+    if (err?.name !== 'MulterError') return next(err);
+
+    const mensajes = {
+        LIMIT_FILE_COUNT: `Subiste demasiadas imágenes. El máximo es ${MAX_IMAGENES} por producto.`,
+        LIMIT_FILE_SIZE:  `Alguna imagen pesa más de ${Math.round(MAX_BYTES_IMAGEN / 1024 / 1024)} MB. Reducila e intentá de nuevo.`,
+        LIMIT_UNEXPECTED_FILE: 'Se recibió un archivo en un campo inesperado.',
+    };
+    const mensaje = mensajes[err.code] || 'No se pudieron procesar los archivos enviados.';
+    console.error(`[upload] ${req.method} ${req.url} — ${err.code}: ${err.message}`);
+
+    const esJson = req.headers.accept?.includes('application/json') ||
+                   req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest';
+    if (esJson) return res.status(400).json({ success: false, mensaje });
+    return res.status(400).send(`<h2>${mensaje} <a href="javascript:history.back()">Volver</a></h2>`);
+});
+
+// 6. CSRF error handler
 app.use((err, req, res, next) => {
     if (err.code !== 'EBADCSRFTOKEN') return next(err);
     console.error(`[CSRF] ${req.method} ${req.url} — token inválido o ausente`);

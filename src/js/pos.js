@@ -67,6 +67,16 @@ import ciiuData from '../json/ciiu.json';
         const precioD = parseFloat(p.precioVentaPublicoFinal).toLocaleString('es-CO', { maximumFractionDigits: 0 });
         const modalId = `modal-producto-${p.idProducto}`;
         const sinStock = !p.stock || p.stock <= 0;
+        // "Sin stock" y "sin stock ACÁ" son situaciones distintas: en la segunda el vendedor
+        // puede pedir un traslado en vez de perder la venta. Antes las dos decían lo mismo.
+        const hayEnOtras = sinStock && (p.stockOtrasTiendas || 0) > 0;
+        const textoStock = !sinStock ? `${p.stock} en stock`
+                         : hayEnOtras ? 'Sin stock en esta tienda'
+                         : 'Sin stock';
+        // Ámbar y no rojo cuando existe en otra sede: no es un callejón sin salida.
+        const claseBadge = !sinStock ? 'bg-white/80 text-gh-primaryHover'
+                         : hayEnOtras ? 'bg-amber-100 text-amber-700'
+                         : 'bg-red-100 text-red-500';
 
         return `
         <div
@@ -85,8 +95,9 @@ import ciiuData from '../json/ciiu.json';
                     loading="lazy"
                     onerror="this.src='/img/image-default.webp'"
                 >
-                <span class="absolute bottom-4 left-3 px-3 py-1.5 ${sinStock ? 'bg-red-100 text-red-500' : 'bg-white/80 text-gh-primaryHover'} backdrop-blur-sm text-[10px] font-bold uppercase rounded-xl shadow-sm border border-white/20">
-                    ${sinStock ? 'Sin stock' : p.stock + ' en stock'}
+                <span class="absolute bottom-4 left-3 px-3 py-1.5 ${claseBadge} backdrop-blur-sm text-[10px] font-bold uppercase rounded-xl shadow-sm border border-white/20"
+                      ${hayEnOtras ? `title="Hay ${p.stockOtrasTiendas} unidades en otras tiendas"` : ''}>
+                    ${textoStock}
                 </span>
             </div>
             <h3 class="font-bold text-gray-900 truncate px-2 text-sm md:text-base">${p.nombreProducto}</h3>
@@ -110,7 +121,7 @@ import ciiuData from '../json/ciiu.json';
                 ${sinStock ? 'disabled' : ''}
             >
                 <i class="fi-rr-add-document"></i>
-                <span class="font-bold text-sm">${sinStock ? 'Sin stock' : 'Agregar al pedido'}</span>
+                <span class="font-bold text-sm">${textoStock === '1 en stock' || !sinStock ? 'Agregar al pedido' : textoStock}</span>
             </button>
         </div>`;
     };
@@ -276,6 +287,84 @@ import ciiuData from '../json/ciiu.json';
             });
         }
         renderCarrito();
+    };
+
+    // ── Reservas blandas: quién más tiene estos productos cargados ────────────
+    // No bloquean stock. Sirven para avisar al vendedor que hay competencia por la prenda,
+    // porque la unidad va a ser del primero que confirme la venta.
+    const productosYaAvisados = new Set();
+    // Evita el bucle: aplicar un ajuste re-renderiza el carrito, y ese render vuelve a
+    // sincronizar. Con el flag, la segunda vuelta no reaplica nada.
+    let reconciliando = false;
+
+    const sincronizarReservasPos = async () => {
+        if (reconciliando) return;
+        const items = [...cart.values()].map(i => ({ idProducto: i.idProducto, cantidad: i.cantidad }));
+        try {
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+                      || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
+            const res = await fetch('/store/json/pos/reservas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                body: JSON.stringify({ items })
+            });
+            const data = await res.json();
+            if (!data.success) return;
+
+            // El servidor recortó lo que ya no alcanza (otra venta se llevó las unidades).
+            // Se corrige la orden acá mismo: dejarlo intentar facturar algo inexistente
+            // sería peor, porque el error saldría recién al cobrar, con el cliente enfrente.
+            (data.ajustes || []).forEach(a => {
+                const item = cart.get(a.idProducto);
+                if (!item) return;
+                const nombre = item.nombre;
+                if (a.cantidadNueva <= 0) {
+                    cart.delete(a.idProducto);
+                    window.showToast?.(
+                        `<strong>${nombre}</strong> se agotó (otra venta se confirmó primero) y se quitó de la orden.`,
+                        'error', 12000
+                    );
+                } else {
+                    item.cantidad = a.cantidadNueva;
+                    item.stock = a.disponible;
+                    window.showToast?.(
+                        `<strong>${nombre}</strong>: quedaban ${a.disponible}. Se ajustó la cantidad de ${a.cantidadAnterior} a ${a.cantidadNueva}.`,
+                        'warning', 12000
+                    );
+                }
+            });
+            if ((data.ajustes || []).length) {
+                // renderCarrito vuelve a llamar a esta función; el flag evita el bucle.
+                if (!reconciliando) {
+                    reconciliando = true;
+                    try { renderCarrito(); } finally { reconciliando = false; }
+                }
+            }
+
+            // Se avisa una sola vez por producto y por orden: repetir el toast en cada
+            // cambio de cantidad sería ruido y el vendedor dejaría de leerlo.
+            Object.entries(data.demanda || {}).forEach(([idProducto, d]) => {
+                if (!d || d.titulares < 1 || productosYaAvisados.has(idProducto)) return;
+                productosYaAvisados.add(idProducto);
+                const item = cart.get(idProducto);
+                const nombre = item ? item.nombre : 'Este producto';
+                const donde = d.tiendas?.length ? ` (${d.tiendas.join(', ')})` : '';
+                window.showToast?.(
+                    `<strong>${nombre}</strong>: uno o más clientes lo tienen cargado en su carrito de compras${donde}. Se asignará al primero que confirme la venta.`,
+                    'warning',
+                    9000
+                );
+            });
+        } catch (_) { /* avisar es opcional: si falla, la venta sigue igual */ }
+    };
+
+    const liberarReservasPos = async () => {
+        productosYaAvisados.clear();
+        try {
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+                      || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
+            await fetch('/store/json/pos/reservas', { method: 'DELETE', headers: { 'X-CSRF-Token': csrf } });
+        } catch (_) {}
     };
 
     // ── Pedidos web asignados a esta tienda (banner + carga al carrito) ───────
@@ -623,6 +712,9 @@ import ciiuData from '../json/ciiu.json';
         renderResumen(subtotal);
 
         actualizarScrollHint();
+
+        // Se avisa al servidor qué hay cargado ahora, y de vuelta llega quién más lo tiene.
+        sincronizarReservasPos();
     };
 
     const renderResumen = (subtotal) => {
@@ -646,6 +738,7 @@ import ciiuData from '../json/ciiu.json';
         });
         if (isConfirmed) {
             cart.clear(); pedidoWebActivo = null; pagoWebActivo = null;
+            liberarReservasPos();
             renderCarrito(); sincronizarBotonCliente();
             // El pedido vuelve a estar disponible y el resto se re-habilita.
             renderPedidosWebBanner();
@@ -2034,6 +2127,7 @@ import ciiuData from '../json/ciiu.json';
                 window.open(`/store/facturas/${data.idFacturaCliente}/tirilla`, '_blank');
                 cerrarFV();
                 cart.clear();
+                liberarReservasPos();
                 pedidoWebActivo = null;
                 sincronizarBotonCliente();
                 pagoWebActivo   = null;

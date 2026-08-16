@@ -301,32 +301,43 @@ actualizarEstadoWeb();
 
     if(!uploadInput) return;
 
-    uploadInput.addEventListener('change', function(e) {
-        const files = Array.from(e.target.files);
-        files.forEach(file => {
+    /**
+     * Suma archivos al input y pinta su miniatura. Devuelve los índices que les tocaron.
+     *
+     * La tarjeta se crea de forma SÍNCRONA con createObjectURL en vez de FileReader: con
+     * FileReader el onload de una foto liviana podía adelantarse al de una pesada, las
+     * tarjetas quedaban en distinto orden que el FileList, y el índice `nuevo:N` que se
+     * manda al backend terminaba señalando otra imagen.
+     */
+    const agregarArchivos = (files) => {
+        const indices = [];
+        Array.from(files).forEach(file => {
             if (!file.type.startsWith('image/')) return;
             if (file.size > 2 * 1024 * 1024) {
-                Swal.fire('Error', 'Límite de 2MB superado', 'error');
+                Swal.fire('Error', `"${file.name}" supera el límite de 2MB`, 'error');
                 return;
             }
-
+            indices.push(archivosActuales.files.length);
             archivosActuales.items.add(file);
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const div = document.createElement('div');
-                div.className = "w-20 h-20 rounded-xl bg-gray-100 border relative group animate-fade-in";
-                div.dataset.fileName = file.name; 
-                div.innerHTML = `
-                    <img src="${ev.target.result}" class="w-full h-full object-cover rounded-xl ">
-                    <button type="button" class="btn-delete-img absolute -top-2 -right-2 cursor-pointer mt-1 ">
-                        <i class="fi fi-rr-cross-circle bg-gh-primaryHover rounded-2xl p-1 pt-1.5 text-white "></i>
-                    </button>`;
-                previewContainer.insertBefore(div, previewContainer.lastElementChild);
-            };
-            reader.readAsDataURL(file);
+
+            const div = document.createElement('div');
+            div.className = "w-20 h-20 rounded-xl bg-gray-100 border relative group animate-fade-in";
+            div.dataset.fileName = file.name;
+            div.innerHTML = `
+                <img src="${URL.createObjectURL(file)}" class="w-full h-full object-cover rounded-xl ">
+                <button type="button" class="btn-delete-img absolute -top-2 -right-2 cursor-pointer mt-1 ">
+                    <i class="fi fi-rr-cross-circle bg-gh-primaryHover rounded-2xl p-1 pt-1.5 text-white "></i>
+                </button>`;
+            previewContainer.insertBefore(div, previewContainer.lastElementChild);
         });
         uploadInput.files = archivosActuales.files;
-    });
+        return indices;
+    };
+
+    uploadInput.addEventListener('change', (e) => agregarArchivos(e.target.files));
+
+    // El modal de emparejar imágenes por color necesita poder sumar fotos sin cerrarse.
+    window.__imagenesProducto = { agregar: agregarArchivos };
 
     previewContainer?.addEventListener('click', (e) => {
         const btn = e.target.closest('.btn-delete-img');
@@ -413,16 +424,29 @@ actualizarEstadoWeb();
             const respuesta = await fetch(formulario.action, {
                 method: 'POST',
                 body: formData,
-                headers: { 'x-csrf-token': token }
-
+                // Accept explícito: le dice al servidor que los errores deben venir en JSON
+                // y no como página HTML.
+                headers: { 'x-csrf-token': token, 'Accept': 'application/json' }
             });
 
-            if (!respuesta.ok) {
-                const textoError = await respuesta.text();
-                throw new Error("Respuesta del servidor no es JSON");
+            // Un 4xx trae el motivo en el cuerpo (demasiadas imágenes, sesión expirada…).
+            // Antes se lanzaba la excepción antes de leerlo, y el usuario terminaba viendo
+            // "no se pudo conectar con el servidor" para un problema que nada tenía que ver
+            // con la conexión.
+            let resultado;
+            try {
+                resultado = await respuesta.json();
+            } catch {
+                const texto = await respuesta.text().catch(() => '');
+                console.error('Respuesta no JSON:', respuesta.status, texto.slice(0, 300));
+                Swal.fire({
+                    icon: 'error',
+                    title: `Error ${respuesta.status}`,
+                    text: 'El servidor respondió algo inesperado. Revisá la consola.',
+                    confirmButtonColor: '#EC5FA3'
+                });
+                return;
             }
-
-            const resultado = await respuesta.json();
 
             if (resultado.errores) {
                 const mensajes = Object.values(resultado.errores).join('\n');
@@ -498,29 +522,78 @@ actualizarEstadoWeb();
         return miniaturas;
     }
 
-    function abrirModalConfirmacionSku(variantesActuales) {
+    async function abrirModalConfirmacionSku(variantesActuales) {
         const modal = document.getElementById('modalConfirmSku');
         const listaSku = document.getElementById('listaSkuCombinaciones');
         const listaColores = document.getElementById('listaColoresImagenes');
-        const skuBase = (document.getElementById('sku')?.value || 'PROD').trim().toUpperCase();
+        // Sin tildes, sin espacios ni signos, en mayúscula: "Café" -> CAFE, "Body Mia" -> BODYMIA
+        const compactar = (txt) => (txt || '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+        // La base sale del SKU escrito; si se dejó vacío (alta por combinaciones), del nombre
+        // del producto, que es lo que el operador ya tipeó.
+        const skuBase = compactar(document.getElementById('sku')?.value)
+                     || compactar(document.getElementById('nombreProducto')?.value)
+                     || 'PROD';
 
         // 1. Construir combinaciones y SKU sugerido
         const combos = [];
         const coloresUnicos = new Set();
-        let contador = 1;
+        const tallasUnicas = new Set(Object.entries(variantesActuales)
+            .filter(([, c]) => (c || []).length).map(([idTalla]) => idTalla));
+        // Con una sola talla el color basta para distinguir. Con varias hay que incluirla o
+        // dos combinaciones del mismo color chocarían, y el SKU es único en la base.
+        const incluirTalla = tallasUnicas.size > 1;
+        const usados = new Set();
+        const porResolver = [];  // sugeridos, para contrastarlos contra la base
+
         Object.entries(variantesActuales).forEach(([idTalla, colores]) => {
             (colores || []).forEach(idColor => {
+                const color4 = compactar(nombreColorPorId(idColor)).slice(0, 4);
+                let sugerido = skuBase + color4 + (incluirTalla ? compactar(nombreTallaPorId(idTalla)) : '');
+                // Red de seguridad: dos colores que empiezan igual (VERDE BOTELLA / VERDE SECO
+                // -> ambos VERD) darían el mismo SKU. Se numera para que nunca salga repetido.
+                if (usados.has(sugerido)) {
+                    let n = 2;
+                    while (usados.has(`${sugerido}${n}`)) n++;
+                    sugerido = `${sugerido}${n}`;
+                }
+                usados.add(sugerido);
+                porResolver.push(sugerido);
+
                 combos.push({
                     idAtributos: `${idTalla}|${idColor}`,
                     nombreTalla: nombreTallaPorId(idTalla),
                     idColor,
                     nombreColor: nombreColorPorId(idColor),
-                    skuSugerido: `${skuBase}-${String(contador).padStart(2, '0')}`
+                    skuSugerido: sugerido
                 });
                 coloresUnicos.add(idColor);
-                contador++;
             });
         });
+
+        // Los sugeridos podían chocar con SKU de productos ya guardados. Antes eso se
+        // descubría recién al guardar: la transacción entera fallaba con "SKU ya está en
+        // uso" y había que rehacer el modal a mano.
+        try {
+            const ocupados = new Set();
+            await Promise.all([...new Set(porResolver)].map(async sku => {
+                const r = await fetch(`/admin/json/sku/${encodeURIComponent(sku)}`);
+                if (r.ok) { const d = await r.json(); if (d?.idProducto) ocupados.add(sku); }
+            }));
+            if (ocupados.size) {
+                const tomados = new Set([...usados, ...ocupados]);
+                combos.forEach(c => {
+                    if (!ocupados.has(c.skuSugerido)) return;
+                    let n = 2, cand = `${c.skuSugerido}${n}`;
+                    while (tomados.has(cand)) { n++; cand = `${c.skuSugerido}${n}`; }
+                    tomados.add(cand);
+                    c.skuSugerido = cand;
+                });
+                window.showToast?.(`${ocupados.size} SKU sugerido(s) ya existían y se renumeraron.`, 'warning');
+            }
+        } catch (_) { /* sugerir es una ayuda: si la consulta falla, el modal igual abre */ }
 
         listaSku.innerHTML = combos.map(c => `
             <div class="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2">
@@ -530,42 +603,115 @@ actualizarEstadoWeb();
         `).join('');
 
         // 2. Emparejar imágenes por color
-        const miniaturas = obtenerMiniaturasDisponibles();
-        const imagenesPorColor = {}; // idColor -> Set(keys)
 
-        listaColores.innerHTML = Array.from(coloresUnicos).map(idColor => `
-            <div class="border border-gray-100 rounded-xl p-3">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="w-4 h-4 rounded-full inline-block shadow-sm" style="background-color:${codigoColorPorId(idColor)}"></span>
-                    <span class="text-xs font-bold uppercase">${nombreColorPorId(idColor)}</span>
-                </div>
-                <div class="flex flex-wrap gap-2" data-color-thumbs="${idColor}">
-                    ${miniaturas.length === 0
-                        ? '<span class="text-xs text-gray-300 italic">No hay imágenes subidas todavía</span>'
-                        : miniaturas.map(m => `
-                            <button type="button" class="thumb-color-toggle w-12 h-12 rounded-lg overflow-hidden border-2 border-transparent" data-img-key="${m.key}" data-color="${idColor}">
+        // Una imagen pertenece a UN color: así se guarda al final (imagen -> idColor).
+        // Por eso el estado vive en un solo mapa y elegirla en otro color la mueve, en vez
+        // de dejar dos selecciones donde la última ganaba en silencio.
+        const colorDeImagen = {};   // key de imagen -> idColor
+
+        const marcaSeleccion = `
+            <span class="marca-check absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gh-primaryHover text-white
+                         flex items-center justify-center shadow ring-2 ring-white">
+                <i class="fi fi-rr-check text-[10px]"></i>
+            </span>`;
+
+        // Se repinta entero cada vez que cambian las imágenes disponibles (al sumar una
+        // desde acá mismo). El estado vive en colorDeImagen, así que no se pierde nada.
+        const pintarColores = () => {
+            const fotos = obtenerMiniaturasDisponibles();
+            listaColores.innerHTML = Array.from(coloresUnicos).map(idColor => `
+                <div class="border border-gray-100 rounded-xl p-3">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="w-4 h-4 rounded-full inline-block shadow-sm" style="background-color:${codigoColorPorId(idColor)}"></span>
+                        <span class="text-xs font-bold uppercase">${nombreColorPorId(idColor)}</span>
+                        <span class="contador-color text-[10px] text-gray-400" data-contador="${idColor}"></span>
+                    </div>
+                    <div class="flex flex-wrap gap-2" data-color-thumbs="${idColor}">
+                        ${fotos.map(m => `
+                            <button type="button" title="Asignar a este color"
+                                    class="thumb-color-toggle relative w-12 h-12 rounded-lg overflow-hidden border-2 border-transparent
+                                           cursor-pointer transition-all hover:border-gh-primary hover:scale-105"
+                                    data-img-key="${m.key}" data-color="${idColor}">
                                 <img src="${m.src}" class="w-full h-full object-cover">
                             </button>
-                        `).join('')
-                    }
+                        `).join('')}
+                        <button type="button" data-agregar-color="${idColor}"
+                                title="Subir una foto y asignarla a ${nombreColorPorId(idColor)}"
+                                class="btn-agregar-foto w-12 h-12 rounded-lg border-2 border-dashed border-gh-grayBorder
+                                       text-gh-grayText hover:border-gh-primary hover:text-gh-primaryHover
+                                       flex flex-col items-center justify-center cursor-pointer transition-colors">
+                            <i class="fi fi-rr-plus text-xs leading-none"></i>
+                            <span class="text-[8px] uppercase tracking-wide mt-0.5">foto</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `).join('');
+            enlazarMiniaturas();
+            refrescarSeleccion();
+        };
 
-        listaColores.querySelectorAll('.thumb-color-toggle').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const idColor = btn.dataset.color;
-                const key = btn.dataset.imgKey;
-                if (!imagenesPorColor[idColor]) imagenesPorColor[idColor] = new Set();
-                if (imagenesPorColor[idColor].has(key)) {
-                    imagenesPorColor[idColor].delete(key);
-                    btn.classList.remove('border-pink-500');
-                } else {
-                    imagenesPorColor[idColor].add(key);
-                    btn.classList.add('border-pink-500');
-                }
+        // Repinta TODAS las miniaturas según el mapa: una imagen tomada por otro color se ve
+        // apagada, para que quede claro por qué no está disponible acá.
+        const refrescarSeleccion = () => {
+            listaColores.querySelectorAll('.thumb-color-toggle').forEach(b => {
+                const suya  = colorDeImagen[b.dataset.imgKey] === b.dataset.color;
+                const ajena = colorDeImagen[b.dataset.imgKey] && !suya;
+                b.classList.toggle('border-gh-primaryHover', suya);
+                b.classList.toggle('ring-2', suya);
+                b.classList.toggle('ring-gh-primary/40', suya);
+                b.classList.toggle('opacity-30', !!ajena);
+                b.classList.toggle('grayscale', !!ajena);
+                b.title = suya ? 'Quitar de este color'
+                       : ajena ? `Ya asignada a ${nombreColorPorId(colorDeImagen[b.dataset.imgKey])} — clic para moverla acá`
+                               : 'Asignar a este color';
+                b.querySelector('.marca-check')?.remove();
+                if (suya) b.insertAdjacentHTML('beforeend', marcaSeleccion);
             });
-        });
+            listaColores.querySelectorAll('[data-contador]').forEach(sp => {
+                const n = Object.values(colorDeImagen).filter(c => c === sp.dataset.contador).length;
+                sp.textContent = n ? `· ${n} imagen${n === 1 ? '' : 'es'}` : '· sin imágenes';
+            });
+        };
+
+        // Selector de archivos oculto, reutilizado por todos los botones "+ foto".
+        let colorDestino = null;
+        let inputFoto = document.getElementById('inputFotoDesdeModal');
+        if (!inputFoto) {
+            inputFoto = document.createElement('input');
+            inputFoto.type = 'file';
+            inputFoto.id = 'inputFotoDesdeModal';
+            inputFoto.accept = 'image/*';
+            inputFoto.multiple = true;
+            inputFoto.className = 'hidden';
+            document.body.appendChild(inputFoto);
+        }
+        inputFoto.onchange = () => {
+            const indices = window.__imagenesProducto?.agregar(inputFoto.files) || [];
+            // Las recién subidas quedan asignadas al color desde el que se pulsó el botón:
+            // es la razón por la que se sube desde acá.
+            indices.forEach(i => { if (colorDestino) colorDeImagen[`nuevo:${i}`] = colorDestino; });
+            inputFoto.value = '';
+            pintarColores();
+        };
+
+        function enlazarMiniaturas() {
+            listaColores.querySelectorAll('.thumb-color-toggle').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const { color: idColor, imgKey: key } = btn.dataset;
+                    if (colorDeImagen[key] === idColor) delete colorDeImagen[key]; // quitar
+                    else colorDeImagen[key] = idColor;                             // asignar o mover
+                    refrescarSeleccion();
+                });
+            });
+            listaColores.querySelectorAll('.btn-agregar-foto').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    colorDestino = btn.dataset.agregarColor;
+                    inputFoto.click();
+                });
+            });
+        }
+
+        pintarColores();
 
         modal.classList.remove('hidden');
 
@@ -598,12 +744,10 @@ actualizarEstadoWeb();
 
             const imagenesColorNuevas = {};
             const imagenesColorExistentes = {};
-            Object.entries(imagenesPorColor).forEach(([idColor, keys]) => {
-                keys.forEach(key => {
-                    const [tipo, valor] = key.split(':');
-                    if (tipo === 'nuevo') imagenesColorNuevas[valor] = idColor;
-                    else imagenesColorExistentes[valor] = idColor;
-                });
+            Object.entries(colorDeImagen).forEach(([key, idColor]) => {
+                const [tipo, valor] = key.split(':');
+                if (tipo === 'nuevo') imagenesColorNuevas[valor] = idColor;
+                else imagenesColorExistentes[valor] = idColor;
             });
 
             document.getElementById('variantes_sku').value = JSON.stringify(variantesSku);
@@ -646,7 +790,11 @@ actualizarEstadoWeb();
         const totalCombos = Object.values(variantesActuales).reduce((acc, colores) => acc + (colores?.length || 0), 0);
 
         if (totalCombos > 1) {
-            abrirModalConfirmacionSku(variantesActuales);
+            // Es async: si algo falla adentro no puede quedar como rechazo sin atender.
+            abrirModalConfirmacionSku(variantesActuales).catch(err => {
+                console.error('abrirModalConfirmacionSku:', err);
+                Swal.fire('Error', 'No se pudo preparar la lista de SKU.', 'error');
+            });
             return;
         }
 

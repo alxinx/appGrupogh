@@ -11,6 +11,7 @@ import {
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
+import { sincronizarReservas, liberarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { fileURLToPath } from 'url';
@@ -219,6 +220,7 @@ const getPedidoWebParaCargarJSON = async (req, res) => {
         ]);
         const mapProducto = new Map(productos.map(p => [p.idProducto, p]));
         const mapStock = Object.fromEntries(stockRows.map(r => [r.idProducto, parseInt(r.stock) || 0]));
+
         const r2 = `${process.env.R2_PUBLIC_URL}/productos/`;
 
         const items = pedido.detalles.map(d => {
@@ -1083,6 +1085,49 @@ const getPerfilProducto = async (req, res) => {
     }
 };
 
+// POST /store/json/pos/reservas
+// El POS avisa qué tiene cargado en "Tu Orden" para que web y otras tiendas lo sepan.
+// No bloquea stock: la unidad es del primero que confirme la venta.
+const sincronizarReservasPos = async (req, res) => {
+    try {
+        // El titular es el usuario del panel: dos vendedores en la misma tienda compiten
+        // entre sí igual que con un cliente web.
+        const referencia = String(req.usuario?.idUsuario || '');
+        if (!referencia) return res.status(401).json({ success: false, mensaje: 'Sesión no válida.' });
+
+        const items = Array.isArray(req.body?.items) ? req.body.items : [];
+
+        // Si otra venta se llevó las unidades mientras el operador armaba la orden, se le
+        // devuelve la corrección para que no intente facturar algo que ya no existe.
+        const { items: ajustados, ajustes } = await ajustarPorStock(items);
+
+        await sincronizarReservas({
+            origen: 'pos',
+            referencia,
+            idPuntoDeVenta: req.idPuntoDeVenta || null,
+            items: ajustados
+        });
+
+        const demanda = await demandaDeOtrosJson(ajustados.map(i => i.idProducto), { origen: 'pos', referencia }, { incluirTiendas: true });
+        return res.json({ success: true, demanda, ajustes });
+    } catch (e) {
+        console.error('[pos] sincronizarReservasPos:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al registrar la orden.' });
+    }
+};
+
+// Se llama al facturar o vaciar la orden: lo que ya se vendió o se descartó deja de competir.
+const liberarReservasPos = async (req, res) => {
+    try {
+        const referencia = String(req.usuario?.idUsuario || '');
+        if (referencia) await liberarReservas({ origen: 'pos', referencia });
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('[pos] liberarReservasPos:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
 const buscarPosProducto = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false });
@@ -1129,6 +1174,29 @@ const buscarPosProducto = async (req, res) => {
             raw: true
         });
         const mapStock = Object.fromEntries(stockRows.map(r => [r.idProducto, parseInt(r.stock) || 0]));
+        // Stock en OTRAS tiendas vendibles. Sirve para distinguir "acá no hay, pero se puede
+        // pedir" de "no hay en ninguna parte": son dos situaciones muy distintas para quien
+        // atiende, y hasta ahora las dos decían lo mismo.
+        // Una sola consulta agregada para todos los productos, no una por fila.
+        const stockOtras = await Stock.findAll({
+            where: {
+                idPuntoVenta: { [Op.ne]: idPdv },
+                idProducto:   { [Op.in]: ids },
+                cantidadExistente: { [Op.gt]: 0 }
+            },
+            attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stock']],
+            include: [{
+                model: PuntosDeVenta,
+                as: 'ubicacion',
+                attributes: [],
+                // Bodega y tránsito no cuentan: no son mercancía que otra tienda pueda vender.
+                where: { tipo: 'Punto de venta' },
+                required: true
+            }],
+            group: ['STOCKS.idProducto'],
+            raw: true
+        });
+        const mapOtras = Object.fromEntries(stockOtras.map(r => [r.idProducto, parseInt(r.stock) || 0]));
 
         const r2 = `${process.env.R2_PUBLIC_URL}/productos/`;
         const resultado = productos
@@ -1141,6 +1209,7 @@ const buscarPosProducto = async (req, res) => {
                     precioVentaMayorista:    parseFloat(p.precioVentaMayorista)    || 0,
                     precioVentaPublicoFinal: parseFloat(p.precioVentaPublicoFinal) || 0,
                     stock:                   mapStock[p.idProducto] || 0,
+                    stockOtrasTiendas:       mapOtras[p.idProducto] || 0,
                     imagen:                  img ? `${r2}${img}` : '/img/image-default.webp'
                 };
             })
@@ -1692,6 +1761,16 @@ const procesarFactura = async (req, res) => {
         }
 
         await t.commit();
+
+        // El stock bajó con esta venta: se podan los carritos web y las órdenes de otros
+        // vendedores que ya no alcanzan. Cada uno se entera en su próxima sincronización.
+        // Va después del commit y en su propio try: la factura ya está hecha y nada de esto
+        // puede tumbarla.
+        try {
+            await reconciliarPorVenta(idProductos);
+        } catch (e) {
+            console.error('[procesarFactura] reconciliación de carritos:', e.message);
+        }
 
         // Notificar admin con ventas y desglose de pagos del día para este PDV
         try {
@@ -3233,5 +3312,7 @@ export {
     validarEmpleadoTraslado,
     trasladarDesdePerfil,
     getTrasladosAlertaJSON,
-    validarEmpleadoTienda
+    validarEmpleadoTienda,
+    sincronizarReservasPos,
+    liberarReservasPos
 };

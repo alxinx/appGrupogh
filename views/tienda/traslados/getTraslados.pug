@@ -152,11 +152,14 @@ block contenedor
                             label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Código empleado *
                             div(class="input-group")
                                 i(class="input-icon input-icon-left fi fi-rr-user")
+                                //- Credencial operativa: autoriza mover mercancía y se digita
+                                //- con gente alrededor. Ver nota en dose/views/modalTraslado.pug
+                                //- sobre por qué "one-time-code" y no "off".
                                 input#nt-codigo-empleado(
-                                    type="text"
-                                    placeholder="Ej: EMP01"
+                                    type="password"
+                                    placeholder="••••••"
                                     maxlength="10"
-                                    autocomplete="off"
+                                    autocomplete="one-time-code"
                                     class="field-text input-has-icon-left font-mono uppercase tracking-widest"
                                 )
                             div#nt-feedback-empleado(class="mt-1 text-xs min-h-[1rem]")

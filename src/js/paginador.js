@@ -5,6 +5,12 @@ window.generarPaginacion = (contenedorId, totalPaginas, paginaActual, callback) 
     contenedor.innerHTML = '';
     if (totalPaginas <= 1) return;
 
+    // La alineación se define acá, en el único lugar por el que pasan los 13 paginadores
+    // del panel. Antes cada vista la resolvía por su cuenta y no había dos iguales:
+    // unas centradas, otras pegadas a la izquierda, otras sin clases.
+    // flex-wrap para que con muchas páginas los botones bajen de línea en vez de desbordar.
+    contenedor.classList.add('flex', 'flex-wrap', 'items-center', 'justify-center', 'gap-1', 'mt-4', 'mb-2');
+
     const crearBoton = (texto, pagina, activo = false, deshabilitado = false) => {
         const boton = document.createElement('button');
         boton.innerText = texto;
