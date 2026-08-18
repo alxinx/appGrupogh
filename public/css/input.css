@@ -62,14 +62,142 @@
   95%, 100% { transform: translateX(100%); opacity: 0; }
 }
 
-.menu-alert-normal {
+/* El aviso rotativo corre SOLO cuando el ítem tiene algo que avisar: la clase
+   `has-alert` en el enlace es el interruptor. Antes las utilidades iban escritas a mano
+   en cada ítem del menú, y eso servía mientras el badge se decidiera al renderizar la
+   página; ahora los contadores llegan por SSE y el navegador tiene que poder prender y
+   apagar el aviso sin recargar. Con el interruptor en una sola clase, encenderlo es un
+   `classList.toggle` y no reescribir seis utilidades.
+
+   Sin el gate, un ítem sin pendientes también se deslizaría cada 10 segundos. */
+.menu-item.has-alert {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* El bloque normal queda EN FLUJO y es el que define el alto del ítem; el banner va
+   encima con inset:0 y toma ese mismo alto. Con los dos en absolute el ítem colapsaba a
+   un alto fijo, y "Cajas, bancos y métodos de pago" —que ocupa tres renglones en la
+   barra— quedaba cortado por el overflow. */
+.menu-item.has-alert .menu-alert-normal {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.5rem;
+  padding: 0.5rem 1rem;
   animation: menuAlertSlideOut 10s ease-in-out infinite;
 }
 
-.menu-alert-banner {
+.menu-item.has-alert .menu-alert-banner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 1rem;
   animation: menuAlertSlideIn 10s ease-in-out infinite;
 }
 
+/* Sin aviso, el ítem se comporta como cualquier otro del menú: el bloque normal es una
+   fila más y el banner no existe. */
+.menu-item:not(.has-alert) .menu-alert-normal {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.menu-item:not(.has-alert) .menu-alert-banner {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-item.has-alert .menu-alert-normal,
+  .menu-item.has-alert .menu-alert-banner {
+    animation: none;
+  }
+  /* Sin animación el banner taparía al ítem para siempre: se muestra el normal, que es
+     el que dice a dónde lleva el enlace, y el badge sigue contando. */
+  .menu-item.has-alert .menu-alert-banner { display: none; }
+  .animate-badge-pulse { animation: none; }
+}
+
+
+/* Campana de "traslado pendiente por aceptar" en el listado de cajas y bancos.
+   Ámbar y no rojo: no hay nada roto, hay algo esperando: plata que salió del cajón de
+   una tienda y todavía no está asentada en esta cuenta. Es el mismo ámbar con el que el
+   resto del sistema marca los traslados. */
+.campana-traslado {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem 0.125rem 0.4375rem;
+  border-radius: 999px;
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* Tailwind resuelve `hidden` y este `display` con la misma especificidad, así que gana
+   el que salga último en output.css y la campana en cero se mostraba igual. Con dos
+   clases no hay empate que resolver. */
+.campana-traslado.hidden { display: none; }
+
+.campana-traslado i {
+  font-size: 0.6875rem;
+  /* La campana se mueve sola: es lo que hace que el ojo la encuentre en una tabla de
+     filas iguales. Se detiene después de tres repeticiones — un movimiento perpetuo en
+     una pantalla de trabajo cansa y termina ignorándose. */
+  animation: campanaTanido 1.4s ease-in-out 3;
+  transform-origin: 50% 10%;
+}
+
+.campana-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: #92400E;
+  color: #FFFBEB;
+  font-size: 0.625rem;
+  line-height: 1;
+}
+
+@keyframes campanaTanido {
+  0%, 60%, 100% { transform: rotate(0); }
+  65% { transform: rotate(12deg); }
+  70% { transform: rotate(-10deg); }
+  75% { transform: rotate(8deg); }
+  80% { transform: rotate(-6deg); }
+  85% { transform: rotate(3deg); }
+}
+
+/* La campana que acaba de cambiar entra desde su propio lugar: sin esto, una campana
+   que aparece por SSE en una tabla ya pintada se materializa sin que nadie la note. */
+@keyframes campanaEntra {
+  from { opacity: 0; transform: scale(.85); }
+  to   { opacity: 1; transform: none; }
+}
+
+.campana-entra { animation: campanaEntra .28s cubic-bezier(.16, 1, .3, 1) both; }
+
+@media (max-width: 900px) {
+  /* En pantalla angosta la fila no aguanta el rótulo entero; el ícono y el número
+     siguen diciendo lo mismo, y el `title` queda para el detalle. */
+  .campana-texto { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .campana-traslado i, .campana-entra { animation: none; }
+}
 
 .bgbody  {
   @apply bg-gradient-to-b from-rose-100 from-25% to-purple-100 to-100% 

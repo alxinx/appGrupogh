@@ -78,6 +78,10 @@ Productos.belongsTo(Familia, {
 Entidades.hasMany(Egresos,   { as: 'egresos', foreignKey: 'idEntidad' });
 Egresos.belongsTo(Entidades, { as: 'entidad', foreignKey: 'idEntidad' });
 
+// Destino del efectivo cuando el egreso es un traslado a una cuenta propia.
+CajasYBancos.hasMany(Egresos,   { as: 'egresosRecibidos', foreignKey: 'idCajaBanco' });
+Egresos.belongsTo(CajasYBancos, { as: 'cajaBancoDestino', foreignKey: 'idCajaBanco' });
+
 // ── TRASLADOS DE EFECTIVO ────────────────────────────────────────────────────
 // El documento del traslado cuelga de todo lo que interviene: la tienda que envía, el
 // turno de caja del que salió, los dos empleados, la cuenta destino y —cuando se
@@ -99,6 +103,12 @@ CajaTienda.hasMany(TrasladoEfectivo,   { as: 'trasladosEfectivo', foreignKey: 'i
 TrasladoEfectivo.belongsTo(CajaTienda, { as: 'cajaTienda',        foreignKey: 'idCajaTienda' });
 
 TrasladoEfectivo.belongsTo(MovimientosCajasBancos, { as: 'movimiento', foreignKey: 'idMovimiento' });
+
+// El egreso que descuenta el cajón por este traslado. Uno solo: un traslado saca la
+// plata del cajón una vez. El egreso es lo que ve el cuadre de caja; el traslado es el
+// documento que viaja hasta que alguien lo acepta.
+TrasladoEfectivo.hasOne(Egresos,    { as: 'egreso',           foreignKey: 'idTrasladoEfectivo' });
+Egresos.belongsTo(TrasladoEfectivo, { as: 'trasladoEfectivo', foreignKey: 'idTrasladoEfectivo' });
 
 // La bitácora del traslado: varios pasos por envío, en orden.
 TrasladoEfectivo.hasMany(TrasladoEfectivoHistorial,   { as: 'historial', foreignKey: 'idTrasladosEfectivo' });

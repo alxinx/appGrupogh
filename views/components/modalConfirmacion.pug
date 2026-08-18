@@ -1,0 +1,171 @@
+//- ── VENTANA DE CONFIRMACIÓN (SweetAlert2) ────────────────────────────────
+//- Una sola hoja para las ventanas que confirman un movimiento de plata: la del
+//- perfil de una caja/banco y la de un egreso de tienda. Antes vivía duplicada en
+//- cada vista y los dos juegos de reglas ya empezaban a separarse.
+//-
+//- Escrito como CSS propio y no como utilidades de Tailwind porque vive dentro del
+//- HTML que inyecta SweetAlert2: ese marcado no lo ve el escáner de clases de
+//- Tailwind, así que las utilidades nuevas no llegarían a output.css. Los colores
+//- salen de las mismas variables del tema que usa el resto del panel.
+style.
+    .gh-conf-popup {
+        padding: 0;
+        border-radius: 1rem;
+        overflow: hidden;
+        background: #fff;
+        /* Una sola declaración de elevación: sombra, sin borde encima. */
+        box-shadow: 0 18px 45px -12px rgb(15 23 42 / 0.28), 0 6px 14px -8px rgb(15 23 42 / 0.18);
+        border: none;
+        width: 30rem;
+        max-width: calc(100vw - 2rem);
+    }
+    /* SweetAlert2 acolcha su contenedor de contenido por defecto; sin anular eso
+       la cabecera tintada queda flotando dentro de un marco blanco en vez de
+       llegar al borde de la ventana. */
+    .gh-conf-html-container { padding: 0 !important; margin: 0 !important; }
+    .gh-conf-html { margin: 0; text-align: left; }
+
+    /* Cabecera tintada según el sentido del movimiento: el monto es lo que hay
+       que releer antes de confirmar, así que es lo más grande de la ventana. */
+    .gh-conf-cabecera { padding: 1.5rem 1.75rem 1.375rem; }
+    .gh-conf-badge {
+        display: inline-flex; align-items: center; gap: 0.375rem;
+        padding: 0.25rem 0.625rem; border-radius: 999px;
+        font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .gh-conf-monto {
+        margin-top: 0.75rem;
+        font-size: 2.25rem; line-height: 1.1; font-weight: 700;
+        letter-spacing: -0.03em;
+        font-variant-numeric: tabular-nums;
+    }
+    .gh-conf-cuenta { margin-top: 0.25rem; font-size: 0.8125rem; font-weight: 500; }
+    .gh-conf-cuenta strong { font-weight: 700; }
+
+    /* Efecto sobre el saldo: la razón de ser de esta ventana. */
+    .gh-conf-saldo {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 1rem; padding: 0.875rem 1.75rem;
+        border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9;
+        background: #FAFAFA;
+    }
+    .gh-conf-saldo-bloque { display: flex; flex-direction: column; gap: 0.125rem; }
+    .gh-conf-saldo-label { font-size: 0.6875rem; font-weight: 600; color: #64748B; }
+    .gh-conf-saldo-valor {
+        font-size: 0.9375rem; font-weight: 600; color: #475569;
+        font-variant-numeric: tabular-nums;
+    }
+    .gh-conf-saldo-bloque--final { text-align: right; }
+    .gh-conf-saldo-bloque--final .gh-conf-saldo-valor { font-size: 1.125rem; font-weight: 700; }
+    .gh-conf-flecha { color: #CBD5E1; font-size: 0.75rem; align-self: center; }
+    .gh-conf-negativo { color: #DC2626 !important; }
+
+    /* El resto del asiento, en pares etiqueta/valor. */
+    .gh-conf-detalle { padding: 1.125rem 1.75rem 0.25rem; display: flex; flex-direction: column; gap: 0.625rem; }
+    .gh-conf-fila { display: flex; align-items: flex-start; gap: 1rem; font-size: 0.8125rem; }
+    .gh-conf-fila dt { flex: 0 0 6.5rem; color: #64748B; font-weight: 600; }
+    .gh-conf-fila dd { margin: 0; flex: 1; color: #1E293B; font-weight: 500; overflow-wrap: anywhere; }
+    .gh-conf-fila dd.gh-conf-vacio { color: #94A3B8; font-weight: 400; }
+    .gh-conf-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .gh-conf-aviso {
+        margin: 1.125rem 1.75rem 0;
+        display: flex; gap: 0.625rem; align-items: flex-start;
+        padding: 0.75rem 0.875rem; border-radius: var(--radius-gh, 12px);
+        background: #F8FAFC; border: 1px solid #E2E8F0;
+        font-size: 0.75rem; line-height: 1.45; color: #475569;
+    }
+    .gh-conf-aviso i { color: #94A3B8; font-size: 0.875rem; flex-shrink: 0; margin-top: 0.0625rem; }
+
+    .gh-conf-acciones { display: flex; padding: 1.25rem 1.75rem 1.75rem; gap: 0.625rem; margin: 0; }
+    .gh-conf-btn {
+        flex: 1; padding: 0.75rem 1rem; border-radius: var(--radius-gh, 12px);
+        font-size: 0.875rem; font-weight: 700; cursor: pointer;
+        border: 1px solid transparent; margin: 0;
+        transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .gh-conf-btn:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+    .gh-conf-cancelar { background: #fff; border-color: var(--color-gh-grayBorder, #E5E7EB); color: var(--color-gh-grayText, #4B5563); }
+    .gh-conf-cancelar:hover { background: #F8FAFC; border-color: #CBD5E1; }
+    .gh-conf-confirmar { color: #fff; }
+    .gh-conf-confirmar:disabled { opacity: .65; cursor: progress; }
+
+    /* Ingreso en esmeralda, egreso en rosa: el mismo código de color que el
+       badge de la tabla, el resplandor de la tarjeta y el monto de la fila.
+       Los tonos son los que pasan 4.5:1 sobre su propio fondo. */
+    .gh-conf--ingreso .gh-conf-cabecera { background: #ECFDF5; }
+    .gh-conf--ingreso .gh-conf-badge    { background: #A7F3D0; color: #065F46; }
+    .gh-conf--ingreso .gh-conf-monto,
+    .gh-conf--ingreso .gh-conf-cuenta   { color: #047857; }
+    .gh-conf--ingreso .gh-conf-confirmar        { background: #047857; }
+    .gh-conf--ingreso .gh-conf-confirmar:hover  { background: #065F46; }
+
+    .gh-conf--egreso .gh-conf-cabecera { background: #FFF1F2; }
+    .gh-conf--egreso .gh-conf-badge    { background: #FECDD3; color: #9F1239; }
+    .gh-conf--egreso .gh-conf-monto,
+    .gh-conf--egreso .gh-conf-cuenta   { color: #BE123C; }
+    .gh-conf--egreso .gh-conf-confirmar       { background: #E11D48; }
+    .gh-conf--egreso .gh-conf-confirmar:hover { background: #BE123C; }
+
+    /* Variante neutra: la edición de la cuenta no mueve plata, así que no toma
+       ni el verde ni el rojo. Ésos significan "entra" y "sale" en esta pantalla
+       y gastarlos en otra cosa los vaciaría de sentido. */
+    .gh-conf--neutro .gh-conf-cabecera { background: #F1F5F9; }
+    .gh-conf--neutro .gh-conf-badge    { background: #E2E8F0; color: #334155; }
+    .gh-conf--neutro .gh-conf-monto    { color: #1E293B; font-size: 1.5rem; }
+    .gh-conf--neutro .gh-conf-cuenta   { color: #475569; }
+    .gh-conf--neutro .gh-conf-confirmar       { background: var(--color-gh-primaryHover, #E24C95); }
+    .gh-conf--neutro .gh-conf-confirmar:hover { background: #C43B7E; }
+
+    /* Variante ámbar: una transferencia de caja a una cuenta del negocio no es un
+       gasto —la plata no se perdió, cambió de lugar—, y es el mismo ámbar con el
+       que la tabla de egresos ya marca los traslados. Reservar el rojo para lo que
+       de verdad sale del negocio es lo que hace que el rojo signifique algo. */
+    .gh-conf--traslado .gh-conf-cabecera { background: #FFFBEB; }
+    .gh-conf--traslado .gh-conf-badge    { background: #FDE68A; color: #78350F; }
+    .gh-conf--traslado .gh-conf-monto,
+    .gh-conf--traslado .gh-conf-cuenta   { color: #B45309; }
+    .gh-conf--traslado .gh-conf-confirmar       { background: #B45309; }
+    .gh-conf--traslado .gh-conf-confirmar:hover { background: #92400E; }
+
+    /* Un solo momento de movimiento: la ventana entra desde abajo y se asienta.
+       Curva exponencial de salida, para que frene sola en vez de cortarse. */
+    @keyframes ghConfEntra {
+        from { opacity: 0; transform: translateY(14px) scale(.975); }
+        to   { opacity: 1; transform: none; }
+    }
+    .gh-conf-entra { animation: ghConfEntra .28s cubic-bezier(.16, 1, .3, 1) both; }
+
+    /* Acá NO hay clase de salida, y es a propósito.
+       SweetAlert2 cierra la ventana escuchando `animationend` sobre el popup: si al
+       cerrar el elemento tiene `animation-duration > 0`, espera ese evento y recién
+       entonces saca el contenedor del DOM. Hubo una clase `.gh-conf-sale` que reusaba
+       este mismo `@keyframes` en reverse, y ahí estaba el problema: cuando la clase de
+       salida comparte `animation-name` con la de entrada, el navegador no arranca una
+       animación nueva —solo le cambia la duración y la dirección a la que ya corrió y
+       terminó—, así que no dispara `animationend` otra vez. SweetAlert2 quedaba
+       esperando un evento que nunca llegaba y el contenedor, que es un `position: fixed`
+       a pantalla completa, seguía tapando la página: la ventana se veía cerrada pero no
+       se podía hacer clic en nada.
+       La salida la maneja el `swal2-hide` de la propia librería, que está probado contra
+       su lógica de cierre. Son 0.15s de fade que no se distinguen de los que había, y a
+       cambio ningún retoque futuro de esta hoja puede volver a dejar la página muerta. */
+
+    @media (prefers-reduced-motion: reduce) {
+        .gh-conf-entra { animation: none; }
+    }
+
+    @media (max-width: 480px) {
+        .gh-conf-cabecera { padding: 1.25rem 1.25rem 1.125rem; }
+        .gh-conf-monto    { font-size: 1.875rem; }
+        .gh-conf-saldo    { padding: 0.875rem 1.25rem; }
+        .gh-conf-detalle  { padding: 1rem 1.25rem 0.25rem; }
+        .gh-conf-fila     { flex-direction: column; gap: 0.125rem; }
+        .gh-conf-fila dt  { flex-basis: auto; }
+        .gh-conf-aviso    { margin: 1rem 1.25rem 0; }
+        /* Apilados, y con Volver abajo: la acción que no se puede deshacer queda
+           lejos del pulgar. `flex: 1` crece en el eje de la columna, así que el
+           ancho hay que pedirlo aparte. */
+        .gh-conf-acciones { padding: 1.125rem 1.25rem 1.25rem; flex-direction: column-reverse; }
+        .gh-conf-btn      { width: 100%; }
+    }

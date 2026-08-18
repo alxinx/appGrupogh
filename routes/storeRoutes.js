@@ -30,8 +30,11 @@ import {
     getExpensesPage,
     crearEgreso,
     getEgresosJSON,
+    getEfectivoDisponible,
     getTotalEgresosHoy,
     getEgresoComprobantePDF,
+    crearTrasladoEfectivo,
+    getTrasladoEfectivoPDF,
     abrirCajaAPI,
     cuadrarCajaPage,
     getCuadreCajaDatos,
@@ -136,9 +139,26 @@ routes.post('/storebehivors/caja/cerrar', csrfProtection, verificarCodigoEmplead
 routes.get('/storebehivors/caja/:idCajaTienda/pdf', getCuadrePDF);
 routes.get('/storebehivors/expenses', csrfProtection, getExpensesPage);
 routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
+routes.get('/storebehivors/expenses/efectivo-disponible', getEfectivoDisponible);
 routes.get('/storebehivors/expenses/json', getEgresosJSON);
 routes.get('/storebehivors/expenses/:idEgreso/pdf', getEgresoComprobantePDF);
 routes.post('/storebehivors/expenses/crear', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), crearEgreso);
+
+// Traslado de efectivo a una caja o cuenta del negocio. Ruta aparte del egreso normal
+// porque llega como multipart: el traslado a un banco trae el comprobante adjunto.
+//
+// `uploadMixed` va ANTES de verificarCodigoEmpleado a propósito: ese middleware lee el
+// código de `req.body`, y en una petición multipart `req.body` no existe hasta que
+// multer la parsea. Con el orden al revés, todo traslado con archivo respondería
+// "código de empleado requerido". El CSRF sí puede ir primero porque el token viaja en
+// la cabecera X-CSRF-Token, no en el cuerpo.
+routes.post('/storebehivors/expenses/traslado',
+    csrfProtection,
+    uploadMixed.single('voucher'),
+    verificarCodigoEmpleado,
+    verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
+    crearTrasladoEfectivo);
+routes.get('/storebehivors/expenses/traslado/:idTraslado/pdf', getTrasladoEfectivoPDF);
 
 // Inventario — traslado desde perfil de producto
 routes.get('/inventario/json/empleado-traslado', validarEmpleadoTraslado);

@@ -70,6 +70,14 @@ const TrasladoEfectivo = db.define('TRASLADO_EFECTIVO', {
         references: { model: 'MOVIMIENTOS_CAJAS_BANCOS', key: 'idMovimiento' }
     },
 
+    // Número o referencia del traslado. Libre y opcional: no todo traslado tiene una
+    // —de un cajón a otro no hay nada que referenciar—, y cuando la hay es un dato que
+    // se transcribe de un comprobante externo, así que no se valida su forma.
+    referencia: {
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
+
     // DECIMAL, nunca FLOAT: es dinero. Nunca negativo ni cero — trasladar cero no es
     // una operación, y un negativo sería un traslado en sentido contrario disfrazado.
     valorTraslado: {

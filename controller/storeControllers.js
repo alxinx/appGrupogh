@@ -8,7 +8,8 @@ import {
     FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente,
     DetallesPagosFactura, RegimenFacturacion, Egresos,
     CajaTienda, UserPermisos, PermisosAcciones, PermisosRecursos,
-    PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb
+    PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb,
+    CajasYBancos, TrasladoEfectivo, TrasladoEfectivoHistorial
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import { sincronizarReservas, liberarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
@@ -25,6 +26,11 @@ import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseMan
 import { resolverIds } from '../middlewares/verificarPermisoEmpleado.js';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
+import { tituloLista } from '../helpers/textoLista.js';
+import { prepararVoucher } from '../helpers/voucherTraslado.js';
+import { resumenPendientes } from '../helpers/trasladosPendientes.js';
+import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
+import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 import { crearConCodigo } from '../helpers/secuencias.js';
 import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
@@ -543,25 +549,37 @@ const _generarCodigoCaja = async (idPuntoDeVenta, nombreComercial) => {
     return `${prefijo}-${String(nro).padStart(6, '0')}`;
 };
 
-const _getCajaAbierta = (idPuntoDeVenta, includes = []) =>
+const _getCajaAbierta = (idPuntoDeVenta, includes = [], transaction = undefined) =>
     CajaTienda.findOne({
         where: { idPuntoDeVenta, estado: 'abierto', fechaCierre: null },
-        include: includes
+        include: includes,
+        transaction
     });
 
 // estadoTx: 'pendiente' para caja activa, 'liquidada' para PDF de caja ya cerrada
-const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendiente') => {
+// `transaction` es opcional y por defecto no va: el cuadre y los reportes leen fuera de
+// toda transacción, como siempre. Lo usa el traslado de efectivo, que recalcula el tope
+// con la caja bloqueada y necesita leer dentro de la misma transacción para no evaluar
+// un estado anterior al lock.
+const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendiente', transaction = undefined) => {
     const [egresosRows, facturas] = await Promise.all([
         Egresos.findAll({
             where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
-            attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso', 'metodoPago', 'idEntidad'],
-            include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false }]
+            attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso', 'metodoPago', 'idEntidad', 'idCajaBanco'],
+            include: [
+                { model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false },
+                // Los traslados apuntan a una cuenta propia, no a una entidad de cobro.
+                // Sin este include el cuadre los mostraría sin destino.
+                { model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco'], required: false }
+            ],
+            transaction
         }),
         FacturaClientes.findAll({
             where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
             attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
             include: [{ model: DetallesPagosFactura, as: 'pagos',
-                        include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }]
+                        include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }],
+            transaction
         })
     ]);
 
@@ -598,7 +616,7 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
         descripcion: e.descripcion || '—',
         valor:       Math.round(parseFloat(e.valorEgreso) || 0),
         metodoPago:  e.metodoPago || 'Efectivo',
-        entidad:     e.entidad?.nombreEntidad || null
+        entidad:     e.cajaBancoDestino?.nombreCajaBanco || e.entidad?.nombreEntidad || null
     }));
     const sEgresos            = txEgresos.reduce((s, e) => s + e.valor, 0);
     const sEgresosEfectivo    = txEgresos.filter(e => e.metodoPago === 'Efectivo').reduce((s, e) => s + e.valor, 0);
@@ -2250,12 +2268,18 @@ const crearTrasladoSueltos = async (req, res) => {
 // ─── EGRESOS ──────────────────────────────────────────────────────────────────
 
 const getExpensesPage = async (req, res) => {
-    // Las cuentas habilitadas para pagos: son las mismas que el POS ofrece al cobrar,
-    // así el cuadre habla de las mismas entidades por los dos lados.
-    const entidades = await Entidades.findAll({
-        where: { recibirPagosPos: true },
-        attributes: ['idEntidad', 'nombreEntidad', 'tipoEntidad'],
-        order: [['nombreEntidad', 'ASC']],
+    // Destinos posibles de una transferencia: las cuentas propias del negocio que estén
+    // activas. No son las ENTIDADES —ésas son los medios con los que la tienda COBRA—,
+    // sino a dónde se consigna la plata del cajón.
+    //
+    // Una cuenta inactiva no aparece: el perfil de la cuenta ya bloquea sus movimientos,
+    // así que ofrecerla acá sería ofrecer un destino que después rechaza el asiento.
+    const cuentas = await CajasYBancos.findAll({
+        where: { estado: true },
+        attributes: ['idCajaBanco', 'nombreCajaBanco', 'tipo', 'referencia'],
+        // Cajas primero: consignar de un cajón a otro es lo más frecuente y lo más
+        // inmediato. Un ORDER BY alfabético dejaba 'banco' arriba de 'caja'.
+        order: [[literal("FIELD(tipo, 'caja', 'banco', 'billetera')"), 'ASC'], ['nombreCajaBanco', 'ASC']],
         raw: true
     });
 
@@ -2263,8 +2287,42 @@ const getExpensesPage = async (req, res) => {
         pagina: 'Egresos',
         csrfToken: req.csrfToken(),
         currentPath: '/storebehivors/expenses',
-        entidades
+        cuentas
     });
+};
+
+// Cuánto efectivo hay realmente disponible para transferir.
+//
+// Es lo recaudado en efectivo MENOS lo que ya salió del cajón en efectivo. La base de la
+// caja no cuenta: es el sencillo para dar cambio, no plata de la venta. Sin restar los
+// egresos, una tienda que recaudó 1.000.000 y pagó 800.000 en efectivo podría "consignar"
+// 1.000.000 que físicamente no están.
+const _efectivoDisponibleParaTraslado = async (idPdv, transaction = undefined) => {
+    const caja = await _getCajaAbierta(idPdv, [], transaction);
+    if (!caja) return { hayCaja: false, recaudado: 0, egresosEfectivo: 0, disponible: 0 };
+
+    const { sEfectivo, sEgresosEfectivo } = await _calcularTransaccionesCaja(
+        idPdv, new Date(caja.fechaApertura), new Date(), 'pendiente', transaction
+    );
+
+    return {
+        hayCaja: true,
+        recaudado: sEfectivo,
+        egresosEfectivo: sEgresosEfectivo,
+        disponible: Math.max(0, sEfectivo - sEgresosEfectivo)
+    };
+};
+
+// GET /store/storebehivors/expenses/efectivo-disponible
+const getEfectivoDisponible = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
+    try {
+        return res.json({ success: true, ...(await _efectivoDisponibleParaTraslado(idPdv)) });
+    } catch (e) {
+        console.error('getEfectivoDisponible:', e);
+        return res.status(500).json({ success: false });
+    }
 };
 
 const cuadrarCajaPage = async (req, res) => {
@@ -2673,22 +2731,9 @@ const crearEgreso = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
 
-    const { valorEgreso, referencia, descripcion, metodoPago, idEntidad } = req.body;
+    const { valorEgreso, referencia, descripcion, metodoPago, idCajaBanco } = req.body;
     if (!valorEgreso) {
         return res.status(400).json({ success: false, mensaje: 'Valor requerido.' });
-    }
-
-    // De dónde sale la plata. Solo un egreso en efectivo descuenta del cajón.
-    const metodo = metodoPago === 'Electronico' ? 'Electronico' : 'Efectivo';
-    let entidad = null;
-    if (metodo === 'Electronico') {
-        entidad = parseInt(idEntidad);
-        if (!Number.isInteger(entidad)) {
-            return res.status(400).json({ success: false, mensaje: 'Indicá con qué cuenta se pagó.' });
-        }
-        // Se valida contra la base: no alcanza con que el cliente mande un id.
-        const existe = await Entidades.findOne({ where: { idEntidad: entidad }, attributes: ['idEntidad'] });
-        if (!existe) return res.status(422).json({ success: false, mensaje: 'La cuenta indicada no existe.' });
     }
 
     const empleado = req.empleadoVerificado;
@@ -2696,6 +2741,41 @@ const crearEgreso = async (req, res) => {
     const valor = parseFloat(valorEgreso);
     if (!Number.isFinite(valor) || valor <= 0) {
         return res.status(400).json({ success: false, mensaje: 'Valor inválido.' });
+    }
+
+    // Una transferencia mueve el efectivo del cajón a una cuenta propia.
+    const metodo = metodoPago === 'Electronico' ? 'Electronico' : 'Efectivo';
+    let cuentaDestino = null;
+
+    if (metodo === 'Electronico') {
+        if (!idCajaBanco) {
+            return res.status(400).json({ success: false, mensaje: 'Indicá a qué cuenta se transfiere.' });
+        }
+        // Se valida contra la base, y que siga ACTIVA: el formulario solo muestra las
+        // activas, pero eso es comodidad del navegador. Una cuenta pudo desactivarse
+        // mientras el formulario estaba abierto.
+        cuentaDestino = await CajasYBancos.findOne({
+            where: { idCajaBanco, estado: true },
+            attributes: ['idCajaBanco', 'nombreCajaBanco', 'referencia']
+        });
+        if (!cuentaDestino) {
+            return res.status(422).json({ success: false, mensaje: 'La cuenta indicada no existe o está inactiva.' });
+        }
+
+        // El tope se recalcula acá con los mismos números del cuadre. El aviso del
+        // formulario es una cortesía; esto es lo que impide consignar plata que no está
+        // en el cajón, aunque la petición no venga del formulario.
+        const efectivo = await _efectivoDisponibleParaTraslado(idPdv);
+        if (!efectivo.hayCaja) {
+            return res.status(422).json({ success: false, mensaje: 'No hay una caja abierta: no se puede transferir efectivo.' });
+        }
+        if (valor > efectivo.disponible) {
+            return res.status(422).json({
+                success: false,
+                mensaje: `La transferencia no puede superar el efectivo disponible en caja ($${Math.round(efectivo.disponible).toLocaleString('es-CO')}).`,
+                disponible: efectivo.disponible
+            });
+        }
     }
 
     try {
@@ -2712,7 +2792,13 @@ const crearEgreso = async (req, res) => {
             referencia: referencia?.trim() || null,
             descripcion: descripcion?.trim() || null,
             metodoPago: metodo,
-            idEntidad: entidad,
+            idCajaBanco: cuentaDestino?.idCajaBanco || null,
+            // Una transferencia saca el efectivo del cajón y lo consigna en una cuenta
+            // del propio negocio: esa plata no se gastó, cambió de lugar. Sin escribir
+            // el tipo, todo caía en el default 'Egreso' y consignar la venta del día
+            // aparecía en los reportes como si el negocio hubiera gastado esa plata,
+            // que es exactamente lo que la columna existe para evitar.
+            tipo: metodo === 'Electronico' ? 'Traslado' : 'Egreso',
             estado: 'pendiente'
         });
 
@@ -2722,16 +2808,18 @@ const crearEgreso = async (req, res) => {
             where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: hoy } }
         });
 
+        // La fila viaja con la misma forma que la del listado (`filaEgreso`): la que
+        // aparece sola arriba de la tabla tiene que verse igual que después de recargar.
+        // El empleado y la cuenta destino ya están resueltos acá, así que se pasan
+        // armados en vez de volver a consultarlos.
         broadcast(idPdv, 'new_egreso', {
-            egreso: {
-                idEgreso: egreso.idEgreso,
-                referencia: egreso.referencia,
-                valorEgreso: parseFloat(egreso.valorEgreso),
-                descripcion: egreso.descripcion,
-                metodoPago: egreso.metodoPago,
-                estado: egreso.estado,
-                createdAt: egreso.createdAt
-            },
+            egreso: filaEgreso({
+                ...egreso.get({ plain: true }),
+                empleado: { PrimerNombre: empleado.nombre },
+                cajaBancoDestino: cuentaDestino
+                    ? { nombreCajaBanco: cuentaDestino.nombreCajaBanco, referencia: cuentaDestino.referencia }
+                    : null
+            }),
             totalHoy: totalHoy || 0
         });
 
@@ -2748,47 +2836,156 @@ const crearEgreso = async (req, res) => {
     }
 };
 
+// ─── LISTADO DE EGRESOS ──────────────────────────────────────────────────────
+// El libro de egresos de una tienda crece sin techo: una fila por cada gasto y cada
+// consignación, todos los días, para siempre. Por eso se pagina por cursor (keyset) y
+// no por OFFSET.
+//
+// Con OFFSET la base tiene que leer y descartar todas las filas anteriores para llegar
+// a la página pedida, así que la página 500 cuesta mucho más que la 1, y el COUNT(*)
+// del total recorre la tabla entera en cada petición. Peor todavía: entre que alguien
+// ve una página y pide la siguiente puede registrarse un egreso nuevo —que entra
+// arriba, porque el orden es descendente—, el OFFSET se corre una fila y esa fila se
+// repite o se saltea. Con cursor la página siguiente se pide "desde este registro hacia
+// atrás", que no se mueve aunque entren filas nuevas.
+const EGRESOS_POR_PAGINA = 15;
+
+// El orden es (createdAt DESC, idEgreso DESC) y no solo createdAt: `createdAt` es un
+// DATETIME de segundos, y dos egresos registrados en el mismo segundo empatan. Sin un
+// desempate único MySQL no garantiza en qué orden salen las filas empatadas entre dos
+// consultas, y una misma fila puede aparecer en dos páginas. El id autoincremental es
+// ese desempate.
+const ORDEN_EGRESOS = [['createdAt', 'DESC'], ['idEgreso', 'DESC']];
+
+const armarCursorEgreso = (e) => `${new Date(e.createdAt).getTime()}.${e.idEgreso}`;
+
+const leerCursorEgreso = (cursor) => {
+    if (!cursor) return null;
+    const corte = String(cursor).indexOf('.');
+    if (corte < 1) return null;
+    const ms = Number(String(cursor).slice(0, corte));
+    const id = Number(String(cursor).slice(corte + 1));
+    if (!Number.isFinite(ms) || !Number.isInteger(id)) return null;
+    return { createdAt: new Date(ms), idEgreso: id };
+};
+
+// "Estrictamente antes que el cursor" en ese orden. Escrito como OR de dos ramas y no
+// como comparación de tuplas porque Sequelize no la emite y MySQL no aprovecharía el
+// índice con ella.
+const egresoAntesDe = ({ createdAt, idEgreso }) => ({
+    [Op.or]: [
+        { createdAt: { [Op.lt]: createdAt } },
+        { createdAt, idEgreso: { [Op.lt]: idEgreso } }
+    ]
+});
+
+// Colombia no tiene horario de verano: es UTC-5 todo el año. Declarar el desfase en el
+// literal es exacto y no necesita una librería de zonas horarias, que el proyecto no
+// tiene. Sin esto, "desde el 18" significaba la medianoche del servidor, que en un host
+// en UTC deja afuera los egresos de las primeras cinco horas del día en la tienda.
+const OFFSET_BOGOTA = '-05:00';
+const inicioDiaBogota = (iso) => new Date(`${iso}T00:00:00.000${OFFSET_BOGOTA}`);
+const finDiaBogota    = (iso) => new Date(`${iso}T23:59:59.999${OFFSET_BOGOTA}`);
+
+const ISO_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+// Los mismos filtros para el listado y para cualquier consulta que después necesite el
+// mismo recorte: un solo criterio, un solo lugar.
+const filtrosEgresos = (idPdv, { fechaA, fechaB, estado, tipo } = {}) => {
+    const where = { idPuntoDeVenta: idPdv };
+
+    const desde = ISO_FECHA.test(fechaA || '') ? inicioDiaBogota(fechaA) : null;
+    const hasta = ISO_FECHA.test(fechaB || '') ? finDiaBogota(fechaB)    : null;
+    if (desde && hasta)      where.createdAt = { [Op.between]: [desde, hasta] };
+    else if (desde)          where.createdAt = { [Op.gte]: desde };
+    else if (hasta)          where.createdAt = { [Op.lte]: hasta };
+
+    if (['pendiente', 'liquidada'].includes(estado)) where.estado = estado;
+    if (['Egreso', 'Traslado'].includes(tipo))       where.tipo   = tipo;
+
+    return where;
+};
+
+// Una sola forma de la fila, usada por el listado y por el aviso en vivo del SSE. Si
+// cada uno armara la suya, una fila recién registrada se vería distinta de la misma
+// fila después de recargar.
+// Se arma por partes y no con toLocaleDateString: el formato corto en español mete un
+// "de" y un punto ("18 de ago."), que en una columna que se barre de arriba abajo es
+// ruido. Acá queda "18 ago".
+const PARTES_FECHA = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' });
+const FMT_HORA     = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' };
+
+const fechaCorta = (f) => {
+    const p = Object.fromEntries(PARTES_FECHA.formatToParts(f).map(x => [x.type, x.value]));
+    return `${p.day} ${(p.month || '').replace('.', '')}`;
+};
+
+const filaEgreso = (e) => {
+    const f = new Date(e.createdAt);
+    const destino = e.cajaBancoDestino;
+    return {
+        idEgreso:    e.idEgreso,
+        valor:       parseFloat(e.valorEgreso) || 0,
+        tipo:        e.tipo,
+        estado:      e.estado,
+        // La referencia NO pasa por `tituloLista`: es un dato literal —un número de
+        // comprobante, un consecutivo— y darle formato sería alterarlo, no presentarlo.
+        referencia:  e.referencia || null,
+        // El detalle sí: lo escribe quien registra el egreso, con el teclado del POS y
+        // a veces con el bloq mayús puesto. Un "PAGO ARRIENDO LOCAL" grita en medio de
+        // la tabla, y `text-transform: capitalize` no lo arregla porque sube la primera
+        // letra pero no baja las demás. En la base queda tal como lo escribieron.
+        descripcion: e.descripcion ? tituloLista(e.descripcion) : null,
+        fecha:       fechaCorta(f),
+        hora:        f.toLocaleTimeString('es-CO', FMT_HORA),
+        iso:         f.toISOString(),
+        responsable: e.empleado
+            ? [e.empleado.PrimerNombre, e.empleado.PrimerApellido].filter(Boolean).join(' ')
+            : null,
+        // El nombre de la cuenta se normaliza igual que en el selector del formulario y
+        // en el perfil de la cuenta; su referencia, no, por lo mismo que la de arriba.
+        destino:     destino
+            ? (destino.referencia
+                ? `${tituloLista(destino.nombreCajaBanco)} — ${destino.referencia}`
+                : tituloLista(destino.nombreCajaBanco))
+            : null
+    };
+};
+
+const INCLUDES_EGRESO = [
+    { model: Empleados,    as: 'empleado',         attributes: ['PrimerNombre', 'PrimerApellido'],       required: false },
+    { model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco', 'referencia'],        required: false }
+];
+
 const getEgresosJSON = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false });
 
-    const { pagina = 1, fechaA, fechaB, estado } = req.query;
-    const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
-    const offset = (parseInt(pagina) - 1) * limite;
+    const { cursor, fechaA, fechaB, estado, tipo } = req.query;
 
     try {
-        const where = { idPuntoDeVenta: idPdv };
+        const where = filtrosEgresos(idPdv, { fechaA, fechaB, estado, tipo });
+        const posicion = leerCursorEgreso(cursor);
 
-        if (fechaA && fechaB) {
-            const inicio = new Date(fechaA); inicio.setHours(0, 0, 0, 0);
-            const fin    = new Date(fechaB); fin.setHours(23, 59, 59, 999);
-            where.createdAt = { [Op.between]: [inicio, fin] };
-        } else if (fechaA) {
-            const inicio = new Date(fechaA); inicio.setHours(0, 0, 0, 0);
-            where.createdAt = { [Op.gte]: inicio };
-        } else if (fechaB) {
-            const fin = new Date(fechaB); fin.setHours(23, 59, 59, 999);
-            where.createdAt = { [Op.lte]: fin };
-        }
-
-        if (estado && ['pendiente', 'liquidada'].includes(estado)) {
-            where.estado = estado;
-        }
-
-        const { count, rows } = await Egresos.findAndCountAll({
-            where,
-            order: [['createdAt', 'DESC']],
-            limit: limite,
-            offset,
-            distinct: true
+        // Se pide una fila de más: si vuelve, hay página siguiente. Así se sabe si
+        // mostrar "Cargar más" sin contar el total de la tabla.
+        const filas = await Egresos.findAll({
+            where: posicion ? { ...where, ...egresoAntesDe(posicion) } : where,
+            include: INCLUDES_EGRESO,
+            order: ORDEN_EGRESOS,
+            limit: EGRESOS_POR_PAGINA + 1
         });
+
+        const hayMas = filas.length > EGRESOS_POR_PAGINA;
+        const pagina = hayMas ? filas.slice(0, EGRESOS_POR_PAGINA) : filas;
 
         return res.json({
             success: true,
-            egresos: rows,
-            totalPaginas: Math.ceil(count / limite),
-            paginaActual: parseInt(pagina),
-            total: count
+            egresos: pagina.map(filaEgreso),
+            cursorSiguiente: hayMas ? armarCursorEgreso(pagina[pagina.length - 1]) : null,
+            // Distingue "esta tienda todavía no registró ningún egreso" de "ninguno
+            // coincide con estos filtros": son dos pantallas vacías distintas.
+            filtrado: !!(fechaA || fechaB || estado || tipo)
         });
     } catch (e) {
         console.error('getEgresosJSON:', e);
@@ -2809,6 +3006,465 @@ const getTotalEgresosHoy = async (req, res) => {
     } catch (e) {
         console.error('getTotalEgresosHoy:', e);
         return res.status(500).json({ success: false });
+    }
+};
+
+
+// ─── TRASLADO DE EFECTIVO A UNA CAJA O CUENTA DEL NEGOCIO ────────────────────
+//
+// El operador saca efectivo del cajón y lo manda a una cuenta de la empresa. Eso
+// produce DOS hechos distintos sobre la misma plata, y por eso dos filas:
+//
+//   · EGRESOS  — lo que el cuadre de caja resta del cajón hoy. Se guarda con
+//     `metodoPago: 'Efectivo'` porque la plata sale físicamente del cajón; guardarlo
+//     como 'Electronico' lo dejaba fuera de `sEgresosEfectivo` y el mismo efectivo se
+//     podía consignar una y otra vez sin que la validación se quejara.
+//   · TRASLADO_EFECTIVO — el documento que viaja: su código, su destino y su estado,
+//     hasta que el responsable de la cuenta lo acepta y recién ahí se asienta el
+//     movimiento. `idTrasladoEfectivo` en el egreso es lo que une los dos.
+//
+// La plata NO llega a la cuenta destino en este paso. El traslado nace 'En Transito' y
+// `idMovimiento` queda nulo a propósito: mientras viaja no está asentada en ningún
+// saldo. Quien la acepta es otro flujo.
+
+// Colombia es UTC-5 todo el año, así que el desfase literal alcanza para fechar el
+// código en hora local sin una librería de zonas horarias.
+const _selloBogota = (f = new Date()) => {
+    const p = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Bogota', hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }).formatToParts(f).reduce((a, x) => (a[x.type] = x.value, a), {});
+    // `en-CA` con hour12:false devuelve "24" para la medianoche; MySQL y el ojo humano
+    // esperan "00".
+    const hora = p.hour === '24' ? '00' : p.hour;
+    return `${p.year}${p.month}${p.day}${hora}${p.minute}${p.second}`;
+};
+
+// Prefijo corto de la tienda para el código del traslado. Se prefiere `prefijo`, que es
+// el código con el que el negocio ya nombra al punto de venta; si está vacío cae en
+// `_prefijoTienda`, el mismo que arma los códigos de caja, para que la tienda no tenga
+// dos abreviaturas distintas según qué documento se mire.
+const _prefijoTraslado = (pdv) => {
+    const declarado = (pdv?.prefijo || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toUpperCase()
+        .slice(0, 5);
+    return declarado || _prefijoTienda(pdv?.nombreComercial);
+};
+
+// El código es UNIQUE en la tabla. Dos traslados de la misma tienda en el mismo segundo
+// chocarían, así que ante colisión se reintenta con un sufijo corto en vez de fallar.
+const _generarCodigoTraslado = async (pdv, transaction) => {
+    const prefijo = _prefijoTraslado(pdv);
+    for (let intento = 0; intento < 5; intento++) {
+        const sufijo = intento === 0 ? '' : `-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+        const codigo = `${prefijo}-${_selloBogota()}${sufijo}`;
+        const existe = await TrasladoEfectivo.findOne({
+            where: { codigoTraslado: codigo }, attributes: ['idTrasladosEfectivo'], transaction
+        });
+        if (!existe) return codigo;
+    }
+    throw new Error('No se pudo generar un código de traslado único.');
+};
+
+// Un traslado hacia un banco o una billetera deja rastro en un extracto, y sin el
+// comprobante nadie puede conciliarlo después. Hacia otra caja física no hay nada que
+// adjuntar: la plata pasa de mano a mano y lo que la respalda son las dos firmas del
+// comprobante impreso.
+const _exigeVoucher = (tipoCuenta) => ['banco', 'billetera'].includes(tipoCuenta);
+
+// Rechazo de negocio dentro de la transacción. Lanzarlo hace el rollback (que es lo que
+// se quiere) y al salir se distingue de una falla real: éste es un 422 con un motivo que
+// el operador puede leer, la otra es un 500 genérico.
+class ErrorTraslado extends Error {}
+
+const crearTrasladoEfectivo = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
+
+    const empleado = req.empleadoVerificado;
+    const { idCajaBanco, referencia, descripcion } = req.body;
+
+    // ── Validaciones que no tocan la base ────────────────────────────────────
+    const valor = parseFloat(req.body.valorTraslado);
+    if (!Number.isFinite(valor) || valor <= 0)
+        return res.status(400).json({ success: false, mensaje: 'El valor del traslado debe ser mayor que cero.' });
+
+    if (!idCajaBanco)
+        return res.status(400).json({ success: false, mensaje: 'Indicá a qué cuenta se traslada el efectivo.' });
+
+    try {
+        // ── Cuenta destino ───────────────────────────────────────────────────
+        // Se revalida contra la base y que siga ACTIVA: el formulario solo lista las
+        // activas, pero eso es comodidad del navegador. Una cuenta pudo desactivarse
+        // mientras el formulario estaba abierto.
+        const cuenta = await CajasYBancos.findOne({
+            where: { idCajaBanco, estado: true },
+            attributes: ['idCajaBanco', 'nombreCajaBanco', 'tipo', 'referencia']
+        });
+        if (!cuenta)
+            return res.status(422).json({ success: false, mensaje: 'La cuenta indicada no existe o está inactiva.' });
+
+        // ── Caja abierta ─────────────────────────────────────────────────────
+        // `idCajaTienda` es NOT NULL en el traslado: ancla la plata al turno del que
+        // salió. Sin ese anclaje un traslado hecho al filo del cierre podría caer fuera
+        // de la ventana del cuadre y no descontarse nunca.
+        // El prefijo del código sale de acá. `cargarPuntoDeVenta` solo cuelga el id en
+        // la petición, así que la fila se pide una vez.
+        const pdv = await PuntosDeVenta.findByPk(idPdv, { attributes: ['prefijo', 'nombreComercial'], raw: true });
+
+        const caja = await _getCajaAbierta(idPdv);
+        if (!caja)
+            return res.status(422).json({ success: false, mensaje: 'No hay una caja abierta: no se puede trasladar efectivo.' });
+
+        // ── Tope de efectivo ─────────────────────────────────────────────────
+        // Lo recaudado en efectivo menos lo que ya salió en efectivo, SIN sumar la caja
+        // menor: la base del cajón es del negocio para dar cambio, no plata disponible
+        // para consignar. El aviso del formulario es una cortesía; esto es lo que impide
+        // trasladar efectivo que no está.
+        const efectivo = await _efectivoDisponibleParaTraslado(idPdv);
+        if (!efectivo.hayCaja)
+            return res.status(422).json({ success: false, mensaje: 'No hay una caja abierta: no se puede trasladar efectivo.' });
+
+        // Filtro barato: corta acá para no subir un archivo ni abrir una transacción
+        // cuando ya se sabe que no alcanza. La verificación que manda es la de adentro
+        // de la transacción, con la caja bloqueada.
+        if (valor > efectivo.disponible) {
+            return res.status(422).json({
+                success: false,
+                mensaje: `El traslado no puede superar el efectivo disponible en caja ($${Math.round(efectivo.disponible).toLocaleString('es-CO')}).`,
+                disponible: efectivo.disponible
+            });
+        }
+
+        // ── Voucher ──────────────────────────────────────────────────────────
+        const necesitaVoucher = _exigeVoucher(cuenta.tipo);
+        if (necesitaVoucher && !req.file)
+            return res.status(400).json({ success: false, mensaje: 'Adjuntá el comprobante de la consignación.' });
+
+        // Se prepara ANTES de tocar la base: validar el contenido real del archivo y
+        // convertirlo es lo que más puede fallar, y hacerlo con una transacción abierta
+        // la mantiene esperando por nada.
+        let voucher = null;
+        if (req.file?.buffer) {
+            const revision = await prepararVoucher(req.file.buffer);
+            if (!revision.ok) return res.status(400).json({ success: false, mensaje: revision.mensaje });
+            voucher = revision;
+        }
+
+        // El id se genera acá y no lo deja poner a Sequelize porque la clave del objeto
+        // en R2 lo lleva adentro, y la subida ocurre antes de escribir la fila.
+        const idTraslado = randomUUID();
+
+        // La subida va antes de abrir la transacción, igual que en el QR de pago. Si la
+        // transacción falla después, queda un objeto huérfano en el bucket —que no le
+        // hace daño a nadie—; al revés quedaría una fila apuntando a un archivo que no
+        // existe, y eso sí es un comprobante perdido.
+        let keyVoucher = null;
+        if (voucher) {
+            keyVoucher = `documentacion/transacciones/${idTraslado}-${Date.now()}.${voucher.formato.toLowerCase()}`;
+            await new Upload({
+                client: s3Client,
+                params: {
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: keyVoucher,
+                    Body: voucher.buffer,
+                    ContentType: voucher.contentType
+                }
+            }).done();
+        }
+
+        // ── Escritura ────────────────────────────────────────────────────────
+        // Forma manejada de `transaction`: hace commit sola al resolver y rollback sola
+        // si algo lanza. Sin `t.commit()` ni `t.rollback()` a mano no existe el caso de
+        // un rollback sobre una transacción ya cerrada, que lanzaría un segundo error
+        // dentro del catch y dejaría la petición colgada para siempre.
+        const resultado = await db.transaction(async (t) => {
+            // Lock sobre la fila del turno de caja. Sin esto, dos pestañas que envían el
+            // mismo efectivo al mismo tiempo pasan las dos la verificación —cada una lee
+            // un saldo que todavía no incluye a la otra— y la tienda consigna plata que
+            // no tiene. El lock serializa los traslados de una misma caja: el segundo
+            // espera al primero y recién ahí recalcula.
+            await CajaTienda.findOne({
+                where: { idCajaTienda: caja.idCajaTienda },
+                attributes: ['idCajaTienda'],
+                lock: t.LOCK.UPDATE,
+                transaction: t
+            });
+
+            // Recuento con el lock tomado y leyendo dentro de la transacción: acá sí se
+            // ve lo que asentó quien llegó primero.
+            const firme = await _efectivoDisponibleParaTraslado(idPdv, t);
+            if (!firme.hayCaja) throw new ErrorTraslado('No hay una caja abierta: no se puede trasladar efectivo.');
+            if (valor > firme.disponible) {
+                throw new ErrorTraslado(
+                    `El traslado no puede superar el efectivo disponible en caja ($${Math.round(firme.disponible).toLocaleString('es-CO')}).`
+                );
+            }
+
+            const codigoTraslado = await _generarCodigoTraslado(pdv, t);
+
+            const traslado = await TrasladoEfectivo.create({
+                idTrasladosEfectivo: idTraslado,
+                idTiendaOrigen:  idPdv,
+                idCajaBanco:     cuenta.idCajaBanco,
+                idEmpleadoEnvia: empleado.idEmpleado,
+                // Nulo a propósito: todavía no se sabe quién lo va a recibir.
+                idEmpleadoRecibe: null,
+                idCajaTienda:    caja.idCajaTienda,
+                // Nulo a propósito: la plata no está asentada en ningún saldo mientras
+                // viaja. El movimiento se crea al aceptarla.
+                idMovimiento:    null,
+                // La referencia de la consignación, que el formulario exige cuando el
+                // destino es un banco o una billetera. Queda también en el egreso, que es
+                // lo que lee el cuadre de caja; acá vive en el documento del traslado,
+                // que es lo que ve quien la acepta del otro lado y contra lo que concilia
+                // el movimiento en el extracto.
+                referencia:      referencia?.trim() || null,
+                valorTraslado:   valor,
+                codigoTraslado,
+                estado:          'En Transito'
+            }, { transaction: t });
+
+            // Primer paso de la bitácora: la salida desde el punto de venta.
+            await TrasladoEfectivoHistorial.create({
+                idTrasladosEfectivo: idTraslado,
+                idEmpleado:          empleado.idEmpleado,
+                tipoTransaccion:     'Salida',
+                valorTransaccion:    valor,
+                observacion:         descripcion?.trim() || null
+            }, { transaction: t });
+
+            // El egreso: esto es lo que descuenta el cajón en el cuadre de hoy.
+            const egreso = await Egresos.create({
+                idPuntoDeVenta:     idPdv,
+                idEmpleado:         empleado.idEmpleado,
+                idCajaTienda:       caja.idCajaTienda,
+                valorEgreso:        valor,
+                referencia:         referencia?.trim() || null,
+                descripcion:        descripcion?.trim() || null,
+                metodoPago:         'Efectivo',
+                idCajaBanco:        cuenta.idCajaBanco,
+                idTrasladoEfectivo: idTraslado,
+                tipo:               'Traslado',
+                estado:             'pendiente'
+            }, { transaction: t });
+
+            if (keyVoucher) {
+                await Documentacion.create({
+                    idPropietario:   idTraslado,
+                    nombreDocumento: `Comprobante traslado ${codigoTraslado}`,
+                    keyName:         keyVoucher,
+                    formato:         voucher.formato,
+                    pertenece:       'transacciones_bancarias'
+                }, { transaction: t });
+            }
+
+            return { traslado, egreso, codigoTraslado };
+        });
+
+        // ── Avisos ───────────────────────────────────────────────────────────
+        // Fuera de la transacción y en su propio try: un broadcast que falle no puede
+        // tumbar un traslado ya asentado ni dejar la respuesta sin enviar.
+        try {
+            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+            const totalHoy = await Egresos.sum('valorEgreso', {
+                where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: hoy } }
+            });
+
+            broadcast(idPdv, 'new_egreso', {
+                egreso: filaEgreso({
+                    ...resultado.egreso.get({ plain: true }),
+                    empleado: { PrimerNombre: empleado.nombre },
+                    cajaBancoDestino: { nombreCajaBanco: cuenta.nombreCajaBanco, referencia: cuenta.referencia }
+                }),
+                totalHoy: totalHoy || 0
+            });
+            broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta: idPdv, egresosHoy: totalHoy || 0 });
+
+            // Aviso al panel del admin: hay un traslado esperando que alguien lo acepte.
+            // Va el total y el desglose por cuenta en el MISMO evento —el badge del menú
+            // usa uno y las campanas del listado el otro—, para que no puedan pintarse
+            // dos estados de momentos distintos.
+            //
+            // El número se recalcula contra la base en vez de sumar uno al anterior: el
+            // admin puede tener la pantalla abierta desde antes, o puede haber aceptado
+            // traslados en otra pestaña, y un contador incremental se desincroniza al
+            // primer evento que se pierda.
+            broadcast('__ADMIN__', 'traslados_pendientes', await resumenPendientes());
+
+            // El cache del menú dura 30 s. Sin invalidarlo, la próxima página que cargue
+            // el admin podría pintar el badge viejo y contradecir al aviso que acaba de
+            // recibir en vivo.
+            invalidarContadoresAdmin();
+        } catch (e) {
+            console.error('crearTrasladoEfectivo: aviso posterior falló', e);
+        }
+
+        return res.json({
+            success: true,
+            idTrasladoEfectivo: idTraslado,
+            idEgreso:           resultado.egreso.idEgreso,
+            codigoTraslado:     resultado.codigoTraslado,
+            nombreEmpleado:     empleado.nombre
+        });
+
+    } catch (e) {
+        if (e instanceof ErrorTraslado)
+            return res.status(422).json({ success: false, mensaje: e.message });
+
+        console.error('crearTrasladoEfectivo:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo registrar el traslado.' });
+    }
+};
+
+// GET /store/storebehivors/expenses/traslado/:idTraslado/pdf
+//
+// Comprobante del traslado. Se arma al vuelo y no se guarda: los datos ya están en la
+// base y un PDF archivado sería una segunda copia que puede quedar desactualizada.
+//
+// Lleva las dos firmas en blanco a propósito. Quien envía firma al despachar; quien
+// recibe firma al aceptar, y en este momento todavía no se sabe quién va a ser
+// —`idEmpleadoRecibe` es nulo hasta que alguien acepta la plata—. El papel firmado por
+// los dos es lo que respalda un traslado a otra caja física, donde no hay extracto
+// bancario que lo demuestre.
+const getTrasladoEfectivoPDF = async (req, res) => {
+    const { idTraslado } = req.params;
+    const idPdv = req.idPuntoDeVenta;
+
+    try {
+        const traslado = await TrasladoEfectivo.findOne({
+            // El filtro por tienda no es adorno: sin él, cambiar el id en la URL mostraría
+            // el comprobante de otra sede.
+            where: { idTrasladosEfectivo: idTraslado, idTiendaOrigen: idPdv },
+            include: [
+                { model: Empleados,     as: 'empleadoEnvia',    attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'], required: false },
+                { model: Empleados,     as: 'empleadoRecibe',   attributes: ['PrimerNombre', 'PrimerApellido'], required: false },
+                { model: PuntosDeVenta, as: 'tiendaOrigen',     attributes: ['nombreComercial'], required: false },
+                { model: CajasYBancos,  as: 'cajaBancoDestino', attributes: ['nombreCajaBanco', 'tipo', 'referencia'], required: false }
+            ]
+        });
+        if (!traslado) return res.status(404).json({ success: false, mensaje: 'Traslado no encontrado.' });
+
+        // La observación del despacho es el primer paso de la bitácora.
+        const salida = await TrasladoEfectivoHistorial.findOne({
+            where: { idTrasladosEfectivo: idTraslado, tipoTransaccion: 'Salida' },
+            order: [['idTransaccion', 'ASC']],
+            attributes: ['observacion'],
+            raw: true
+        });
+
+        const W = 227, MARGIN = 10, CW = W - MARGIN * 2, LOGO_H = 55;
+
+        const doc = new PDFDocument({
+            size: [W, 560],
+            margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
+            autoFirstPage: true
+        });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        const pdfEnd = new Promise(r => doc.on('end', r));
+
+        const hr = () => {
+            doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#BBBBBB').lineWidth(0.5).stroke();
+            doc.moveDown(0.4);
+        };
+
+        const fila = (label, valor) => {
+            const y = doc.y;
+            doc.font('Helvetica-Bold').fontSize(6.5).text(label, MARGIN, y, { width: CW * 0.38 });
+            doc.font('Helvetica').fontSize(6.5).text(String(valor), MARGIN + CW * 0.38, y, { width: CW * 0.62 });
+            doc.y = Math.max(doc.y, y + 11);
+            doc.moveDown(0.1);
+        };
+
+        // Línea de firma: el renglón y, debajo, para qué es. Se deja alto suficiente
+        // arriba para que quepa una firma de verdad y no un garabato apretado.
+        const firma = (rotulo, nombre) => {
+            doc.moveDown(2.2);
+            const y = doc.y;
+            doc.moveTo(MARGIN + 10, y).lineTo(MARGIN + CW - 10, y).strokeColor('#333333').lineWidth(0.5).stroke();
+            doc.y = y + 3;
+            doc.font('Helvetica-Bold').fontSize(6).text(rotulo, MARGIN, doc.y, { width: CW, align: 'center' });
+            doc.font('Helvetica').fontSize(6).text(nombre, MARGIN, doc.y, { width: CW, align: 'center' });
+        };
+
+        const logoX = MARGIN + (CW - LOGO_H) / 2;
+        doc.image(LOGO_PATH, logoX, MARGIN, { width: LOGO_H, height: LOGO_H });
+        doc.y = MARGIN + LOGO_H + 6;
+
+        doc.font('Helvetica-Bold').fontSize(9).text('TRASLADO DE EFECTIVO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.2);
+        doc.font('Helvetica-Bold').fontSize(8).text(traslado.codigoTraslado, MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.5);
+        hr();
+
+        const f = new Date(traslado.createdAt);
+        const fechaLarga = f.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'America/Bogota' }) +
+            ' ' + f.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' });
+
+        const destino = traslado.cajaBancoDestino
+            ? tituloLista(traslado.cajaBancoDestino.nombreCajaBanco) +
+              (traslado.cajaBancoDestino.referencia ? ` (${traslado.cajaBancoDestino.referencia})` : '')
+            : 'N/A';
+
+        fila('Origen:',  tituloLista(traslado.tiendaOrigen?.nombreComercial || 'N/A'));
+        fila('Destino:', destino);
+        if (traslado.referencia) fila('Referencia:', traslado.referencia);
+        fila('Fecha:',   fechaLarga);
+        fila('Estado:',  traslado.estado);
+
+        doc.moveDown(0.2); hr();
+
+        const envia = traslado.empleadoEnvia
+            ? `${traslado.empleadoEnvia.PrimerNombre} ${traslado.empleadoEnvia.PrimerApellido}`
+            : 'N/A';
+        fila('Trasladado por:', envia);
+        if (traslado.empleadoEnvia?.codigoEmpleado) fila('Código:', traslado.empleadoEnvia.codigoEmpleado);
+
+        if (salida?.observacion) {
+            doc.moveDown(0.2);
+            doc.font('Helvetica-Bold').fontSize(6.5).text('Observaciones:', MARGIN, doc.y, { width: CW });
+            doc.moveDown(0.1);
+            doc.font('Helvetica').fontSize(6.5).text(salida.observacion, MARGIN, doc.y, { width: CW });
+            doc.moveDown(0.3);
+        }
+
+        doc.moveDown(0.2); hr();
+
+        const valorStr = `$${Math.round(parseFloat(traslado.valorTraslado)).toLocaleString('es-CO')}`;
+        doc.font('Helvetica').fontSize(6.5).text('VALOR TRASLADADO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.1);
+        doc.font('Helvetica-Bold').fontSize(16).text(valorStr, MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.5);
+        hr();
+
+        firma('ENTREGA', envia);
+        // Si ya fue aceptado, el nombre de quien recibió va impreso; si no, el renglón
+        // queda para que lo firme quien reciba.
+        const recibe = traslado.empleadoRecibe
+            ? `${traslado.empleadoRecibe.PrimerNombre} ${traslado.empleadoRecibe.PrimerApellido}`
+            : 'Nombre y cédula';
+        firma('RECIBE', recibe);
+
+        doc.moveDown(1);
+        const footerCD = process.env.FOOTER_CODEDREAM || '';
+        if (footerCD) doc.font('Helvetica').fontSize(6).text(footerCD, MARGIN, doc.y, { width: CW, align: 'center' });
+
+        doc.end();
+        await pdfEnd;
+
+        const buf = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="traslado-${traslado.codigoTraslado}.pdf"`);
+        res.setHeader('Content-Length', buf.length);
+        return res.send(buf);
+
+    } catch (e) {
+        console.error('getTrasladoEfectivoPDF:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al generar el comprobante.' });
     }
 };
 
@@ -3382,9 +4038,11 @@ export {
     verificarTrasladosExpirados,
     getExpensesPage,
     crearEgreso,
-    getEgresosJSON,
+    getEgresosJSON, getEfectivoDisponible,
     getTotalEgresosHoy,
     getEgresoComprobantePDF,
+    crearTrasladoEfectivo,
+    getTrasladoEfectivoPDF,
     abrirCajaAPI,
     cuadrarCajaPage,
     getCuadreCajaDatos,

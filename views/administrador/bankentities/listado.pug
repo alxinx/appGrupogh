@@ -68,7 +68,7 @@ block contenedor
                                 //- 50% en escritorio, 100% en móvil (col-span-12 sin prefijo).
                                 div(class="col-span-12 md:col-span-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
                                     div(class="p-6 flex flex-wrap items-start justify-between gap-4")
-                                        div(class="flex items-center gap-3")
+                                        div(class="flex items-center gap-3 flex-wrap")
                                             div(class="w-12 h-12 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
                                                 img(src="/img/avatars/cajaRegistradora.webp" alt="Cajas" class="w-9 h-9 object-contain")
                                             div
@@ -92,10 +92,21 @@ block contenedor
                                                 each caja in cajasLista
                                                     tr(class="border-b border-gray-100 hover:bg-gray-50 transition-colors" data-id=caja.idCajaBanco)
                                                         td(class="px-4 py-4")
-                                                            div(class="flex items-center gap-3")
+                                                            div(class="flex items-center gap-3 flex-wrap")
                                                                 div(class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0")
                                                                     img(src="/img/avatars/cajaRegistradora.webp" alt="" class="w-7 h-7 object-contain")
                                                                 p(class="font-bold text-slate-800 text-sm leading-tight")= tc(caja.nombreCajaBanco)
+                                                                //- Campana de traslados por aceptar. Se renderiza siempre —oculta
+                                                                //- cuando no hay— para que el aviso que llega por SSE solo tenga
+                                                                //- que quitarle una clase, sin armar marcado desde JavaScript.
+                                                                span(
+                                                                    class=`campana-traslado ${caja.trasladosPendientes ? '' : 'hidden'}`
+                                                                    data-caja=caja.idCajaBanco
+                                                                    title=`${caja.trasladosPendientes || 0} traslado(s) de efectivo esperando que esta cuenta los acepte`
+                                                                )
+                                                                    i(class="fi fi-rr-bell")
+                                                                    span(class="campana-texto") Traslado pendiente por aceptar
+                                                                    span(class="campana-n")= caja.trasladosPendientes || 0
 
                                                         td(class="px-2 py-4 text-center text-xs font-mono text-slate-500")= caja.referencia || '—'
 
@@ -135,7 +146,7 @@ block contenedor
                                 //- ── BANCOS ────────────────────────────────────────────
                                 div(class="col-span-12 md:col-span-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
                                     div(class="p-6 flex flex-wrap items-start justify-between gap-4")
-                                        div(class="flex items-center gap-3")
+                                        div(class="flex items-center gap-3 flex-wrap")
                                             div(class="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0")
                                                 img(src="/img/avatars/banco.webp" alt="Bancos" class="w-9 h-9 object-contain")
                                             div
@@ -160,10 +171,21 @@ block contenedor
                                                 each banco in bancosLista
                                                     tr(class="border-b border-gray-100 hover:bg-gray-50 transition-colors" data-id=banco.idCajaBanco)
                                                         td(class="px-4 py-4")
-                                                            div(class="flex items-center gap-3")
+                                                            div(class="flex items-center gap-3 flex-wrap")
                                                                 div(class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0")
                                                                     img(src="/img/avatars/banco.webp" alt="" class="w-7 h-7 object-contain")
                                                                 p(class="font-bold text-slate-800 text-sm leading-tight")= tc(banco.nombreCajaBanco)
+                                                                //- Campana de traslados por aceptar. Se renderiza siempre —oculta
+                                                                //- cuando no hay— para que el aviso que llega por SSE solo tenga
+                                                                //- que quitarle una clase, sin armar marcado desde JavaScript.
+                                                                span(
+                                                                    class=`campana-traslado ${banco.trasladosPendientes ? '' : 'hidden'}`
+                                                                    data-caja=banco.idCajaBanco
+                                                                    title=`${banco.trasladosPendientes || 0} traslado(s) de efectivo esperando que esta cuenta los acepte`
+                                                                )
+                                                                    i(class="fi fi-rr-bell")
+                                                                    span(class="campana-texto") Traslado pendiente por aceptar
+                                                                    span(class="campana-n")= banco.trasladosPendientes || 0
 
                                                         td(class="px-2 py-4 text-center")
                                                             span(class=`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${banco.tipo === 'billetera' ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-blue-100 text-blue-700'}`)= banco.tipo === 'billetera' ? 'Billetera' : 'Banco'
@@ -231,7 +253,7 @@ block contenedor
                                                     tr(class="border-b border-gray-100 hover:bg-gray-50 transition-colors" data-id=ent.idEntidad)
 
                                                         td(class="px-6 py-4")
-                                                            div(class="flex items-center gap-3")
+                                                            div(class="flex items-center gap-3 flex-wrap")
                                                                 div(class=`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${est.caja}`)
                                                                     i(class=`fi ${est.icono} text-base`)
                                                                 div
@@ -297,7 +319,7 @@ block contenedor
 
                             //- ── PIE ───────────────────────────────────────────────────
                             div(class="col-span-12 bg-purple-50/60 border border-purple-100 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4")
-                                div(class="flex items-center gap-3")
+                                div(class="flex items-center gap-3 flex-wrap")
                                     div(class="w-11 h-11 rounded-2xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm")
                                         i(class="fi fi-rr-bulb text-purple-500 text-lg")
                                     div
@@ -314,7 +336,7 @@ block contenedor
             div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-modal)
             div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto")
                 div(class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-3")
-                    div(class="flex items-center gap-3")
+                    div(class="flex items-center gap-3 flex-wrap")
                         div(class="w-11 h-11 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
                             img(src="/img/avatars/cajaRegistradora.webp" alt="" class="w-8 h-8 object-contain")
                         div
@@ -359,7 +381,7 @@ block contenedor
             div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-modal)
             div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto")
                 div(class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-3")
-                    div(class="flex items-center gap-3")
+                    div(class="flex items-center gap-3 flex-wrap")
                         div(class="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0")
                             img(src="/img/avatars/banco.webp" alt="" class="w-8 h-8 object-contain")
                         div
@@ -415,7 +437,7 @@ block contenedor
             div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-modal)
             div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto")
                 div(class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-3")
-                    div(class="flex items-center gap-3")
+                    div(class="flex items-center gap-3 flex-wrap")
                         div(class="w-11 h-11 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
                             i(class="fi fi-rr-credit-card text-gh-primaryHover text-lg")
                         div

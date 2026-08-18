@@ -44,7 +44,8 @@ export default {
         adminDocsTienda     : '/src/js/adminDocsTienda.js',
         adminPedidosWeb     : '/src/js/adminPedidosWeb.js',
         adminPedidoDetalle  : '/src/js/adminPedidoDetalle.js',
-        storePedidosWeb     : '/src/js/storePedidosWeb.js'
+        storePedidosWeb     : '/src/js/storePedidosWeb.js',
+        adminAlertas        : '/src/js/adminAlertas.js'
     },
     output: {
         filename: '[name].js',

@@ -11,77 +11,125 @@ block contenedor
                 div(class="mainDashboard")
 
                     //- ── HEADER ──────────────────────────────────────────────────────────
-                    div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center gap-4")
-                        div(class="w-20 h-20 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-pink-300")
-                            i(class="fi fi-rr-expense text-white text-3xl")
+                    div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center gap-5")
+                        div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                            img(src="/img/avatars/egresos.webp" alt="Egresos y transferencias" class="w-17 h-17 object-contain")
                         div
-                            h1(class="h1") Egresos
-                            p(class="text-sm text-slate-400 mt-1") Registro y seguimiento de egresos de caja del punto de venta
+                            //- Clase explícita y no `.h1`: esa clase global lleva `text-center`,
+                            //- que en una cabecera con el ícono al lado corre el título al medio.
+                            //- Es la misma solución que usan Traslados y Pedidos Web.
+                            h1(class="text-2xl font-bold text-slate-800") Egresos y transferencias
+                            p(class="text-sm text-slate-400 mt-0.5") Registro y seguimiento de egresos y traslado de efectivo de caja del punto de venta
 
-                    //- ── STAT TOTAL HOY ──────────────────────────────────────────────────
-                    div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center gap-4")
-                        div(class="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0")
-                            i(class="fi fi-rr-coins text-xl")
-                        div
-                            p(class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-0.5") Total egresos de hoy
-                            p(id="stat-total-hoy" class="text-2xl font-bold text-slate-800") —
+                    //- ── RESUMEN DEL DÍA ─────────────────────────────────────────────────
+                    //- Dos números y no uno: lo que el negocio gastó y lo que solo cambió de
+                    //- lugar. Sumados son todo lo que salió del cajón hoy; separados dicen
+                    //- cuánto de eso se perdió de verdad y cuánto sigue siendo del negocio.
+                    div(class="col-span-12 grid grid-cols-1 sm:grid-cols-2 gap-4")
+
+                        div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center gap-4")
+                            div(class="egr-plato egr-plato--egreso")
+                                img(src="/img/avatars/cajaRegistradora.webp" alt="" class="w-11 h-11 object-contain")
+                            div(class="min-w-0")
+                                p(class="egr-stat-fila")
+                                    span(class="egr-stat-label") Total egresos de hoy
+                                p#stat-total-hoy(class="egr-stat-valor")
+                                    span(class="egr-hueso egr-hueso--valor")
+
+                        div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center gap-4")
+                            div(class="egr-plato egr-plato--traslado")
+                                img(src="/img/avatars/money.webp" alt="" class="w-11 h-11 object-contain")
+                            div(class="min-w-0")
+                                //- El aviso va junto al rótulo y no debajo de la cifra: califica
+                                //- a la métrica, no al número. Ahí además deja las dos tarjetas
+                                //- con la misma altura, que es lo que alinea los dos rótulos.
+                                //- Para conectarla: llamar a actualizarStatTransferido(total)
+                                //- con el dato del servidor; el aviso se retira solo.
+                                p(class="egr-stat-fila")
+                                    span(class="egr-stat-label") Efectivo transferido hoy
+                                    span#stat-transferido-aviso(class="egr-stat-nota")
+                                        i(class="fi fi-rr-plug text-[9px]")
+                                        | Sin conectar
+                                //- La raya dice "todavía no hay número". Es distinta del hueso
+                                //- del esqueleto de al lado, que dice "hay uno y está viniendo".
+                                p#stat-transferido-hoy(class="egr-stat-valor egr-stat-valor--espera") —
 
                     //- ── DOS COLUMNAS ─────────────────────────────────────────────────────
                     div(class="col-span-12 grid grid-cols-1 md:grid-cols-[65fr_35fr] gap-4 items-start")
 
-                        //- ── IZQUIERDA · LISTADO (70%) ──────────────────────────────
-                        div(class="bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col gap-4")
+                        //- ── IZQUIERDA · LISTADO ────────────────────────────────────
+                        div(class="bg-white/70 backdrop-blur-md rounded-2xl overflow-hidden flex flex-col")
 
-                            div(class="flex items-center gap-3 mb-2")
-                                div(class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500")
+                            div(class="p-6 pb-4 flex items-center gap-3")
+                                div(class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 flex-shrink-0")
                                     i(class="fi fi-rr-list text-lg")
                                 h2(class="h2 !mb-0") Egresos registrados
 
-                            div(class="bg-slate-50 rounded-xl p-4 grid grid-cols-2 gap-3")
-                                p(class="text-xs font-bold text-slate-500 uppercase tracking-wider col-span-2")
-                                    i(class="fi fi-rr-filter mr-1")
-                                    | Filtrar
-                                div(class="col-span-1 space-y-1")
-                                    label(class="text-xs text-slate-400") Desde
-                                    input(
-                                        type="date"
-                                        id="filtro-fecha-a"
-                                        class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-pink-300/40"
-                                    )
-                                div(class="col-span-1 space-y-1")
-                                    label(class="text-xs text-slate-400") Hasta
-                                    input(
-                                        type="date"
-                                        id="filtro-fecha-b"
-                                        class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-pink-300/40"
-                                    )
-                                div(class="col-span-2")
-                                    select(
-                                        id="filtro-estado"
-                                        class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-pink-300/40"
-                                    )
-                                        option(value="") Todos los estados
-                                        option(value="pendiente") Pendiente
-                                        option(value="liquidada") Liquidada
+                            //- ── FILTROS ────────────────────────────────────────────
+                            //- Los atajos van primero porque cubren lo que se consulta casi
+                            //- siempre —lo de hoy, lo de la semana—; las fechas exactas quedan
+                            //- para la excepción, que es buscar un egreso viejo puntual.
+                            div(class="px-6 pb-4 flex flex-col gap-3")
+                                div(class="flex flex-wrap items-center gap-2")
+                                    div#egr-atajos(class="egr-seg" role="group" aria-label="Rango de fechas")
+                                        button(type="button" data-rango="hoy"  class="egr-seg-btn") Hoy
+                                        button(type="button" data-rango="7d"   class="egr-seg-btn") 7 días
+                                        button(type="button" data-rango="mes"  class="egr-seg-btn") Este mes
+                                        button(type="button" data-rango=""     class="egr-seg-btn is-activo") Todo
 
-                            div(class="overflow-x-auto")
-                                table(class="w-full text-left border-collapse")
-                                    thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
-                                        tr
-                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600") Referencia
-                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600 whitespace-nowrap") Fecha y hora
-                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600") Descripción
-                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-right") Valor
-                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-center") Tipo
-                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-center") Estado
-                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-center") PDF
+                                    //- Solo aparece cuando hay algo que limpiar: un botón que no
+                                    //- hace nada enseña a ignorar los botones.
+                                    button#egr-limpiar(type="button" class="egr-limpiar hidden ml-auto px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-gh-primaryHover transition-colors cursor-pointer")
+                                        i(class="fi fi-rr-cross-small text-[11px]")
+                                        | Quitar filtros
+
+                                div(class="grid grid-cols-2 md:grid-cols-4 gap-2")
+                                    label(class="egr-campo")
+                                        span(class="egr-campo-label") Desde
+                                        input#filtro-fecha-a(type="date" class="egr-campo-input")
+                                    label(class="egr-campo")
+                                        span(class="egr-campo-label") Hasta
+                                        input#filtro-fecha-b(type="date" class="egr-campo-input")
+                                    label(class="egr-campo")
+                                        span(class="egr-campo-label") Tipo
+                                        select#filtro-tipo(class="egr-campo-input")
+                                            option(value="") Todos
+                                            option(value="Egreso") Egresos
+                                            option(value="Traslado") Traslados
+                                    label(class="egr-campo")
+                                        span(class="egr-campo-label") Estado
+                                        select#filtro-estado(class="egr-campo-input")
+                                            option(value="") Todos
+                                            option(value="pendiente") Pendiente
+                                            option(value="liquidada") Liquidada
+
+                            //- ── TABLA ──────────────────────────────────────────────
+                            //- En pantalla angosta cada fila se vuelve una tarjeta por CSS y no
+                            //- por un segundo render: dos plantillas para la misma fila se
+                            //- separan a la primera columna que se agrega en una sola de ellas.
+                            div(class="px-2 md:px-0")
+                                table(class="egr-tabla w-full text-left border-collapse")
+                                    thead
+                                        tr(class="border-y border-slate-100 bg-slate-50/60")
+                                            th(class="pl-6 pr-3 py-2.5 egr-th") Fecha
+                                            th(class="px-3 py-2.5 egr-th") Detalle
+                                            th(class="px-3 py-2.5 egr-th") Responsable
+                                            th(class="px-3 py-2.5 egr-th text-right") Valor
+                                            th(class="px-3 py-2.5 egr-th") Estado
+                                            th(class="pr-6 pl-3 py-2.5 egr-th text-right")
+                                                span(class="sr-only") Comprobante
                                     tbody#egr-tbody
-                                        tr
-                                            td(colspan="7" class="px-3 py-8 text-center text-gray-500 text-sm")
-                                                i(class="fi fi-rr-spinner animate-spin mr-2")
-                                                | Cargando egresos...
 
-                            div#egr-paginacion
+                            //- ── PIE ────────────────────────────────────────────────
+                            //- Sin números de página: el total no se conoce sin contarlo, y
+                            //- contar un libro que crece sin techo cuesta más que traer la
+                            //- página. Lo que sí se sabe es cuánto se lleva cargado.
+                            div(class="mt-auto px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3")
+                                p#egr-contador(class="text-xs text-slate-400")
+                                button#egr-cargar-mas(
+                                    type="button"
+                                    class="hidden px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors cursor-pointer"
+                                ) Cargar más
 
                         //- ── DERECHA · NUEVO EGRESO (30%) ──────────────────────────────
                         div(class="bg-white/70 backdrop-blur-md rounded-2xl p-6")
@@ -119,18 +167,37 @@ block contenedor
                                             autocomplete="off"
                                             class="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
                                         )
+                                    //- Tope de la transferencia: no se puede consignar más efectivo
+                                    //- del que hay en el cajón. Solo aparece al transferir.
+                                    p#egr-tope(class="hidden text-[10px] text-slate-400 mt-1")
+                                    p#egr-error-valor(class="hidden text-[10px] font-bold text-red-500 mt-1")
 
 
                                 div#egr-bloque-entidad(class="space-y-1 hidden")
                                     label(for="egr-entidad" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") ¿Con qué cuenta? *
                                     select#egr-entidad(class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all")
                                         option(value="") Seleccionar...
-                                        each ent in (entidades || [])
-                                            option(value=ent.idEntidad)= ent.nombreEntidad
+                                        //- Agrupadas por naturaleza del destino: pasar plata a otro cajón no
+                                        //- es lo mismo que consignarla, y el formulario cambia según cuál sea.
+                                        //- `data-tipo` es lo que lee el JS; `tc` solo normaliza el nombre para
+                                        //- mostrarlo, en la base queda como lo escribió quien la creó.
+                                        - var cajas = (cuentas || []).filter(function (c) { return c.tipo === 'caja' })
+                                        - var bancos = (cuentas || []).filter(function (c) { return c.tipo !== 'caja' })
+                                        - var rotulo = function (c) { return c.referencia ? tc(c.nombreCajaBanco) + ' — ' + c.referencia : tc(c.nombreCajaBanco) }
+                                        if cajas.length
+                                            optgroup(label="Cajas")
+                                                each c in cajas
+                                                    option(value=c.idCajaBanco data-tipo=c.tipo)= rotulo(c)
+                                        if bancos.length
+                                            optgroup(label="Bancos y billeteras")
+                                                each c in bancos
+                                                    option(value=c.idCajaBanco data-tipo=c.tipo)= rotulo(c)
+                                    if !(cuentas && cuentas.length)
+                                        p(class="text-[10px] font-bold text-amber-600 mt-1") No hay cajas ni cuentas activas. Activá una desde Cajas, bancos y métodos de pago.
                                     p#egr-error-entidad(class="hidden text-[10px] font-bold text-red-500 mt-1")
 
                                 div(class="space-y-1")
-                                    label(for="egr-referencia" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Referencia de Factura
+                                    label#egr-label-referencia(for="egr-referencia" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Referencia de Factura
                                     input(
                                         type="text"
                                         id="egr-referencia"
@@ -139,6 +206,29 @@ block contenedor
                                         autocomplete="off"
                                         class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
                                     )
+
+                                //- Comprobante de la consignación. Solo aparece cuando el destino es
+                                //- una cuenta: de un cajón a otro no hay recibo que adjuntar.
+                                div#egr-bloque-comprobante(class="space-y-1 hidden egr-revelar")
+                                    label(for="egr-comprobante" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Comprobante *
+                                    label(for="egr-comprobante" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500 hover:bg-white hover:border-gh-primary hover:text-gh-primaryHover transition-all cursor-pointer")
+                                        i(class="fi fi-rr-cloud-upload")
+                                        span#egr-comprobante-cta Adjuntar comprobante de la consignación
+                                    input#egr-comprobante(type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="hidden")
+                                    p(class="text-[10px] text-slate-400") JPG, PNG, WebP o PDF. Máximo 5MB.
+                                    //- Miniatura de lo elegido: sin verla no hay forma de saber si se
+                                    //- adjuntó la foto correcta antes de registrar.
+                                    div#egr-comprobante-previa(class="hidden items-center gap-3 pt-1")
+                                        img#egr-comprobante-img(alt="" class="w-12 h-12 rounded-lg object-cover border border-slate-200 flex-shrink-0")
+                                        //- Un PDF no tiene miniatura: en su lugar va este recuadro.
+                                        div#egr-comprobante-pdf(class="hidden w-12 h-12 rounded-lg border border-slate-200 bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0")
+                                            i(class="fi fi-rr-file-pdf")
+                                        div(class="min-w-0 flex-1")
+                                            p#egr-comprobante-nombre(class="text-xs font-semibold text-slate-700 truncate")
+                                            p#egr-comprobante-peso(class="text-[10px] text-slate-400")
+                                        button#egr-comprobante-quitar(type="button" aria-label="Quitar comprobante" class="w-7 h-7 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer flex-shrink-0")
+                                            i(class="fi fi-rr-cross-small text-xs")
+                                    p#egr-error-comprobante(class="hidden text-[10px] font-bold text-red-500 mt-1")
 
                                 div(class="space-y-1")
                                     label(for="egr-empleado" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Código de Empleado *
@@ -155,7 +245,9 @@ block contenedor
                                     p(id="egr-feedback-emp" class="text-xs ml-1 h-4 transition-colors")
 
                                 div(class="space-y-1")
-                                    label(for="egr-descripcion" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Descripción
+                                    label(for="egr-descripcion" class="text-xs font-bold text-slate-500 uppercase tracking-wider block")
+                                        | Descripción
+                                        span(class="normal-case tracking-normal font-normal text-slate-400")  (opcional)
                                     textarea(
                                         id="egr-descripcion"
                                         rows="3"
@@ -171,10 +263,238 @@ block contenedor
                                     class="w-full btn btn-primary py-3 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                 )
                                     i(class="fi fi-rr-disk")
-                                    | Registrar Egreso
+                                    span#egr-submit-texto Registrar Egreso
+
+                                //- Un botón apagado sin explicación obliga a adivinar. Acá dice qué
+                                //- falta, que es lo que el operador necesita para terminar.
+                                p#egr-falta(class="text-[11px] text-slate-400 text-center -mt-1")
+
+    //- Hoja de la ventana que confirma el egreso antes de asentarlo. Es la misma
+    //- que usa el perfil de una caja o banco: los dos son dinero saliendo y no
+    //- tendrían por qué verse distinto.
+    include ../../components/modalConfirmacion
+
+    //- Hoja del listado y del formulario. Va como CSS propio y no como utilidades
+    //- porque casi todo esto vive en filas que arma el JavaScript: ese marcado no lo ve
+    //- el escáner de clases de Tailwind y las utilidades nuevas no llegarían a
+    //- output.css. Los colores salen de los mismos tokens del tema.
+    style.
+        /* ── Resumen del día ───────────────────────────────────────────────── */
+        /* Mismo cristal que el avatar de la cabecera —degradado en diagonal más una
+           sombra interior, que es lo que hace leer el plato como una pieza y no como un
+           cuadro de color— pero teñido según el sentido de la cifra: rosa lo que sale
+           del negocio, ámbar lo que solo cambia de cuenta. Es el mismo par que usan la
+           tabla y la ventana de confirmación. */
+        .egr-plato {
+            width: 3.5rem; height: 3.5rem; border-radius: 999px; flex-shrink: 0;
+            display: grid; place-items: center;
+        }
+        .egr-plato--egreso {
+            background: linear-gradient(148deg, #FFF7F7 0%, #FFE4E6 100%);
+            box-shadow: inset 0 2px 8px -3px rgb(159 18 57 / 0.28);
+        }
+        .egr-plato--traslado {
+            background: linear-gradient(148deg, #FFFDF5 0%, #FEF3C7 100%);
+            box-shadow: inset 0 2px 8px -3px rgb(120 53 15 / 0.26);
+        }
+
+        /* Alto mínimo del renglón del rótulo: la tarjeta que lleva aviso mide un par de
+           píxeles más que la que no, y con las dos cifras una al lado de la otra ese
+           desnivel se ve. */
+        .egr-stat-fila {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+            min-height: 1.125rem;
+        }
+        .egr-stat-label {
+            font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; color: #64748B;
+        }
+        /* El número lleva las cifras proporcionales del tipo, no `tabular-nums`: la
+           tabular le da a cada dígito el ancho de un cero y a este tamaño una cifra
+           como "$30.000" se ve suelta. La tabular es para columnas que se alinean. */
+        .egr-stat-valor {
+            margin-top: 0.125rem;
+            font-size: 1.875rem; line-height: 1.15; font-weight: 700;
+            letter-spacing: -0.025em; color: #1E293B;
+        }
+        .egr-stat-valor--espera { color: #94A3B8; }
+        .egr-hueso--valor { width: 6.5rem; height: 1.125rem; margin-top: 0.375rem; }
+
+        .egr-stat-nota {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            margin-top: 0.25rem; padding: 0.0625rem 0.375rem;
+            border-radius: 999px; background: #F1F5F9;
+            font-size: 0.625rem; font-weight: 600; color: #64748B;
+        }
+
+        @media (max-width: 400px) {
+            .egr-plato { width: 3rem; height: 3rem; }
+            .egr-stat-valor { font-size: 1.625rem; }
+        }
+
+        /* ── Filtros ───────────────────────────────────────────────────────── */
+        .egr-seg {
+            display: inline-flex; padding: 0.1875rem; gap: 0.125rem;
+            border-radius: var(--radius-gh, 12px);
+            background: #F1F5F9;
+        }
+        .egr-seg-btn {
+            padding: 0.375rem 0.75rem; border-radius: 0.5rem;
+            font-size: 0.75rem; font-weight: 600; color: #64748B;
+            border: none; background: transparent; cursor: pointer;
+            transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+        }
+        .egr-seg-btn:hover { color: #334155; }
+        /* El activo se levanta sobre la ranura en vez de teñirse: el rosa de marca está
+           reservado para acciones, y acá no se está accionando nada, se está mirando. */
+        .egr-seg-btn.is-activo {
+            background: #fff; color: #1E293B;
+            box-shadow: 0 1px 2px rgb(15 23 42 / 0.10), 0 1px 3px -1px rgb(15 23 42 / 0.08);
+        }
+        .egr-seg-btn:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+
+        .egr-campo { display: flex; flex-direction: column; gap: 0.25rem; }
+        .egr-campo-label { font-size: 0.625rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #64748B; }
+        .egr-campo-input {
+            width: 100%; padding: 0.4375rem 0.625rem;
+            border: 1px solid #E2E8F0; border-radius: 0.625rem;
+            background: #fff; color: #334155; font-size: 0.75rem;
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        .egr-campo-input:focus {
+            outline: none; border-color: var(--color-gh-primary, #F794C9);
+            box-shadow: 0 0 0 3px rgb(247 148 201 / 0.25);
+        }
+
+        /* ── Tabla ─────────────────────────────────────────────────────────── */
+        .egr-th {
+            font-size: 0.625rem; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; color: #64748B; white-space: nowrap;
+        }
+        .egr-sin-filas thead { display: none; }
+        .egr-fila { border-bottom: 1px solid #F1F5F9; transition: background-color .15s ease; }
+        .egr-fila:hover { background: #FDF6FA; }
+        .egr-fila td { padding: 0.75rem; vertical-align: middle; }
+        .egr-fila td:first-child { padding-left: 1.5rem; }
+        .egr-fila td:last-child  { padding-right: 1.5rem; }
+
+        .egr-fecha  { font-size: 0.8125rem; font-weight: 600; color: #334155; white-space: nowrap; }
+        .egr-hora   { font-size: 0.6875rem; color: #64748B; white-space: nowrap; }
+        .egr-desc   { font-size: 0.8125rem; font-weight: 600; color: #1E293B; line-height: 1.35; }
+        .egr-desc--vacia { color: #94A3B8; font-weight: 400; font-style: italic; }
+        .egr-meta   { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; margin-top: 0.25rem; font-size: 0.6875rem; color: #64748B; }
+        .egr-meta-sep { color: #CBD5E1; }
+        .egr-ref    { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #64748B; }
+        .egr-quien  {
+            display: block; font-size: 0.75rem; color: #64748B;
+            max-width: 9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .egr-valor  { font-size: 0.875rem; font-weight: 700; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+        /* Rosa para lo que sale del negocio, ámbar para lo que solo cambia de lugar.
+           El color fuerte se lo lleva el VALOR, que es el dato que se barre con la
+           vista; el chip del tipo queda en contorno con un punto del mismo color. Si el
+           chip también fuera relleno, "Traslado" en ámbar chocaría en la misma fila con
+           el "Pendiente" ámbar del estado: dos pastillas del mismo color diciendo cosas
+           distintas es peor que no tener color. */
+        .egr-tipo {
+            display: inline-flex; align-items: center; gap: 0.3125rem;
+            padding: 0.0625rem 0.4375rem 0.0625rem 0.375rem; border-radius: 999px;
+            border: 1px solid #E2E8F0; background: #fff; color: #64748B;
+            font-size: 0.625rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+        }
+        .egr-tipo::before { content: ''; width: 0.3125rem; height: 0.3125rem; border-radius: 999px; flex-shrink: 0; }
+        .egr-tipo--egreso::before   { background: #E11D48; }
+        .egr-tipo--traslado::before { background: #D97706; }
+        .egr-valor--egreso   { color: #BE123C; }
+        .egr-valor--traslado { color: #B45309; }
+
+        /* A dónde fue la plata va en su propia línea: encadenarlo con un separador deja
+           el punto medio colgando al final del renglón cuando la línea se parte. */
+        .egr-destino {
+            display: flex; align-items: center; gap: 0.25rem;
+            margin-top: 0.1875rem; font-size: 0.6875rem; color: #64748B;
+        }
+
+        .egr-pdf {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 2rem; height: 2rem; border-radius: 0.625rem;
+            color: #64748B; transition: background-color .15s ease, color .15s ease;
+        }
+        .egr-pdf:hover { background: #FFE4E6; color: #BE123C; }
+        .egr-pdf:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+
+        /* Tailwind resuelve `hidden` e `inline-flex` con la misma especificidad, así que
+           gana el que salga último en output.css y el botón se mostraba igual. Acá el
+           estado oculto se declara con dos clases y no hay empate que resolver. */
+        .egr-limpiar { display: inline-flex; align-items: center; gap: 0.375rem; }
+        .egr-limpiar.hidden { display: none; }
+
+        /* ── Carga ─────────────────────────────────────────────────────────── */
+        /* Barras del ancho de lo que van a reemplazar, no un spinner al medio: la tabla
+           no salta cuando llegan los datos y se ve de entrada qué forma va a tener. */
+        .egr-hueso {
+            display: block; height: 0.625rem; border-radius: 999px; background: #EEF2F7;
+            animation: egrLatido 1.4s ease-in-out infinite;
+        }
+        .egr-esqueleto td { padding: 0.875rem 0.75rem; }
+        .egr-esqueleto:first-child { border-top: none; }
+        @keyframes egrLatido { 50% { opacity: .45; } }
+        .egr-esqueleto { animation: egrLatido 1.4s ease-in-out infinite; }
+
+        /* ── Entrada de filas ──────────────────────────────────────────────── */
+        /* Un único momento de movimiento, compartido por el bloque que se revela en el
+           formulario y por las filas que llegan. */
+        @keyframes egrRevelar {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: none; }
+        }
+        .egr-revelar:not(.hidden) { animation: egrRevelar .24s cubic-bezier(.16, 1, .3, 1) both; }
+        .egr-entra { animation: egrRevelar .22s cubic-bezier(.16, 1, .3, 1) both; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .egr-revelar:not(.hidden), .egr-entra, .egr-esqueleto, .egr-hueso { animation: none; }
+        }
+
+        /* ── Angosto: cada fila es una tarjeta ─────────────────────────────── */
+        /* Una tabla de seis columnas dentro de un scroll horizontal obliga a arrastrar
+           para leer el valor, que es justo el dato por el que se abre la pantalla. */
+        @media (max-width: 767px) {
+            .egr-tabla thead { display: none; }
+            .egr-tabla, .egr-tabla tbody, .egr-tabla tr, .egr-tabla td { display: block; }
+            .egr-tabla tr.egr-fila {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                grid-template-areas:
+                    "detalle valor"
+                    "fecha   estado"
+                    "quien   pdf";
+                /* Alineado arriba y no al centro: el valor tiene que quedar a la altura
+                   del título, no flotando a media tarjeta cuando el detalle ocupa tres
+                   líneas y el valor una. */
+                align-items: start;
+                gap: 0.25rem 0.75rem;
+                padding: 0.875rem 1rem;
+                margin-bottom: 0.5rem;
+                border: 1px solid #F1F5F9;
+                border-radius: var(--radius-gh, 12px);
+                background: #fff;
+            }
+            .egr-fila td { padding: 0 !important; }
+            .egr-c-fecha  { grid-area: fecha; display: flex; align-items: baseline; gap: 0.375rem; }
+            .egr-c-detalle{ grid-area: detalle; }
+            .egr-c-quien  { grid-area: quien; }
+            .egr-c-quien .egr-quien { max-width: none; }
+            .egr-c-valor  { grid-area: valor; }
+            .egr-c-estado { grid-area: estado; justify-self: end; align-self: center; }
+            .egr-c-pdf    { grid-area: pdf; justify-self: end; align-self: center; }
+            .egr-c-fecha, .egr-c-quien { align-self: center; }
+            .egr-vacio-fila td, .egr-esqueleto td { border: none; }
+            .egr-tabla tr.egr-esqueleto { display: block; padding: 0.75rem 1rem; }
+        }
 
     input#csrf-token(type="hidden" value=csrfToken)
     script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
     script(src="/js/helpers.js")
-    script(src="/js/paginador.js")
+    //- Sin paginador.js: este listado pagina por cursor y no tiene números de página.
     script(src="/js/storeEgresos.js")

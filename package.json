@@ -20,8 +20,12 @@
     "db:migrar-cajas-bancos": "node ./seed/migracionCajasYBancos.js",
     "db:migrar-egreso-tipo": "node ./seed/migracionEgresoTipo.js",
     "db:migrar-egreso-metodo": "node ./seed/migracionEgresoMetodoPago.js",
+    "db:migrar-egreso-indices": "node ./seed/migracionIndicesEgresos.js",
+    "db:migrar-egreso-traslado": "node ./seed/migracionEgresoTrasladoEfectivo.js",
     "db:migrar-traslado-historial": "node ./seed/migracionTrasladoEfectivoHistorial.js",
     "db:migrar-traslado-efectivo": "node ./seed/migracionTrasladoEfectivo.js",
+    "db:migrar-traslado-referencia": "node ./seed/migracionTrasladoReferencia.js",
+    "db:rellenar-traslado-referencia": "node ./seed/migracionRellenarReferenciaTraslado.js",
     "db:migrar-movimientos": "node ./seed/migracionMovimientosCaja.js",
     "db:eliminar-cajas": "node ./seed/migracionEliminarCajas.js",
     "db:migrar-costo": "node ./seed/migracionCostoProducto.js"

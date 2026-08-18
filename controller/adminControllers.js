@@ -16,6 +16,7 @@ import dotenv from 'dotenv';
 import db from "../config/bd.js";
 import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
+import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
@@ -4777,10 +4778,16 @@ const listarEntidades = async (req, res) => {
         });
         const mapaSaldo = Object.fromEntries(saldos.map(s => [s.idCajaBanco, s]));
 
+        // Traslados de efectivo que esta cuenta todavía no aceptó: plata que salió del
+        // cajón de una tienda y no está asentada en ningún saldo. Una sola consulta
+        // agrupada para todas las cuentas, no una por fila.
+        const { porCuenta: trasladosPorCuenta } = await resumenPendientes();
+
         const conSaldo = (c) => ({
             ...c,
             saldo:       mapaSaldo[c.idCajaBanco]?.saldo ?? '0.00',
-            movimientos: parseInt(mapaSaldo[c.idCajaBanco]?.movimientos) || 0
+            movimientos: parseInt(mapaSaldo[c.idCajaBanco]?.movimientos) || 0,
+            trasladosPendientes: trasladosPorCuenta[c.idCajaBanco] || 0
         });
 
         // La vista arma dos tablas distintas: efectivo por un lado, cuentas por el otro.
@@ -4961,7 +4968,7 @@ const verPerfilCajaBanco = async (req, res) => {
         const inicioMes = new Date();
         inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
 
-        const [totales, delMes, { movimientos, cursorSiguiente }] = await Promise.all([
+        const [totales, delMes, { movimientos, cursorSiguiente }, trasladosPendientes] = await Promise.all([
             MovimientosCajasBancos.findAll({
                 where: { idCajaBanco: cuenta.idCajaBanco },
                 attributes: [[SUMA_CON_SIGNO, 'saldo']],
@@ -4979,7 +4986,10 @@ const verPerfilCajaBanco = async (req, res) => {
                 group: ['tipo'],
                 raw: true
             }),
-            listarMovimientosCuenta(req.params.idCajaBanco, {})
+            listarMovimientosCuenta(req.params.idCajaBanco, {}),
+            // Van aparte del libro y no paginados: un traslado en tránsito todavía no es
+            // un movimiento, y son pocos por definición —lo que espera aceptación—.
+            listarPendientesDeCuenta(req.params.idCajaBanco)
         ]);
 
         const porTipo = Object.fromEntries(delMes.map(r => [r.tipo, r]));
@@ -5001,6 +5011,7 @@ const verPerfilCajaBanco = async (req, res) => {
             resumen,
             movimientos,
             cursorSiguiente,
+            trasladosPendientes,
             filtros: { desde: '', hasta: '', ahora: iso(ahora).slice(0, 16) }
         });
     } catch (e) {

@@ -54,11 +54,24 @@ aside(
         a(href="/admin/dosificaciones/new" class="submenu-item") Dosificar productos
 
     
-    // Cajas, bancos y métodos de pago (submenu)
-    a(
-      href="/admin/bankentities/listado"  class=`menu-item ${currentPath === '/bankentities/listado' ? 'active' : ''}`)
-      i(class="fi fi-rr-bank text-lg")
-      span Cajas, bancos y métodos de pago
+    //- Cajas, bancos y métodos de pago.
+    //- `trasladosPendientes` lo inyecta cargarContadoresAdmin: traslados de efectivo en
+    //- tránsito, o sea plata que ya salió del cajón de una tienda y todavía no está
+    //- asentada en ninguna cuenta. Mismo tratamiento que Tienda Web —badge que alterna
+    //- con un banner— porque es el mismo tipo de aviso: algo espera una acción del admin.
+    //- El id del enlace y los data-* son los que actualiza adminAlertas.js en vivo.
+    - const trasladosPorAceptar = typeof trasladosPendientes === 'number' ? trasladosPendientes : 0
+    a#menu-cajas-bancos(
+      href="/admin/bankentities/listado"
+      class=`menu-item ${trasladosPorAceptar > 0 ? 'has-alert' : ''} ${currentPath === '/bankentities/listado' ? 'active' : ''}`)
+      div(class="menu-alert-normal")
+        i(class="fi fi-rr-bank text-lg")
+        span Cajas, bancos y métodos de pago
+        span#menu-traslados-badge(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${trasladosPorAceptar > 0 ? '' : 'hidden'}`)= trasladosPorAceptar
+      div(class="menu-alert-banner bg-gh-primaryHover text-white")
+        i(class="fi fi-rr-bell text-base flex-shrink-0")
+        span#menu-traslados-texto(class="text-xs font-semibold leading-snug")
+          = trasladosPorAceptar === 1 ? '1 traslado pendiente por aceptar' : `${trasladosPorAceptar} traslados pendientes por aceptar`
 
       
 
@@ -82,26 +95,28 @@ aside(
     //- es decir pagados y todavía sin tienda asignada). Sin pendientes no hay badge ni banner:
     //- el ítem se comporta como cualquier otro del menú.
     - const pedidosPorAtender = typeof pedidosWebNuevos === 'number' ? pedidosWebNuevos : 0
-    if pedidosPorAtender > 0
-      a(href="/admin/web/" class=`menu-item relative h-14 p-0 overflow-hidden ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
-        div(class="menu-alert-normal absolute inset-0 flex items-center gap-3 px-4")
-          i(class="fi fi-rr-shop text-lg")
-          span Tienda Web
-          span(class="animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300")= pedidosPorAtender
-        div(class="menu-alert-banner absolute inset-0 flex items-center gap-2.5 px-4 bg-gh-primaryHover text-white")
-          i(class="fi fi-rr-bell text-base flex-shrink-0")
-          span(class="text-xs font-semibold leading-snug")
-            = pedidosPorAtender === 1 ? '1 pedido nuevo por atender' : `${pedidosPorAtender} pedidos nuevos por atender`
-    else
-      a(href="/admin/web/" class=`menu-item ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
+    a#menu-tienda-web(
+      href="/admin/web/"
+      class=`menu-item ${pedidosPorAtender > 0 ? 'has-alert' : ''} ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
+      div(class="menu-alert-normal")
         i(class="fi fi-rr-shop text-lg")
         span Tienda Web
+        span#menu-pedidos-badge(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${pedidosPorAtender > 0 ? '' : 'hidden'}`)= pedidosPorAtender
+      div(class="menu-alert-banner bg-gh-primaryHover text-white")
+        i(class="fi fi-rr-bell text-base flex-shrink-0")
+        span#menu-pedidos-texto(class="text-xs font-semibold leading-snug")
+          = pedidosPorAtender === 1 ? '1 pedido nuevo por atender' : `${pedidosPorAtender} pedidos nuevos por atender`
 
     a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
       i(class="fi fi-rr-settings text-lg")
       span Settings
 
    
+  //- Mantiene los dos avisos del menú al día por SSE, sin recargar la página. Va en el
+  //- menú y no en el layout porque el layout lo comparten el panel de tienda y el sitio
+  //- web, que no tienen /admin/sse.
+  script(src="/js/adminAlertas.js")
+
   // Logout
   div(class="p-4 border-t border-gray-300")
     form(action="/logout" method="POST")

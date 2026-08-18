@@ -133,6 +133,56 @@ block contenedor
                                                     th(class="px-4 py-3 text-center text-gray-600 whitespace-nowrap") Soporte
 
                                             tbody(class="divide-y divide-slate-100")
+                                                //- ── TRASLADOS POR ACEPTAR ─────────────────────────
+                                                //- Van fijos arriba y no mezclados en el libro: un traslado
+                                                //- en tránsito TODAVÍA NO es un movimiento —no tiene
+                                                //- idMovimiento y no entra en ningún saldo—, así que no
+                                                //- puede ocupar una fila del libro ni mostrar saldo corrido.
+                                                //- Se quedan arriba aunque se filtre por fecha o por tipo:
+                                                //- son lo que espera una acción, no historia que se consulta.
+                                                each t in (trasladosPendientes || [])
+                                                    tr(
+                                                        class="fila-traslado"
+                                                        tabindex="0"
+                                                        role="button"
+                                                        aria-label=`Revisar traslado ${t.codigo} por ${pesos(t.valor)}`
+                                                        data-traslado=JSON.stringify(t)
+                                                    )
+                                                        td(class="px-4 py-3 whitespace-nowrap")
+                                                            p(class="text-sm font-semibold text-amber-900")= t.fecha
+                                                            p(class="text-xs text-amber-700/70")= t.hora
+
+                                                        td(class="px-3 py-3 text-center")
+                                                            span(class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-amber-200 text-amber-900")
+                                                                i(class="fi fi-rr-bell text-[10px]")
+                                                                | Por aceptar
+
+                                                        td(class="px-3 py-3")
+                                                            p(class="text-sm font-bold text-amber-900 leading-tight")= `Traslado de efectivo desde ${tc(t.origen)}`
+                                                            p(class="text-xs text-amber-700/80 mt-0.5")= `Despachado por ${tc(t.envia)}`
+
+                                                        td(class="px-3 py-3 text-xs font-mono text-amber-800 whitespace-nowrap")
+                                                            p= t.codigo
+                                                            if t.referencia
+                                                                p(class="text-amber-700/70")= t.referencia
+
+                                                        td(class="px-3 py-3 text-right whitespace-nowrap")
+                                                            span(class="text-sm font-bold text-amber-800")= '+' + pesos(t.valor)
+
+                                                        //- Sin saldo: esta plata no entró a la cuenta todavía.
+                                                        //- Un número acá sería decir que el saldo ya la incluye.
+                                                        td(class="px-3 py-3 text-right text-sm text-amber-700/50") —
+
+                                                        td(class="px-3 py-3 text-sm text-amber-800 whitespace-nowrap")= tc(t.envia)
+
+                                                        td(class="px-4 py-3 text-center")
+                                                            if t.adjuntos.length
+                                                                span(class="inline-flex items-center gap-1 text-amber-800" title=`${t.adjuntos.length} comprobante(s)`)
+                                                                    i(class="fi fi-rr-clip text-sm")
+                                                                    span(class="text-xs font-semibold")= t.adjuntos.length
+                                                            else
+                                                                span(class="text-xs text-amber-700/40") —
+
                                                 each mov in movimientos
                                                     tr(class="mov-fila border-b border-gray-100 hover:bg-gray-50 transition-colors" data-iso=mov.iso data-tipo=mov.tipo)
                                                         td(class="px-4 py-3 whitespace-nowrap")
@@ -211,6 +261,7 @@ block contenedor
                                     class=`bg-white rounded-2xl p-6 border transition-all duration-300 ${cuenta.estado ? '' : 'gh-card-bloqueada'}`
                                     data-saldo=resumen.saldo
                                     data-cuenta=cuenta.nombreCajaBanco
+                                    data-referencia=cuenta.referencia || ''
                                     data-tipo-cuenta=cuenta.tipo
                                     data-activa=cuenta.estado ? '1' : '0'
                                 )
@@ -287,120 +338,13 @@ block contenedor
 
                                         button#btn-guardar-movimiento(type="button" class="w-full py-3 rounded-2xl font-bold text-sm text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors cursor-pointer") Guardar movimiento
 
-        //- ── CONFIRMACIÓN DE UN MOVIMIENTO ────────────────────────────────────
-        //- Escrito como CSS propio y no como utilidades de Tailwind porque vive dentro
-        //- del HTML que inyecta SweetAlert2: ese marcado no lo ve el escáner de clases
-        //- de Tailwind, así que las utilidades nuevas no llegarían a output.css. Los
-        //- colores salen de las mismas variables del tema que usa el resto del panel.
+        //- La hoja de la ventana de confirmación vive aparte: la comparten esta
+        //- pantalla y la de egresos de tienda.
+        include ../../components/modalConfirmacion
+
+        //- Lo que sigue es solo de esta pantalla: el formulario de edición que va
+        //- dentro de la ventana y el cristal que sella una cuenta inactiva.
         style.
-            .gh-conf-popup {
-                padding: 0;
-                border-radius: 1rem;
-                overflow: hidden;
-                background: #fff;
-                /* Una sola declaración de elevación: sombra, sin borde encima. */
-                box-shadow: 0 18px 45px -12px rgb(15 23 42 / 0.28), 0 6px 14px -8px rgb(15 23 42 / 0.18);
-                border: none;
-                width: 30rem;
-                max-width: calc(100vw - 2rem);
-            }
-            /* SweetAlert2 acolcha su contenedor de contenido por defecto; sin anular eso
-               la cabecera tintada queda flotando dentro de un marco blanco en vez de
-               llegar al borde de la ventana. */
-            .gh-conf-html-container { padding: 0 !important; margin: 0 !important; }
-            .gh-conf-html { margin: 0; text-align: left; }
-
-            /* Cabecera tintada según el sentido del movimiento: el monto es lo que hay
-               que releer antes de confirmar, así que es lo más grande de la ventana. */
-            .gh-conf-cabecera { padding: 1.5rem 1.75rem 1.375rem; }
-            .gh-conf-badge {
-                display: inline-flex; align-items: center; gap: 0.375rem;
-                padding: 0.25rem 0.625rem; border-radius: 999px;
-                font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-            }
-            .gh-conf-monto {
-                margin-top: 0.75rem;
-                font-size: 2.25rem; line-height: 1.1; font-weight: 700;
-                letter-spacing: -0.03em;
-                font-variant-numeric: tabular-nums;
-            }
-            .gh-conf-cuenta { margin-top: 0.25rem; font-size: 0.8125rem; font-weight: 500; }
-            .gh-conf-cuenta strong { font-weight: 700; }
-
-            /* Efecto sobre el saldo: la razón de ser de esta ventana. */
-            .gh-conf-saldo {
-                display: flex; align-items: baseline; justify-content: space-between;
-                gap: 1rem; padding: 0.875rem 1.75rem;
-                border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9;
-                background: #FAFAFA;
-            }
-            .gh-conf-saldo-bloque { display: flex; flex-direction: column; gap: 0.125rem; }
-            .gh-conf-saldo-label { font-size: 0.6875rem; font-weight: 600; color: #64748B; }
-            .gh-conf-saldo-valor {
-                font-size: 0.9375rem; font-weight: 600; color: #475569;
-                font-variant-numeric: tabular-nums;
-            }
-            .gh-conf-saldo-bloque--final { text-align: right; }
-            .gh-conf-saldo-bloque--final .gh-conf-saldo-valor { font-size: 1.125rem; font-weight: 700; }
-            .gh-conf-flecha { color: #CBD5E1; font-size: 0.75rem; align-self: center; }
-            .gh-conf-negativo { color: #DC2626 !important; }
-
-            /* El resto del asiento, en pares etiqueta/valor. */
-            .gh-conf-detalle { padding: 1.125rem 1.75rem 0.25rem; display: flex; flex-direction: column; gap: 0.625rem; }
-            .gh-conf-fila { display: flex; align-items: flex-start; gap: 1rem; font-size: 0.8125rem; }
-            .gh-conf-fila dt { flex: 0 0 6.5rem; color: #64748B; font-weight: 600; }
-            .gh-conf-fila dd { margin: 0; flex: 1; color: #1E293B; font-weight: 500; overflow-wrap: anywhere; }
-            .gh-conf-fila dd.gh-conf-vacio { color: #94A3B8; font-weight: 400; }
-            .gh-conf-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-
-            .gh-conf-aviso {
-                margin: 1.125rem 1.75rem 0;
-                display: flex; gap: 0.625rem; align-items: flex-start;
-                padding: 0.75rem 0.875rem; border-radius: var(--radius-gh, 12px);
-                background: #F8FAFC; border: 1px solid #E2E8F0;
-                font-size: 0.75rem; line-height: 1.45; color: #475569;
-            }
-            .gh-conf-aviso i { color: #94A3B8; font-size: 0.875rem; flex-shrink: 0; margin-top: 0.0625rem; }
-
-            .gh-conf-acciones { display: flex; padding: 1.25rem 1.75rem 1.75rem; gap: 0.625rem; margin: 0; }
-            .gh-conf-btn {
-                flex: 1; padding: 0.75rem 1rem; border-radius: var(--radius-gh, 12px);
-                font-size: 0.875rem; font-weight: 700; cursor: pointer;
-                border: 1px solid transparent; margin: 0;
-                transition: background-color .15s ease, border-color .15s ease, color .15s ease;
-            }
-            .gh-conf-btn:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
-            .gh-conf-cancelar { background: #fff; border-color: var(--color-gh-grayBorder, #E5E7EB); color: var(--color-gh-grayText, #4B5563); }
-            .gh-conf-cancelar:hover { background: #F8FAFC; border-color: #CBD5E1; }
-            .gh-conf-confirmar { color: #fff; }
-            .gh-conf-confirmar:disabled { opacity: .65; cursor: progress; }
-
-            /* Ingreso en esmeralda, egreso en rosa: el mismo código de color que el
-               badge de la tabla, el resplandor de la tarjeta y el monto de la fila.
-               Los tonos son los que pasan 4.5:1 sobre su propio fondo. */
-            .gh-conf--ingreso .gh-conf-cabecera { background: #ECFDF5; }
-            .gh-conf--ingreso .gh-conf-badge    { background: #A7F3D0; color: #065F46; }
-            .gh-conf--ingreso .gh-conf-monto,
-            .gh-conf--ingreso .gh-conf-cuenta   { color: #047857; }
-            .gh-conf--ingreso .gh-conf-confirmar        { background: #047857; }
-            .gh-conf--ingreso .gh-conf-confirmar:hover  { background: #065F46; }
-
-            .gh-conf--egreso .gh-conf-cabecera { background: #FFF1F2; }
-            .gh-conf--egreso .gh-conf-badge    { background: #FECDD3; color: #9F1239; }
-            .gh-conf--egreso .gh-conf-monto,
-            .gh-conf--egreso .gh-conf-cuenta   { color: #BE123C; }
-            .gh-conf--egreso .gh-conf-confirmar       { background: #E11D48; }
-            .gh-conf--egreso .gh-conf-confirmar:hover { background: #BE123C; }
-
-            /* Variante neutra: la edición de la cuenta no mueve plata, así que no toma
-               ni el verde ni el rojo. Ésos significan "entra" y "sale" en esta pantalla
-               y gastarlos en otra cosa los vaciaría de sentido. */
-            .gh-conf--neutro .gh-conf-cabecera { background: #F1F5F9; }
-            .gh-conf--neutro .gh-conf-badge    { background: #E2E8F0; color: #334155; }
-            .gh-conf--neutro .gh-conf-monto    { color: #1E293B; font-size: 1.5rem; }
-            .gh-conf--neutro .gh-conf-cuenta   { color: #475569; }
-            .gh-conf--neutro .gh-conf-confirmar       { background: var(--color-gh-primaryHover, #E24C95); }
-            .gh-conf--neutro .gh-conf-confirmar:hover { background: #C43B7E; }
 
             /* ── Formulario de edición ─────────────────────────────────────── */
             .gh-form        { padding: 1.25rem 1.75rem 0; display: flex; flex-direction: column; gap: 1rem; }
@@ -503,34 +447,147 @@ block contenedor
                 font-size: 0.75rem; color: #9F1239;
             }
 
-            /* Un solo momento de movimiento: la ventana entra desde abajo y se asienta.
-               Curva exponencial de salida, para que frene sola en vez de cortarse. */
-            @keyframes ghConfEntra {
-                from { opacity: 0; transform: translateY(14px) scale(.975); }
-                to   { opacity: 1; transform: none; }
-            }
-            .gh-conf-entra { animation: ghConfEntra .28s cubic-bezier(.16, 1, .3, 1) both; }
-            .gh-conf-sale  { animation: ghConfEntra .14s ease-in reverse both; }
 
-            @media (prefers-reduced-motion: reduce) {
-                .gh-conf-entra, .gh-conf-sale { animation: none; }
+            /* ── TRASLADOS POR ACEPTAR ─────────────────────────────────────── */
+            /* Ámbar en toda la fila, no solo en el badge: no es una fila más del libro,
+               es plata que todavía no entró a la cuenta. El mismo ámbar con el que el
+               resto del sistema marca los traslados. */
+            .fila-traslado {
+                background: #FFFBEB;
+                border-bottom: 1px solid #FDE68A;
+                cursor: pointer;
+                transition: background-color .15s ease;
             }
+            .fila-traslado:hover { background: #FEF3C7; }
+            .fila-traslado:focus-visible {
+                outline: 2px solid #B45309;
+                outline-offset: -2px;
+            }
+            /* Corte visible entre lo que espera acción y el libro que ya está asentado. */
+            .fila-traslado:last-of-type { border-bottom: 2px solid #FCD34D; }
+
+            /* ── VENTANA DE ACEPTACIÓN ─────────────────────────────────────── */
+            .gh-tras-cuerpo { padding: 1.25rem 1.75rem 0; text-align: left; }
+
+            /* El valor es lo que hay que releer antes de aceptar, así que ocupa el lugar
+               que ocupa. Nace deshabilitado: lo normal es aceptar exactamente lo que
+               mandaron, y editarlo es declarar una diferencia. */
+            .gh-tras-campo-valor { position: relative; }
+            .gh-tras-valor {
+                width: 100%;
+                padding: 0.875rem 1rem 0.875rem 2.25rem;
+                border: 2px solid #E2E8F0;
+                border-radius: var(--radius-gh, 12px);
+                background: #F8FAFC;
+                color: #1E293B;
+                font-size: 1.75rem;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+                font-variant-numeric: tabular-nums;
+                transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+            }
+            /* `readonly` y no `disabled`: un control deshabilitado no despacha eventos de
+               mouse, así que el doble clic que lo habilita nunca llegaría. De paso el
+               valor se puede seleccionar y copiar. */
+            .gh-tras-valor:read-only {
+                cursor: pointer;   /* invita al doble clic; no es un campo muerto */
+                color: #334155;
+            }
+            .gh-tras-valor:not(:read-only) {
+                background: #fff;
+                border-color: #F59E0B;
+                box-shadow: 0 0 0 3px rgb(245 158 11 / 0.18);
+            }
+            .gh-tras-peso {
+                position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%);
+                font-size: 1.25rem; font-weight: 700; color: #94A3B8; pointer-events: none;
+            }
+
+            .gh-tras-pista {
+                display: flex; align-items: center; gap: 0.375rem;
+                margin-top: 0.375rem; font-size: 0.6875rem; color: #64748B;
+            }
+            .gh-tras-pista i { font-size: 0.75rem; }
+            /* Cuando el valor quedó editable el aviso cambia de tono: ya no explica cómo
+               abrirlo, advierte que se va a asentar una diferencia. */
+            .gh-tras-pista--activa { color: #B45309; font-weight: 600; }
+
+            /* La diferencia va en rojo lleno y centrada: es lo único de esta ventana que
+               dice que algo no cuadra, y en ámbar sobre ámbar se perdía contra la
+               cabecera. Blanco sobre #BE123C da 6.5:1, bien por encima del piso.
+               El rojo es el mismo con el que el resto del sistema marca lo que sale. */
+            .gh-tras-dif {
+                margin-top: 0.5rem; padding: 0.5rem 0.75rem;
+                border-radius: var(--radius-gh, 12px);
+                background: #BE123C;
+                font-size: 0.8125rem; font-weight: 600; color: #fff;
+                text-align: center;
+            }
+            /* El monto se separa del resto por peso, no por color: sobre rojo, cualquier
+               otro color pierde contraste. */
+            .gh-tras-dif b { font-weight: 800; }
+
+            .gh-tras-obs {
+                width: 100%; margin-top: 0.25rem;
+                padding: 0.625rem 0.75rem;
+                border: 1px solid #E2E8F0; border-radius: var(--radius-gh, 12px);
+                font-size: 0.8125rem; color: #1E293B; background: #fff;
+                resize: vertical; min-height: 4.5rem;
+            }
+            .gh-tras-obs:focus {
+                outline: none; border-color: var(--color-gh-primary, #F794C9);
+                box-shadow: 0 0 0 3px rgb(247 148 201 / 0.25);
+            }
+
+            .gh-tras-rotulo {
+                display: block; margin: 1rem 0 0.375rem;
+                font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em;
+                text-transform: uppercase; color: #64748B;
+            }
+            .gh-tras-rotulo span { font-weight: 400; text-transform: none; letter-spacing: 0; color: #94A3B8; }
+
+            .gh-tras-adjuntos { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.25rem; }
+            .gh-tras-adjunto {
+                display: inline-flex; align-items: center; gap: 0.375rem;
+                padding: 0.3125rem 0.625rem; border-radius: var(--radius-gh, 12px);
+                background: #F8FAFC; border: 1px solid #E2E8F0;
+                font-size: 0.75rem; font-weight: 600; color: #475569;
+                text-decoration: none;
+            }
+            .gh-tras-adjunto:hover { background: #F1F5F9; border-color: #CBD5E1; }
+
+            /* Aceptar es la acción esperada y va en verde —entra plata—; rechazar es la
+               excepción y va en contorno, no en rojo lleno: rechazar no es destruir, es
+               devolver, y un botón rojo al lado de uno verde empuja a leer la pantalla
+               como una alarma. */
+            .gh-tras-acciones {
+                display: flex; gap: 0.625rem; padding: 1.25rem 1.75rem 1.75rem; margin: 0;
+            }
+            .gh-tras-btn {
+                flex: 1; padding: 0.75rem 1rem; border-radius: var(--radius-gh, 12px);
+                font-size: 0.875rem; font-weight: 700; cursor: pointer;
+                border: 1px solid transparent; margin: 0;
+                display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+                transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+            }
+            .gh-tras-btn:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+            .gh-tras-aceptar { background: #047857; color: #fff; }
+            .gh-tras-aceptar:hover { background: #065F46; }
+            .gh-tras-rechazar { background: #fff; border-color: #FECDD3; color: #9F1239; }
+            .gh-tras-rechazar:hover { background: #FFF1F2; border-color: #FDA4AF; }
 
             @media (max-width: 480px) {
-                .gh-conf-cabecera { padding: 1.25rem 1.25rem 1.125rem; }
-                .gh-conf-monto    { font-size: 1.875rem; }
-                .gh-conf-saldo    { padding: 0.875rem 1.25rem; }
-                .gh-conf-detalle  { padding: 1rem 1.25rem 0.25rem; }
-                .gh-conf-fila     { flex-direction: column; gap: 0.125rem; }
-                .gh-conf-fila dt  { flex-basis: auto; }
-                .gh-conf-aviso    { margin: 1rem 1.25rem 0; }
-                .gh-form          { padding: 1rem 1.25rem 0; }
-                .gh-form-error    { margin: 0 1.25rem; }
-                /* Apilados, y con Volver abajo: la acción que no se puede deshacer queda
-                   lejos del pulgar. `flex: 1` crece en el eje de la columna, así que el
-                   ancho hay que pedirlo aparte. */
-                .gh-conf-acciones { padding: 1.125rem 1.25rem 1.25rem; flex-direction: column-reverse; }
-                .gh-conf-btn      { width: 100%; }
+                .gh-tras-cuerpo  { padding: 1rem 1.25rem 0; }
+                .gh-tras-acciones { padding: 1.125rem 1.25rem 1.25rem; flex-direction: column-reverse; }
+                .gh-tras-btn     { width: 100%; }
+                .gh-tras-valor   { font-size: 1.5rem; }
+            }
+
+            /* Solo los dos campos del formulario de edición: el resto de lo que
+               cambia en pantalla chica va en la hoja compartida. */
+            @media (max-width: 480px) {
+                .gh-form       { padding: 1rem 1.25rem 0; }
+                .gh-form-error { margin: 0 1.25rem; }
             }
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
@@ -685,6 +742,176 @@ block contenedor
                     } finally { btnMas.disabled = false; btnMas.textContent = 'Cargar más'; }
                 });
 
+
+                // ── TRASLADO DE EFECTIVO: REVISIÓN ────────────────────────
+                // La fila entera abre la ventana. Delegado en el tbody porque las filas
+                // de traslado se repintan cuando llega uno nuevo por SSE, y un listener
+                // por fila moriría con la fila.
+                // A qué cuenta entra la plata. En un banco la referencia es el número de
+                // cuenta, y sin él "Bancolombia" no alcanza cuando el negocio tiene más de
+                // una: quien acepta necesita saber en cuál va a buscar el movimiento.
+                const destinoRotulo = () => {
+                    const nombre = esc(tc(card.dataset.cuenta || ''));
+                    const ref    = (card.dataset.referencia || '').trim();
+                    return ref
+                        ? `${nombre} <span class="gh-conf-mono">${esc(ref)}</span>`
+                        : nombre;
+                };
+
+                const abrirTraslado = async (t) => {
+                    const adjuntos = t.adjuntos.length
+                        ? `<div class="gh-tras-adjuntos">${t.adjuntos.map(a => `
+                               <a class="gh-tras-adjunto" href="${esc(a.url)}" target="_blank" rel="noopener">
+                                   <i class="fi ${window.iconoDoc ? window.iconoDoc(a.formato) : 'fi-rr-document'}"></i>
+                                   ${esc(a.nombreDocumento)}
+                               </a>`).join('')}</div>`
+                        : '<p class="text-xs text-slate-400">Sin comprobante adjunto</p>';
+
+                    const fila = (etiqueta, valorHTML, vacio) =>
+                        `<div class="gh-conf-fila"><dt>${etiqueta}</dt><dd class="${vacio ? 'gh-conf-vacio' : ''}">${valorHTML}</dd></div>`;
+
+                    const { isConfirmed, isDenied, value } = await Swal.fire({
+                        html: `
+                            <div class="gh-conf-html">
+                                <div class="gh-conf-cabecera">
+                                    <span class="gh-conf-badge">
+                                        <i class="fi fi-rr-exchange" style="font-size:.625rem"></i>Traslado por aceptar
+                                    </span>
+                                    <p class="gh-conf-monto">${pesos(t.valor)}</p>
+                                    <p class="gh-conf-cuenta">llega desde <strong>${esc(tc(t.origen))}</strong></p>
+                                </div>
+
+                                <dl class="gh-conf-detalle">
+                                    ${fila('Código', `<span class="gh-conf-mono">${esc(t.codigo)}</span>`)}
+                                    ${t.referencia ? fila('Referencia', `<span class="gh-conf-mono">${esc(t.referencia)}</span>`) : ''}
+                                    ${fila('Despachado', esc(`${t.fecha}, ${t.hora}`))}
+                                    ${fila('Responsable', esc(tc(t.envia)) + (t.codigoEnvia ? ` <span class="gh-conf-mono">(${esc(t.codigoEnvia)})</span>` : ''))}
+                                    ${fila('Entra a', destinoRotulo())}
+                                    ${fila('Observación', t.observacion ? esc(t.observacion) : 'Sin observación', !t.observacion)}
+                                </dl>
+
+                                <div class="gh-tras-cuerpo">
+                                    <label class="gh-tras-rotulo" for="tras-valor">
+                                        Valor que se asienta
+                                    </label>
+                                    <div class="gh-tras-campo-valor">
+                                        <span class="gh-tras-peso">$</span>
+                                        <input id="tras-valor" class="gh-tras-valor" type="text" inputmode="numeric"
+                                               autocomplete="off" readonly
+                                               value="${Math.round(t.valor).toLocaleString('es-CO')}">
+                                    </div>
+                                    <p id="tras-pista" class="gh-tras-pista">
+                                        <i class="fi fi-rr-lock"></i>
+                                        <span>Doble clic para corregirlo si recibiste un monto distinto.</span>
+                                    </p>
+                                    <div id="tras-dif" class="gh-tras-dif" style="display:none"></div>
+
+                                    <label class="gh-tras-rotulo" for="tras-obs">
+                                        Observaciones <span>(opcional)</span>
+                                    </label>
+                                    <textarea id="tras-obs" class="gh-tras-obs" maxlength="500"
+                                              placeholder="Qué se recibió, en qué condiciones, o el motivo del rechazo..."></textarea>
+
+                                    <label class="gh-tras-rotulo">Comprobante del envío</label>
+                                    ${adjuntos}
+                                </div>
+                            </div>`,
+                        // showDenyButton en vez de un cancel disfrazado: rechazar es una
+                        // decisión, no salirse de la ventana. Cerrar con Esc o el fondo
+                        // no decide nada, que es lo correcto para plata.
+                        showConfirmButton: true,
+                        showDenyButton: true,
+                        confirmButtonText: '<i class="fi fi-rr-check"></i> Aceptar traslado',
+                        denyButtonText: '<i class="fi fi-rr-cross-circle"></i> Rechazar',
+                        buttonsStyling: false,
+                        // El Enter no debe asentar plata de un teclazo.
+                        focusConfirm: false,
+                        reverseButtons: true,
+                        width: '32rem',
+                        customClass: {
+                            popup:         'gh-conf-popup gh-conf--traslado',
+                            htmlContainer: 'gh-conf-html-container',
+                            actions:       'gh-tras-acciones',
+                            confirmButton: 'gh-tras-btn gh-tras-aceptar',
+                            denyButton:    'gh-tras-btn gh-tras-rechazar'
+                        },
+                        showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
+                        didOpen: () => {
+                            const campo = document.getElementById('tras-valor');
+                            const pista = document.getElementById('tras-pista');
+                            const dif   = document.getElementById('tras-dif');
+
+                            // Doble clic para habilitar. Aceptar lo que mandaron es lo
+                            // normal; tocar el monto es declarar una diferencia, y por eso
+                            // cuesta un gesto deliberado en vez de estar abierto de entrada.
+                            campo.addEventListener('dblclick', () => {
+                                if (!campo.readOnly) return;
+                                campo.readOnly = false;
+                                campo.focus();
+                                campo.select();
+                                pista.classList.add('gh-tras-pista--activa');
+                                pista.innerHTML = '<i class="fi fi-rr-pencil"></i><span>Estás cambiando el monto: la diferencia queda anotada en la bitácora.</span>';
+                            });
+
+                            campo.addEventListener('input', () => {
+                                const n = parseInt(campo.value.replace(/\D/g, ''), 10) || 0;
+                                campo.value = n ? n.toLocaleString('es-CO') : '';
+                                const delta = n - Math.round(t.valor);
+                                if (!delta) { dif.style.display = 'none'; return; }
+                                dif.style.display = 'block';
+                                dif.innerHTML = delta > 0
+                                    ? `Llegaron <b>${pesos(delta)}</b> de más respecto de lo despachado.`
+                                    : `Faltan <b>${pesos(-delta)}</b> respecto de lo despachado.`;
+                            });
+                        },
+                        preConfirm: () => leerDecision(),
+                        preDeny:    () => leerDecision()
+                    });
+
+                    if (!isConfirmed && !isDenied) return;
+                    enviarDecision(t, isConfirmed ? 'aceptar' : 'rechazar', value);
+                };
+
+                // Lo que el operador dejó en la ventana, sin importar qué botón apretó.
+                const leerDecision = () => ({
+                    valor:       parseInt((document.getElementById('tras-valor').value || '').replace(/\D/g, ''), 10) || 0,
+                    observacion: document.getElementById('tras-obs').value.trim()
+                });
+
+                const enviarDecision = (t, decision, datos) => {
+                    // TODO(siguiente paso): POST al endpoint que asienta o devuelve el
+                    // traslado. Al aceptar tiene que crear el MOVIMIENTOS_CAJAS_BANCOS,
+                    // llenar idMovimiento e idEmpleadoRecibe, pasar el estado a 'Recibido'
+                    // —o a 'Controversia' si el valor no coincide— y agregar el paso a la
+                    // bitácora; al rechazar, dejarlo en 'Rechazado' y decidir qué pasa con
+                    // el egreso que ya descontó el cajón de la tienda.
+                    console.log('[traslado] decisión pendiente de conectar', { traslado: t.idTraslado, decision, ...datos });
+                    Swal.fire({
+                        icon: 'info',
+                        title: decision === 'aceptar' ? 'Aceptar traslado' : 'Rechazar traslado',
+                        html: `El flujo todavía no está conectado.<br>Traslado <strong class="font-mono">${esc(t.codigo)}</strong> por <strong>${pesos(datos.valor)}</strong>.`,
+                        confirmButtonColor: '#EC5FA3'
+                    });
+                };
+
+                tbody?.addEventListener('click', (ev) => {
+                    // Un clic sobre el enlace de un comprobante abre el comprobante, no la
+                    // ventana: son dos intenciones distintas sobre la misma fila.
+                    if (ev.target.closest('a, button')) return;
+                    const fila = ev.target.closest('.fila-traslado');
+                    if (fila) abrirTraslado(JSON.parse(fila.dataset.traslado));
+                });
+
+                // Teclado: la fila es un `role="button"`, así que tiene que responder
+                // igual que uno.
+                tbody?.addEventListener('keydown', (ev) => {
+                    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+                    const fila = ev.target.closest('.fila-traslado');
+                    if (!fila) return;
+                    ev.preventDefault();
+                    abrirTraslado(JSON.parse(fila.dataset.traslado));
+                });
+
                 // ── EXPORTAR A EXCEL ──────────────────────────────────────
                 document.getElementById('btn-exportar')?.addEventListener('click', () => {
                     location.href = `/admin/bankentities/cajas/${idCuenta}/movimientos/export?${params()}`;
@@ -770,8 +997,10 @@ block contenedor
                             confirmButton: 'gh-conf-btn gh-conf-confirmar',
                             cancelButton:  'gh-conf-btn gh-conf-cancelar'
                         },
-                        showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
-                        hideClass: { popup: 'gh-conf-sale',  backdrop: 'swal2-backdrop-hide' }
+                        // Solo la entrada es propia. La salida la maneja SweetAlert2 con su `swal2-hide`:
+                        // una clase de cierre propia que comparta @keyframes con la de entrada no
+                        // dispara `animationend` y deja el contenedor tapando la página.
+                        showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' }
                     });
 
                     return isConfirmed;
@@ -935,8 +1164,10 @@ block contenedor
                             confirmButton: 'gh-conf-btn gh-conf-confirmar',
                             cancelButton:  'gh-conf-btn gh-conf-cancelar'
                         },
+                        // Solo la entrada es propia. La salida la maneja SweetAlert2 con su `swal2-hide`:
+                        // una clase de cierre propia que comparta @keyframes con la de entrada no
+                        // dispara `animationend` y deja el contenedor tapando la página.
                         showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
-                        hideClass: { popup: 'gh-conf-sale',  backdrop: 'swal2-backdrop-hide' },
                         didOpen: () => document.getElementById('ed-nombre')?.focus(),
                         showLoaderOnConfirm: true,
                         allowOutsideClick: () => !Swal.isLoading(),
