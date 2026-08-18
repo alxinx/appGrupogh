@@ -5,6 +5,7 @@ export default {
     devtool: false,
     entry: {
         menu: './src/js/menus.js',
+        textoLista: './src/js/textoLista.js',
         dataAsync: './src/js/dataAsync.js',
         dropdownBtn: './src/js/dropdownBtn',
         steepForms: './src/js/steepForms.js',

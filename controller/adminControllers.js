@@ -5,6 +5,7 @@ const __dirname_admin  = path.dirname(__filename_admin);
 const LOGO_PATH_ADMIN  = path.resolve(__dirname_admin, '../public/img/logo.png');
 
 import { validationResult } from "express-validator";
+import { uuidV7 } from "../helpers/uuidV7.js";
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
 import sharp from 'sharp';
@@ -13,7 +14,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
@@ -22,10 +23,13 @@ import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' wit
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
 import { limpiarPrecio, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
-import { Sequelize, Op, where, fn, col } from "sequelize";
+import { Sequelize, Op, where, fn, col, literal } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
 import { resolverIds } from '../middlewares/verificarPermisoEmpleado.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
+import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
+import ExcelJS from 'exceljs';
+import { tituloLista } from '../helpers/textoLista.js';
 
 
 dotenv.config();
@@ -710,6 +714,7 @@ const getCierreEgresosJSON = async (req, res) => {
                 referencia:  e.referencia  || '—',
                 descripcion: e.descripcion || '—',
                 empleado:    e.empleado ? `${e.empleado.PrimerNombre} ${e.empleado.PrimerApellido}` : '—',
+                tipo:        e.tipo || 'Egreso',
                 valor:       Math.round(parseFloat(e.valorEgreso) || 0),
                 estado:      e.estado
             }))
@@ -2978,6 +2983,9 @@ const saveProduct = async (req, res, next) => {
         const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
         const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
         const precioVentaMayoristaSurtido = parseInt(limpiarPrecio(req.body.precioVentaMayoristaSurtido)) || 0;
+        // TEMPORAL. Mismo tratamiento que los precios: el formulario manda "$8.000" con
+        // separadores, así que hay que limpiarlo antes de guardarlo como DECIMAL.
+        const costo = parseInt(limpiarPrecio(req.body.costo)) || 0;
         const descripcionLimpia = sanitizarHTML(req.body.descripcion); // Usamos el name="descripcion" del pug
         const activo = req.body.activo === 'on' || req.body.activo === true;
         const web = req.body.web === 'on' || req.body.web === true;
@@ -3057,6 +3065,7 @@ const saveProduct = async (req, res, next) => {
                         precioVentaPublicoFinal,
                         precioVentaMayorista,
                         precioVentaMayoristaSurtido,
+                        costo,
                         descripcion: descripcionLimpia,
                         activo,
                         web,
@@ -3126,6 +3135,7 @@ const saveProduct = async (req, res, next) => {
             precioVentaPublicoFinal,
             precioVentaMayorista,
             precioVentaMayoristaSurtido,
+            costo,
             descripcion: descripcionLimpia,
             activo,
             web,
@@ -4726,25 +4736,1290 @@ const cambiarEstadoEmpleado = async (req, res) => {
 // ─── ENTIDADES BANCARIAS ──────────────────────────────────────────────────────
 const listarEntidades = async (req, res) => {
     try {
-        const entidades = await Entidades.findAll({
+        // Las dos consultas son independientes: van en paralelo, no una tras otra.
+        const [entidades, cajasYBancos] = await Promise.all([
+            Entidades.findAll({
+                attributes: [
+                    'idEntidad', 'nombreEntidad', 'tipoEntidad', 'recibirPagosPos',
+                    // Estado del QR de pago web. qrObjectKey NO se envía a la vista:
+                    // la ruta del objeto en R2 no sale del backend.
+                    'qrEnabled', 'qrStatus', 'qrUploadedAt'
+                ],
+                order: [['recibirPagosPos', 'DESC'], ['nombreEntidad', 'ASC']],
+                raw: true
+            }),
+            CajasYBancos.findAll({
+                attributes: ['idCajaBanco', 'nombreCajaBanco', 'tipo', 'referencia', 'estado'],
+                // Activas primero; el id desempata para que el orden sea total y dos
+                // registros con el mismo nombre no bailen entre recargas.
+                order: [['estado', 'DESC'], ['nombreCajaBanco', 'ASC'], ['idCajaBanco', 'ASC']],
+                raw: true
+            })
+        ]);
+
+        // Saldo de cada cuenta: no hay columna de saldo, se calcula sumando sus
+        // movimientos. Así el saldo nunca puede contradecir al libro que lo respalda.
+        //
+        // Es UNA sola consulta agrupada para todas las cuentas, no una por fila: con un
+        // findAll por caja dentro del map, el número de consultas crecería con el número
+        // de cuentas.
+        //
+        // La suma la hace MySQL sobre DECIMAL y devuelve DECIMAL: no se encadenan sumas
+        // de Number en JS, que es donde aparecen los centavos fantasma.
+        const saldos = await MovimientosCajasBancos.findAll({
             attributes: [
-                'idEntidad', 'nombreEntidad', 'tipoEntidad', 'recibirPagosPos',
-                // Estado del QR de pago web. qrObjectKey NO se envía a la vista:
-                // la ruta del objeto en R2 no sale del backend.
-                'qrEnabled', 'qrStatus', 'qrUploadedAt'
+                'idCajaBanco',
+                [fn('SUM', literal("CASE WHEN tipo = 'ingreso' THEN valor ELSE -valor END")), 'saldo'],
+                [fn('COUNT', col('idMovimiento')), 'movimientos']
             ],
-            order: [['recibirPagosPos', 'DESC'], ['nombreEntidad', 'ASC']],
+            group: ['idCajaBanco'],
             raw: true
         });
+        const mapaSaldo = Object.fromEntries(saldos.map(s => [s.idCajaBanco, s]));
+
+        const conSaldo = (c) => ({
+            ...c,
+            saldo:       mapaSaldo[c.idCajaBanco]?.saldo ?? '0.00',
+            movimientos: parseInt(mapaSaldo[c.idCajaBanco]?.movimientos) || 0
+        });
+
+        // La vista arma dos tablas distintas: efectivo por un lado, cuentas por el otro.
+        const cajas  = cajasYBancos.filter(c => c.tipo === 'caja').map(conSaldo);
+        const bancos = cajasYBancos.filter(c => c.tipo !== 'caja').map(conSaldo);
+
         return res.render('./administrador/bankentities/listado', {
-            pagina: 'Entidades Bancarias',
+            pagina: 'Cajas, bancos y métodos de pago',
             csrfToken: req.csrfToken(),
             currentPath: req.path,
             entidades,
+            cajas,
+            bancos,
         });
     } catch (e) {
         console.error('listarEntidades:', e);
         return res.status(500).send('Error al cargar entidades');
+    }
+};
+
+// ─── PERFIL DE UNA CAJA O BANCO ──────────────────────────────────────────────
+
+// Cuántos movimientos trae cada página del listado.
+const MOVIMIENTOS_POR_PAGINA = 15;
+
+// Suma con signo de un conjunto de movimientos: ingreso suma, egreso resta.
+const SUMA_CON_SIGNO = literal("SUM(CASE WHEN tipo = 'ingreso' THEN valor ELSE -valor END)");
+
+/**
+ * El libro se ordena y se pagina por `fecha` (cuándo ocurrió el movimiento), no por
+ * `createdAt` (cuándo se asentó): un depósito del viernes registrado el lunes tiene que
+ * aparecer donde va, y el saldo corrido tiene que acompañarlo.
+ *
+ * `fecha` admite empates, así que NO es un orden total por sí sola. El desempate es
+ * `idMovimiento`, que es único. Sin ese segundo criterio MySQL no garantiza el orden de
+ * las filas empatadas entre una consulta y la siguiente, y con paginación por cursor eso
+ * significa filas repetidas o saltadas.
+ */
+const ORDEN_LIBRO = [['fecha', 'DESC'], ['idMovimiento', 'DESC']];
+
+// El cursor es la posición completa en ese orden: "<epoch>.<idMovimiento>". Solo con la
+// fecha no alcanzaría para desempatar, y solo con el id no se sabría dónde entrar.
+const armarCursor = (m) => `${new Date(m.fecha).getTime()}.${m.idMovimiento}`;
+
+const leerCursor = (cursor) => {
+    if (!cursor) return null;
+    const corte = String(cursor).indexOf('.');
+    if (corte < 1) return null;
+    const ms = Number(String(cursor).slice(0, corte));
+    const id = String(cursor).slice(corte + 1);
+    if (!Number.isFinite(ms) || !id) return null;
+    return { fecha: new Date(ms), idMovimiento: id };
+};
+
+// "Estrictamente antes que el cursor" en el orden (fecha DESC, id DESC), y su inverso.
+// Escrito como OR de dos ramas porque MySQL no aprovecha el índice con una comparación
+// de tuplas en Sequelize.
+const antesDe = ({ fecha, idMovimiento }) => ({
+    [Op.or]: [
+        { fecha: { [Op.lt]: fecha } },
+        { fecha, idMovimiento: { [Op.lt]: idMovimiento } }
+    ]
+});
+
+const despuesDe = ({ fecha, idMovimiento }) => ({
+    [Op.or]: [
+        { fecha: { [Op.gt]: fecha } },
+        { fecha, idMovimiento: { [Op.gt]: idMovimiento } }
+    ]
+});
+
+// Filtros compartidos por el listado y por la exportación: mismo criterio, un solo lugar.
+const filtrosLibro = (idCajaBanco, { desde = null, hasta = null, tipo = null } = {}) => {
+    const where = { idCajaBanco };
+    if (tipo === 'ingreso' || tipo === 'egreso') where.tipo = tipo;
+    if (desde || hasta) {
+        where.fecha = {};
+        if (desde) where.fecha[Op.gte] = new Date(`${desde}T00:00:00`);
+        if (hasta) where.fecha[Op.lte] = new Date(`${hasta}T23:59:59.999`);
+    }
+    return where;
+};
+
+/**
+ * Movimientos de una cuenta, paginados por cursor (keyset).
+ *
+ * No usa OFFSET: este listado crece sin techo y con OFFSET la base tiene que descartar
+ * todas las filas anteriores para llegar a la página pedida, así que la página 500 cuesta
+ * mucho más que la 1. Además, si entra un movimiento nuevo mientras alguien pagina, el
+ * OFFSET se corre y se saltan o repiten filas.
+ */
+const listarMovimientosCuenta = async (idCajaBanco, { cursor = null, desde = null, hasta = null, tipo = null } = {}) => {
+    const where = filtrosLibro(idCajaBanco, { desde, hasta, tipo });
+
+    // Se pide una fila de más para saber si hay página siguiente sin contar el total.
+    const posicion = leerCursor(cursor);
+    const filtroPagina = posicion ? { ...where, ...antesDe(posicion) } : where;
+    const filas = await MovimientosCajasBancos.findAll({
+        where: filtroPagina,
+        include: [{ model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'], required: false }],
+        order: ORDEN_LIBRO,
+        limit: MOVIMIENTOS_POR_PAGINA + 1
+    });
+
+    const hayMas = filas.length > MOVIMIENTOS_POR_PAGINA;
+    const pagina = hayMas ? filas.slice(0, MOVIMIENTOS_POR_PAGINA) : filas;
+
+    // Comprobantes de toda la página en UNA consulta, no una por movimiento: con 15 filas
+    // por página, hacerlo dentro del map serían 15 idas a la base por cada scroll.
+    const adjuntosPorMovimiento = new Map();
+    if (pagina.length) {
+        const docs = await Documentacion.findAll({
+            where: {
+                pertenece: 'transacciones_bancarias',
+                idPropietario: { [Op.in]: pagina.map(m => m.idMovimiento) }
+            },
+            attributes: ['idDocumento', 'idPropietario', 'nombreDocumento', 'formato', 'keyName'],
+            order: [['idDocumento', 'ASC']],
+            raw: true
+        });
+        for (const d of docs) {
+            if (!adjuntosPorMovimiento.has(d.idPropietario)) adjuntosPorMovimiento.set(d.idPropietario, []);
+            adjuntosPorMovimiento.get(d.idPropietario).push({
+                idDocumento:     d.idDocumento,
+                nombreDocumento: d.nombreDocumento,
+                formato:         d.formato,
+                url:             `${process.env.R2_PUBLIC_URL}/${d.keyName}`
+            });
+        }
+    }
+
+    // Saldo corrido: el saldo después del movimiento más nuevo de esta página es el saldo
+    // total menos todo lo que ocurrió después de él. Una sola consulta agregada, no una
+    // por fila.
+    let saldoCorrido = 0;
+    if (pagina.length) {
+        const [{ total }] = await MovimientosCajasBancos.findAll({
+            where: { idCajaBanco },
+            attributes: [[SUMA_CON_SIGNO, 'total']],
+            raw: true
+        });
+        const [{ posteriores }] = await MovimientosCajasBancos.findAll({
+            where: { idCajaBanco, ...despuesDe(pagina[0]) },
+            attributes: [[SUMA_CON_SIGNO, 'posteriores']],
+            raw: true
+        });
+        saldoCorrido = (parseFloat(total) || 0) - (parseFloat(posteriores) || 0);
+    }
+
+    const movimientos = pagina.map((m) => {
+        const valor = parseFloat(m.valor) || 0;
+        const saldo = saldoCorrido;
+        saldoCorrido -= (m.tipo === 'ingreso' ? valor : -valor);   // el saldo del siguiente, más viejo
+        const f = new Date(m.fecha);
+        return {
+            idMovimiento: m.idMovimiento,
+            iso:          f.toISOString().slice(0, 10),
+            fecha:        f.toLocaleDateString('es-CO'),
+            hora:         f.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+            tipo:         m.tipo,
+            descripcion:  m.descripcion || 'Movimiento',
+            referencia:   m.referencia,
+            valor,
+            saldo,
+            usuario:      m.empleado ? `${m.empleado.PrimerNombre} ${m.empleado.PrimerApellido}` : '—',
+            adjuntos:     adjuntosPorMovimiento.get(m.idMovimiento) || []
+        };
+    });
+
+    return { movimientos, cursorSiguiente: hayMas ? armarCursor(pagina[pagina.length - 1]) : null };
+};
+
+const verPerfilCajaBanco = async (req, res) => {
+    try {
+        const cuenta = await CajasYBancos.findByPk(req.params.idCajaBanco, { raw: true });
+        if (!cuenta) return res.status(404).send('Cuenta no encontrada.');
+
+        const inicioMes = new Date();
+        inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
+
+        const [totales, delMes, { movimientos, cursorSiguiente }] = await Promise.all([
+            MovimientosCajasBancos.findAll({
+                where: { idCajaBanco: cuenta.idCajaBanco },
+                attributes: [[SUMA_CON_SIGNO, 'saldo']],
+                raw: true
+            }),
+            MovimientosCajasBancos.findAll({
+                // Por `fecha`, no por `createdAt`: lo del mes es lo que ocurrió este mes,
+                // aunque se haya asentado después.
+                where: { idCajaBanco: cuenta.idCajaBanco, fecha: { [Op.gte]: inicioMes } },
+                attributes: [
+                    'tipo',
+                    [fn('SUM', col('valor')), 'suma'],
+                    [fn('COUNT', col('idMovimiento')), 'cantidad']
+                ],
+                group: ['tipo'],
+                raw: true
+            }),
+            listarMovimientosCuenta(req.params.idCajaBanco, {})
+        ]);
+
+        const porTipo = Object.fromEntries(delMes.map(r => [r.tipo, r]));
+        const resumen = {
+            saldo:          parseFloat(totales[0]?.saldo) || 0,
+            ingresosMes:    parseFloat(porTipo.ingreso?.suma) || 0,
+            egresosMes:     parseFloat(porTipo.egreso?.suma) || 0,
+            movimientosMes: (parseInt(porTipo.ingreso?.cantidad) || 0) + (parseInt(porTipo.egreso?.cantidad) || 0)
+        };
+
+        const ahora = new Date();
+        const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString();
+
+        return res.render('./administrador/bankentities/perfilCajaBanco', {
+            pagina: cuenta.nombreCajaBanco,
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            cuenta,
+            resumen,
+            movimientos,
+            cursorSiguiente,
+            filtros: { desde: '', hasta: '', ahora: iso(ahora).slice(0, 16) }
+        });
+    } catch (e) {
+        console.error('verPerfilCajaBanco:', e);
+        return res.status(500).send('Error al cargar el perfil de la cuenta');
+    }
+};
+
+// GET /admin/bankentities/cajas/:idCajaBanco/movimientos — página siguiente por cursor
+const getMovimientosCuentaJSON = async (req, res) => {
+    try {
+        const { cursor, desde, hasta, tipo } = req.query;
+        const datos = await listarMovimientosCuenta(req.params.idCajaBanco, { cursor, desde, hasta, tipo });
+        return res.json({ success: true, ...datos });
+    } catch (e) {
+        console.error('getMovimientosCuentaJSON:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudieron cargar los movimientos.' });
+    }
+};
+
+// El mismo tope que aplica multer en middlewares/uploadComprobantes.js. Se repite acá
+// porque la validación del contenido tiene que conocerlo: multer corta por tamaño de
+// petición, esto corta por tamaño del archivo ya en memoria.
+const MAX_BYTES_COMPROBANTE = (parseInt(process.env.MAX_MB_COMPROBANTE) || 5) * 1024 * 1024;
+
+// POST /admin/bankentities/cajas/:idCajaBanco/movimientos
+// Registra un ingreso o egreso y, si vienen, adjunta sus comprobantes en R2
+// (bucket público `grupo-gh`, prefijo documentacion/transacciones/) más su fila en
+// DOCUMENTACION con pertenece='transacciones_bancarias' e idPropietario = idMovimiento.
+const crearMovimientoCuenta = async (req, res) => {
+    const idCajaBanco = req.params.idCajaBanco;
+    const subidos = [];
+
+    try {
+        const cuenta = await CajasYBancos.findByPk(idCajaBanco, { attributes: ['idCajaBanco', 'estado'] });
+        if (!cuenta) return res.status(404).json({ success: false, mensaje: 'La cuenta no existe.' });
+        if (!cuenta.estado) return res.status(422).json({ success: false, mensaje: 'La cuenta está inactiva: no admite movimientos.' });
+
+        // Whitelist explícita: nada de pasarle req.body a create().
+        const tipo  = req.body.tipo === 'egreso' ? 'egreso' : 'ingreso';
+        const valor = parseInt(limpiarPrecio(req.body.valor)) || 0;
+        if (valor <= 0) return res.status(422).json({ success: false, mensaje: 'El monto debe ser mayor que cero.' });
+
+        const descripcion = String(req.body.descripcion || '').trim();
+        if (!descripcion) return res.status(422).json({ success: false, mensaje: 'La descripción es obligatoria.' });
+
+        const referencia = String(req.body.referencia || '').trim().slice(0, 50) || null;
+
+        // Cuándo ocurrió el movimiento. Llega del <input type="datetime-local">, o sea en
+        // la hora local de quien registra; `new Date` la interpreta en la zona horaria del
+        // servidor, igual que el resto de este módulo. Si el servidor no corre en
+        // America/Bogota, esto hay que normalizarlo (ver CLAUDE.md §10).
+        const fecha = req.body.fecha ? new Date(req.body.fecha) : new Date();
+        if (isNaN(fecha.getTime())) {
+            return res.status(422).json({ success: false, mensaje: 'La fecha del movimiento no es válida.' });
+        }
+        // Un movimiento con fecha futura se sentaría arriba de todo y el saldo corrido de
+        // las filas de abajo dejaría de coincidir con el saldo real de hoy.
+        if (fecha.getTime() > Date.now() + 60_000) {
+            return res.status(422).json({ success: false, mensaje: 'La fecha del movimiento no puede ser futura.' });
+        }
+
+        // Quién lo registra. El movimiento apunta a un EMPLEADO, no al usuario del panel:
+        // es la ficha de la persona, que sobrevive a que se le desactive la cuenta.
+        //
+        // El libro es append-only: una fila mal atribuida no se corrige después. Por eso,
+        // si el usuario del panel no tiene ficha de empleado, no se registra a nombre de
+        // nadie más — se corta acá.
+        const empleado = await Empleados.findOne({
+            attributes: ['idEmpleado'],
+            where: { idUsuario: req.usuario.idUsuario }
+        });
+        if (!empleado) {
+            return res.status(422).json({
+                success: false,
+                mensaje: 'Tu usuario no tiene una ficha de empleado asociada, así que el movimiento no puede quedar a tu nombre. Pedí que te la creen antes de registrar movimientos.'
+            });
+        }
+
+        // El id se genera antes de subir para poder nombrar los archivos con él.
+        const idMovimiento = uuidV7();
+
+        // Los archivos se suben ANTES de abrir la transacción: mantenerla abierta
+        // mientras viajan bloquea filas por segundos. Si la escritura falla después,
+        // se borran los objetos en el catch.
+        const archivos = req.files?.comprobantes || [];
+        const docs = [];
+        for (const [idx, file] of archivos.entries()) {
+            // El mimetype y la extensión los controla quien sube: no son evidencia de
+            // nada. Lo que decide es el contenido real del buffer. El fileFilter de multer
+            // ya descartó lo obvio; esto es la verificación que cuenta.
+            const esPdf = file.buffer.slice(0, 5).toString('ascii') === '%PDF-';
+
+            let cuerpo, contentType, extension;
+            if (esPdf) {
+                cuerpo      = file.buffer;
+                contentType = 'application/pdf';
+                extension   = 'pdf';
+            } else {
+                const revision = await validarImagen(file.buffer, {
+                    minLado:  150,                     // una foto de voucher siempre supera esto
+                    maxBytes: MAX_BYTES_COMPROBANTE    // el mismo tope que aplica multer
+                });
+                if (!revision.ok) {
+                    throw Object.assign(new Error(`"${file.originalname}": ${revision.mensaje}`), { publico: true });
+                }
+                // Se persiste siempre convertido a WebP, nunca el archivo tal como llegó.
+                cuerpo      = await aWebp(file.buffer, { anchoMaximo: 1600 });
+                contentType = 'image/webp';
+                extension   = 'webp';
+            }
+
+            const r2Key = `documentacion/transacciones/mov-${idMovimiento}-${Date.now()}-${idx}.${extension}`;
+
+            await new Upload({
+                client: s3Client,
+                params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: cuerpo, ContentType: contentType }
+            }).done();
+
+            subidos.push(r2Key);
+            docs.push({
+                idPropietario:   idMovimiento,          // el movimiento es el dueño del comprobante
+                nombreDocumento: file.originalname,
+                keyName:         r2Key,
+                formato:         extension.toUpperCase(),
+                pertenece:       'transacciones_bancarias'
+            });
+        }
+
+        const t = await db.transaction();
+        try {
+            // Lectura con bloqueo compartido sobre la fila de la cuenta. No es por el
+            // `estado` —eso ya se miró arriba— sino para serializar contra la edición de
+            // la cuenta: `editarCajaBanco` toma esta misma fila en exclusiva antes de
+            // decidir si la cuenta todavía no tiene movimientos. Sin este bloqueo, un
+            // movimiento podría insertarse justo después de ese conteo y quedaría una
+            // cuenta con movimientos a la que igual se le cambió el tipo.
+            const cuentaBloqueada = await CajasYBancos.findByPk(idCajaBanco, {
+                attributes: ['idCajaBanco', 'estado'],
+                transaction: t,
+                lock: t.LOCK.SHARE
+            });
+            if (!cuentaBloqueada) throw Object.assign(new Error('La cuenta no existe.'), { publico: true });
+            if (!cuentaBloqueada.estado) throw Object.assign(new Error('La cuenta está inactiva: no admite movimientos.'), { publico: true });
+
+            await MovimientosCajasBancos.create({
+                idMovimiento, idCajaBanco, idEmpleado: empleado.idEmpleado,
+                fecha, tipo, valor, referencia, descripcion
+            }, { transaction: t });
+
+            if (docs.length) await Documentacion.bulkCreate(docs, { transaction: t });
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        return res.json({
+            success: true,
+            idMovimiento,
+            adjuntos: docs.map(d => ({
+                nombreDocumento: d.nombreDocumento,
+                formato:         d.formato,
+                url:             `${process.env.R2_PUBLIC_URL}/${d.keyName}`
+            }))
+        });
+    } catch (e) {
+        // La escritura falló: los objetos que alcanzaron a subir no deben quedar sueltos.
+        await Promise.all(subidos.map(k =>
+            s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: k })).catch(() => {})
+        ));
+        // Archivo rechazado por su contenido: el motivo le sirve a quien sube, no es
+        // información interna.
+        if (e.publico) {
+            return res.status(422).json({ success: false, mensaje: e.message });
+        }
+        if (e.name === 'SequelizeValidationError') {
+            return res.status(422).json({ success: false, mensaje: e.errors?.[0]?.message || 'Datos inválidos.' });
+        }
+        console.error('crearMovimientoCuenta:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo registrar el movimiento.' });
+    }
+};
+
+// ─── INFORME DE MOVIMIENTOS EN EXCEL ─────────────────────────────────────────
+
+// Paleta del informe. Son los mismos colores del panel, en el formato ARGB que pide
+// OOXML. Se declaran una vez para que la hoja no termine con doce verdes distintos.
+const XLS = {
+    tinta:        'FF1E293B',   // slate-800: banner y texto fuerte
+    encabezado:   'FF334155',   // slate-700: fila de títulos de la tabla
+    marca:        'FFE24C95',   // gh-primaryHover: etiquetas de sección
+    apagado:      'FF64748B',   // slate-500: texto secundario (4.76:1 sobre blanco)
+    borde:        'FFE2E8F0',   // slate-200
+    zebra:        'FFF8FAFC',   // slate-50
+    blanco:       'FFFFFFFF',
+    ingresoFondo: 'FFD1FAE5',   // emerald-100
+    ingresoTinta: 'FF065F46',   // emerald-800
+    egresoFondo:  'FFFFE4E6',   // rose-100
+    egresoTinta:  'FF9F1239',   // rose-800
+    negativo:     'FFB91C1C'    // red-700
+};
+
+// `#,##0` usa los separadores del Excel de quien abre el archivo, así que en un equipo
+// configurado en Colombia sale $2.400.000 sin que haya que forzar el punto.
+const FORMATO_PESOS = '"$"#,##0;[Red]-"$"#,##0';
+
+const ETIQUETA_TIPO_CUENTA = { caja: 'Caja', banco: 'Banco', billetera: 'Billetera' };
+
+// Cuántos movimientos se traen por vuelta al armar el archivo. El informe no se carga
+// entero en memoria: se pide una tanda, se escribe al stream y se descarta (CLAUDE.md §11).
+const TANDA_EXPORT = 500;
+
+// Ayudas de maquetado que comparten los dos informes: la banda a todo el ancho y la
+// franja de casillas etiqueta/valor. Viven acá y no dentro de cada export para que los
+// dos archivos se vean como el mismo documento y no como dos hojas parecidas.
+//
+// `anchoTotal` es cuántas columnas ocupa la hoja: la banda las abarca todas y las
+// casillas se reparten ese ancho, así el bloque de cabecera cuadra con la tabla tenga
+// 8 columnas o 9.
+const crearAyudasHoja = (ws, anchoTotal) => {
+    // Fila combinada a lo ancho de la tabla, con un solo valor y un estilo.
+    const banda = (valor, estilo, alto) => {
+        const fila = ws.addRow([valor]);
+        ws.mergeCells(fila.number, 1, fila.number, anchoTotal);   // el merge va antes del commit
+        Object.assign(fila.getCell(1), estilo);
+        if (alto) fila.height = alto;
+        fila.commit();
+        return fila;
+    };
+
+    // Una fila de etiquetas y otra de valores, cada casilla ocupando su tajada del ancho.
+    // El reparto es entero y el sobrante va a la última, para que ninguna quede corrida.
+    const casillas = (pares) => {
+        const base   = Math.floor(anchoTotal / pares.length);
+        const tramos = pares.map((_, i) => (i === pares.length - 1 ? anchoTotal - base * (pares.length - 1) : base));
+        const desde  = tramos.map((_, i) => tramos.slice(0, i).reduce((a, b) => a + b, 1));
+
+        const pintar = (fila, leer) => {
+            pares.forEach((p, i) => {
+                const c = fila.getCell(desde[i]);
+                leer(c, p);
+                c.alignment = { vertical: 'middle' };
+                ws.mergeCells(fila.number, desde[i], fila.number, desde[i] + tramos[i] - 1);
+            });
+        };
+
+        const filaEt = ws.addRow([]);
+        pintar(filaEt, (c, p) => {
+            c.value = p.etiqueta;
+            c.font  = { name: 'Calibri', size: 8, bold: true, color: { argb: XLS.marca } };
+        });
+        filaEt.height = 16;
+        filaEt.commit();
+
+        const filaVal = ws.addRow([]);
+        pintar(filaVal, (c, p) => {
+            c.value = p.valor;
+            c.font  = { name: 'Calibri', size: 11, bold: true, color: { argb: p.color || XLS.tinta } };
+            if (p.formato) c.numFmt = p.formato;
+        });
+        filaVal.height = 20;
+        filaVal.commit();
+    };
+
+    return { banda, casillas };
+};
+
+// GET /admin/bankentities/cajas/:idCajaBanco/movimientos/export
+//
+// Devuelve un .xlsx real (OOXML) escrito en streaming con ExcelJS. Antes se emitía
+// SpreadsheetML 2003 con extensión .xls: Excel abría el archivo pero avisaba en cada
+// apertura que el formato no coincidía con la extensión, y ese formato no admite barras
+// de datos ni formato condicional.
+const exportarMovimientosCuenta = async (req, res) => {
+    try {
+        const cuenta = await CajasYBancos.findByPk(req.params.idCajaBanco, { raw: true });
+        if (!cuenta) return res.status(404).send('Cuenta no encontrada.');
+
+        const { desde, hasta, tipo } = req.query;
+        const where = filtrosLibro(cuenta.idCajaBanco, { desde, hasta, tipo });
+
+        // Los totales y la escala de las barras salen de consultas agregadas, no de
+        // recorrer las filas en Node: hay que conocerlos ANTES de escribir la cabecera,
+        // que va arriba de todo en el archivo.
+        const [resumenFiltro] = await MovimientosCajasBancos.findAll({
+            where,
+            attributes: [
+                [fn('COUNT', col('idMovimiento')), 'cantidad'],
+                [literal("COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN valor ELSE 0 END), 0)"), 'ingresos'],
+                [literal("COALESCE(SUM(CASE WHEN tipo = 'egreso'  THEN valor ELSE 0 END), 0)"), 'egresos'],
+                [fn('MAX', col('valor')), 'mayor']
+            ],
+            raw: true
+        });
+
+        const cantidad = parseInt(resumenFiltro?.cantidad) || 0;
+        const ingresos = parseFloat(resumenFiltro?.ingresos) || 0;
+        const egresos  = parseFloat(resumenFiltro?.egresos) || 0;
+        const mayor    = parseFloat(resumenFiltro?.mayor) || 0;
+
+        // Saldo con el que arranca el periodo: todo lo que pasó ANTES del rango pedido.
+        // Sin esto la columna Saldo empieza en cero y un informe de agosto muestra saldos
+        // que no son los de la cuenta, sino los acumulados del propio archivo.
+        let saldo = 0;
+        if (desde) {
+            const [previo] = await MovimientosCajasBancos.findAll({
+                where: { idCajaBanco: cuenta.idCajaBanco, fecha: { [Op.lt]: new Date(`${desde}T00:00:00`) } },
+                attributes: [[SUMA_CON_SIGNO, 'saldo']],
+                raw: true
+            });
+            saldo = parseFloat(previo?.saldo) || 0;
+        }
+        const saldoInicial = saldo;
+
+        const ahora = new Date();
+        const fFecha = (d) => d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const fHora  = (d) => d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+        const nombreArchivo = `movimientos-${cuenta.nombreCajaBanco.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '')}-${ahora.toISOString().slice(0, 10)}.xlsx`;
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+
+        // El workbook escribe directo sobre la respuesta: el archivo nunca existe completo
+        // ni en memoria ni en disco.
+        const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: false });
+        wb.creator = 'Grupo GH';
+        wb.created = ahora;
+
+        const ws = wb.addWorksheet('Movimientos', {
+            // Se congela hasta la fila 10 inclusive, que es donde cae el encabezado de la
+            // tabla: la cabecera del informe y los títulos de columna quedan fijos al
+            // desplazarse. El bloque superior mide siempre lo mismo, con o sin la
+            // advertencia de filtro, porque esa banda ocupa la fila que si no va vacía.
+            views: [{ state: 'frozen', ySplit: 10 }],
+            pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+        });
+
+        ws.columns = [
+            { key: 'fecha',       width: 13 },
+            { key: 'hora',        width: 10 },
+            { key: 'tipo',        width: 12 },
+            { key: 'descripcion', width: 46 },
+            { key: 'referencia',  width: 18 },
+            { key: 'valor',       width: 17 },
+            { key: 'saldo',       width: 17 },
+            { key: 'usuario',     width: 24 }
+        ];
+
+        const { banda, casillas } = crearAyudasHoja(ws, 8);
+
+        // ── 1. Banner y nombre de la cuenta ──────────────────────────────────
+        // El banner dice qué abarca el archivo: sin eso, dos exportaciones de la misma
+        // cuenta con rangos distintos son indistinguibles una vez descargadas.
+        banda(`INFORME DE MOVIMIENTOS  ·  ${periodo}  ·  ${cantidad === 1 ? '1 registro' : cantidad + ' registros'}`, {
+            font: { name: 'Calibri', size: 9, bold: true, color: { argb: XLS.blanco } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.tinta } },
+            alignment: { vertical: 'middle', indent: 1 }
+        }, 22);
+
+        banda(tituloLista(cuenta.nombreCajaBanco), {
+            font: { name: 'Calibri', size: 20, bold: true, color: { argb: XLS.tinta } },
+            alignment: { vertical: 'middle', indent: 1 }
+        }, 32);
+
+        ws.addRow([]).commit();
+
+        // ── 2. Identificación de la cuenta y del informe ─────────────────────
+        casillas([
+            { etiqueta: 'CUENTA',              valor: tituloLista(cuenta.nombreCajaBanco) },
+            { etiqueta: 'NÚMERO O REFERENCIA', valor: cuenta.referencia || 'Sin referencia',
+              color: cuenta.referencia ? XLS.tinta : XLS.apagado },
+            { etiqueta: 'TIPO',                valor: ETIQUETA_TIPO_CUENTA[cuenta.tipo] || tituloLista(cuenta.tipo) },
+            { etiqueta: 'GENERADO',            valor: `${fFecha(ahora)}, ${fHora(ahora)}` }
+        ]);
+
+        ws.addRow([]).commit();
+
+        // ── 3. Cuadre del periodo ────────────────────────────────────────────
+        // Las cuatro casillas cierran entre sí: inicial + ingresos − egresos = final.
+        // Por eso el saldo inicial va explícito; sin él, quien lee un informe de agosto no
+        // puede reconciliar los totales contra el saldo final y parece que la cuenta no da.
+        const saldoFinal = saldoInicial + ingresos - egresos;
+        casillas([
+            { etiqueta: 'SALDO INICIAL', valor: saldoInicial, formato: FORMATO_PESOS,
+              color: saldoInicial < 0 ? XLS.negativo : XLS.apagado },
+            { etiqueta: 'INGRESOS',      valor: ingresos, formato: FORMATO_PESOS, color: XLS.ingresoTinta },
+            { etiqueta: 'EGRESOS',       valor: egresos,  formato: FORMATO_PESOS, color: XLS.egresoTinta },
+            { etiqueta: 'SALDO FINAL',   valor: saldoFinal, formato: FORMATO_PESOS,
+              color: saldoFinal < 0 ? XLS.negativo : XLS.tinta }
+        ]);
+
+        // Un filtro por tipo deja la columna Saldo sin sentido contable: no se puede llevar
+        // el saldo de una cuenta mirando solo la mitad de sus movimientos. Se dice, no se
+        // esconde.
+        if (tipo === 'ingreso' || tipo === 'egreso') {
+            banda(`Filtrado solo por ${tipo}s: la columna Saldo acumula únicamente los movimientos listados y no refleja el saldo real de la cuenta.`, {
+                font: { name: 'Calibri', size: 9, italic: true, color: { argb: XLS.negativo } },
+                alignment: { vertical: 'middle', indent: 1 }
+            }, 18);
+        } else {
+            ws.addRow([]).commit();
+        }
+
+        // ── 4. Encabezado de la tabla ────────────────────────────────────────
+        const cabecera = ws.addRow(['Fecha', 'Hora', 'Tipo', 'Descripción', 'Referencia', 'Valor', 'Saldo', 'Registrado por']);
+        cabecera.height = 22;
+        cabecera.eachCell((celda) => {
+            celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.blanco } };
+            celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
+            celda.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+        });
+        ['F', 'G'].forEach(c => { cabecera.getCell(c).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }; });
+        cabecera.commit();
+
+        const filaPrimeraDeDatos = cabecera.number + 1;
+
+        // ── 5. Movimientos, de a tandas ──────────────────────────────────────
+        // De más viejo a más nuevo, para que el saldo se acumule hacia abajo. Mismo
+        // desempate por id que el listado en pantalla: sin él, dos movimientos de la misma
+        // fecha podrían salir en distinto orden en cada consulta y el saldo no cuadraría.
+        let cursor = null;
+        let escritas = 0;
+
+        for (;;) {
+            const tanda = await MovimientosCajasBancos.findAll({
+                where: cursor ? { ...where, ...despuesDe(cursor) } : where,
+                include: [{ model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'], required: false }],
+                order: [['fecha', 'ASC'], ['idMovimiento', 'ASC']],
+                limit: TANDA_EXPORT
+            });
+            if (!tanda.length) break;
+
+            for (const m of tanda) {
+                const valor = parseFloat(m.valor) || 0;
+                const esIngreso = m.tipo === 'ingreso';
+                saldo += esIngreso ? valor : -valor;
+
+                const f = new Date(m.fecha);
+                const fila = ws.addRow([
+                    f,
+                    f,
+                    esIngreso ? 'Ingreso' : 'Egreso',
+                    tituloLista(m.descripcion || ''),
+                    m.referencia || '',
+                    // El signo lo lleva el valor para que la barra de datos salga hacia la
+                    // derecha en los ingresos y hacia la izquierda en los egresos.
+                    esIngreso ? valor : -valor,
+                    saldo,
+                    m.empleado ? tituloLista(`${m.empleado.PrimerNombre} ${m.empleado.PrimerApellido}`) : ''
+                ]);
+
+                fila.height = 18;
+                fila.eachCell({ includeEmpty: true }, (celda) => {
+                    celda.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
+                    celda.alignment = { vertical: 'middle', indent: 1 };
+                    celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
+                    if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
+                });
+
+                fila.getCell('A').numFmt = 'dd/mm/yyyy';
+                fila.getCell('B').numFmt = 'hh:mm AM/PM';
+
+                // La columna Tipo lleva el mismo código de color que el badge en pantalla.
+                const cTipo = fila.getCell('C');
+                cTipo.font = { name: 'Calibri', size: 10, bold: true, color: { argb: esIngreso ? XLS.ingresoTinta : XLS.egresoTinta } };
+                cTipo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: esIngreso ? XLS.ingresoFondo : XLS.egresoFondo } };
+                cTipo.alignment = { vertical: 'middle', horizontal: 'center' };
+
+                fila.getCell('D').font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.tinta } };
+                fila.getCell('E').font = { name: 'Consolas', size: 9, color: { argb: XLS.apagado } };
+
+                const cValor = fila.getCell('F');
+                cValor.numFmt = FORMATO_PESOS;
+                cValor.font = { name: 'Calibri', size: 10, bold: true, color: { argb: esIngreso ? XLS.ingresoTinta : XLS.egresoTinta } };
+                cValor.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+
+                const cSaldo = fila.getCell('G');
+                cSaldo.numFmt = FORMATO_PESOS;
+                cSaldo.font = { name: 'Calibri', size: 10, bold: true, color: { argb: saldo < 0 ? XLS.negativo : XLS.tinta } };
+                cSaldo.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+
+                fila.getCell('H').font = { name: 'Calibri', size: 10, color: { argb: XLS.apagado } };
+
+                fila.commit();
+                escritas++;
+            }
+
+            if (tanda.length < TANDA_EXPORT) break;
+            cursor = tanda[tanda.length - 1];
+        }
+
+        const ultimaFila = filaPrimeraDeDatos + escritas - 1;
+
+        if (!escritas) {
+            banda('No hay movimientos en el rango seleccionado.', {
+                font: { name: 'Calibri', size: 11, italic: true, color: { argb: XLS.apagado } },
+                alignment: { vertical: 'middle', horizontal: 'center' }
+            }, 28);
+        } else {
+            // Barra de datos sobre Valor: la escala va de −mayor a +mayor, así que el eje
+            // cae en el centro y cada movimiento se lee contra el más grande del periodo.
+            const escala = mayor > 0 ? mayor : 1;
+            ws.addConditionalFormatting({
+                ref: `F${filaPrimeraDeDatos}:F${ultimaFila}`,
+                rules: [{
+                    type: 'dataBar', gradient: true, priority: 2,
+                    color: { argb: 'FF10B981' },
+                    cfvo: [{ type: 'num', value: -escala }, { type: 'num', value: escala }]
+                }]
+            });
+
+            ws.autoFilter = { from: { row: cabecera.number, column: 1 }, to: { row: ultimaFila, column: 8 } };
+        }
+
+        ws.commit();
+        await wb.commit();     // cierra el ZIP y termina la respuesta
+    } catch (e) {
+        console.error('exportarMovimientosCuenta:', e);
+        // Si el archivo ya empezó a bajar no se puede mandar un 500: los encabezados
+        // salieron hace rato. Se corta la descarga, que el navegador reporta como archivo
+        // incompleto, y el motivo queda en el log.
+        if (res.headersSent) return res.destroy();
+        return res.status(500).send('No se pudo generar el archivo.');
+    }
+};
+
+
+// ─── INFORME DE FACTURACIÓN DE UNA TIENDA EN EXCEL ───────────────────────────
+//
+// Mismo documento que el informe de movimientos de caja: banner, casillas de
+// identificación, franja de totales y tabla con barras de datos. Cambia lo que se lista.
+//
+// Los totales salen del MISMO conjunto de facturas que la tabla —las de esa tienda con
+// `fechaEmision` igual a la fecha elegida—, no del cuadre de caja, que agrupa por
+// `createdAt` y por estado. Si se mezclaran los dos criterios, el informe mostraría un
+// total que no cuadra con las facturas que él mismo lista.
+
+// Un pago electrónico es el que no entró al cajón. `Entidad Crediticia` va aparte: es
+// venta a crédito, todavía no es plata recibida.
+const METODOS_ELECTRONICOS = ['Banco', 'Billetera Virtual', 'Tarjeta Credito'];
+
+const TANDA_FACTURAS = 300;
+
+// GET /admin/api/tiendas/:idPuntoDeVenta/facturas/export?fecha=YYYY-MM-DD
+const exportarFacturasTienda = async (req, res) => {
+    try {
+        const { idPuntoDeVenta } = req.params;
+
+        const tienda = await PuntosDeVenta.findByPk(idPuntoDeVenta, { raw: true });
+        if (!tienda) return res.status(404).send('Tienda no encontrada.');
+
+        const hoy = new Date();
+        const fecha = req.query.fecha || `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return res.status(422).send('Fecha inválida.');
+
+        const donde = { idPuntoDeVenta, fechaEmision: fecha };
+
+        // Recaudo del día, en una sola consulta. El conjunto está acotado por tienda y por
+        // día, así que se resuelve en memoria sin riesgo de crecer sin techo.
+        const pagos = await DetallesPagosFactura.findAll({
+            attributes: ['metodoPago', 'valor'],
+            include: [
+                { model: FacturaClientes, attributes: [], required: true, where: donde },
+                { model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false }
+            ],
+            raw: true, nest: true
+        });
+
+        let sEfectivo = 0, sElectronicos = 0, sCredito = 0;
+        const porEntidad = new Map();
+
+        for (const p of pagos) {
+            const valor = Math.round(parseFloat(p.valor) || 0);
+            if (p.metodoPago === 'Efectivo') { sEfectivo += valor; continue; }
+
+            // Sin entidad asociada se cae al método: un datáfono sin entidad configurada
+            // igual tiene que aparecer en el desglose, no desaparecer del informe.
+            const nombre = p.entidad?.nombreEntidad || p.metodoPago;
+            porEntidad.set(nombre, (porEntidad.get(nombre) || 0) + valor);
+
+            if (METODOS_ELECTRONICOS.includes(p.metodoPago)) sElectronicos += valor;
+            else if (p.metodoPago === 'Entidad Crediticia') sCredito += valor;
+        }
+
+        const entidades = [...porEntidad.entries()].sort((a, b) => b[1] - a[1]);
+        const totalFacturas = await FacturaClientes.count({ where: donde });
+
+        const fFechaLarga = (d) => d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const fechaListado = new Date(`${fecha}T00:00:00`);
+
+        const limpio = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '');
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="facturacion-${limpio(tienda.nombreComercial)}-${fecha}.xlsx"`);
+
+        const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: false });
+        wb.creator = 'Grupo GH';
+        wb.created = hoy;
+
+        // Cuánto mide el bloque de cabecera se sabe ANTES de crear la hoja porque el
+        // desglose por entidad ya está calculado. Eso permite congelar exactamente hasta
+        // la fila de títulos en vez de dejarla escapar al hacer scroll.
+        const ALTO_BASE = 9;                                    // banner, nombre, dos franjas y separadores
+        const altoEntidades = entidades.length ? entidades.length + 3 : 0;   // rótulo + títulos + filas + separador
+        const filaTitulos = ALTO_BASE + altoEntidades + 1;
+
+        const ws = wb.addWorksheet('Facturación', {
+            views: [{ state: 'frozen', ySplit: filaTitulos }],
+            pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+        });
+
+        ws.columns = [
+            { key: 'nro',      width: 16 },
+            { key: 'cliente',  width: 32 },
+            { key: 'doc',      width: 18 },
+            { key: 'fecha',    width: 12 },
+            { key: 'hora',     width: 11 },
+            { key: 'valor',    width: 17 },
+            { key: 'metodo',   width: 24 },
+            { key: 'items',    width: 9 },
+            { key: 'vendedor', width: 26 }
+        ];
+
+        const { banda, casillas } = crearAyudasHoja(ws, 9);
+
+        // ── Banner y tienda ──────────────────────────────────────────────────
+        banda(`INFORME DE FACTURACIÓN  ·  ${fFechaLarga(fechaListado)}  ·  ${totalFacturas === 1 ? '1 factura' : totalFacturas + ' facturas'}`, {
+            font: { name: 'Calibri', size: 9, bold: true, color: { argb: XLS.blanco } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.tinta } },
+            alignment: { vertical: 'middle', indent: 1 }
+        }, 22);
+
+        banda(tituloLista(tienda.nombreComercial), {
+            font: { name: 'Calibri', size: 20, bold: true, color: { argb: XLS.tinta } },
+            alignment: { vertical: 'middle', indent: 1 }
+        }, 32);
+
+        ws.addRow([]).commit();
+
+        // El nombre comercial ya está en 20pt arriba, así que acá van los datos que
+        // identifican la tienda sin repetirlo, y las dos fechas: la del listado (qué se
+        // está mirando) y la de generación (cuándo se sacó el archivo). No se repite el
+        // total: ése es el cierre de la franja de abajo.
+        casillas([
+            { etiqueta: 'RAZÓN SOCIAL',      valor: tituloLista(tienda.razonSocial || tienda.nombreComercial) },
+            { etiqueta: 'DIRECCIÓN',         valor: tienda.direccionPrincipal || '—',
+              color: tienda.direccionPrincipal ? XLS.tinta : XLS.apagado },
+            { etiqueta: 'FECHA DEL LISTADO', valor: fFechaLarga(fechaListado) },
+            { etiqueta: 'GENERADO',          valor: `${fFechaLarga(hoy)}, ${hoy.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` }
+        ]);
+
+        ws.addRow([]).commit();
+
+        // ── Cómo se recibió la plata ─────────────────────────────────────────
+        // El crédito va aunque no se haya pedido: sin él las tres casillas no suman el
+        // total y quien lee el informe no puede cuadrarlo.
+        casillas([
+            { etiqueta: 'VENTAS EFECTIVO',    valor: sEfectivo,     formato: FORMATO_PESOS, color: XLS.ingresoTinta },
+            { etiqueta: 'MEDIOS ELECTRÓNICOS', valor: sElectronicos, formato: FORMATO_PESOS, color: 'FF1D4ED8' },
+            { etiqueta: 'CRÉDITO',            valor: sCredito,      formato: FORMATO_PESOS, color: XLS.apagado },
+            { etiqueta: 'TOTAL RECAUDADO',    valor: sEfectivo + sElectronicos + sCredito, formato: FORMATO_PESOS }
+        ]);
+
+        // ── Desglose por entidad ─────────────────────────────────────────────
+        if (entidades.length) {
+            ws.addRow([]).commit();
+            banda('RECAUDO POR ENTIDAD', {
+                font: { name: 'Calibri', size: 8, bold: true, color: { argb: XLS.marca } },
+                alignment: { vertical: 'middle' }
+            }, 16);
+
+            const enc = ws.addRow(['Entidad', '', 'Recaudado']);
+            ws.mergeCells(enc.number, 1, enc.number, 2);
+            [1, 3].forEach(i => {
+                const c = enc.getCell(i);
+                c.font = { name: 'Calibri', size: 9, bold: true, color: { argb: XLS.blanco } };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
+                c.alignment = { vertical: 'middle', horizontal: i === 3 ? 'right' : 'left', indent: 1 };
+            });
+            enc.height = 18;
+            enc.commit();
+
+            entidades.forEach(([nombre, valor], i) => {
+                const fila = ws.addRow([tituloLista(nombre), '', valor]);
+                ws.mergeCells(fila.number, 1, fila.number, 2);
+                [1, 2, 3].forEach(j => {
+                    const c = fila.getCell(j);
+                    c.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
+                    c.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
+                    if (i % 2 === 1) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
+                });
+                fila.getCell(1).alignment = { vertical: 'middle', indent: 1 };
+                const cv = fila.getCell(3);
+                cv.numFmt = FORMATO_PESOS;
+                cv.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.tinta } };
+                cv.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+                fila.height = 17;
+                fila.commit();
+            });
+        }
+
+        ws.addRow([]).commit();
+
+        // ── Tabla de facturas ────────────────────────────────────────────────
+        const cabecera = ws.addRow(['Nro Factura', 'Cliente', 'Documento', 'Fecha', 'Hora', 'Valor', 'Método de pago', 'Ítems', 'Vendedor']);
+        cabecera.height = 22;
+        cabecera.eachCell((celda) => {
+            celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.blanco } };
+            celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
+            celda.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+        });
+        ['F', 'H'].forEach(c => { cabecera.getCell(c).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }; });
+        cabecera.commit();
+
+        const primeraDeDatos = cabecera.number + 1;
+        let escritas = 0, mayor = 0;
+
+        // De a tandas, ordenadas por número de factura. El desempate por id hace el orden
+        // total: sin él dos facturas del mismo número (prefijos distintos) podrían salir
+        // en distinto orden en cada tanda y repetirse o saltarse entre páginas.
+        for (let pagina = 0; ; pagina++) {
+            const tanda = await FacturaClientes.findAll({
+                where: donde,
+                include: [
+                    { model: Clientes, as: 'cliente', attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipo_documento', 'numero_doc'], required: false },
+                    { model: Empleados, as: 'vendedor', attributes: ['PrimerNombre', 'PrimerApellido'], required: false },
+                    { model: DetallesFactura, as: 'detalles', attributes: ['cantidad', 'total'], required: false },
+                    { model: DetallesPagosFactura, as: 'pagos', attributes: ['metodoPago'], required: false }
+                ],
+                order: [['numeroFactura', 'ASC'], ['idFacturaCliente', 'ASC']],
+                limit: TANDA_FACTURAS,
+                offset: pagina * TANDA_FACTURAS,
+                distinct: true,
+                subQuery: false
+            });
+            if (!tanda.length) break;
+
+            for (const f of tanda) {
+                const total    = f.detalles.reduce((s, d) => s + parseFloat(d.total || 0), 0);
+                const items    = f.detalles.reduce((s, d) => s + parseInt(d.cantidad || 0), 0);
+                const metodos  = [...new Set(f.pagos.map(p => p.metodoPago))].join(', ');
+                const cli      = f.cliente;
+                const cliente  = f.idCliente === '0'
+                    ? 'Consumidor Final'
+                    : (cli?.razon_social || `${cli?.primer_nombre || ''} ${cli?.primer_apellido || ''}`.trim() || 'N/A');
+                const doc      = cli ? `${cli.tipo_documento || ''} ${cli.numero_doc || ''}`.trim() : '';
+
+                if (total > mayor) mayor = total;
+
+                const fila = ws.addRow([
+                    `${f.prefijo || ''}${f.numeroFactura}`,
+                    tituloLista(cliente),
+                    doc,
+                    fechaListado,
+                    f.horaEmision || '',
+                    total,
+                    metodos,
+                    items,
+                    f.vendedor ? tituloLista(`${f.vendedor.PrimerNombre} ${f.vendedor.PrimerApellido}`) : ''
+                ]);
+
+                fila.height = 18;
+                fila.eachCell({ includeEmpty: true }, (celda) => {
+                    celda.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
+                    celda.alignment = { vertical: 'middle', indent: 1 };
+                    celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
+                    if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
+                });
+
+                fila.getCell('A').font = { name: 'Consolas', size: 9, bold: true, color: { argb: XLS.tinta } };
+                fila.getCell('B').font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.tinta } };
+                fila.getCell('C').font = { name: 'Consolas', size: 9, color: { argb: XLS.apagado } };
+                fila.getCell('D').numFmt = 'dd/mm/yyyy';
+
+                const cValor = fila.getCell('F');
+                cValor.numFmt = FORMATO_PESOS;
+                cValor.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.ingresoTinta } };
+                cValor.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+
+                fila.getCell('G').font = { name: 'Calibri', size: 9, color: { argb: XLS.apagado } };
+                fila.getCell('H').alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+                fila.getCell('I').font = { name: 'Calibri', size: 10, color: { argb: XLS.apagado } };
+
+                fila.commit();
+                escritas++;
+            }
+
+            if (tanda.length < TANDA_FACTURAS) break;
+        }
+
+        if (!escritas) {
+            banda('No hay facturas emitidas en esta fecha.', {
+                font: { name: 'Calibri', size: 11, italic: true, color: { argb: XLS.apagado } },
+                alignment: { vertical: 'middle', horizontal: 'center' }
+            }, 28);
+        } else {
+            const ultima = primeraDeDatos + escritas - 1;
+            ws.addConditionalFormatting({
+                ref: `F${primeraDeDatos}:F${ultima}`,
+                rules: [{
+                    type: 'dataBar', gradient: true, priority: 2,
+                    color: { argb: 'FF10B981' },
+                    cfvo: [{ type: 'num', value: 0 }, { type: 'num', value: mayor || 1 }]
+                }]
+            });
+            ws.autoFilter = { from: { row: cabecera.number, column: 1 }, to: { row: ultima, column: 9 } };
+        }
+
+        ws.commit();
+        await wb.commit();
+    } catch (e) {
+        console.error('exportarFacturasTienda:', e);
+        if (res.headersSent) return res.destroy();
+        return res.status(500).send('No se pudo generar el archivo.');
+    }
+};
+
+// ─── EDICIÓN DE UNA CAJA O BANCO ─────────────────────────────────────────────
+//
+// Qué se puede tocar y qué no:
+//
+//   · `nombreCajaBanco` y `estado`: siempre. Son datos de presentación y de operación;
+//     cambiarlos no altera ningún movimiento ya asentado.
+//
+//   · `tipo` y `referencia`: SOLO mientras la cuenta no tenga ni un movimiento. Definen
+//     qué es la cuenta y contra qué se concilia. Cambiarlas con movimientos adentro
+//     reescribiría el significado de un historial que es append-only justamente para que
+//     no se pueda reescribir: los movimientos de una "caja" pasarían a leerse como los de
+//     un "banco", y la referencia con la que se concilió un extracto dejaría de existir.
+//
+// La regla se resuelve entera en el servidor. Lo que mande el cliente sobre si puede o no
+// editar esos campos es irrelevante: acá se vuelve a contar.
+
+// Lee la cuenta y decide si su estructura todavía es editable.
+// `bloquear` toma la fila en exclusiva para que el conteo no se quede viejo entre la
+// verificación y la escritura: `crearMovimientoCuenta` pide la misma fila en modo
+// compartido antes de insertar, así que las dos operaciones se serializan.
+const leerCuentaEditable = async (idCajaBanco, { transaction = null, bloquear = false } = {}) => {
+    const cuenta = await CajasYBancos.findByPk(idCajaBanco, {
+        transaction,
+        ...(bloquear ? { lock: transaction.LOCK.UPDATE } : {})
+    });
+    if (!cuenta) return null;
+
+    // Basta con saber si hay al menos uno: no hace falta contar el historial entero.
+    const primerMovimiento = await MovimientosCajasBancos.findOne({
+        where: { idCajaBanco },
+        attributes: ['idMovimiento'],
+        transaction
+    });
+
+    return { cuenta, tieneMovimientos: !!primerMovimiento };
+};
+
+// GET /admin/bankentities/cajas/:idCajaBanco/editar
+// Datos para abrir el modal. `puedeEditarEstructura` se calcula acá y no en la vista
+// porque entre que se cargó la página y se abre el modal pudo entrar un movimiento.
+const getCajaBancoEditar = async (req, res) => {
+    try {
+        const datos = await leerCuentaEditable(req.params.idCajaBanco);
+        if (!datos) return res.status(404).json({ success: false, mensaje: 'La cuenta no existe.' });
+
+        const { cuenta, tieneMovimientos } = datos;
+        return res.json({
+            success: true,
+            puedeEditarEstructura: !tieneMovimientos,
+            cuenta: {
+                idCajaBanco:     cuenta.idCajaBanco,
+                nombreCajaBanco: cuenta.nombreCajaBanco,
+                tipo:            cuenta.tipo,
+                referencia:      cuenta.referencia,
+                estado:          cuenta.estado
+            }
+        });
+    } catch (e) {
+        console.error('getCajaBancoEditar:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo cargar la cuenta.' });
+    }
+};
+
+// POST /admin/bankentities/cajas/:idCajaBanco/editar
+const editarCajaBanco = async (req, res) => {
+    const t = await db.transaction();
+    try {
+        const errores = validationResult(req);
+        if (!errores.isEmpty()) {
+            await t.rollback();
+            return res.status(422).json({ success: false, mensaje: errores.array()[0].msg });
+        }
+
+        const datos = await leerCuentaEditable(req.params.idCajaBanco, { transaction: t, bloquear: true });
+        if (!datos) {
+            await t.rollback();
+            return res.status(404).json({ success: false, mensaje: 'La cuenta no existe.' });
+        }
+
+        const { cuenta, tieneMovimientos } = datos;
+
+        // Whitelist: se arma el objeto campo por campo. Nunca `req.body` completo, que
+        // dejaría colar cualquier columna del modelo (CLAUDE.md §12).
+        const cambios = {
+            nombreCajaBanco: String(req.body.nombreCajaBanco || '').trim(),
+            estado:          req.body.estado === true || req.body.estado === 'true'
+        };
+
+        if (tieneMovimientos) {
+            // La cuenta ya tiene historial. El formulario no muestra estos campos, pero eso
+            // es comodidad del navegador, no una garantía: si llegan igual, se rechaza.
+            // Solo se ignoran en silencio cuando repiten el valor que ya está guardado,
+            // que es lo que pasaría si alguien reenvía el formulario entero sin cambiarlos.
+            const tipoDistinto = req.body.tipo !== undefined &&
+                String(req.body.tipo).trim() !== cuenta.tipo;
+
+            const referenciaEnviada = req.body.referencia === undefined
+                ? undefined
+                : (String(req.body.referencia).trim() || null);
+            const referenciaDistinta = referenciaEnviada !== undefined &&
+                referenciaEnviada !== cuenta.referencia;
+
+            if (tipoDistinto || referenciaDistinta) {
+                await t.rollback();
+                return res.status(409).json({
+                    success: false,
+                    mensaje: 'Esta cuenta ya tiene movimientos registrados: el tipo y la referencia no se pueden cambiar. Cambiarlos alteraría el significado de un historial que no se puede reescribir.'
+                });
+            }
+        } else {
+            // Sin movimientos: la cuenta todavía no significa nada contra qué conciliar.
+            if (req.body.tipo !== undefined) cambios.tipo = String(req.body.tipo).trim();
+            if (req.body.referencia !== undefined) cambios.referencia = String(req.body.referencia).trim() || null;
+        }
+
+        // Los validadores del modelo corren dentro del update: es la barrera que no
+        // depende de que la ruta tenga puesto el express-validator correcto.
+        await cuenta.update(cambios, { transaction: t });
+        await t.commit();
+
+        return res.json({
+            success: true,
+            puedeEditarEstructura: !tieneMovimientos,
+            cuenta: {
+                idCajaBanco:     cuenta.idCajaBanco,
+                nombreCajaBanco: cuenta.nombreCajaBanco,
+                tipo:            cuenta.tipo,
+                referencia:      cuenta.referencia,
+                estado:          cuenta.estado
+            }
+        });
+    } catch (e) {
+        if (!t.finished) await t.rollback().catch(() => {});
+
+        if (e.name === 'SequelizeUniqueConstraintError') {
+            const campo = e.errors?.[0]?.path || '';
+            return res.status(409).json({
+                success: false,
+                mensaje: campo.includes('referencia')
+                    ? 'Ya existe otra caja o cuenta con esa referencia.'
+                    : 'Ya existe otra caja o cuenta con ese nombre.'
+            });
+        }
+        if (e.name === 'SequelizeValidationError') {
+            return res.status(422).json({ success: false, mensaje: e.errors?.[0]?.message || 'Datos inválidos.' });
+        }
+        console.error('editarCajaBanco:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo guardar. Intentá de nuevo.' });
+    }
+};
+
+// ─── CAJAS Y BANCOS ───────────────────────────────────────────────────────────
+// POST /admin/bankentities/cajas/crear
+const crearCajaBanco = async (req, res) => {
+    try {
+        // Primera barrera: express-validator (cajaBancoValidation en la ruta).
+        const errores = validationResult(req);
+        if (!errores.isEmpty()) {
+            return res.status(422).json({ success: false, mensaje: errores.array()[0].msg });
+        }
+
+        // Whitelist explícita: nada de pasarle req.body a create(). `estado` se lee acá
+        // y no se hereda del cliente como objeto suelto.
+        const datos = {
+            nombreCajaBanco: String(req.body.nombreCajaBanco || '').trim(),
+            tipo:            String(req.body.tipo || '').trim(),
+            referencia:      req.body.referencia ? String(req.body.referencia).trim() : null,
+            estado:          req.body.estado === true || req.body.estado === 'true'
+        };
+
+        // Segunda barrera: los validadores del modelo corren igual dentro de create().
+        const creada = await CajasYBancos.create(datos);
+
+        return res.json({
+            success: true,
+            cajaBanco: {
+                idCajaBanco:     creada.idCajaBanco,
+                nombreCajaBanco: creada.nombreCajaBanco,
+                tipo:            creada.tipo,
+                referencia:      creada.referencia,
+                estado:          creada.estado
+            }
+        });
+    } catch (e) {
+        // Nombre o referencia repetidos: el índice único es la última barrera y la única
+        // que resiste dos peticiones simultáneas con el mismo nombre.
+        if (e.name === 'SequelizeUniqueConstraintError') {
+            const campo = e.errors?.[0]?.path || '';
+            const mensaje = campo.includes('referencia')
+                ? 'Ya existe una caja o cuenta con esa referencia.'
+                : 'Ya existe una caja o cuenta con ese nombre.';
+            return res.status(409).json({ success: false, mensaje });
+        }
+        if (e.name === 'SequelizeValidationError') {
+            return res.status(422).json({ success: false, mensaje: e.errors?.[0]?.message || 'Datos inválidos.' });
+        }
+        console.error('crearCajaBanco:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo guardar. Intentá de nuevo.' });
     }
 };
 
@@ -5026,7 +6301,7 @@ const getAdminCuadrePDF = async (req, res) => {
 
         const buf = await _generarPDFCuadre({
             caja, regimen, municipio,
-            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas },
+            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
             txElectronicos: datos.txElectronicos,
             txCredito:      datos.txCredito,
             txEgresos:      datos.txEgresos
@@ -5757,14 +7032,14 @@ export {
     adminSseConnect,
     getTiendasStatsHoy,
     getTiendaStatsHoyDetalle,
-    getFacturasJSON,
+    getFacturasJSON, exportarFacturasTienda,
     getCajasAbiertasPorFecha,
     autorizarFacturaExtemporanea,
     jsonPermisosRecursos,
     jsonPermisosAcciones,
     verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
     getPagosHoyPorMetodo,
-    listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
+    listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
     getStatsVendedorMes,
     getCajasCerradasAdmin,
     getAdminCuadrePDF,

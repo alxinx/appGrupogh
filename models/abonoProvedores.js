@@ -12,10 +12,14 @@ const AbonosProveedores = db.define('ABONOS_PROVEEDORES', {
         allowNull: false,
         references: { model: 'FACTURA_PROVEEDORES', key: 'idFacturaPro' }
     },
+    // Columna huérfana: apuntaba a CAJAS, que se eliminó por no usarse (ver
+    // seed/migracionEliminarCajas.js). Se conserva porque esta tabla tampoco tiene
+    // datos ni código todavía; cuando se implemente el módulo de abonos a proveedores
+    // hay que decidir contra qué cuenta se registra el pago. Sin `references`: si se
+    // dejara, db.sync() intentaría crear una FK contra una tabla inexistente.
     idCaja: {
         type: DataTypes.UUID,
-        allowNull: false,
-        references: { model: 'CAJAS', key: 'idCaja' }
+        allowNull: false
     },
     fechaAbono: {
         type: DataTypes.DATE,

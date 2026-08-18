@@ -50,20 +50,27 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                 //- Aquí es donde el JS inyectará los divs 'grupo-sub-cat-ID'
 
 
+        //- SEPARADOR (CÓDIGOS Y FAMILIA)
+        div(class="col-span-12 -mx-6 mt-4")
+            div(class="border-b border-gray-200 w-full")
+                h1.h1(class="text-left pl-11 py-4 flex items-center text-gray-700")
+                    i.fi-rr-barcode.pr-2
+                    | Códigos y Familia
+
         //- SKU
-        div(class="col-span-12 md:col-span-3")
+        div(class="col-span-12 md:col-span-4")
             label.label SKU
                 input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno" value = (producto && producto.sku) ? producto.sku : "")
                 #errorSku
-        
+
         //- EAN
-        div(class="col-span-12 md:col-span-3")
+        div(class="col-span-12 md:col-span-4")
             label.label EAN
                 input(class="field-text" type="text" name="ean" id="ean" placeholder="Código de barras" value = (producto && producto.ean) ? producto.ean : "")
                 #errorEan
 
         //- FAMILIA
-        div(class="col-span-12 md:col-span-3")
+        div(class="col-span-12 md:col-span-4")
             label.label FAMILIA
                 //- Agrupa las variantes del mismo artículo: "Blusa Greicy - Rojo" y
                 //- "- Negro" comparten BLUSA GREICY. Se envía el NOMBRE; el backend lo
@@ -80,26 +87,32 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                 //- Lo llena productDataForm.js con lo que responde /admin/json/familia/sugerencias
                 #sugerenciaFamilia(class="hidden mt-2")
 
+        //- SEPARADOR (FINANZAS Y PRECIOS)
+        div(class="col-span-12 -mx-6 mt-4")
+            div(class="border-b border-gray-200 w-full")
+                h1.h1(class="text-left pl-11 py-4 flex items-center text-gray-700")
+                    i.fi-rr-money-bill-wave.pr-2
+                    | Finanzas y Precios
+
+        //- COSTO (temporal)
+        div(class="col-span-12 md:col-span-3")
+            label.label COSTO
+                input(class="field-text" type="text" id="costo" name="costo" placeholder="Ej : $8.000" value = (producto && producto.costo) ? producto.costo : "")
+
+        //- PRECIOS PARA MINORISTA!
+        div(class="col-span-12 md:col-span-3")
+            label.label P. PÚBLICO FINAL
+                input(class="field-text" type="text" id="precioVentaPublicoFinal" name="precioVentaPublicoFinal" placeholder="Ej : $80.000" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
+
         //- PRECIOS PARA MAYORISTA
         div(class="col-span-12 md:col-span-3")
-            label.label PRECIO MAYORISTA
+            label.label P. MAYORISTA
                 input(class="field-text" type="text" id="precioVentaMayorista" name="precioVentaMayorista" placeholder="Ej : $40.000" value = (producto && producto.precioVentaMayorista) ? producto.precioVentaMayorista : "")
 
         //- PRECIO MAYORISTA SURTIDO
         div(class="col-span-12 md:col-span-3")
             label.label MAYORISTA SURTIDO
                 input(class="field-text" type="text" id="precioVentaMayoristaSurtido" name="precioVentaMayoristaSurtido" placeholder="Ej : $35.000" value = (producto && producto.precioVentaMayoristaSurtido) ? producto.precioVentaMayoristaSurtido : "")
-
-        //- PRECIOS PARA MINORISTA!
-        div(class="col-span-12 md:col-span-3")
-            label.label PRECIO PÚBLICO FINAL
-                input(class="field-text" type="text" id="precioVentaPublicoFinal" name="precioVentaPublicoFinal" placeholder="Ej : $80.000" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
-        
-        
-
-
-
-
 
         //- SEPARADOR 100% (ATRIBUTOS)
         div(class="col-span-12 -mx-6 mt-4")

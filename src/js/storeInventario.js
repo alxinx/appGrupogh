@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 (function () {
     const csrfToken = document.getElementById('csrf-token')?.value || '';
     const R2 = 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/';
@@ -65,7 +66,7 @@
         const pack    = stock.packOrigen;
         const detalles = pack?.DETALLES_PACKs || [];
         const precio  = detalles.reduce((s, d) => s + (parseFloat(d.producto?.precioVentaMayorista || 0) * d.cantidad), 0);
-        const contenido = detalles.map(d => `${d.producto?.nombreProducto || '—'} ×${d.cantidad}`).join(', ');
+        const contenido = detalles.map(d => `${tc(d.producto?.nombreProducto) || '—'} ×${d.cantidad}`).join(', ');
 
         return `
         <tr class="border-b border-purple-100 hover:bg-purple-50/60 transition-colors bg-purple-50/30"
@@ -120,7 +121,7 @@
                 <img src="${imgUrl}" class="w-12 h-12 object-cover rounded-lg shadow-sm">
             </td>
             <td class="p-4">
-                <div class="font-bold text-gray-800">${p.nombreProducto}</div>
+                <div class="font-bold text-gray-800">${tc(p.nombreProducto)}</div>
                 <div class="text-xs text-gray-400">SKU: ${p.sku}</div>
             </td>
             <td class="p-4 text-sm font-semibold text-gh-primary">

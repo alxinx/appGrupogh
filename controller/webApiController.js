@@ -290,6 +290,27 @@ export const getCatalogo = async (req, res) => {
         // orden indefinido entre consultas, y con LIMIT/OFFSET el scroll infinito recibe el
         // mismo producto en dos páginas — de ahí el "two children with the same key" del front.
         const DESEMPATE = ['idProducto', 'ASC'];
+
+        // Lo que hay en existencia va primero. Un agotado encabezando la búsqueda o la
+        // vitrina del home es tráfico que se pierde: la clienta entra, ve "sin stock" y se
+        // va. Es un criterio binario (hay / no hay), no un orden por cantidad: entre dos
+        // productos disponibles manda el criterio que eligió la clienta.
+        //
+        // Va como subconsulta y no con el mapa de stock de más abajo porque ese mapa se
+        // arma DESPUÉS de paginar: ordenar en JS solo reacomodaría los 15 de la página,
+        // dejando los disponibles de la página 3 igual de escondidos.
+        //
+        // Mismo alcance de stock que usa el resto del catálogo (TIPOS_PUNTO_VENDIBLE) y
+        // se respeta el borrado lógico de PUNTO_DE_VENTA: el stock de una tienda cerrada
+        // no es vendible.
+        const DISPONIBLE_PRIMERO = literal(`(
+            SELECT COALESCE(SUM(s.cantidadExistente), 0)
+            FROM STOCKS s
+            INNER JOIN PUNTO_DE_VENTA pv ON pv.idPuntoDeVenta = s.idPuntoVenta
+            WHERE s.idProducto = PRODUCTOS.idProducto
+              AND pv.tipo IN (${TIPOS_PUNTO_VENDIBLE.map(t => `'${t}'`).join(', ')})
+              AND pv.deletedAt IS NULL
+        ) > 0 DESC`);
         const ordenMap = {
             'nombre_asc': [
                 // Suma de unidades vendidas en los últimos 30 días
@@ -307,7 +328,14 @@ export const getCatalogo = async (req, res) => {
             'precio_desc': [['precioVentaPublicoFinal', 'DESC'], DESEMPATE],
             'nuevo':       [['createdAt', 'DESC'], DESEMPATE]
         };
-        const order = ordenMap[orden] ?? ordenMap['nombre_asc'];
+        // Se prioriza el stock al buscar (`q`) y en las vitrinas del home, que piden
+        // `orden=nuevo`. Un orden explícito por precio se respeta tal cual: si la clienta
+        // pidió "de menor a mayor", el primero tiene que ser el más barato.
+        const priorizarDisponibles = Boolean(q) || orden === 'nuevo';
+        const order = [
+            ...(priorizarDisponibles ? [DISPONIBLE_PRIMERO] : []),
+            ...(ordenMap[orden] ?? ordenMap['nombre_asc'])
+        ];
 
         const { count, rows } = await Productos.findAndCountAll({
             where,

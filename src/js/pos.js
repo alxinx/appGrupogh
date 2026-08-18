@@ -1,4 +1,5 @@
 import ciiuData from '../json/ciiu.json';
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 
 (function () {
 
@@ -100,7 +101,7 @@ import ciiuData from '../json/ciiu.json';
                     ${textoStock}
                 </span>
             </div>
-            <h3 class="font-bold text-gray-900 truncate px-2 text-sm md:text-base">${p.nombreProducto}</h3>
+            <h3 class="font-bold text-gray-900 truncate px-2 text-sm md:text-base">${tc(p.nombreProducto)}</h3>
             <p class="text-xs text-gray-500 mb-4 px-2 flex items-center">
                 <i class="fi-rr-rectangle-barcode pr-2 text-slate-400"></i>
                 <span class="font-mono">${p.sku}</span>
@@ -449,7 +450,7 @@ import ciiuData from '../json/ciiu.json';
                     </div>
                     <div class="flex items-center gap-1.5 text-sm text-gray-500 truncate">
                         <i class="fi fi-rr-user"></i>
-                        <span class="truncate">${p.nombreCliente}</span>
+                        <span class="truncate">${tc(p.nombreCliente)}</span>
                         <span>·</span>
                         <span class="font-bold text-gh-grayText">$${fmt(p.total)}</span>
                     </div>
@@ -1670,7 +1671,7 @@ import ciiuData from '../json/ciiu.json';
                 <button type="button"
                     class="fv-banco-chip px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-blue-400 hover:text-blue-600 transition-all cursor-pointer"
                     data-id="${b.idEntidad}" data-nombre="${b.nombreEntidad}" data-grupo="transferencia">
-                    ${b.nombreEntidad}
+                    ${tc(b.nombreEntidad)}
                 </button>`).join('');
         };
 
@@ -1681,7 +1682,7 @@ import ciiuData from '../json/ciiu.json';
                 <button type="button"
                     class="fv-banco-chip px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-purple-400 hover:text-purple-600 transition-all cursor-pointer"
                     data-id="${b.idEntidad}" data-nombre="${b.nombreEntidad}" data-grupo="tarjeta">
-                    ${b.nombreEntidad}
+                    ${tc(b.nombreEntidad)}
                 </button>`).join('');
         };
 
@@ -1692,7 +1693,7 @@ import ciiuData from '../json/ciiu.json';
                 <button type="button"
                     class="fv-banco-chip px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-orange-400 hover:text-orange-600 transition-all cursor-pointer"
                     data-id="${b.idEntidad}" data-nombre="${b.nombreEntidad}" data-grupo="credito">
-                    ${b.nombreEntidad}
+                    ${tc(b.nombreEntidad)}
                 </button>`).join('');
         };
 

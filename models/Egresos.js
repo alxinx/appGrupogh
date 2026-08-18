@@ -26,6 +26,24 @@ const Egresos = db.define('EGRESOS', {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false
     },
+    // De dónde salió la plata. Sin esto, todo egreso se descontaba del cajón: pagarle a
+    // un proveedor por transferencia dejaba mal el efectivo esperado de la tienda.
+    // Por defecto 'Efectivo' porque es lo que se asumía hasta ahora — los registros
+    // viejos quedan como estaban.
+    metodoPago: {
+        type: DataTypes.ENUM('Efectivo', 'Electronico'),
+        allowNull: false,
+        defaultValue: 'Efectivo'
+    },
+
+    // Con qué cuenta se pagó, cuando fue electrónico. Es la misma tabla que usan los
+    // pagos de las facturas, para que el cuadre hable de las mismas entidades.
+    idEntidad: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'ENTIDADES', key: 'idEntidad' }
+    },
+
     referencia: {
         type: DataTypes.STRING(50),
         allowNull: true
@@ -38,6 +56,18 @@ const Egresos = db.define('EGRESOS', {
         type: DataTypes.ENUM('pendiente', 'liquidada'),
         allowNull: false,
         defaultValue: 'pendiente'
+    },
+
+    // Distingue un gasto real de un traslado de efectivo hacia una caja o banco. Sin
+    // esto, consignar la venta del día aparecería en los reportes como si el negocio
+    // hubiera gastado esa plata.
+    tipo: {
+        type: DataTypes.ENUM('Egreso', 'Traslado'),
+        allowNull: false,
+        defaultValue: 'Egreso',
+        validate: {
+            isIn: { args: [['Egreso', 'Traslado']], msg: 'El tipo debe ser Egreso o Traslado.' }
+        }
     }
 }, {
     tableName: "EGRESOS",

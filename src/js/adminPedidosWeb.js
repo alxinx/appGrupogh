@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 (function () {
     'use strict';
 
@@ -57,7 +58,7 @@
                     <p class="font-mono text-xs font-bold text-gh-primaryHover">${p.numeroPedido}</p>
                     <p class="text-[11px] text-slate-400">${p.nProductos} producto${p.nProductos === 1 ? '' : 's'}</p>
                 </td>
-                <td class="px-4 py-3 text-sm text-slate-700 capitalize">${p.nombreCliente}</td>
+                <td class="px-4 py-3 text-sm text-slate-700">${tc(p.nombreCliente)}</td>
                 <td class="px-4 py-3">
                     <p class="text-xs text-slate-600">${p.email}</p>
                     <p class="text-xs text-slate-500 flex items-center gap-1.5">

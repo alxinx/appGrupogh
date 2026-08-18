@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 const CSRF_TOKEN = document.getElementById('csrfBatch')?.value || '';
 
 // ─── SUPPLIER AUTOCOMPLETE ─────────────────────────────────────
@@ -13,7 +14,7 @@ function renderDropdown(items) {
         items.forEach(item => {
             const el = document.createElement('div');
             el.className = 'px-4 py-3 text-sm cursor-pointer hover:bg-pink-50 flex flex-col border-b border-gray-50 last:border-0';
-            el.innerHTML = `<span class="font-semibold text-gray-800">${item.razonSocial}</span><span class="text-xs text-gray-400">${item.taxIdSupplier || ''}</span>`;
+            el.innerHTML = `<span class="font-semibold text-gray-800">${tc(item.razonSocial)}</span><span class="text-xs text-gray-400">${item.taxIdSupplier || ''}</span>`;
             el.addEventListener('click', () => {
                 proveedorInput.value = item.razonSocial;
                 idProveedorSel.value = item.idProveedor;

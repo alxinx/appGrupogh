@@ -22,7 +22,6 @@ import UserPermisos from './UserPermisos.js'
 
 import Stock from './Stock.js'
 
-import Cajas from './Cajas.js'
 import FacturaProveedores from './FacturaProvedores.js'
 import AbonosProveedores from './abonoProvedores.js'
 
@@ -35,6 +34,10 @@ import Clientes from './Clientes.js'
 import ClientesTributario from './ClientesTributario.js'
 import ClientesUbicacion from './ClientesUbicacion.js'
 import CajaTienda from './CajaTienda.js'
+import CajasYBancos from './CajasYBancos.js'
+import MovimientosCajasBancos from './MovimientosCajasBancos.js'
+import TrasladoEfectivo from './TrasladoEfectivo.js'
+import TrasladoEfectivoHistorial from './TrasladoEfectivoHistorial.js'
 import Entidades from './Entidades.js'
 import EntidadesQrHistorial from './EntidadesQrHistorial.js'
 import FacturaClientes from './FacturaClientes.js'
@@ -70,6 +73,49 @@ Productos.belongsTo(Familia, {
 });
 
 // Intenciones de compra vivas (carrito web / orden de POS) sobre un producto.
+// Con qué cuenta se pagó un egreso, cuando no fue en efectivo. Es la misma tabla que
+// usan los pagos de las facturas, para que el cuadre hable de las mismas entidades.
+Entidades.hasMany(Egresos,   { as: 'egresos', foreignKey: 'idEntidad' });
+Egresos.belongsTo(Entidades, { as: 'entidad', foreignKey: 'idEntidad' });
+
+// ── TRASLADOS DE EFECTIVO ────────────────────────────────────────────────────
+// El documento del traslado cuelga de todo lo que interviene: la tienda que envía, el
+// turno de caja del que salió, los dos empleados, la cuenta destino y —cuando se
+// acepta— el movimiento que asentó la plata.
+PuntosDeVenta.hasMany(TrasladoEfectivo,   { as: 'trasladosEfectivo', foreignKey: 'idTiendaOrigen' });
+TrasladoEfectivo.belongsTo(PuntosDeVenta, { as: 'tiendaOrigen',      foreignKey: 'idTiendaOrigen' });
+
+CajasYBancos.hasMany(TrasladoEfectivo,   { as: 'trasladosRecibidos', foreignKey: 'idCajaBanco' });
+TrasladoEfectivo.belongsTo(CajasYBancos, { as: 'cajaBancoDestino',   foreignKey: 'idCajaBanco' });
+
+// Dos alias distintos para EMPLEADOS: quien despacha y quien recibe no son la misma
+// persona, y el comprobante tiene que poder nombrar a las dos.
+Empleados.hasMany(TrasladoEfectivo,   { as: 'trasladosEnviados',  foreignKey: 'idEmpleadoEnvia' });
+TrasladoEfectivo.belongsTo(Empleados, { as: 'empleadoEnvia',      foreignKey: 'idEmpleadoEnvia' });
+Empleados.hasMany(TrasladoEfectivo,   { as: 'trasladosRecibidos', foreignKey: 'idEmpleadoRecibe' });
+TrasladoEfectivo.belongsTo(Empleados, { as: 'empleadoRecibe',     foreignKey: 'idEmpleadoRecibe' });
+
+CajaTienda.hasMany(TrasladoEfectivo,   { as: 'trasladosEfectivo', foreignKey: 'idCajaTienda' });
+TrasladoEfectivo.belongsTo(CajaTienda, { as: 'cajaTienda',        foreignKey: 'idCajaTienda' });
+
+TrasladoEfectivo.belongsTo(MovimientosCajasBancos, { as: 'movimiento', foreignKey: 'idMovimiento' });
+
+// La bitácora del traslado: varios pasos por envío, en orden.
+TrasladoEfectivo.hasMany(TrasladoEfectivoHistorial,   { as: 'historial', foreignKey: 'idTrasladosEfectivo' });
+TrasladoEfectivoHistorial.belongsTo(TrasladoEfectivo, { as: 'traslado',  foreignKey: 'idTrasladosEfectivo' });
+TrasladoEfectivoHistorial.belongsTo(Empleados,        { as: 'empleado',  foreignKey: 'idEmpleado' });
+
+// ── CAJAS Y BANCOS ↔ SUS MOVIMIENTOS ─────────────────────────────────────────
+// El saldo de una caja no se guarda en ninguna columna: se calcula sumando sus
+// movimientos. Así el saldo nunca puede contradecir al libro que lo respalda.
+CajasYBancos.hasMany(MovimientosCajasBancos, { as: 'movimientos', foreignKey: 'idCajaBanco' });
+MovimientosCajasBancos.belongsTo(CajasYBancos, { as: 'cajaBanco',  foreignKey: 'idCajaBanco' });
+
+// Quién registró cada movimiento. EMPLEADOS es paranoid: un empleado despedido sigue
+// apareciendo como autor del movimiento que hizo.
+Empleados.hasMany(MovimientosCajasBancos, { as: 'movimientosCaja', foreignKey: 'idEmpleado' });
+MovimientosCajasBancos.belongsTo(Empleados, { as: 'empleado',       foreignKey: 'idEmpleado' });
+
 Productos.hasMany(ReservasCarrito, { as: 'reservas', foreignKey: 'idProducto' });
 ReservasCarrito.belongsTo(Productos, { as: 'producto', foreignKey: 'idProducto' });
 ReservasCarrito.belongsTo(PuntosDeVenta, { as: 'puntoDeVenta', foreignKey: 'idPuntoDeVenta' });
@@ -299,7 +345,7 @@ export {
   Departamentos,
   Municipios,
   PuntosDeVenta,
-  RegimenFacturacion, Cajas, FacturaProveedores, AbonosProveedores,
+  RegimenFacturacion, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, FacturaProveedores, AbonosProveedores,
   Categorias, Atributos, VariacionesProducto,
   Productos, Provedores, CategoriasDeProvedores,
   Dosificaciones, Pack, DetallesPack, Stock,

@@ -554,8 +554,8 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
     const [egresosRows, facturas] = await Promise.all([
         Egresos.findAll({
             where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
-            attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso'],
-            raw: true
+            attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso', 'metodoPago', 'idEntidad'],
+            include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false }]
         }),
         FacturaClientes.findAll({
             where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
@@ -589,12 +589,27 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
         }
     }
 
-    const txEgresos  = egresosRows.map(e => ({ idEgreso: e.idEgreso, referencia: e.referencia || '—', descripcion: e.descripcion || '—', valor: Math.round(parseFloat(e.valorEgreso) || 0) }));
-    const sEgresos   = txEgresos.reduce((s, e) => s + e.valor, 0);
+    // Un egreso pagado por transferencia NO sale del cajón. Antes todos se descontaban
+    // del efectivo, así que pagarle a un proveedor por Nequi dejaba el efectivo esperado
+    // corto por ese monto.
+    const txEgresos = egresosRows.map(e => ({
+        idEgreso:    e.idEgreso,
+        referencia:  e.referencia || '—',
+        descripcion: e.descripcion || '—',
+        valor:       Math.round(parseFloat(e.valorEgreso) || 0),
+        metodoPago:  e.metodoPago || 'Efectivo',
+        entidad:     e.entidad?.nombreEntidad || null
+    }));
+    const sEgresos            = txEgresos.reduce((s, e) => s + e.valor, 0);
+    const sEgresosEfectivo    = txEgresos.filter(e => e.metodoPago === 'Efectivo').reduce((s, e) => s + e.valor, 0);
+    const sEgresosElectronicos = sEgresos - sEgresosEfectivo;
     const idFacturas = facturas.map(f => f.idFacturaCliente);
 
     return {
         sEfectivo, sMedios, sCredito, sEgresos, sVentas: sEfectivo + sMedios + sCredito,
+        sEgresosEfectivo, sEgresosElectronicos,
+        // Lo que debería haber físicamente en el cajón: base + ventas en efectivo −
+        // egresos pagados en efectivo. Antes esta cuenta la hacía el vendedor de cabeza.
         txEfectivo, txElectronicos, txCredito, txEgresos, idFacturas,
         nFacturasEfectivo:     facturasEfectivo.size,
         nFacturasElectronicos: facturasElectronicos.size,
@@ -2235,10 +2250,20 @@ const crearTrasladoSueltos = async (req, res) => {
 // ─── EGRESOS ──────────────────────────────────────────────────────────────────
 
 const getExpensesPage = async (req, res) => {
+    // Las cuentas habilitadas para pagos: son las mismas que el POS ofrece al cobrar,
+    // así el cuadre habla de las mismas entidades por los dos lados.
+    const entidades = await Entidades.findAll({
+        where: { recibirPagosPos: true },
+        attributes: ['idEntidad', 'nombreEntidad', 'tipoEntidad'],
+        order: [['nombreEntidad', 'ASC']],
+        raw: true
+    });
+
     return res.render('./tienda/storebehivors/expenses', {
         pagina: 'Egresos',
         csrfToken: req.csrfToken(),
-        currentPath: '/storebehivors/expenses'
+        currentPath: '/storebehivors/expenses',
+        entidades
     });
 };
 
@@ -2260,7 +2285,8 @@ const getCuadreCajaDatos = async (req, res) => {
         ]);
         if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta.' });
 
-        const { sEfectivo, sMedios, sCredito, sEgresos, sVentas, txEfectivo, txElectronicos, txCredito, txEgresos } =
+        const { sEfectivo, sMedios, sCredito, sEgresos, sEgresosEfectivo, sEgresosElectronicos,
+                sVentas, txEfectivo, txElectronicos, txCredito, txEgresos } =
             await _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date());
 
         return res.json({
@@ -2270,7 +2296,14 @@ const getCuadreCajaDatos = async (req, res) => {
                 cajaMenor:        Math.round(parseFloat(caja.cajaMenor) || 0),
                 empleadoApertura: `${caja.empleadoApertura?.PrimerNombre || ''} ${caja.empleadoApertura?.PrimerApellido || ''}`.trim()
             },
-            totales: { ventas: sVentas, egresos: sEgresos, efectivo: sEfectivo, mediosElectronicos: sMedios, credito: sCredito },
+            totales: {
+                ventas: sVentas, egresos: sEgresos, efectivo: sEfectivo,
+                mediosElectronicos: sMedios, credito: sCredito,
+                egresosEfectivo: sEgresosEfectivo, egresosElectronicos: sEgresosElectronicos,
+                // Lo que debería estar físicamente en el cajón. Antes esta cuenta la hacía
+                // el vendedor de cabeza; ahora sale del mismo lugar que todo lo demás.
+                efectivoEsperado: Math.round(parseFloat(caja.cajaMenor) || 0) + sEfectivo - sEgresosEfectivo
+            },
             txEfectivo,
             txElectronicos,
             txCredito,
@@ -2315,32 +2348,59 @@ const cerrarCajaAPI = async (req, res) => {
         const oCredito      = Math.round(parseFloat(operadorCredito)      || 0);
         const oBase         = Math.round(parseFloat(operadorBase)        || 0);
 
-        if (idFacturas.length > 0) {
-            await Promise.all([
-                FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente: idFacturas } }),
-                Egresos.update({ estado: 'liquidada' }, { where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } } })
-            ]);
+        // El cierre escribe en tres tablas financieras: va en una transacción. Si algo
+        // falla a mitad de camino, no puede quedar la factura liquidada con la caja
+        // todavía abierta — ese estado haría que el siguiente cierre no la viera.
+        const t = await db.transaction();
+        try {
+            // Los egresos se liquidan SIEMPRE, no solo cuando hubo facturas. Antes esto
+            // estaba dentro de `if (idFacturas.length > 0)`: un día sin ventas pero con
+            // egresos los dejaba en 'pendiente' y volvían a contarse en el cierre
+            // siguiente, inflándolo. Pasa en un día flojo o en una tienda que ese día
+            // solo recibió mercancía.
+            if (idFacturas.length > 0) {
+                await FacturaClientes.update(
+                    { estado: 'liquidada' },
+                    { where: { idFacturaCliente: idFacturas }, transaction: t }
+                );
+            }
+            await Egresos.update(
+                { estado: 'liquidada' },
+                { where: { idPuntoDeVenta: idPdv, estado: 'pendiente', createdAt: { [Op.between]: [inicio, fin] } }, transaction: t }
+            );
+
+            await caja.update({
+                idEmpleadoCierre:               empleadoCierre.idEmpleado,
+                fechaCierre:                    new Date(),
+                cajaMenorRegistrada:            oBase,
+                ventasTotales:                  sVentas,
+                ventasTotalesRegistradas:       oEfectivo + oElectronicos + oCredito,
+                egresosTotales:                 sEgresos,
+                egresosTotalesRegistrados:      oEgresos,
+                ventasCredito:                  sCredito,
+                ventasCreditoRegistradas:       oCredito,
+                ventasEfectivo:                 sEfectivo,
+                ventasEfectivoRegistradas:      oEfectivo,
+                ventasMediosElectronicos:        sMedios,
+                ventasMediosElectronicosRegistradas: oElectronicos,
+                estado:                         'cerrado',
+                nota:                           nota || null
+            }, { transaction: t });
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
         }
 
-        await caja.update({
-            idEmpleadoCierre:               empleadoCierre.idEmpleado,
-            fechaCierre:                    new Date(),
-            cajaMenorRegistrada:            oBase,
-            ventasTotales:                  sVentas,
-            ventasTotalesRegistradas:       oEfectivo + oElectronicos + oCredito,
-            egresosTotales:                 sEgresos,
-            egresosTotalesRegistrados:      oEgresos,
-            ventasCredito:                  sCredito,
-            ventasCreditoRegistradas:       oCredito,
-            ventasEfectivo:                 sEfectivo,
-            ventasEfectivoRegistradas:      oEfectivo,
-            ventasMediosElectronicos:        sMedios,
-            ventasMediosElectronicosRegistradas: oElectronicos,
-            estado:                         'cerrado',
-            nota:                           nota || null
-        });
-
-        broadcast('__ADMIN__', 'caja_status', { idPuntoDeVenta: idPdv, estado: 'cuadrada' });
+        // El aviso va DESPUÉS del commit y fuera de su try: si fallara acá, un rollback
+        // sobre una transacción ya cerrada lanzaría un segundo error dentro del catch y
+        // la respuesta no se enviaría nunca.
+        try {
+            broadcast('__ADMIN__', 'caja_status', { idPuntoDeVenta: idPdv, estado: 'cuadrada' });
+        } catch (e) {
+            console.error('cerrarCajaAPI (aviso post-cierre):', e);
+        }
 
         return res.json({ success: true, idCajaTienda: caja.idCajaTienda });
     } catch (e) {
@@ -2504,16 +2564,26 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
     if (txEgresos.length > 0) {
         seccionTitulo('EGRESOS');
         for (const e of txEgresos) {
-            filaPuntos(e.referencia, fmt(e.valor));
+            // El comprobante impreso también tiene que decir de dónde salió la plata:
+            // quien concilia después no puede quedar con la misma ambigüedad.
+            const origen = e.metodoPago === 'Electronico' ? ` (${e.entidad || 'transferencia'})` : '';
+            filaPuntos(`${e.referencia}${origen}`, fmt(e.valor));
             doc.moveDown(0.1);
         }
         hr();
         filaPuntos('TOTAL EGRESOS:', fmt(sums.sEgresos), { bold: true });
+        if (sums.sEgresosElectronicos > 0) {
+            filaPuntos('  De los cuales salieron del cajón:', fmt(sums.sEgresosEfectivo));
+        }
         doc.moveDown(0.3); hr();
     }
 
     // ── SECCIÓN 7: descuadre (solo si hay diferencias sistema vs operador) ─────
     const categoriasDescuadre = [
+        // La base entra al descuadre como cualquier otra categoría. Antes la diferencia
+        // se imprimía pero el cierre NO quedaba marcado: si alguien sacaba plata de la
+        // base, no saltaba en ningún lado.
+        { label: 'base (caja menor)',   sis: caja.cajaMenor,                           op: caja.cajaMenorRegistrada },
         { label: 'egresos',             sis: caja.egresosTotales,                      op: caja.egresosTotalesRegistrados },
         { label: 'efectivo',            sis: caja.ventasEfectivo,                      op: caja.ventasEfectivoRegistradas },
         { label: 'medios electrónicos', sis: caja.ventasMediosElectronicos,            op: caja.ventasMediosElectronicosRegistradas },
@@ -2584,7 +2654,7 @@ const getCuadrePDF = async (req, res) => {
 
         const buf = await _generarPDFCuadre({
             caja, regimen, municipio,
-            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas },
+            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
             txElectronicos: datos.txElectronicos,
             txCredito:      datos.txCredito,
             txEgresos:      datos.txEgresos
@@ -2603,9 +2673,22 @@ const crearEgreso = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
 
-    const { valorEgreso, referencia, descripcion } = req.body;
+    const { valorEgreso, referencia, descripcion, metodoPago, idEntidad } = req.body;
     if (!valorEgreso) {
         return res.status(400).json({ success: false, mensaje: 'Valor requerido.' });
+    }
+
+    // De dónde sale la plata. Solo un egreso en efectivo descuenta del cajón.
+    const metodo = metodoPago === 'Electronico' ? 'Electronico' : 'Efectivo';
+    let entidad = null;
+    if (metodo === 'Electronico') {
+        entidad = parseInt(idEntidad);
+        if (!Number.isInteger(entidad)) {
+            return res.status(400).json({ success: false, mensaje: 'Indicá con qué cuenta se pagó.' });
+        }
+        // Se valida contra la base: no alcanza con que el cliente mande un id.
+        const existe = await Entidades.findOne({ where: { idEntidad: entidad }, attributes: ['idEntidad'] });
+        if (!existe) return res.status(422).json({ success: false, mensaje: 'La cuenta indicada no existe.' });
     }
 
     const empleado = req.empleadoVerificado;
@@ -2628,6 +2711,8 @@ const crearEgreso = async (req, res) => {
             valorEgreso: valor,
             referencia: referencia?.trim() || null,
             descripcion: descripcion?.trim() || null,
+            metodoPago: metodo,
+            idEntidad: entidad,
             estado: 'pendiente'
         });
 
@@ -2643,6 +2728,7 @@ const crearEgreso = async (req, res) => {
                 referencia: egreso.referencia,
                 valorEgreso: parseFloat(egreso.valorEgreso),
                 descripcion: egreso.descripcion,
+                metodoPago: egreso.metodoPago,
                 estado: egreso.estado,
                 createdAt: egreso.createdAt
             },

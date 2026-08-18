@@ -13,6 +13,7 @@ import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
 import { cargarContadoresAdmin } from './middleware/adminMenuMiddleware.js';
+import { tituloLista } from './helpers/textoLista.js';
 
 
 dotenv.config();
@@ -25,6 +26,10 @@ const port = process.env.APP_PORT;
 // tráfico entero como un solo cliente. TRUST_PROXY declara cuántos saltos de confianza hay.
 // En local va en 0 (sin proxy) para que nadie pueda falsear su IP con X-Forwarded-For.
 app.set('trust proxy', parseInt(process.env.TRUST_PROXY) || 0);
+
+// Formateo de nombres en listados: disponible como tc() en cualquier vista Pug.
+// Es solo presentación — no altera lo que está guardado.
+app.locals.tc = tituloLista;
 
 // Conexión a la Base de Datos
 try {

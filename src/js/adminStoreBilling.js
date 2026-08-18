@@ -14,15 +14,6 @@
         return `${d}/${m}/${y}${h}`;
     };
 
-    // ─── CARGA LAZY DE SHEETJS ────────────────────────────────────────────────
-    const cargarSheetJS = () => new Promise((resolve) => {
-        if (window.XLSX) { resolve(); return; }
-        const s  = document.createElement('script');
-        s.src    = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload = resolve;
-        document.head.appendChild(s);
-    });
-
     // ─── ESTADO LOCAL ─────────────────────────────────────────────────────────
     let pdvId        = null;
     let fechaActual  = hoy();
@@ -83,68 +74,13 @@
     };
 
     // ─── EXPORTAR A EXCEL ─────────────────────────────────────────────────────
-    const exportarExcel = async () => {
-        const btn = document.getElementById('billing-export');
-        if (!btn) return;
-        const original = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fi fi-rr-spinner animate-spin mr-2"></i>Exportando...';
-
-        try {
-            await cargarSheetJS();
-
-            const params = new URLSearchParams({ fecha: fechaActual, exportar: '1' });
-            const res    = await fetch(`/admin/api/tiendas/${pdvId}/facturas?${params}`);
-            const json   = await res.json();
-
-            if (!json.success || !json.facturas.length) {
-                alert('No hay facturas para exportar en esta fecha.');
-                return;
-            }
-
-            const encabezado = [
-                'Nro Factura',
-                'Cliente',
-                'Doc Cliente',
-                'Fecha',
-                'Hora',
-                'Valor ($)',
-                'Método de Pago',
-                'Nro Items',
-                'Vendedor'
-            ];
-
-            const filas = json.facturas.map(f => [
-                f.nroFactura,
-                f.cliente,
-                f.docCliente,
-                f.fechaEmision,
-                f.horaEmision,
-                parseFloat(f.total) || 0,
-                f.metodos,
-                f.nroItems,
-                f.vendedor
-            ]);
-
-            const wb  = window.XLSX.utils.book_new();
-            const ws  = window.XLSX.utils.aoa_to_sheet([encabezado, ...filas]);
-
-            // Ancho de columnas
-            ws['!cols'] = [
-                { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 12 },
-                { wch: 8 },  { wch: 16 }, { wch: 24 }, { wch: 10 }, { wch: 28 }
-            ];
-
-            window.XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
-            window.XLSX.writeFile(wb, `facturas-${fechaActual}.xlsx`);
-
-        } catch (e) {
-            console.error('exportarExcel:', e);
-            alert('Error al generar el Excel.');
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = original;
-        }
+    // El archivo lo arma el servidor con ExcelJS y baja por streaming, igual que el
+    // informe de movimientos de caja. Antes se generaba acá con SheetJS traído de un CDN:
+    // eso obligaba a bajar todas las facturas como JSON al navegador, no permitía dar
+    // formato a la hoja, y sumaba una dependencia externa cargada en caliente.
+    const exportarExcel = () => {
+        const params = new URLSearchParams({ fecha: fechaActual });
+        window.location.href = `/admin/api/tiendas/${pdvId}/facturas/export?${params}`;
     };
 
     // ─── BOTONES VER CUADRE ───────────────────────────────────────────────────

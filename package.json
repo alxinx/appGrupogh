@@ -16,7 +16,15 @@
     "db:migrar-pago-qr": "node ./seed/migracionPagoQrPedidos.js",
     "db:migrar-familia": "node ./seed/migracionFamiliaProductos.js",
     "db:migrar-reservas": "node ./seed/migracionReservasCarrito.js",
-    "db:migrar-slug": "node ./seed/migracionSlugUnico.js"
+    "db:migrar-slug": "node ./seed/migracionSlugUnico.js",
+    "db:migrar-cajas-bancos": "node ./seed/migracionCajasYBancos.js",
+    "db:migrar-egreso-tipo": "node ./seed/migracionEgresoTipo.js",
+    "db:migrar-egreso-metodo": "node ./seed/migracionEgresoMetodoPago.js",
+    "db:migrar-traslado-historial": "node ./seed/migracionTrasladoEfectivoHistorial.js",
+    "db:migrar-traslado-efectivo": "node ./seed/migracionTrasladoEfectivo.js",
+    "db:migrar-movimientos": "node ./seed/migracionMovimientosCaja.js",
+    "db:eliminar-cajas": "node ./seed/migracionEliminarCajas.js",
+    "db:migrar-costo": "node ./seed/migracionCostoProducto.js"
   },
   "keywords": [
     "contable"
@@ -37,6 +45,7 @@
     "csrf": "^3.1.0",
     "csurf": "^1.11.0",
     "dotenv": "^16.6.1",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-validator": "^7.3.1",
     "fs": "^0.0.1-security",

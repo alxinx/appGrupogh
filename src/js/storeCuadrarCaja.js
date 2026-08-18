@@ -40,6 +40,11 @@
     const $ = (id) => document.getElementById(id);
 
     const sVentas   = $('cc-s-ventas');
+    // Un egreso por transferencia no mueve el cajón: se distingue a simple vista.
+    const etiquetaMedio = (e) => e.metodoPago === 'Electronico'
+        ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 whitespace-nowrap">${e.entidad || 'Transferencia'}</span>`
+        : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 whitespace-nowrap">Cajón</span>`;
+
     const sBase     = $('cc-s-base');
     const sEgresos  = $('cc-s-egresos');
     const sEfectivo = $('cc-s-efectivo');
@@ -119,10 +124,19 @@
             // Default operador
             oBase.value = Math.round(d.caja.cajaMenor).toLocaleString('es-CO');
 
+            // Efectivo que debería estar en el cajón. Antes esta cuenta la hacía el
+            // vendedor de cabeza; ahora sale del backend con el mismo criterio.
+            const elEsp = $('cc-s-esperado');
+            if (elEsp) {
+                elEsp.textContent = fmt(d.totales.efectivoEsperado);
+                $('cc-s-esperado-detalle').textContent =
+                    `Base ${fmt(d.caja.cajaMenor)} + ventas en efectivo ${fmt(d.totales.efectivo)} − egresos en efectivo ${fmt(d.totales.egresosEfectivo)}`;
+            }
+
             // Acordeón — egresos
             const tbodyE = $('cc-tbody-egresos');
             if (!d.txEgresos || d.txEgresos.length === 0) {
-                tbodyE.innerHTML = '<tr><td colspan="3" class="py-2 px-2 text-xs text-slate-400 text-center">Sin egresos</td></tr>';
+                tbodyE.innerHTML = '<tr><td colspan="4" class="py-2 px-2 text-xs text-slate-400 text-center">Sin egresos</td></tr>';
             } else {
                 d.txEgresos.forEach(e => {
                     const tr = document.createElement('tr');
@@ -133,9 +147,19 @@
                                class="text-pink-500 underline hover:text-pink-700 font-medium">${e.referencia}</a>
                         </td>
                         <td class="py-1.5 px-2 text-slate-500 text-xs">${e.descripcion}</td>
+                        <td class="py-1.5 px-2 text-center">${etiquetaMedio(e)}</td>
                         <td class="py-1.5 px-2 text-right font-mono text-xs font-semibold text-rose-600">${fmt(e.valor)}</td>`;
                     tbodyE.appendChild(tr);
                 });
+            }
+
+            // El desglose deja claro cuánto de los egresos salió del cajón y cuánto no.
+            const desglose = $('cc-egresos-desglose');
+            if (desglose && d.totales.egresos > 0) {
+                desglose.textContent = d.totales.egresosElectronicos > 0
+                    ? `Del cajón salieron ${fmt(d.totales.egresosEfectivo)}; ${fmt(d.totales.egresosElectronicos)} se pagaron por transferencia y no afectan el efectivo.`
+                    : `Todos los egresos salieron del cajón.`;
+                desglose.classList.remove('hidden');
             }
 
             // Acordeón — efectivo

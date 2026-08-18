@@ -1,5 +1,26 @@
 extends ../../layout/index
 block contenedor
+    //- Cajas, bancos y billeteras salen de CAJAS_Y_BANCOS; el controlador ya los separa
+    //- por tipo (`cajas` = efectivo, `bancos` = banco + billetera).
+    -
+        var cajasLista  = cajas  || [];
+        var bancosLista = bancos || [];
+        //- El saldo llega como DECIMAL (string) desde MySQL. Se pasa a Number solo para
+        //- darle formato de miles: es presentación, no un cálculo encadenado.
+        var pesos = function (v) {
+            var n = Number(v || 0);
+            return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+        };
+
+        //- Presentación de cada tipo de entidad en la tabla de métodos de pago.
+        var estiloTipo = {
+            'Banco':              { icono: 'fi-rr-bank',        caja: 'bg-blue-50 text-blue-600',       badge: 'bg-blue-100 text-blue-700',       desc: 'Transferencias y consignaciones' },
+            'Billetera Virtual':  { icono: 'fi-rr-wallet',      caja: 'bg-fuchsia-50 text-fuchsia-600', badge: 'bg-fuchsia-100 text-fuchsia-700', desc: 'Nequi, Daviplata y otros' },
+            'Entidad Crediticia': { icono: 'fi-rr-coins',       caja: 'bg-indigo-50 text-indigo-600',   badge: 'bg-indigo-100 text-indigo-700',   desc: 'Créditos y financiación' },
+            'Tarjeta Credito':    { icono: 'fi-rr-credit-card', caja: 'bg-violet-50 text-violet-600',   badge: 'bg-violet-100 text-violet-700',   desc: 'Tarjetas de crédito' }
+        };
+        var estiloPorDefecto = { icono: 'fi-rr-money-bill-wave', caja: 'bg-slate-100 text-slate-500', badge: 'bg-slate-100 text-slate-600', desc: 'Método de pago' };
+
     body(class="bg-gray-100 min-h-screen")
         main(class="flex-1 overflow-y-auto")
             div(class="flex min-h-screen")
@@ -10,61 +31,225 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         div(class="mainDashboard")
 
-                            //- HEADER
-                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex items-center justify-between")
-                                div(class="flex items-center gap-4")
-                                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
-                                        img(src="/img/avatars/banco.webp" alt="Entidades Bancarias" class="w-17 h-17 object-contain")
-                                    div
-                                        h1(class="text-xl font-bold text-slate-800") Entidades Bancarias
-                                        p(class="text-xs text-slate-400 mt-0.5") Gestiona los métodos de pago disponibles en el POS
+                            //- HEADER — se conserva el ícono y la distribución original;
+                            //- lo único nuevo son las dos pestañas de abajo.
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                div(class="flex items-center justify-between")
+                                    div(class="flex items-center gap-4")
+                                        div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                            img(src="/img/avatars/banco.webp" alt="Cajas, bancos y métodos de pago" class="w-17 h-17 object-contain")
+                                        div
+                                            h1(class="text-xl font-bold text-slate-800") Cajas, bancos y métodos de pago
+                                            p(class="text-xs text-slate-400 mt-0.5") Administra dónde recibes y mueves tu dinero, y cómo pagan tus clientes
 
-                            //- CUERPO: dos columnas
-                            div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
+                                //- PESTAÑAS
+                                div(class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6")
+                                    button#tab-btn-cajas(
+                                        type="button"
+                                        data-tab="cajas"
+                                        class="tab-bank flex items-center justify-center gap-2 py-4 rounded-2xl border text-sm font-semibold transition-all cursor-pointer"
+                                    )
+                                        i(class="fi fi-rr-bank text-base")
+                                        | Cajas y bancos
+                                    button#tab-btn-metodos(
+                                        type="button"
+                                        data-tab="metodos"
+                                        class="tab-bank flex items-center justify-center gap-2 py-4 rounded-2xl border text-sm font-semibold transition-all cursor-pointer"
+                                    )
+                                        i(class="fi fi-rr-credit-card text-base")
+                                        | Métodos de pago
 
-                                //- COLUMNA IZQUIERDA — Listado (misma estética que listaTiendas)
-                                div(class="col-span-12 md:col-span-8")
-                                    div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
-                                        h2(class="h2 text-gh-primaryHover")
-                                            i.fi-rr-bank
-                                            |  Entidades registradas
-                                        p(class="text-sm text-slate-400") Lista de entidades disponibles para recibir pagos en el POS
+                            //- ══════════════════════════════════════════════════════════
+                            //- PESTAÑA 1 — CAJAS Y BANCOS
+                            //- ══════════════════════════════════════════════════════════
+                            section#panel-cajas(class="col-span-12 grid grid-cols-12 gap-4 items-start")
 
-                                        div(class="overflow-x-auto pt-4")
-                                            table(class="w-full text-left text-2xs border-collapse")
-                                                thead
-                                                    tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
-                                                        th(class="px-8 py-4 text-center text-gray-600") Nombre
-                                                        th(class="px-2 text-center text-gray-600") Tipo
-                                                        th(class="px-2 text-center text-gray-600") Recibir pagos POS
-                                                        th(class="px-2 text-center text-gray-600") Pago web por QR
-                                                        th(class="px-8 text-center text-gray-600") Acción
+                                //- ── CAJAS ─────────────────────────────────────────────
+                                //- 50% en escritorio, 100% en móvil (col-span-12 sin prefijo).
+                                div(class="col-span-12 md:col-span-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="p-6 flex flex-wrap items-start justify-between gap-4")
+                                        div(class="flex items-center gap-3")
+                                            div(class="w-12 h-12 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                                                img(src="/img/avatars/cajaRegistradora.webp" alt="Cajas" class="w-9 h-9 object-contain")
+                                            div
+                                                h2(class="text-lg font-bold text-slate-800") Cajas
+                                                p(class="text-sm text-slate-400") Dinero en efectivo del negocio
+                                        button#btn-nueva-caja(type="button" class="btn btn-sm inline-flex items-center gap-2 rounded-2xl border border-gh-primary/30 bg-gh-primarySoft text-gh-primaryHover font-bold hover:bg-gh-primary hover:text-white transition-colors cursor-pointer")
+                                            i(class="fi fi-rr-plus-small text-base")
+                                            | Nueva caja
 
-                                                tbody#tabla-entidades(class="divide-y divide-slate-100")
-                                                    each ent in entidades
-                                                        tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors" data-id=ent.idEntidad)
-                                                            td(class="px-8 py-5")
-                                                                p(class="font-bold text-slate-800") #{ent.nombreEntidad}
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left border-collapse")
+                                            thead
+                                                tr(class="border-b border-gh-primaryHover text-sm")
+                                                    th(class="px-4 py-4 text-gray-600 whitespace-nowrap") Caja
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Referencia
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Saldo
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Estado
+                                                    th(class="px-4 py-4 text-center text-gray-600 whitespace-nowrap") Acciones
 
-                                                            td(class="px-6 py-5 text-center")
-                                                                span(class=`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${ent.tipoEntidad === 'Banco' ? 'bg-blue-100 text-blue-700' : ent.tipoEntidad === 'Billetera Virtual' ? 'bg-fuchsia-100 text-fuchsia-700' : ent.tipoEntidad === 'Entidad Crediticia' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`)
-                                                                    | #{ent.tipoEntidad}
+                                            tbody#tabla-cajas(class="divide-y divide-slate-100")
+                                                each caja in cajasLista
+                                                    tr(class="border-b border-gray-100 hover:bg-gray-50 transition-colors" data-id=caja.idCajaBanco)
+                                                        td(class="px-4 py-4")
+                                                            div(class="flex items-center gap-3")
+                                                                div(class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0")
+                                                                    img(src="/img/avatars/cajaRegistradora.webp" alt="" class="w-7 h-7 object-contain")
+                                                                p(class="font-bold text-slate-800 text-sm leading-tight")= tc(caja.nombreCajaBanco)
 
-                                                            td(class="px-6 py-5 text-center")
-                                                                if ent.recibirPagosPos
-                                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600")
-                                                                        span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
-                                                                        | Activo
-                                                                else
-                                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500")
-                                                                        span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
-                                                                        | Inactivo
+                                                        td(class="px-2 py-4 text-center text-xs font-mono text-slate-500")= caja.referencia || '—'
 
-                                                            //- Pago web por QR — solo aplica a Banco y Billetera Virtual
-                                                            td(class="px-6 py-5 text-center")
-                                                                if ent.tipoEntidad === 'Banco' || ent.tipoEntidad === 'Billetera Virtual'
-                                                                    div(class="flex flex-col items-center gap-2")
-                                                                        label(class="flex items-center cursor-pointer" title="Activar pago web por QR")
+                                                        //- Sale de MOVIMIENTOS_CAJA_Y_BANCOS: ingresos menos egresos.
+                                                        td(class="px-2 py-4 text-center")
+                                                            p(class=`font-bold text-sm whitespace-nowrap ${Number(caja.saldo) < 0 ? 'text-red-600' : 'text-slate-800'}`)= pesos(caja.saldo)
+                                                            p(class="text-[10px] text-slate-400")= (caja.movimientos || 0) + ' mov.'
+
+                                                        td(class="px-2 py-4 text-center")
+                                                            if caja.estado
+                                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-100 text-emerald-600")
+                                                                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                                    | Activa
+                                                            else
+                                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-500")
+                                                                    span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                                    | Inactiva
+
+                                                        td(class="px-4 py-4 text-center")
+                                                            a(href=`/admin/bankentities/cajas/${caja.idCajaBanco}` class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                                                i.fi-rr-eye.text-xs
+                                                                | Ver más
+
+                                                //- Estado vacío: sin esto la tabla queda como si algo hubiera fallado.
+                                                if !cajasLista.length
+                                                    tr#vacio-cajas
+                                                        td(colspan="5" class="px-4 py-10 text-center")
+                                                            i(class="fi fi-rr-inbox text-2xl text-slate-300")
+                                                            p(class="text-sm text-slate-400 mt-2") Todavía no hay cajas registradas
+
+                                    div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100")
+                                        p(class="text-xs text-slate-400")
+                                            | Mostrando
+                                            span#contador-cajas(class="font-bold text-slate-600 mx-1")= cajasLista.length
+                                            | cajas registradas
+
+                                //- ── BANCOS ────────────────────────────────────────────
+                                div(class="col-span-12 md:col-span-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="p-6 flex flex-wrap items-start justify-between gap-4")
+                                        div(class="flex items-center gap-3")
+                                            div(class="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0")
+                                                img(src="/img/avatars/banco.webp" alt="Bancos" class="w-9 h-9 object-contain")
+                                            div
+                                                h2(class="text-lg font-bold text-slate-800") Bancos y billeteras
+                                                p(class="text-sm text-slate-400") Cuentas donde entra y sale el dinero del negocio
+                                        button#btn-nuevo-banco(type="button" class="btn btn-sm inline-flex items-center gap-2 rounded-2xl border border-gh-primary/30 bg-gh-primarySoft text-gh-primaryHover font-bold hover:bg-gh-primary hover:text-white transition-colors cursor-pointer")
+                                            i(class="fi fi-rr-plus-small text-base")
+                                            | Nuevo banco
+
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left border-collapse")
+                                            thead
+                                                tr(class="border-b border-gh-primaryHover text-sm")
+                                                    th(class="px-4 py-4 text-gray-600 whitespace-nowrap") Cuenta
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Tipo
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Referencia
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Saldo
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Estado
+                                                    th(class="px-4 py-4 text-center text-gray-600 whitespace-nowrap") Acciones
+
+                                            tbody#tabla-bancos(class="divide-y divide-slate-100")
+                                                each banco in bancosLista
+                                                    tr(class="border-b border-gray-100 hover:bg-gray-50 transition-colors" data-id=banco.idCajaBanco)
+                                                        td(class="px-4 py-4")
+                                                            div(class="flex items-center gap-3")
+                                                                div(class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0")
+                                                                    img(src="/img/avatars/banco.webp" alt="" class="w-7 h-7 object-contain")
+                                                                p(class="font-bold text-slate-800 text-sm leading-tight")= tc(banco.nombreCajaBanco)
+
+                                                        td(class="px-2 py-4 text-center")
+                                                            span(class=`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${banco.tipo === 'billetera' ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-blue-100 text-blue-700'}`)= banco.tipo === 'billetera' ? 'Billetera' : 'Banco'
+
+                                                        td(class="px-2 py-4 text-center text-xs font-mono text-slate-500")= banco.referencia || '—'
+
+                                                        td(class="px-2 py-4 text-center")
+                                                            p(class=`font-bold text-sm whitespace-nowrap ${Number(banco.saldo) < 0 ? 'text-red-600' : 'text-slate-800'}`)= pesos(banco.saldo)
+                                                            p(class="text-[10px] text-slate-400")= (banco.movimientos || 0) + ' mov.'
+
+                                                        td(class="px-2 py-4 text-center")
+                                                            if banco.estado
+                                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-100 text-emerald-600")
+                                                                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                                    | Activa
+                                                            else
+                                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-500")
+                                                                    span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                                    | Inactiva
+
+                                                        td(class="px-4 py-4 text-center")
+                                                            a(href=`/admin/bankentities/cajas/${banco.idCajaBanco}` class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                                                i.fi-rr-eye.text-xs
+                                                                | Ver más
+
+                                                if !bancosLista.length
+                                                    tr#vacio-bancos
+                                                        td(colspan="6" class="px-4 py-10 text-center")
+                                                            i(class="fi fi-rr-inbox text-2xl text-slate-300")
+                                                            p(class="text-sm text-slate-400 mt-2") Todavía no hay cuentas registradas
+
+                                    div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100")
+                                        p(class="text-xs text-slate-400")
+                                            | Mostrando
+                                            span#contador-bancos(class="font-bold text-slate-600 mx-1")= bancosLista.length
+                                            | cuentas registradas
+
+                            //- ══════════════════════════════════════════════════════════
+                            //- PESTAÑA 2 — MÉTODOS DE PAGO (datos reales de ENTIDADES)
+                            //- ══════════════════════════════════════════════════════════
+                            section#panel-metodos(class="col-span-12 hidden")
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="p-6 flex flex-wrap items-start justify-between gap-4")
+                                        div
+                                            h2(class="text-lg font-bold text-slate-800") Métodos de pago
+                                            p(class="text-sm text-slate-400") Configura las formas de pago disponibles para tus clientes en toda la plataforma
+                                        button#btn-nuevo-metodo(type="button" class="btn btn-sm inline-flex items-center gap-2 rounded-2xl border border-gh-primary/30 bg-gh-primarySoft text-gh-primaryHover font-bold hover:bg-gh-primary hover:text-white transition-colors cursor-pointer")
+                                            i(class="fi fi-rr-plus-small text-base")
+                                            | Nuevo método de pago
+
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left border-collapse")
+                                            thead
+                                                tr(class="border-b border-gh-primaryHover text-sm")
+                                                    th(class="px-6 py-4 text-gray-600") Método de pago
+                                                    th(class="px-4 py-4 text-center text-gray-600") Tipo
+                                                    th(class="px-4 py-4 text-center text-gray-600") Canal disponible
+                                                    th(class="px-4 py-4 text-center text-gray-600") Estado
+                                                    th(class="px-6 py-4 text-center text-gray-600") Acciones
+
+                                            tbody#tabla-entidades(class="divide-y divide-slate-100")
+                                                each ent in entidades
+                                                    - var est = estiloTipo[ent.tipoEntidad] || estiloPorDefecto
+                                                    - var admiteQr = ent.tipoEntidad === 'Banco' || ent.tipoEntidad === 'Billetera Virtual'
+                                                    tr(class="border-b border-gray-100 hover:bg-gray-50 transition-colors" data-id=ent.idEntidad)
+
+                                                        td(class="px-6 py-4")
+                                                            div(class="flex items-center gap-3")
+                                                                div(class=`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${est.caja}`)
+                                                                    i(class=`fi ${est.icono} text-base`)
+                                                                div
+                                                                    p(class="font-bold text-slate-800 text-sm")= tc(ent.nombreEntidad)
+                                                                    p(class="text-[11px] text-slate-400")= est.desc
+
+                                                        td(class="px-4 py-4 text-center")
+                                                            span(class=`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${est.badge}`)= ent.tipoEntidad
+
+                                                        //- CANAL DISPONIBLE — POS sale de recibirPagosPos; Web es el QR de pago,
+                                                        //- que conserva su switch y su enlace de gestión.
+                                                        td(class="px-4 py-4")
+                                                            div(class="flex flex-col items-center gap-2")
+                                                                div(class="flex items-center justify-center gap-2")
+                                                                    if ent.recibirPagosPos
+                                                                        span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border border-gh-primary/40 text-gh-primaryHover") POS
+                                                                    if admiteQr
+                                                                        label(class="flex items-center gap-2 cursor-pointer" title="Activar pago web por QR")
                                                                             input.switch-qr(
                                                                                 type="checkbox"
                                                                                 class="sr-only"
@@ -75,74 +260,198 @@ block contenedor
                                                                             )
                                                                             span.switch
                                                                                 span.switch-thumb
-                                                                        if ent.qrStatus === 'compromised'
-                                                                            button(type="button" class="btn-qr-gestionar inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-full" data-id=ent.idEntidad data-nombre=ent.nombreEntidad)
-                                                                                i(class="fi fi-rr-exclamation text-[10px]")
-                                                                                | Comprometido
-                                                                        else if ent.qrStatus
-                                                                            button(type="button" class="btn-qr-gestionar text-[10px] font-bold text-slate-500 hover:text-gh-primaryHover underline underline-offset-2" data-id=ent.idEntidad data-nombre=ent.nombreEntidad) Ver / cambiar QR
-                                                                        else
-                                                                            span(class="text-[10px] text-slate-400") Sin QR cargado
-                                                                else
-                                                                    span(class="text-xs text-slate-300") —
+                                                                            span(class="text-xs font-bold text-slate-500") Web
+                                                                    else if !ent.recibirPagosPos
+                                                                        span(class="text-xs text-slate-300") —
 
-                                                            td(class="px-8 py-5 text-center")
-                                                                a(href=`/admin/bankentities/detallesEntidad/${ent.idEntidad}` class="btn btn-secondary text-xs")
-                                                                    i.fi-rr-eye.text-xs
-                                                                    | Ver más
+                                                                if admiteQr
+                                                                    if ent.qrStatus === 'compromised'
+                                                                        button(type="button" class="btn-qr-gestionar qr-pie inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-full" data-id=ent.idEntidad data-nombre=ent.nombreEntidad)
+                                                                            i(class="fi fi-rr-exclamation text-[10px]")
+                                                                            | Comprometido
+                                                                    else if ent.qrStatus
+                                                                        button(type="button" class="btn-qr-gestionar qr-pie text-[10px] font-bold text-slate-500 hover:text-gh-primaryHover underline underline-offset-2" data-id=ent.idEntidad data-nombre=ent.nombreEntidad) Ver / cambiar QR
+                                                                    else
+                                                                        span(class="qr-pie text-[10px] text-slate-400") Sin QR cargado
 
-                                        div(class="px-8 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between")
-                                            p(class="text-xs text-slate-400")
-                                                | Mostrando
-                                                span(class="font-bold text-slate-600 mx-1")= entidades.length
-                                                | entidades registradas
+                                                        td(class="px-4 py-4 text-center")
+                                                            if ent.recibirPagosPos || ent.qrEnabled
+                                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600")
+                                                                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                                    | Activo
+                                                            else
+                                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500")
+                                                                    span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                                    | Inactivo
 
-                                //- COLUMNA DERECHA — Formulario
-                                div(class="col-span-12 md:col-span-4 bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
-                                    h2(class="h2 text-gh-primaryHover")
-                                        i.fi-rr-add
-                                        |  Nueva entidad
-                                    p(class="text-sm text-slate-400 mb-4") Registra una nueva entidad bancaria
+                                                        td(class="px-6 py-4 text-center")
+                                                            a(href=`/admin/bankentities/detallesEntidad/${ent.idEntidad}` class="btn btn-secondary text-xs")
+                                                                i.fi-rr-eye.text-xs
+                                                                | Ver más
 
-                                    form#form-nueva-entidad(class="flex flex-col gap-4 px-4 pb-4")
-                                        input(type="hidden" name="_csrf" value=csrfToken)
+                                    div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100")
+                                        p(class="text-xs text-slate-400")
+                                            | Mostrando
+                                            span(class="font-bold text-slate-600 mx-1")= entidades.length
+                                            | métodos registrados
 
-                                        div
-                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Nombre
-                                            input#input-nombre-entidad(
-                                                type="text"
-                                                name="nombreEntidad"
-                                                placeholder="Ej: Bancolombia"
-                                                maxlength="100"
-                                                autocomplete="off"
-                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
-                                            )
+                            //- ── PIE ───────────────────────────────────────────────────
+                            div(class="col-span-12 bg-purple-50/60 border border-purple-100 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4")
+                                div(class="flex items-center gap-3")
+                                    div(class="w-11 h-11 rounded-2xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm")
+                                        i(class="fi fi-rr-bulb text-purple-500 text-lg")
+                                    div
+                                        p(class="font-bold text-slate-800 text-sm") Gestiona tus cajas, bancos y métodos de pago
+                                        p(class="text-xs text-slate-500 mt-0.5") Mantén actualizada la información para un mejor control de tus transacciones y reportes financieros.
+                                button#btn-reportes(type="button" class="btn btn-sm inline-flex items-center gap-2 rounded-2xl bg-white border border-purple-200 text-purple-600 font-bold hover:bg-purple-100 transition-colors cursor-pointer")
+                                    i(class="fi fi-rr-stats text-base")
+                                    | Ver reportes financieros
 
-                                        div
-                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Tipo de entidad
-                                            select#input-tipo-entidad(
-                                                name="tipoEntidad"
-                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
-                                            )
-                                                option(value="") Seleccionar...
-                                                option(value="Banco") Banco
-                                                option(value="Billetera Virtual") Billetera Virtual
-                                                option(value="Entidad Crediticia") Entidad Crediticia
-                                                option(value="Tarjeta Credito") Tarjeta Crédito
+        //- ══════════════════════════════════════════════════════════════════════
+        //- MODAL: NUEVA CAJA
+        //- ══════════════════════════════════════════════════════════════════════
+        div#modal-caja(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4")
+            div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-modal)
+            div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto")
+                div(class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-3")
+                    div(class="flex items-center gap-3")
+                        div(class="w-11 h-11 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                            img(src="/img/avatars/cajaRegistradora.webp" alt="" class="w-8 h-8 object-contain")
+                        div
+                            h3(class="font-bold text-slate-800") Nueva caja
+                            p(class="text-xs text-slate-400 mt-0.5") Registra una caja de efectivo
+                    button(type="button" class="text-slate-300 hover:text-slate-500 transition-colors" data-cerrar-modal)
+                        i(class="fi fi-rr-cross-small text-xl")
 
-                                        div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
-                                            div
-                                                p(class="text-xs font-semibold text-slate-700") Recibir pagos en el POS
-                                                p(class="text-[10px] text-slate-400 mt-0.5") Habilita este método en todas las tiendas
-                                            label(class="flex items-center cursor-pointer")
-                                                input#switch-recibir-pagos(type="checkbox" name="recibirPagosPos" class="sr-only" value="true")
-                                                span.switch
-                                                    span.switch-thumb
+                form#form-nueva-caja(class="px-6 py-5 space-y-4")
+                    input(type="hidden" name="_csrf" value=csrfToken)
 
-                                        button#btn-guardar-entidad(
-                                            type="button"
-                                            class="w-full py-3 bg-gh-primary text-white rounded-2xl font-bold text-sm hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer"
-                                        ) Guardar entidad
+                    div
+                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1")
+                            | Nombre de la caja
+                            span(class="text-gh-primaryHover ml-0.5") *
+                        input#caja-nombre(type="text" name="nombreCajaBanco" placeholder="Ej: Caja Principal San Diego" maxlength="50" required autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                        p#error-caja-nombre(class="hidden text-[10px] font-bold text-red-500 mt-1")
+
+                    div
+                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Referencia
+                        input#caja-referencia(type="text" name="referencia" placeholder="Ej: CAJA-01" maxlength="50" autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                        p(class="text-[10px] text-slate-400 mt-1") Opcional. Código interno de la caja; no puede repetirse.
+                        p#error-caja-referencia(class="hidden text-[10px] font-bold text-red-500 mt-1")
+
+                    div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
+                        div
+                            p(class="text-xs font-semibold text-slate-700") Caja activa
+                            p(class="text-[10px] text-slate-400 mt-0.5") Disponible para registrar movimientos
+                        label(class="flex items-center cursor-pointer")
+                            input#caja-activa(type="checkbox" class="sr-only" value="true" checked)
+                            span.switch
+                                span.switch-thumb
+
+                div(class="px-6 pb-6 flex gap-2")
+                    button(type="button" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors" data-cerrar-modal) Cancelar
+                    button#btn-guardar-caja(type="button" class="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors") Guardar caja
+
+        //- ══════════════════════════════════════════════════════════════════════
+        //- MODAL: NUEVO BANCO
+        //- ══════════════════════════════════════════════════════════════════════
+        div#modal-banco(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4")
+            div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-modal)
+            div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto")
+                div(class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-3")
+                    div(class="flex items-center gap-3")
+                        div(class="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0")
+                            img(src="/img/avatars/banco.webp" alt="" class="w-8 h-8 object-contain")
+                        div
+                            h3(class="font-bold text-slate-800") Nuevo banco
+                            p(class="text-xs text-slate-400 mt-0.5") Registra una cuenta bancaria o billetera
+                    button(type="button" class="text-slate-300 hover:text-slate-500 transition-colors" data-cerrar-modal)
+                        i(class="fi fi-rr-cross-small text-xl")
+
+                form#form-nuevo-banco(class="px-6 py-5 space-y-4")
+                    input(type="hidden" name="_csrf" value=csrfToken)
+
+                    div
+                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1")
+                            | Nombre de la cuenta
+                            span(class="text-gh-primaryHover ml-0.5") *
+                        input#banco-nombre(type="text" name="nombreCajaBanco" placeholder="Ej: Bancolombia Principal" maxlength="50" required autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                        p#error-banco-nombre(class="hidden text-[10px] font-bold text-red-500 mt-1")
+
+                    div
+                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1")
+                            | Tipo
+                            span(class="text-gh-primaryHover ml-0.5") *
+                        select#banco-tipo(name="tipo" required class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                            option(value="") Seleccionar...
+                            option(value="banco") Banco
+                            option(value="billetera") Billetera
+                        p#error-banco-tipo(class="hidden text-[10px] font-bold text-red-500 mt-1")
+
+                    div
+                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Referencia
+                        input#banco-referencia(type="text" name="referencia" placeholder="Ej: 4821 o 3001234567" maxlength="50" autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                        p(class="text-[10px] text-slate-400 mt-1") Opcional. Número de cuenta o celular; no puede repetirse.
+                        p#error-banco-referencia(class="hidden text-[10px] font-bold text-red-500 mt-1")
+
+                    div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
+                        div
+                            p(class="text-xs font-semibold text-slate-700") Cuenta activa
+                            p(class="text-[10px] text-slate-400 mt-0.5") Disponible para registrar movimientos
+                        label(class="flex items-center cursor-pointer")
+                            input#banco-activa(type="checkbox" class="sr-only" value="true" checked)
+                            span.switch
+                                span.switch-thumb
+
+                div(class="px-6 pb-6 flex gap-2")
+                    button(type="button" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors" data-cerrar-modal) Cancelar
+                    button#btn-guardar-banco(type="button" class="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors") Guardar banco
+
+        //- ══════════════════════════════════════════════════════════════════════
+        //- MODAL: NUEVO MÉTODO DE PAGO — es el formulario que ya existía para crear
+        //- una entidad, con los mismos ids para no tocar la lógica que lo usa.
+        //- ══════════════════════════════════════════════════════════════════════
+        div#modal-metodo(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4")
+            div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-modal)
+            div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto")
+                div(class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-3")
+                    div(class="flex items-center gap-3")
+                        div(class="w-11 h-11 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                            i(class="fi fi-rr-credit-card text-gh-primaryHover text-lg")
+                        div
+                            h3(class="font-bold text-slate-800") Nuevo método de pago
+                            p(class="text-xs text-slate-400 mt-0.5") Registra una entidad para recibir pagos
+                    button(type="button" class="text-slate-300 hover:text-slate-500 transition-colors" data-cerrar-modal)
+                        i(class="fi fi-rr-cross-small text-xl")
+
+                form#form-nueva-entidad(class="px-6 py-5 space-y-4")
+                    input(type="hidden" name="_csrf" value=csrfToken)
+
+                    div
+                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Nombre
+                        input#input-nombre-entidad(type="text" name="nombreEntidad" placeholder="Ej: Bancolombia" maxlength="100" autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+
+                    div
+                        label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Tipo de entidad
+                        select#input-tipo-entidad(name="tipoEntidad" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                            option(value="") Seleccionar...
+                            option(value="Banco") Banco
+                            option(value="Billetera Virtual") Billetera Virtual
+                            option(value="Entidad Crediticia") Entidad Crediticia
+                            option(value="Tarjeta Credito") Tarjeta Crédito
+
+                    div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
+                        div
+                            p(class="text-xs font-semibold text-slate-700") Recibir pagos en el POS
+                            p(class="text-[10px] text-slate-400 mt-0.5") Habilita este método en todas las tiendas
+                        label(class="flex items-center cursor-pointer")
+                            input#switch-recibir-pagos(type="checkbox" name="recibirPagosPos" class="sr-only" value="true")
+                            span.switch
+                                span.switch-thumb
+
+                div(class="px-6 pb-6 flex gap-2")
+                    button(type="button" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors" data-cerrar-modal) Cancelar
+                    button#btn-guardar-entidad(type="button" class="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors") Guardar entidad
 
         //- ── MODAL: QR DE PAGO WEB ────────────────────────────────────────────
         div#modal-qr(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4")
@@ -198,18 +507,248 @@ block contenedor
                     button#modal-qr-subir(type="button" class="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled) Verificar y subir
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+
+        script.
+            // ── PESTAÑAS Y MODALES ────────────────────────────────────────────
+            (function () {
+                const ACTIVA   = 'bg-gh-primarySoft border-gh-primaryHover text-gh-primaryHover shadow-sm';
+                const INACTIVA = 'bg-white border-slate-200 text-slate-500 hover:border-gh-primary/40 hover:text-gh-primaryHover';
+
+                const paneles = { cajas: document.getElementById('panel-cajas'), metodos: document.getElementById('panel-metodos') };
+                const botones = document.querySelectorAll('.tab-bank');
+
+                const mostrar = (tab) => {
+                    if (!paneles[tab]) tab = 'cajas';
+                    Object.entries(paneles).forEach(([k, el]) => el.classList.toggle('hidden', k !== tab));
+                    botones.forEach(b => {
+                        const activa = b.dataset.tab === tab;
+                        b.className = 'tab-bank flex items-center justify-center gap-2 py-4 rounded-2xl border text-sm font-semibold transition-all cursor-pointer ' + (activa ? ACTIVA : INACTIVA);
+                    });
+                    // El hash mantiene la pestaña al recargar o al volver desde "Ver más".
+                    if (location.hash.slice(1) !== tab) history.replaceState(null, '', '#' + tab);
+                };
+
+                botones.forEach(b => b.addEventListener('click', () => mostrar(b.dataset.tab)));
+                mostrar(location.hash.slice(1) || 'cajas');
+
+                // ── Modales ───────────────────────────────────────────────────
+                const abrir = (id) => document.getElementById(id)?.classList.remove('hidden');
+                const cerrar = (el) => el?.classList.add('hidden');
+
+                document.getElementById('btn-nueva-caja') ?.addEventListener('click', () => abrir('modal-caja'));
+                document.getElementById('btn-nuevo-banco')?.addEventListener('click', () => abrir('modal-banco'));
+                document.getElementById('btn-nuevo-metodo')?.addEventListener('click', () => abrir('modal-metodo'));
+
+                document.querySelectorAll('[data-cerrar-modal]').forEach(el => {
+                    el.addEventListener('click', () => cerrar(el.closest('.fixed')));
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Escape') return;
+                    ['modal-caja', 'modal-banco', 'modal-metodo'].forEach(id => cerrar(document.getElementById(id)));
+                });
+
+                // ── Pendientes de backend ─────────────────────────────────────
+                const pendiente = (titulo) => Swal.fire({
+                    icon: 'info',
+                    title: titulo,
+                    text: 'Este módulo todavía no está conectado al backend.',
+                    confirmButtonColor: '#EC5FA3'
+                });
+
+                document.getElementById('btn-reportes')?.addEventListener('click', () => pendiente('Reportes financieros'));
+
+                // Delegado en document: cubre las filas que ya vienen del servidor y las
+                // que se agregan al crear, sin ligar dos veces las primeras.
+                document.addEventListener('click', (e) => {
+                    const b = e.target.closest('.btn-ver-pendiente');
+                    if (b) pendiente(b.dataset.nombre || 'Detalle');
+                });
+
+                // ══ CAJAS Y BANCOS — alta contra CAJAS_Y_BANCOS ══════════════
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+                // Marca un campo en rojo con su mensaje. Es la validación del cliente:
+                // ahorra un viaje al servidor, pero el que manda es el backend, que valida
+                // exactamente lo mismo con express-validator y los validadores del modelo.
+                const marcarError = (idCampo, idError, mensaje) => {
+                    const campo = document.getElementById(idCampo);
+                    const error = document.getElementById(idError);
+                    if (mensaje) {
+                        campo.classList.add('border-red-400', 'ring-2', 'ring-red-200');
+                        error.textContent = mensaje;
+                        error.classList.remove('hidden');
+                    } else {
+                        campo.classList.remove('border-red-400', 'ring-2', 'ring-red-200');
+                        error.textContent = '';
+                        error.classList.add('hidden');
+                    }
+                };
+
+                const limpiarErrores = (campos) => campos.forEach(([c, e]) => marcarError(c, e, ''));
+
+                // El error se borra en cuanto la persona corrige, no al reenviar.
+                ['caja-nombre', 'caja-referencia', 'banco-nombre', 'banco-referencia'].forEach(id => {
+                    document.getElementById(id)?.addEventListener('input', () => marcarError(id, 'error-' + id, ''));
+                });
+                document.getElementById('banco-tipo')?.addEventListener('change', () => marcarError('banco-tipo', 'error-banco-tipo', ''));
+
+                const guardar = async ({ boton, etiqueta, datos, campos, tabla, pintarFila }) => {
+                    boton.disabled = true;
+                    boton.textContent = 'Guardando...';
+                    try {
+                        const r = await fetch('/admin/bankentities/cajas/crear', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                            body: JSON.stringify(datos)
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje || 'No se pudo guardar.');
+
+                        // Si la tabla estaba vacía, se quita el cartel de "no hay registros".
+                        tabla.querySelector('tr[id^="vacio-"]')?.remove();
+                        tabla.appendChild(pintarFila(d.cajaBanco));
+
+                        // El pie se recalcula desde las filas reales: así no puede quedar
+                        // diciendo "0 registradas" con una fila a la vista.
+                        const contador = document.getElementById(boton.dataset.contador);
+                        if (contador) contador.textContent = tabla.querySelectorAll('tr[data-id]').length;
+
+                        document.getElementById(boton.dataset.modal).classList.add('hidden');
+                        limpiarErrores(campos);
+                        Swal.fire({ icon: 'success', title: etiqueta + ' creada', text: `"${d.cajaBanco.nombreCajaBanco}" quedó registrada.`, confirmButtonColor: '#EC5FA3', timer: 2500, timerProgressBar: true });
+                    } catch (err) {
+                        Swal.fire({ icon: 'error', title: 'No se pudo guardar', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    } finally {
+                        boton.disabled = false;
+                        boton.textContent = boton.dataset.textoOriginal;
+                    }
+                };
+
+                // Una cuenta recién creada no tiene movimientos, así que su saldo es 0.
+                const saldoCero = () =>
+                    `<p class="font-bold text-sm whitespace-nowrap text-slate-800">$0</p><p class="text-[10px] text-slate-400">0 mov.</p>`;
+
+                const badgeEstado = (activo) => activo
+                    ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-100 text-emerald-600"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2"></span>Activa</span>`
+                    : `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>Inactiva</span>`;
+
+                const escapar = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+                const botonVerMas = (id) =>
+                    `<a href="/admin/bankentities/cajas/${escapar(id)}" class="btn btn-secondary btn-sm text-xs whitespace-nowrap"><i class="fi-rr-eye text-xs"></i>Ver más</a>`;
+
+                // ── Nueva caja ────────────────────────────────────────────────
+                const btnCaja = document.getElementById('btn-guardar-caja');
+                btnCaja.dataset.modal = 'modal-caja';
+                btnCaja.dataset.textoOriginal = 'Guardar caja';
+                btnCaja.dataset.contador = 'contador-cajas';
+                btnCaja.addEventListener('click', () => {
+                    const nombre = document.getElementById('caja-nombre').value.trim();
+                    const campos = [['caja-nombre', 'error-caja-nombre'], ['caja-referencia', 'error-caja-referencia']];
+                    limpiarErrores(campos);
+
+                    if (!nombre) return marcarError('caja-nombre', 'error-caja-nombre', 'El nombre es obligatorio.');
+                    if (nombre.length < 2) return marcarError('caja-nombre', 'error-caja-nombre', 'El nombre debe tener al menos 2 caracteres.');
+
+                    guardar({
+                        boton: btnCaja,
+                        etiqueta: 'Caja',
+                        campos,
+                        tabla: document.getElementById('tabla-cajas'),
+                        datos: {
+                            nombreCajaBanco: nombre,
+                            tipo: 'caja',
+                            referencia: document.getElementById('caja-referencia').value.trim(),
+                            estado: document.getElementById('caja-activa').checked
+                        },
+                        pintarFila: (c) => {
+                            const tr = document.createElement('tr');
+                            tr.className = 'border-b border-gray-100 hover:bg-gray-50 transition-colors';
+                            tr.dataset.id = c.idCajaBanco;
+                            tr.innerHTML = `
+                                <td class="px-4 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                                            <img src="/img/avatars/cajaRegistradora.webp" alt="" class="w-7 h-7 object-contain">
+                                        </div>
+                                        <p class="font-bold text-slate-800 text-sm leading-tight">${escapar(tc(c.nombreCajaBanco))}</p>
+                                    </div>
+                                </td>
+                                <td class="px-2 py-4 text-center text-xs font-mono text-slate-500">${escapar(c.referencia || '—')}</td>
+                                <td class="px-2 py-4 text-center">${saldoCero()}</td>
+                                <td class="px-2 py-4 text-center">${badgeEstado(c.estado)}</td>
+                                <td class="px-4 py-4 text-center">${botonVerMas(c.idCajaBanco)}</td>`;
+                            return tr;
+                        }
+                    });
+                });
+
+                // ── Nuevo banco / billetera ───────────────────────────────────
+                const btnBanco = document.getElementById('btn-guardar-banco');
+                btnBanco.dataset.modal = 'modal-banco';
+                btnBanco.dataset.textoOriginal = 'Guardar banco';
+                btnBanco.dataset.contador = 'contador-bancos';
+                btnBanco.addEventListener('click', () => {
+                    const nombre = document.getElementById('banco-nombre').value.trim();
+                    const tipo   = document.getElementById('banco-tipo').value;
+                    const campos = [['banco-nombre', 'error-banco-nombre'], ['banco-tipo', 'error-banco-tipo'], ['banco-referencia', 'error-banco-referencia']];
+                    limpiarErrores(campos);
+
+                    if (!nombre) return marcarError('banco-nombre', 'error-banco-nombre', 'El nombre es obligatorio.');
+                    if (nombre.length < 2) return marcarError('banco-nombre', 'error-banco-nombre', 'El nombre debe tener al menos 2 caracteres.');
+                    if (!tipo) return marcarError('banco-tipo', 'error-banco-tipo', 'Elegí si es banco o billetera.');
+
+                    guardar({
+                        boton: btnBanco,
+                        etiqueta: tipo === 'billetera' ? 'Billetera' : 'Cuenta',
+                        campos,
+                        tabla: document.getElementById('tabla-bancos'),
+                        datos: {
+                            nombreCajaBanco: nombre,
+                            tipo,
+                            referencia: document.getElementById('banco-referencia').value.trim(),
+                            estado: document.getElementById('banco-activa').checked
+                        },
+                        pintarFila: (c) => {
+                            const tr = document.createElement('tr');
+                            tr.className = 'border-b border-gray-100 hover:bg-gray-50 transition-colors';
+                            tr.dataset.id = c.idCajaBanco;
+                            const badgeTipo = c.tipo === 'billetera'
+                                ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-fuchsia-100 text-fuchsia-700">Billetera</span>`
+                                : `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-blue-100 text-blue-700">Banco</span>`;
+                            tr.innerHTML = `
+                                <td class="px-4 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                                            <img src="/img/avatars/banco.webp" alt="" class="w-7 h-7 object-contain">
+                                        </div>
+                                        <p class="font-bold text-slate-800 text-sm leading-tight">${escapar(tc(c.nombreCajaBanco))}</p>
+                                    </div>
+                                </td>
+                                <td class="px-2 py-4 text-center">${badgeTipo}</td>
+                                <td class="px-2 py-4 text-center text-xs font-mono text-slate-500">${escapar(c.referencia || '—')}</td>
+                                <td class="px-2 py-4 text-center">${saldoCero()}</td>
+                                <td class="px-2 py-4 text-center">${badgeEstado(c.estado)}</td>
+                                <td class="px-4 py-4 text-center">${botonVerMas(c.idCajaBanco)}</td>`;
+                            return tr;
+                        }
+                    });
+                });
+            })();
+
         script.
             (function () {
                 const csrf       = document.querySelector('meta[name="csrf-token"]')?.content || '';
                 const tabla      = document.getElementById('tabla-entidades');
                 const btnGuardar = document.getElementById('btn-guardar-entidad');
 
-                const badgeClass = {
-                    'Banco':              'bg-blue-100 text-blue-700',
-                    'Billetera Virtual':  'bg-fuchsia-100 text-fuchsia-700',
-                    'Entidad Crediticia': 'bg-indigo-100 text-indigo-700',
-                    'Tarjeta Credito':    'bg-slate-100 text-slate-600',
+                const ESTILO = {
+                    'Banco':              { icono: 'fi-rr-bank',        caja: 'bg-blue-50 text-blue-600',       badge: 'bg-blue-100 text-blue-700',       desc: 'Transferencias y consignaciones' },
+                    'Billetera Virtual':  { icono: 'fi-rr-wallet',      caja: 'bg-fuchsia-50 text-fuchsia-600', badge: 'bg-fuchsia-100 text-fuchsia-700', desc: 'Nequi, Daviplata y otros' },
+                    'Entidad Crediticia': { icono: 'fi-rr-coins',       caja: 'bg-indigo-50 text-indigo-600',   badge: 'bg-indigo-100 text-indigo-700',   desc: 'Créditos y financiación' },
+                    'Tarjeta Credito':    { icono: 'fi-rr-credit-card', caja: 'bg-violet-50 text-violet-600',   badge: 'bg-violet-100 text-violet-700',   desc: 'Tarjetas de crédito' },
                 };
+                const POR_DEFECTO = { icono: 'fi-rr-money-bill-wave', caja: 'bg-slate-100 text-slate-500', badge: 'bg-slate-100 text-slate-600', desc: 'Método de pago' };
 
                 // ── CREAR ENTIDAD ─────────────────────────────────────────────
                 btnGuardar.addEventListener('click', async () => {
@@ -232,45 +771,61 @@ block contenedor
                         const d = await r.json();
                         if (!d.success) throw new Error(d.mensaje || 'Error al crear');
 
+                        document.getElementById('modal-metodo').classList.add('hidden');
+
                         await Swal.fire({
                             icon: 'success',
-                            title: '¡Entidad creada!',
-                            text: `"${nombre}" fue registrada correctamente.`,
+                            title: '¡Método creado!',
+                            text: `"${nombre}" fue registrado correctamente.`,
                             confirmButtonColor: '#EC5FA3',
                             timer: 3000,
                             timerProgressBar: true
                         });
 
-                        const ent  = d.entidad;
-                        const badge = `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${badgeClass[ent.tipoEntidad] || 'bg-slate-100 text-slate-600'}">${ent.tipoEntidad}</span>`;
+                        const ent = d.entidad;
+                        const est = ESTILO[ent.tipoEntidad] || POR_DEFECTO;
+                        const admiteQr = ent.tipoEntidad === 'Banco' || ent.tipoEntidad === 'Billetera Virtual';
+
+                        const badgePos = ent.recibirPagosPos
+                            ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border border-gh-primary/40 text-gh-primaryHover">POS</span>`
+                            : '';
+                        const bloqueQr = admiteQr
+                            ? `<label class="flex items-center gap-2 cursor-pointer" title="Activar pago web por QR">
+                                   <input type="checkbox" class="switch-qr sr-only" data-id="${ent.idEntidad}" data-nombre="${ent.nombreEntidad}" data-status="">
+                                   <span class="switch"><span class="switch-thumb"></span></span>
+                                   <span class="text-xs font-bold text-slate-500">Web</span>
+                               </label>`
+                            : (ent.recibirPagosPos ? '' : `<span class="text-xs text-slate-300">—</span>`);
+                        const pieQr = admiteQr ? `<span class="qr-pie text-[10px] text-slate-400">Sin QR cargado</span>` : '';
+
                         const estado = ent.recibirPagosPos
                             ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2"></span>Activo</span>`
                             : `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>Inactivo</span>`;
-                        const btnToggle = ent.recibirPagosPos
-                            ? `<button type="button" class="btn-toggle-entidad btn btn-secondary text-xs bg-red-50 text-red-500 hover:bg-red-100 border-red-200" data-id="${ent.idEntidad}" data-activo="true"><i class="fi-rr-ban text-xs"></i> Desactivar</button>`
-                            : `<button type="button" class="btn-toggle-entidad btn btn-secondary text-xs" data-id="${ent.idEntidad}" data-activo="false"><i class="fi-rr-check text-xs"></i> Activar</button>`;
 
                         const fila = document.createElement('tr');
-                        fila.className = 'border-b border-gray-100 hover:bg-gray-100 transition-colors';
+                        fila.className = 'border-b border-gray-100 hover:bg-gray-50 transition-colors';
                         fila.dataset.id = ent.idEntidad;
-                        // Celda de QR: solo Banco y Billetera Virtual pueden recibir pagos por QR.
-                        const admiteQr = ent.tipoEntidad === 'Banco' || ent.tipoEntidad === 'Billetera Virtual';
-                        const celdaQr = admiteQr
-                            ? `<div class="flex flex-col items-center gap-2">
-                                   <label class="flex items-center cursor-pointer" title="Activar pago web por QR">
-                                       <input type="checkbox" class="switch-qr sr-only" data-id="${ent.idEntidad}" data-nombre="${ent.nombreEntidad}" data-status="">
-                                       <span class="switch"><span class="switch-thumb"></span></span>
-                                   </label>
-                                   <span class="text-[10px] text-slate-400">Sin QR cargado</span>
-                               </div>`
-                            : `<span class="text-xs text-slate-300">—</span>`;
-
                         fila.innerHTML = `
-                            <td class="px-8 py-5"><p class="font-bold text-slate-800">${ent.nombreEntidad}</p></td>
-                            <td class="px-6 py-5 text-center">${badge}</td>
-                            <td class="px-6 py-5 text-center">${estado}</td>
-                            <td class="px-6 py-5 text-center">${celdaQr}</td>
-                            <td class="px-8 py-5 text-center">${btnToggle}</td>`;
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${est.caja}"><i class="fi ${est.icono} text-base"></i></div>
+                                    <div>
+                                        <p class="font-bold text-slate-800 text-sm">${escapar(tc(ent.nombreEntidad))}</p>
+                                        <p class="text-[11px] text-slate-400">${est.desc}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-4 text-center"><span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${est.badge}">${ent.tipoEntidad}</span></td>
+                            <td class="px-4 py-4">
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="flex items-center justify-center gap-2">${badgePos}${bloqueQr}</div>
+                                    ${pieQr}
+                                </div>
+                            </td>
+                            <td class="px-4 py-4 text-center">${estado}</td>
+                            <td class="px-6 py-4 text-center">
+                                <a href="/admin/bankentities/detallesEntidad/${ent.idEntidad}" class="btn btn-secondary text-xs"><i class="fi-rr-eye text-xs"></i>Ver más</a>
+                            </td>`;
                         tabla.appendChild(fila);
 
                         document.getElementById('input-nombre-entidad').value    = '';
@@ -281,54 +836,6 @@ block contenedor
                     } finally {
                         btnGuardar.disabled    = false;
                         btnGuardar.textContent = 'Guardar entidad';
-                    }
-                });
-
-                // ── TOGGLE ACTIVAR / DESACTIVAR ───────────────────────────────
-                tabla.addEventListener('click', async (e) => {
-                    const btn = e.target.closest('.btn-toggle-entidad');
-                    if (!btn) return;
-
-                    const id     = btn.dataset.id;
-                    const activo = btn.dataset.activo === 'true';
-
-                    const { isConfirmed } = await Swal.fire({
-                        icon: 'question',
-                        title: activo ? '¿Desactivar entidad?' : '¿Activar entidad?',
-                        text: `Se ${activo ? 'desactivará' : 'activará'} para recibir pagos en el POS.`,
-                        showCancelButton: true,
-                        confirmButtonColor: '#EC5FA3',
-                        cancelButtonColor: '#94a3b8',
-                        confirmButtonText: activo ? 'Sí, desactivar' : 'Sí, activar',
-                        cancelButtonText: 'Cancelar'
-                    });
-                    if (!isConfirmed) return;
-
-                    try {
-                        const r = await fetch(`/admin/bankentities/toggle/${id}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                            body: JSON.stringify({ recibirPagosPos: !activo })
-                        });
-                        const d = await r.json();
-                        if (!d.success) throw new Error(d.mensaje);
-
-                        const nuevoActivo = !activo;
-                        const fila = tabla.querySelector(`tr[data-id="${id}"]`);
-                        if (!fila) return;
-
-                        const tdEstado = fila.querySelector('td:nth-child(3)');
-                        tdEstado.innerHTML = nuevoActivo
-                            ? `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2"></span>Activo</span>`
-                            : `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>Inactivo</span>`;
-
-                        btn.className = `btn-toggle-entidad btn btn-secondary text-xs${nuevoActivo ? ' bg-red-50 text-red-500 hover:bg-red-100 border-red-200' : ''}`;
-                        btn.innerHTML = nuevoActivo
-                            ? `<i class="fi-rr-ban text-xs"></i> Desactivar`
-                            : `<i class="fi-rr-check text-xs"></i> Activar`;
-                        btn.dataset.activo = String(nuevoActivo);
-                    } catch (err) {
-                        Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#EC5FA3' });
                     }
                 });
             })();
@@ -432,6 +939,8 @@ block contenedor
                 });
 
                 // ── Estado pintado en la fila ─────────────────────────────────
+                // El pie del QR se marca con .qr-pie: buscarlo por su clase de tamaño
+                // rompería en cuanto otra etiqueta de la misma celda usara ese tamaño.
                 const pintarFila = (id, { qrEnabled, qrStatus }) => {
                     const sw = tabla.querySelector(`.switch-qr[data-id="${id}"]`);
                     if (!sw) return;
@@ -439,16 +948,16 @@ block contenedor
                     sw.dataset.status = qrStatus || '';
 
                     const celda = sw.closest('td');
-                    const pie   = celda?.querySelector('.btn-qr-gestionar, span.text-\\[10px\\]');
+                    const pie   = celda?.querySelector('.qr-pie');
                     if (!pie) return;
 
                     const nombre = sw.dataset.nombre;
                     if (qrStatus === 'compromised') {
-                        pie.outerHTML = `<button type="button" class="btn-qr-gestionar inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-full" data-id="${id}" data-nombre="${nombre}"><i class="fi fi-rr-exclamation text-[10px]"></i>Comprometido</button>`;
+                        pie.outerHTML = `<button type="button" class="btn-qr-gestionar qr-pie inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded-full" data-id="${id}" data-nombre="${nombre}"><i class="fi fi-rr-exclamation text-[10px]"></i>Comprometido</button>`;
                     } else if (qrStatus) {
-                        pie.outerHTML = `<button type="button" class="btn-qr-gestionar text-[10px] font-bold text-slate-500 hover:text-gh-primaryHover underline underline-offset-2" data-id="${id}" data-nombre="${nombre}">Ver / cambiar QR</button>`;
+                        pie.outerHTML = `<button type="button" class="btn-qr-gestionar qr-pie text-[10px] font-bold text-slate-500 hover:text-gh-primaryHover underline underline-offset-2" data-id="${id}" data-nombre="${nombre}">Ver / cambiar QR</button>`;
                     } else {
-                        pie.outerHTML = `<span class="text-[10px] text-slate-400">Sin QR cargado</span>`;
+                        pie.outerHTML = `<span class="qr-pie text-[10px] text-slate-400">Sin QR cargado</span>`;
                     }
                 };
 

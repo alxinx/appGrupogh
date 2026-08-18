@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 (function () {
     // Referencias al DOM
     const idTypeSelect = document.getElementById('TipoDocumento');
@@ -666,7 +667,7 @@
                             <div class="flex items-center gap-3">
                                 <span class="text-sm w-5 text-center flex-shrink-0">${medals[i]}</span>
                                 <div class="flex-1 min-w-0">
-                                    <p class="text-xs font-semibold text-slate-700 truncate">${p.nombreProducto}</p>
+                                    <p class="text-xs font-semibold text-slate-700 truncate">${tc(p.nombreProducto)}</p>
                                     <div class="mt-0.5 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                                         <div class="h-full rounded-full transition-all duration-700" style="width:${pct}%;background-color:#EC5FA3"></div>
                                     </div>

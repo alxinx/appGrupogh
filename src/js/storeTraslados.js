@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 (function () {
     const csrfToken = document.getElementById('csrf-token')?.value || '';
 
@@ -785,7 +786,7 @@
                                 item.nombreProducto = d.nombreProducto;
                                 item.stockDisponible= d.stockDisponible;
                             }
-                            nombreEl.innerHTML = `<span class="text-slate-700 font-medium text-xs">${d.nombreProducto}</span>`;
+                            nombreEl.innerHTML = `<span class="text-slate-700 font-medium text-xs">${tc(d.nombreProducto)}</span>`;
                             qtyInput.max = stockRestante;
                             if (stockRestante <= 0) {
                                 feedback.innerHTML = `<span class="text-red-500 text-xs">Sin stock disponible</span>`;

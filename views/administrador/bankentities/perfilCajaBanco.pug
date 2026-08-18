@@ -1,0 +1,992 @@
+extends ../../layout/index
+block contenedor
+    //- Formateo local de pesos. Los montos llegan como número desde el controlador de
+    //- demostración; cuando esto se conecte, llegarán como DECIMAL (string) y este mismo
+    //- helper sirve igual porque Number() maneja las dos formas.
+    -
+        var pesos = function (v) {
+            var n = Number(v || 0);
+            return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+        };
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- ── VOLVER ────────────────────────────────────────────────
+                            div(class="col-span-12")
+                                a(href="/admin/bankentities/listado#cajas" class="inline-flex items-center gap-2 text-sm font-semibold text-purple-600 hover:text-gh-primaryHover transition-colors")
+                                    i(class="fi fi-rr-arrow-left")
+                                    | Volver a Cajas y bancos
+
+                            //- ── ENCABEZADO DE LA CUENTA ───────────────────────────────
+                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-wrap items-start justify-between gap-4")
+                                div(class="flex items-start gap-4")
+                                    div(class=`w-20 h-20 rounded-2xl flex items-center justify-center flex-shrink-0 ${cuenta.tipo === 'caja' ? 'bg-gh-primarySoft' : 'bg-blue-50'}`)
+                                        img(src=cuenta.tipo === 'caja' ? '/img/avatars/cajaRegistradora.webp' : '/img/avatars/banco.webp' alt="" class="w-14 h-14 object-contain")
+                                    div(class="flex flex-col gap-1.5")
+                                        div(class="flex items-center gap-3 flex-wrap")
+                                            h1(class="text-2xl font-bold text-slate-800")= tc(cuenta.nombreCajaBanco)
+                                            if cuenta.estado
+                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-100 text-emerald-600")
+                                                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2")
+                                                    | Activa
+                                            else
+                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-slate-100 text-slate-500")
+                                                    span(class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2")
+                                                    | Inactiva
+                                        p(class="text-sm text-slate-400")= cuenta.descripcion
+
+                                        div(class="flex flex-wrap items-center gap-x-6 gap-y-2 mt-1.5")
+                                            div(class="flex items-center gap-1.5 text-sm")
+                                                i(class="fi fi-rr-barcode text-slate-300")
+                                                span(class="font-semibold text-slate-600") Referencia:
+                                                span(class="font-mono text-slate-500")= cuenta.referencia || '—'
+                                            div(class="flex items-center gap-1.5 text-sm")
+                                                i(class="fi fi-rr-tags text-slate-300")
+                                                span(class="font-semibold text-slate-600") Tipo:
+                                                span(class="text-slate-500")= tc(cuenta.tipo)
+                                            if cuenta.tienda
+                                                div(class="flex items-center gap-1.5 text-sm")
+                                                    i(class="fi fi-rr-shop text-slate-300")
+                                                    span(class="font-semibold text-slate-600") Tienda:
+                                                    span(class="text-slate-500")= tc(cuenta.tienda)
+
+                                button#btn-editar(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                    i.fi-rr-edit.text-xs
+                                    | Editar información
+
+                            //- ── INDICADORES ──────────────────────────────────────────
+                            //- El saldo sale de sumar los movimientos; los tres de la
+                            //- derecha describen el mes en curso.
+                            div(class="col-span-12 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4")
+
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center justify-between gap-3")
+                                    div
+                                        p(class="text-xs text-slate-400 mb-1") Saldo actual
+                                        p(class=`text-2xl font-bold ${resumen.saldo < 0 ? 'text-red-600' : 'text-slate-800'}`)= pesos(resumen.saldo)
+                                    div(class="w-11 h-11 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0")
+                                        i(class="fi fi-rr-wallet text-purple-500")
+
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center justify-between gap-3")
+                                    div
+                                        p(class="text-xs text-slate-400 mb-1") Ingresos del mes
+                                        p(class="text-2xl font-bold text-slate-800")= pesos(resumen.ingresosMes)
+                                    div(class="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0")
+                                        i(class="fi fi-rr-arrow-down text-emerald-500")
+
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center justify-between gap-3")
+                                    div
+                                        p(class="text-xs text-slate-400 mb-1") Egresos del mes
+                                        p(class="text-2xl font-bold text-slate-800")= pesos(resumen.egresosMes)
+                                    div(class="w-11 h-11 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0")
+                                        i(class="fi fi-rr-arrow-up text-rose-500")
+
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center justify-between gap-3")
+                                    div
+                                        p(class="text-xs text-slate-400 mb-1") Movimientos del mes
+                                        p(class="text-2xl font-bold text-slate-800")= resumen.movimientosMes
+                                    div(class="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0")
+                                        i(class="fi fi-rr-receipt text-blue-500")
+
+                            //- ── CUERPO: MOVIMIENTOS (65%) + REGISTRO (35%) ───────────
+                            div(class="col-span-12 grid grid-cols-1 lg:grid-cols-[65fr_35fr] gap-4 items-start")
+
+                                //- MOVIMIENTOS
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="p-6 flex flex-wrap items-start justify-between gap-3")
+                                        div
+                                            h2(class="text-lg font-bold text-slate-800") Movimientos
+                                            p(class="text-sm text-slate-400") Historial de ingresos y egresos de esta caja
+                                        div(class="flex flex-wrap items-center gap-2")
+                                            div(class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white")
+                                                i(class="fi fi-rr-calendar text-slate-400 text-xs")
+                                                input#mov-desde(type="date" value=filtros.desde class="text-xs text-slate-600 bg-transparent focus:outline-none cursor-pointer")
+                                                span(class="text-slate-300 text-xs") –
+                                                input#mov-hasta(type="date" value=filtros.hasta class="text-xs text-slate-600 bg-transparent focus:outline-none cursor-pointer")
+                                            select#mov-filtro-tipo(class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-300/40 cursor-pointer")
+                                                option(value="") Todos los tipos
+                                                option(value="ingreso") Ingresos
+                                                option(value="egreso") Egresos
+                                            button#mov-limpiar(type="button" class="hidden px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer") Limpiar
+                                            button#btn-exportar(type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer")
+                                                i(class="fi fi-rr-download")
+                                                | Exportar
+
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left border-collapse")
+                                            thead
+                                                tr(class="border-b border-gh-primaryHover text-sm")
+                                                    th(class="px-4 py-3 text-gray-600 whitespace-nowrap") Fecha
+                                                    th(class="px-3 py-3 text-center text-gray-600 whitespace-nowrap") Tipo
+                                                    th(class="px-3 py-3 text-gray-600") Descripción
+                                                    th(class="px-3 py-3 text-gray-600 whitespace-nowrap") Referencia
+                                                    th(class="px-3 py-3 text-right text-gray-600 whitespace-nowrap") Valor
+                                                    th(class="px-3 py-3 text-right text-gray-600 whitespace-nowrap") Saldo
+                                                    th(class="px-3 py-3 text-gray-600 whitespace-nowrap") Usuario
+                                                    th(class="px-4 py-3 text-center text-gray-600 whitespace-nowrap") Soporte
+
+                                            tbody(class="divide-y divide-slate-100")
+                                                each mov in movimientos
+                                                    tr(class="mov-fila border-b border-gray-100 hover:bg-gray-50 transition-colors" data-iso=mov.iso data-tipo=mov.tipo)
+                                                        td(class="px-4 py-3 whitespace-nowrap")
+                                                            p(class="text-sm font-semibold text-slate-700")= mov.fecha
+                                                            p(class="text-xs text-slate-400")= mov.hora
+
+                                                        td(class="px-3 py-3 text-center")
+                                                            if mov.tipo === 'ingreso'
+                                                                span(class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-100 text-emerald-700")
+                                                                    i(class="fi fi-rr-arrow-down text-[10px]")
+                                                                    | Ingreso
+                                                            else
+                                                                span(class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-rose-100 text-rose-700")
+                                                                    i(class="fi fi-rr-arrow-up text-[10px]")
+                                                                    | Egreso
+
+                                                        td(class="px-3 py-3")
+                                                            //- `tc` solo cambia cómo se ve: en la base queda lo que
+                                                            //- escribió el operador. Sin esto, un "INGRESO SALDO
+                                                            //- INICIAL" grita en medio de la tabla.
+                                                            p(class="text-sm font-bold text-slate-800 leading-tight")= tc(mov.descripcion)
+
+                                                        td(class="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap")= mov.referencia || '—'
+
+                                                        td(class="px-3 py-3 text-right whitespace-nowrap")
+                                                            if mov.tipo === 'ingreso'
+                                                                span(class="text-sm font-bold text-emerald-600")= pesos(mov.valor)
+                                                            else
+                                                                span(class="text-sm font-bold text-rose-600")= '-' + pesos(mov.valor)
+
+                                                        //- Saldo corrido después de este movimiento.
+                                                        td(class=`px-3 py-3 text-right text-sm font-semibold whitespace-nowrap ${mov.saldo < 0 ? 'text-red-600' : 'text-slate-700'}`)= pesos(mov.saldo)
+
+                                                        td(class="px-3 py-3 text-sm text-slate-500 whitespace-nowrap")= tc(mov.usuario)
+
+                                                        //- Comprobantes del movimiento. Sin adjuntos no hay botón: un
+                                                        //- botón que abre una lista vacía no dice nada.
+                                                        td(class="px-4 py-3 text-center")
+                                                            if mov.adjuntos.length
+                                                                button(
+                                                                    type="button"
+                                                                    class="btn-mov-adjuntos inline-flex items-center gap-1 px-2 py-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-gh-primaryHover transition-colors cursor-pointer"
+                                                                    title=`${mov.adjuntos.length} comprobante(s)`
+                                                                    data-adjuntos=JSON.stringify(mov.adjuntos)
+                                                                )
+                                                                    i(class="fi fi-rr-clip text-sm")
+                                                                    span(class="text-xs font-semibold")= mov.adjuntos.length
+                                                            else
+                                                                span(class="text-xs text-slate-300") —
+
+                                                tr#mov-vacio(class="hidden")
+                                                    td(colspan="8" class="px-4 py-10 text-center")
+                                                        i(class="fi fi-rr-inbox text-2xl text-slate-300")
+                                                        p(class="text-sm text-slate-400 mt-2") Ningún movimiento en ese rango
+
+                                    div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3")
+                                        p#mov-contador(class="text-xs text-slate-400")= `Mostrando ${movimientos.length} movimiento${movimientos.length === 1 ? '' : 's'}`
+                                        //- Paginación por cursor: no hay números de página porque no se
+                                        //- conoce el total sin contarlo, y contar una tabla que crece sin
+                                        //- techo cuesta más que traer la página.
+                                        button#mov-cargar-mas(
+                                            type="button"
+                                            data-cursor=cursorSiguiente || ''
+                                            class=`px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer ${cursorSiguiente ? '' : 'hidden'}`
+                                        ) Cargar más
+
+                                //- REGISTRAR MOVIMIENTO
+                                //- El resplandor del borde sigue al tipo elegido: verde para
+                                //- ingreso, rojo para egreso. Es la señal de qué se va a
+                                //- registrar, visible sin leer los botones.
+                                //- El saldo y el nombre de la cuenta viajan al cliente porque la
+                                //- confirmación muestra contra qué cuenta se va a asentar y en
+                                //- cuánto queda: con varias cajas abiertas en pestañas, equivocarse
+                                //- de cuenta es el error fácil de cometer y difícil de deshacer.
+                                div#card-movimiento(
+                                    class=`bg-white rounded-2xl p-6 border transition-all duration-300 ${cuenta.estado ? '' : 'gh-card-bloqueada'}`
+                                    data-saldo=resumen.saldo
+                                    data-cuenta=cuenta.nombreCajaBanco
+                                    data-tipo-cuenta=cuenta.tipo
+                                    data-activa=cuenta.estado ? '1' : '0'
+                                )
+                                    //- ── CUENTA INACTIVA ───────────────────────────────
+                                    //- El cristal tapa el formulario, pero lo que de verdad lo
+                                    //- inhabilita es `inert`: sin eso los campos se siguen
+                                    //- alcanzando con el tabulador y se puede escribir a ciegas
+                                    //- detrás del velo. Y aun así, la garantía está en el
+                                    //- servidor, que rechaza el movimiento con 422.
+                                    if !cuenta.estado
+                                        div(class="gh-bloqueo")
+                                            div(class="gh-bloqueo-panel")
+                                                div(class="gh-bloqueo-icono")
+                                                    i(class="fi fi-rr-lock")
+                                                p(class="gh-bloqueo-titulo")= `${cuenta.tipo === 'caja' ? 'Caja' : 'Cuenta'} inactiva`
+                                                p(class="gh-bloqueo-texto") No se pueden registrar ingresos ni egresos hasta que se active.
+                                                p(class="gh-bloqueo-pista")
+                                                    i(class="fi fi-rr-edit")
+                                                    | Activala desde "Editar información".
+
+                                    h2(class="text-lg font-bold text-slate-800") Registrar movimiento
+                                    p(class="text-sm text-slate-400 mb-5") Ingresa un nuevo ingreso o egreso
+
+                                    form#form-movimiento(class="space-y-4" inert=!cuenta.estado)
+                                        input(type="hidden" name="_csrf" value=csrfToken)
+
+                                        //- Ingreso o egreso: define el sentido del movimiento.
+                                        div(class="grid grid-cols-2 gap-2")
+                                            label(class="cursor-pointer")
+                                                input#mov-tipo-ingreso(type="radio" name="mov-tipo" value="ingreso" checked class="peer sr-only")
+                                                div(class="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold transition-all peer-checked:border-emerald-400 peer-checked:bg-emerald-50 peer-checked:text-emerald-700")
+                                                    i(class="fi fi-rr-arrow-down")
+                                                    | Ingreso
+                                            label(class="cursor-pointer")
+                                                input#mov-tipo-egreso(type="radio" name="mov-tipo" value="egreso" class="peer sr-only")
+                                                div(class="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold transition-all peer-checked:border-rose-400 peer-checked:bg-rose-50 peer-checked:text-rose-700")
+                                                    i(class="fi fi-rr-arrow-up")
+                                                    | Egreso
+
+                                        div(class="space-y-1")
+                                            label(for="mov-fecha" class="text-xs font-bold text-slate-500 block") Fecha del movimiento
+                                            //- `max` evita fechas futuras desde el navegador; el servidor las rechaza
+                                            //- igual, porque un movimiento adelantado descuadra el saldo corrido.
+                                            input#mov-fecha(type="datetime-local" name="fecha" value=filtros.ahora max=filtros.ahora required class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                                            p(class="text-[10px] text-slate-400") Cuándo ocurrió, no cuándo se registra.
+
+                                        div(class="space-y-1")
+                                            label(for="mov-descripcion" class="text-xs font-bold text-slate-500 block") Descripción *
+                                            input#mov-descripcion(type="text" name="descripcion" placeholder="Ej: Venta mostrador, Pago proveedor..." maxlength="150" required autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+
+                                        div(class="space-y-1")
+                                            label(for="mov-monto" class="text-xs font-bold text-slate-500 block") Monto
+                                            div(class="relative")
+                                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm pointer-events-none") $
+                                                input#mov-monto(type="text" name="valor" placeholder="0" inputmode="numeric" autocomplete="off" class="w-full pl-8 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+
+                                        div(class="space-y-1")
+                                            label(for="mov-referencia" class="text-xs font-bold text-slate-500 block")
+                                                | Referencia
+                                                span(class="font-normal text-slate-400")  (opcional)
+                                            input#mov-referencia(type="text" placeholder="Ej: FAC-1258, REC-003..." maxlength="50" autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+
+                                        div(class="space-y-1")
+                                            label(class="text-xs font-bold text-slate-500 block")
+                                                | Comprobante
+                                                span(class="font-normal text-slate-400")  (opcional)
+                                            label(for="mov-comprobantes" class="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer")
+                                                i(class="fi fi-rr-cloud-upload")
+                                                | Subir archivos
+                                            input#mov-comprobantes(type="file" name="comprobantes" multiple accept="image/jpeg,image/png,image/webp,application/pdf" class="hidden")
+                                            p(class="text-[10px] text-slate-400") PDF, JPG o PNG. Máx. 5MB cada uno, hasta 10 archivos.
+                                            //- Lista de lo seleccionado: sin esto no hay forma de saber qué se va a subir.
+                                            ul#mov-lista-archivos(class="hidden flex flex-col gap-1 pt-1")
+
+                                        button#btn-guardar-movimiento(type="button" class="w-full py-3 rounded-2xl font-bold text-sm text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors cursor-pointer") Guardar movimiento
+
+        //- ── CONFIRMACIÓN DE UN MOVIMIENTO ────────────────────────────────────
+        //- Escrito como CSS propio y no como utilidades de Tailwind porque vive dentro
+        //- del HTML que inyecta SweetAlert2: ese marcado no lo ve el escáner de clases
+        //- de Tailwind, así que las utilidades nuevas no llegarían a output.css. Los
+        //- colores salen de las mismas variables del tema que usa el resto del panel.
+        style.
+            .gh-conf-popup {
+                padding: 0;
+                border-radius: 1rem;
+                overflow: hidden;
+                background: #fff;
+                /* Una sola declaración de elevación: sombra, sin borde encima. */
+                box-shadow: 0 18px 45px -12px rgb(15 23 42 / 0.28), 0 6px 14px -8px rgb(15 23 42 / 0.18);
+                border: none;
+                width: 30rem;
+                max-width: calc(100vw - 2rem);
+            }
+            /* SweetAlert2 acolcha su contenedor de contenido por defecto; sin anular eso
+               la cabecera tintada queda flotando dentro de un marco blanco en vez de
+               llegar al borde de la ventana. */
+            .gh-conf-html-container { padding: 0 !important; margin: 0 !important; }
+            .gh-conf-html { margin: 0; text-align: left; }
+
+            /* Cabecera tintada según el sentido del movimiento: el monto es lo que hay
+               que releer antes de confirmar, así que es lo más grande de la ventana. */
+            .gh-conf-cabecera { padding: 1.5rem 1.75rem 1.375rem; }
+            .gh-conf-badge {
+                display: inline-flex; align-items: center; gap: 0.375rem;
+                padding: 0.25rem 0.625rem; border-radius: 999px;
+                font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+            }
+            .gh-conf-monto {
+                margin-top: 0.75rem;
+                font-size: 2.25rem; line-height: 1.1; font-weight: 700;
+                letter-spacing: -0.03em;
+                font-variant-numeric: tabular-nums;
+            }
+            .gh-conf-cuenta { margin-top: 0.25rem; font-size: 0.8125rem; font-weight: 500; }
+            .gh-conf-cuenta strong { font-weight: 700; }
+
+            /* Efecto sobre el saldo: la razón de ser de esta ventana. */
+            .gh-conf-saldo {
+                display: flex; align-items: baseline; justify-content: space-between;
+                gap: 1rem; padding: 0.875rem 1.75rem;
+                border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9;
+                background: #FAFAFA;
+            }
+            .gh-conf-saldo-bloque { display: flex; flex-direction: column; gap: 0.125rem; }
+            .gh-conf-saldo-label { font-size: 0.6875rem; font-weight: 600; color: #64748B; }
+            .gh-conf-saldo-valor {
+                font-size: 0.9375rem; font-weight: 600; color: #475569;
+                font-variant-numeric: tabular-nums;
+            }
+            .gh-conf-saldo-bloque--final { text-align: right; }
+            .gh-conf-saldo-bloque--final .gh-conf-saldo-valor { font-size: 1.125rem; font-weight: 700; }
+            .gh-conf-flecha { color: #CBD5E1; font-size: 0.75rem; align-self: center; }
+            .gh-conf-negativo { color: #DC2626 !important; }
+
+            /* El resto del asiento, en pares etiqueta/valor. */
+            .gh-conf-detalle { padding: 1.125rem 1.75rem 0.25rem; display: flex; flex-direction: column; gap: 0.625rem; }
+            .gh-conf-fila { display: flex; align-items: flex-start; gap: 1rem; font-size: 0.8125rem; }
+            .gh-conf-fila dt { flex: 0 0 6.5rem; color: #64748B; font-weight: 600; }
+            .gh-conf-fila dd { margin: 0; flex: 1; color: #1E293B; font-weight: 500; overflow-wrap: anywhere; }
+            .gh-conf-fila dd.gh-conf-vacio { color: #94A3B8; font-weight: 400; }
+            .gh-conf-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+            .gh-conf-aviso {
+                margin: 1.125rem 1.75rem 0;
+                display: flex; gap: 0.625rem; align-items: flex-start;
+                padding: 0.75rem 0.875rem; border-radius: var(--radius-gh, 12px);
+                background: #F8FAFC; border: 1px solid #E2E8F0;
+                font-size: 0.75rem; line-height: 1.45; color: #475569;
+            }
+            .gh-conf-aviso i { color: #94A3B8; font-size: 0.875rem; flex-shrink: 0; margin-top: 0.0625rem; }
+
+            .gh-conf-acciones { display: flex; padding: 1.25rem 1.75rem 1.75rem; gap: 0.625rem; margin: 0; }
+            .gh-conf-btn {
+                flex: 1; padding: 0.75rem 1rem; border-radius: var(--radius-gh, 12px);
+                font-size: 0.875rem; font-weight: 700; cursor: pointer;
+                border: 1px solid transparent; margin: 0;
+                transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+            }
+            .gh-conf-btn:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+            .gh-conf-cancelar { background: #fff; border-color: var(--color-gh-grayBorder, #E5E7EB); color: var(--color-gh-grayText, #4B5563); }
+            .gh-conf-cancelar:hover { background: #F8FAFC; border-color: #CBD5E1; }
+            .gh-conf-confirmar { color: #fff; }
+            .gh-conf-confirmar:disabled { opacity: .65; cursor: progress; }
+
+            /* Ingreso en esmeralda, egreso en rosa: el mismo código de color que el
+               badge de la tabla, el resplandor de la tarjeta y el monto de la fila.
+               Los tonos son los que pasan 4.5:1 sobre su propio fondo. */
+            .gh-conf--ingreso .gh-conf-cabecera { background: #ECFDF5; }
+            .gh-conf--ingreso .gh-conf-badge    { background: #A7F3D0; color: #065F46; }
+            .gh-conf--ingreso .gh-conf-monto,
+            .gh-conf--ingreso .gh-conf-cuenta   { color: #047857; }
+            .gh-conf--ingreso .gh-conf-confirmar        { background: #047857; }
+            .gh-conf--ingreso .gh-conf-confirmar:hover  { background: #065F46; }
+
+            .gh-conf--egreso .gh-conf-cabecera { background: #FFF1F2; }
+            .gh-conf--egreso .gh-conf-badge    { background: #FECDD3; color: #9F1239; }
+            .gh-conf--egreso .gh-conf-monto,
+            .gh-conf--egreso .gh-conf-cuenta   { color: #BE123C; }
+            .gh-conf--egreso .gh-conf-confirmar       { background: #E11D48; }
+            .gh-conf--egreso .gh-conf-confirmar:hover { background: #BE123C; }
+
+            /* Variante neutra: la edición de la cuenta no mueve plata, así que no toma
+               ni el verde ni el rojo. Ésos significan "entra" y "sale" en esta pantalla
+               y gastarlos en otra cosa los vaciaría de sentido. */
+            .gh-conf--neutro .gh-conf-cabecera { background: #F1F5F9; }
+            .gh-conf--neutro .gh-conf-badge    { background: #E2E8F0; color: #334155; }
+            .gh-conf--neutro .gh-conf-monto    { color: #1E293B; font-size: 1.5rem; }
+            .gh-conf--neutro .gh-conf-cuenta   { color: #475569; }
+            .gh-conf--neutro .gh-conf-confirmar       { background: var(--color-gh-primaryHover, #E24C95); }
+            .gh-conf--neutro .gh-conf-confirmar:hover { background: #C43B7E; }
+
+            /* ── Formulario de edición ─────────────────────────────────────── */
+            .gh-form        { padding: 1.25rem 1.75rem 0; display: flex; flex-direction: column; gap: 1rem; }
+            .gh-form-campo  { display: flex; flex-direction: column; gap: 0.375rem; }
+            .gh-form-label  { font-size: 0.6875rem; font-weight: 700; color: #64748B; }
+            .gh-form-label span { font-weight: 400; color: #94A3B8; }
+            .gh-form-input {
+                width: 100%; padding: 0.625rem 0.75rem;
+                border: 1px solid #E2E8F0; border-radius: var(--radius-gh, 12px);
+                font-size: 0.875rem; color: #1E293B; background: #fff;
+                transition: border-color .15s ease, box-shadow .15s ease;
+            }
+            .gh-form-input:focus {
+                outline: none; border-color: var(--color-gh-primary, #F794C9);
+                box-shadow: 0 0 0 3px rgb(247 148 201 / 0.28);
+            }
+            .gh-form-input::placeholder { color: #94A3B8; }
+            .gh-form-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+            /* Segmentado: mismo gesto que el selector de ingreso/egreso del formulario
+               de registro, para que la pantalla no tenga dos vocabularios de control. */
+            .gh-form-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.5rem; }
+            .gh-form-seg input { position: absolute; opacity: 0; pointer-events: none; }
+            .gh-form-seg label { cursor: pointer; }
+            .gh-form-seg span {
+                display: flex; align-items: center; justify-content: center; gap: 0.375rem;
+                padding: 0.5rem 0.5rem; border-radius: var(--radius-gh, 12px);
+                border: 1px solid #E2E8F0; background: #F8FAFC; color: #64748B;
+                font-size: 0.8125rem; font-weight: 600;
+                transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+            }
+            .gh-form-seg input:checked + span { border-color: #A7F3D0; background: #ECFDF5; color: #047857; }
+            .gh-form-seg input:focus-visible + span { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+            /* "Inactiva" toma el rosa/rojo con el que esta pantalla marca lo que resta o
+               frena: el egreso, el saldo en negativo. Dejar la cuenta inactiva le corta los
+               movimientos nuevos, así que se ve como lo que es y no como un gris más.
+               Mismos tonos que el selector de egreso; #9F1239 sobre #FFF1F2 da 7.3:1. */
+            .gh-form-seg input.gh-seg-apagar:checked + span { border-color: #FECDD3; background: #FFF1F2; color: #9F1239; }
+            .gh-form-seg input.gh-seg-marca:checked  + span { border-color: var(--color-gh-primary, #F794C9); background: var(--color-gh-primarySoft, #FDE7F2); color: #C43B7E; }
+
+            /* Aviso de campos sellados por el historial. */
+            .gh-form-sellado {
+                display: flex; gap: 0.625rem; align-items: flex-start;
+                padding: 0.75rem 0.875rem; border-radius: var(--radius-gh, 12px);
+                background: #F8FAFC; border: 1px solid #E2E8F0;
+                font-size: 0.75rem; line-height: 1.45; color: #475569;
+            }
+            .gh-form-sellado i { color: #94A3B8; font-size: 0.875rem; flex-shrink: 0; margin-top: 0.0625rem; }
+            .gh-form-sellado b { color: #1E293B; }
+            /* ── CUENTA INACTIVA: FORMULARIO SELLADO ───────────────────────── */
+            .gh-card-bloqueada { position: relative; overflow: hidden; }
+
+            .gh-bloqueo {
+                position: absolute; inset: 0; z-index: 5;
+                display: flex; align-items: center; justify-content: center;
+                padding: 1.5rem;
+                /* Vidrio: el desenfoque es fuerte pero el tinte deja pasar la forma del
+                   formulario, así se ve QUÉ está sellado y no solo que hay algo detrás.
+                   El degradado en diagonal imita cómo la luz cae sobre un panel real; un
+                   tinte plano se lee como un velo gris. */
+                background: linear-gradient(148deg, rgb(255 255 255 / 0.58) 0%, rgb(241 245 249 / 0.40) 55%, rgb(255 255 255 / 0.52) 100%);
+                backdrop-filter: blur(14px) saturate(150%);
+                -webkit-backdrop-filter: blur(14px) saturate(150%);
+                /* El filo claro del borde superior es lo que hace leer la capa como vidrio
+                   y no como opacidad: es el reflejo del canto. */
+                box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.85),
+                            inset 0 0 0 1px rgb(255 255 255 / 0.45);
+            }
+
+            /* Sin backdrop-filter (navegadores viejos) el tinte translúcido dejaría el
+               formulario legible detrás. Ahí se cae a un velo casi sólido: se pierde el
+               efecto, no la función. */
+            @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+                .gh-bloqueo { background: rgb(248 250 252 / 0.96); }
+            }
+            .gh-bloqueo-panel {
+                max-width: 17rem; text-align: center;
+                display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+            }
+            .gh-bloqueo-icono {
+                width: 3.25rem; height: 3.25rem; margin-bottom: 0.25rem;
+                border-radius: 999px; display: grid; place-items: center;
+                background: #FFF1F2; border: 1px solid #FECDD3; color: #9F1239;
+                font-size: 1.125rem;
+                box-shadow: 0 6px 16px -8px rgb(159 18 57 / 0.35);
+            }
+            .gh-bloqueo-titulo { font-size: 1rem; font-weight: 700; color: #1E293B; margin: 0; }
+            .gh-bloqueo-texto  { font-size: 0.8125rem; line-height: 1.5; color: #475569; margin: 0; }
+            .gh-bloqueo-pista {
+                display: inline-flex; align-items: center; gap: 0.375rem;
+                margin: 0.375rem 0 0; padding: 0.375rem 0.625rem;
+                border-radius: 999px; background: #F1F5F9;
+                font-size: 0.6875rem; font-weight: 600; color: #64748B;
+            }
+
+            .gh-form-error {
+                margin: 0 1.75rem; padding: 0.625rem 0.75rem;
+                border-radius: var(--radius-gh, 12px);
+                background: #FFF1F2; border: 1px solid #FECDD3;
+                font-size: 0.75rem; color: #9F1239;
+            }
+
+            /* Un solo momento de movimiento: la ventana entra desde abajo y se asienta.
+               Curva exponencial de salida, para que frene sola en vez de cortarse. */
+            @keyframes ghConfEntra {
+                from { opacity: 0; transform: translateY(14px) scale(.975); }
+                to   { opacity: 1; transform: none; }
+            }
+            .gh-conf-entra { animation: ghConfEntra .28s cubic-bezier(.16, 1, .3, 1) both; }
+            .gh-conf-sale  { animation: ghConfEntra .14s ease-in reverse both; }
+
+            @media (prefers-reduced-motion: reduce) {
+                .gh-conf-entra, .gh-conf-sale { animation: none; }
+            }
+
+            @media (max-width: 480px) {
+                .gh-conf-cabecera { padding: 1.25rem 1.25rem 1.125rem; }
+                .gh-conf-monto    { font-size: 1.875rem; }
+                .gh-conf-saldo    { padding: 0.875rem 1.25rem; }
+                .gh-conf-detalle  { padding: 1rem 1.25rem 0.25rem; }
+                .gh-conf-fila     { flex-direction: column; gap: 0.125rem; }
+                .gh-conf-fila dt  { flex-basis: auto; }
+                .gh-conf-aviso    { margin: 1rem 1.25rem 0; }
+                .gh-form          { padding: 1rem 1.25rem 0; }
+                .gh-form-error    { margin: 0 1.25rem; }
+                /* Apilados, y con Volver abajo: la acción que no se puede deshacer queda
+                   lejos del pulgar. `flex: 1` crece en el eje de la columna, así que el
+                   ancho hay que pedirlo aparte. */
+                .gh-conf-acciones { padding: 1.125rem 1.25rem 1.25rem; flex-direction: column-reverse; }
+                .gh-conf-btn      { width: 100%; }
+            }
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        //- window.initMoneyInput / window.parseMoney: el mismo formateo de miles que usan
+        //- el POS, egresos y cuadre de caja. No se reimplementa acá.
+        script(src="/js/helpers.js")
+        script.
+            (function () {
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const idCuenta = location.pathname.split('/').pop();
+                const pesos = (n) => (n < 0 ? '-$' : '$') + Math.abs(Number(n) || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+                const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+                // ── MONTO CON SEPARADOR DE MILES AL ESCRIBIR ──────────────
+                // initMoneyInput (helpers.js) formatea en cada tecla y recoloca el cursor:
+                // sin ese ajuste, insertar un punto lo empuja al final y escribir se
+                // vuelve imposible. Es el mismo campo de dinero del resto del panel.
+                const monto = document.getElementById('mov-monto');
+                window.initMoneyInput(monto);
+
+                // ── RESPLANDOR SEGÚN EL TIPO ──────────────────────────────
+                const card = document.getElementById('card-movimiento');
+                const INGRESO = ['border-emerald-300', 'ring-2', 'ring-emerald-100', 'shadow-lg', 'shadow-emerald-500/20'];
+                const EGRESO  = ['border-rose-300',    'ring-2', 'ring-rose-100',    'shadow-lg', 'shadow-rose-500/20'];
+                const esEgreso = () => document.getElementById('mov-tipo-egreso')?.checked;
+                const pintarTipo = () => {
+                    card.classList.remove(...INGRESO, ...EGRESO);
+                    card.classList.add(...(esEgreso() ? EGRESO : INGRESO));
+                };
+                document.querySelectorAll('input[name="mov-tipo"]').forEach(r => r.addEventListener('change', pintarTipo));
+                pintarTipo();
+
+                // ── ARCHIVOS SELECCIONADOS ────────────────────────────────
+                const inputArchivos = document.getElementById('mov-comprobantes');
+                const listaArchivos = document.getElementById('mov-lista-archivos');
+                inputArchivos?.addEventListener('change', () => {
+                    const files = [...(inputArchivos.files || [])];
+                    listaArchivos.classList.toggle('hidden', !files.length);
+                    listaArchivos.innerHTML = files.map(f =>
+                        `<li class="flex items-center gap-1.5 text-[11px] text-slate-500">
+                            <i class="fi fi-rr-clip text-slate-300"></i>
+                            <span class="truncate">${esc(f.name)}</span>
+                            <span class="text-slate-300 whitespace-nowrap">${(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                         </li>`).join('');
+                });
+
+                // ── COMPROBANTES DE UN MOVIMIENTO ─────────────────────────
+                // Delegado en el tbody: las filas que trae "Cargar más" nacen después de
+                // este script y no habría dónde colgarles un listener propio.
+                document.querySelector('tbody.divide-y')?.addEventListener('click', (ev) => {
+                    const btn = ev.target.closest('.btn-mov-adjuntos');
+                    if (!btn) return;
+
+                    let adjuntos = [];
+                    try { adjuntos = JSON.parse(btn.dataset.adjuntos || '[]'); } catch (_) { return; }
+                    if (!adjuntos.length) return;
+
+                    Swal.fire({
+                        title: 'Comprobantes',
+                        html: `<ul class="flex flex-col gap-2 text-left">${adjuntos.map(a => `
+                            <li class="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5">
+                                <i class="fi ${window.iconoDoc(a.formato)} text-base flex-shrink-0 text-slate-500"></i>
+                                <a href="${esc(a.url)}" target="_blank" rel="noopener"
+                                   class="text-xs font-medium truncate flex-1 hover:underline" style="color:#EC5FA3">${esc(a.nombreDocumento)}</a>
+                                <span class="text-[10px] text-slate-400 uppercase flex-shrink-0">${esc(a.formato)}</span>
+                            </li>`).join('')}</ul>`,
+                        confirmButtonColor: '#EC5FA3',
+                        confirmButtonText: 'Cerrar'
+                    });
+                });
+
+                // ── FILTROS ───────────────────────────────────────────────
+                const desde  = document.getElementById('mov-desde');
+                const hasta  = document.getElementById('mov-hasta');
+                const tipoEl = document.getElementById('mov-filtro-tipo');
+                const limpiar= document.getElementById('mov-limpiar');
+                const vacio  = document.getElementById('mov-vacio');
+                const contador = document.getElementById('mov-contador');
+                const tbody  = document.querySelector('tbody.divide-y');
+                const btnMas = document.getElementById('mov-cargar-mas');
+
+                const params = () => {
+                    const p = new URLSearchParams();
+                    if (desde.value) p.set('desde', desde.value);
+                    if (hasta.value) p.set('hasta', hasta.value);
+                    if (tipoEl.value) p.set('tipo', tipoEl.value);
+                    return p;
+                };
+
+                const filaHTML = (m) => `
+                    <tr class="mov-fila border-b border-gray-100 hover:bg-gray-50 transition-colors" data-iso="${m.iso}" data-tipo="${m.tipo}">
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <p class="text-sm font-semibold text-slate-700">${esc(m.fecha)}</p>
+                            <p class="text-xs text-slate-400">${esc(m.hora)}</p>
+                        </td>
+                        <td class="px-3 py-3 text-center">
+                            ${m.tipo === 'ingreso'
+                                ? '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-100 text-emerald-700"><i class="fi fi-rr-arrow-down text-[10px]"></i>Ingreso</span>'
+                                : '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-rose-100 text-rose-700"><i class="fi fi-rr-arrow-up text-[10px]"></i>Egreso</span>'}
+                        </td>
+                        <td class="px-3 py-3"><p class="text-sm font-bold text-slate-800 leading-tight">${esc(tc(m.descripcion))}</p></td>
+                        <td class="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">${esc(m.referencia || '—')}</td>
+                        <td class="px-3 py-3 text-right whitespace-nowrap">
+                            <span class="text-sm font-bold ${m.tipo === 'ingreso' ? 'text-emerald-600' : 'text-rose-600'}">${m.tipo === 'ingreso' ? pesos(m.valor) : '-' + pesos(m.valor)}</span>
+                        </td>
+                        <td class="px-3 py-3 text-right text-sm font-semibold whitespace-nowrap ${m.saldo < 0 ? 'text-red-600' : 'text-slate-700'}">${pesos(m.saldo)}</td>
+                        <td class="px-3 py-3 text-sm text-slate-500 whitespace-nowrap">${esc(m.usuario)}</td>
+                        <td class="px-4 py-3 text-center">
+                            ${m.adjuntos && m.adjuntos.length
+                                ? `<button type="button" class="btn-mov-adjuntos inline-flex items-center gap-1 px-2 py-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-gh-primaryHover transition-colors cursor-pointer" title="${m.adjuntos.length} comprobante(s)" data-adjuntos="${esc(JSON.stringify(m.adjuntos))}"><i class="fi fi-rr-clip text-sm"></i><span class="text-xs font-semibold">${m.adjuntos.length}</span></button>`
+                                : '<span class="text-xs text-slate-300">—</span>'}
+                        </td>
+                    </tr>`;
+
+                const actualizarPie = () => {
+                    const n = document.querySelectorAll('.mov-fila').length;
+                    vacio.classList.toggle('hidden', n > 0);
+                    contador.textContent = n ? `Mostrando ${n} movimiento${n === 1 ? '' : 's'}` : 'Ningún movimiento en el rango seleccionado';
+                    const filtrado = desde.value || hasta.value || tipoEl.value;
+                    limpiar.classList.toggle('hidden', !filtrado);
+                };
+
+                // El filtro va al servidor: filtrar solo lo que está en pantalla escondería
+                // los movimientos que todavía no se trajeron.
+                const recargar = async () => {
+                    const r = await fetch(`/admin/bankentities/cajas/${idCuenta}/movimientos?${params()}`);
+                    const d = await r.json();
+                    if (!d.success) return;
+                    tbody.querySelectorAll('.mov-fila').forEach(f => f.remove());
+                    vacio.insertAdjacentHTML('beforebegin', d.movimientos.map(filaHTML).join(''));
+                    btnMas.dataset.cursor = d.cursorSiguiente || '';
+                    btnMas.classList.toggle('hidden', !d.cursorSiguiente);
+                    actualizarPie();
+                };
+
+                [desde, hasta, tipoEl].forEach(el => el?.addEventListener('change', recargar));
+                limpiar?.addEventListener('click', () => { desde.value = ''; hasta.value = ''; tipoEl.value = ''; recargar(); });
+
+                btnMas?.addEventListener('click', async () => {
+                    const cursor = btnMas.dataset.cursor;
+                    if (!cursor) return;
+                    btnMas.disabled = true; btnMas.textContent = 'Cargando...';
+                    try {
+                        const p = params(); p.set('cursor', cursor);
+                        const d = await (await fetch(`/admin/bankentities/cajas/${idCuenta}/movimientos?${p}`)).json();
+                        if (d.success) {
+                            vacio.insertAdjacentHTML('beforebegin', d.movimientos.map(filaHTML).join(''));
+                            btnMas.dataset.cursor = d.cursorSiguiente || '';
+                            btnMas.classList.toggle('hidden', !d.cursorSiguiente);
+                            actualizarPie();
+                        }
+                    } finally { btnMas.disabled = false; btnMas.textContent = 'Cargar más'; }
+                });
+
+                // ── EXPORTAR A EXCEL ──────────────────────────────────────
+                document.getElementById('btn-exportar')?.addEventListener('click', () => {
+                    location.href = `/admin/bankentities/cajas/${idCuenta}/movimientos/export?${params()}`;
+                });
+
+                // ── CONFIRMAR ANTES DE ASENTAR ────────────────────────────
+                // El libro es append-only: lo que se confirma acá no se puede editar ni
+                // borrar después. Por eso la ventana no pregunta "¿estás seguro?" sino que
+                // muestra el asiento tal como va a quedar —monto, cuenta y en cuánto queda
+                // el saldo— para que se relea antes de escribirlo.
+                // El monto de la cabecera lleva un signo menos tipográfico (−, U+2212), que
+                // tiene el ancho de un dígito. `pesos` usa el guion del teclado, más corto:
+                // los dos juntos en la misma ventana se ven desparejos.
+                const pesosConf = (n) => pesos(n).replace('-', '−');
+
+                const fechaLarga = (valorInput) => {
+                    const d = new Date(valorInput);
+                    if (isNaN(d)) return valorInput;
+                    return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) +
+                           ', ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+                };
+
+                const confirmarMovimiento = async ({ tipo, valor, fecha, descripcion, referencia, comprobantes }) => {
+                    const esIngreso = tipo === 'ingreso';
+                    const saldoActual = Number(card.dataset.saldo) || 0;
+                    const saldoFinal  = saldoActual + (esIngreso ? valor : -valor);
+
+                    const fila = (etiqueta, valorHTML, vacio) =>
+                        `<div class="gh-conf-fila"><dt>${etiqueta}</dt><dd class="${vacio ? 'gh-conf-vacio' : ''}">${valorHTML}</dd></div>`;
+
+                    const soportes = comprobantes.length
+                        ? `${comprobantes.length} archivo${comprobantes.length === 1 ? '' : 's'}: ${comprobantes.map(f => esc(f.name)).join(', ')}`
+                        : 'Ninguno';
+
+                    const { isConfirmed } = await Swal.fire({
+                        html: `
+                            <div class="gh-conf-html">
+                                <div class="gh-conf-cabecera">
+                                    <span class="gh-conf-badge">
+                                        <i class="fi ${esIngreso ? 'fi-rr-arrow-down' : 'fi-rr-arrow-up'}" style="font-size:.625rem"></i>
+                                        ${esIngreso ? 'Ingreso' : 'Egreso'}
+                                    </span>
+                                    <p class="gh-conf-monto">${esIngreso ? '+' : '−'} ${pesosConf(valor)}</p>
+                                    <p class="gh-conf-cuenta">${esIngreso ? 'entra a' : 'sale de'} <strong>${esc(card.dataset.cuenta)}</strong></p>
+                                </div>
+
+                                <div class="gh-conf-saldo">
+                                    <div class="gh-conf-saldo-bloque">
+                                        <span class="gh-conf-saldo-label">Saldo actual</span>
+                                        <span class="gh-conf-saldo-valor ${saldoActual < 0 ? 'gh-conf-negativo' : ''}">${pesosConf(saldoActual)}</span>
+                                    </div>
+                                    <i class="fi fi-rr-arrow-right gh-conf-flecha"></i>
+                                    <div class="gh-conf-saldo-bloque gh-conf-saldo-bloque--final">
+                                        <span class="gh-conf-saldo-label">Queda en</span>
+                                        <span class="gh-conf-saldo-valor ${saldoFinal < 0 ? 'gh-conf-negativo' : ''}">${pesosConf(saldoFinal)}</span>
+                                    </div>
+                                </div>
+
+                                <dl class="gh-conf-detalle">
+                                    ${fila('Fecha', esc(fechaLarga(fecha)))}
+                                    ${fila('Descripción', esc(descripcion))}
+                                    ${fila('Referencia', referencia ? `<span class="gh-conf-mono">${esc(referencia)}</span>` : 'Sin referencia', !referencia)}
+                                    ${fila('Comprobantes', soportes, !comprobantes.length)}
+                                </dl>
+
+                                <p class="gh-conf-aviso">
+                                    <i class="fi fi-rr-lock"></i>
+                                    <span>Una vez asentado no se puede editar ni eliminar. Para corregirlo habría que registrar un movimiento en sentido contrario.</span>
+                                </p>
+                            </div>`,
+                        showCancelButton: true,
+                        confirmButtonText: esIngreso ? 'Registrar ingreso' : 'Registrar egreso',
+                        cancelButtonText: 'Volver',
+                        // El Enter no debe asentar plata de un teclazo: el foco arranca en Volver.
+                        focusCancel: true,
+                        reverseButtons: true,
+                        buttonsStyling: false,
+                        width: '30rem',
+                        customClass: {
+                            popup:        `gh-conf-popup gh-conf--${tipo}`,
+                            htmlContainer: 'gh-conf-html-container',
+                            actions:      'gh-conf-acciones',
+                            confirmButton: 'gh-conf-btn gh-conf-confirmar',
+                            cancelButton:  'gh-conf-btn gh-conf-cancelar'
+                        },
+                        showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
+                        hideClass: { popup: 'gh-conf-sale',  backdrop: 'swal2-backdrop-hide' }
+                    });
+
+                    return isConfirmed;
+                };
+
+                // ── GUARDAR MOVIMIENTO ────────────────────────────────────
+                const btnGuardar = document.getElementById('btn-guardar-movimiento');
+                btnGuardar?.addEventListener('click', async () => {
+                    // Tercer cerrojo, después del cristal y de `inert`. Los tres son
+                    // comodidad: el que manda es el servidor, que revalida el estado de la
+                    // cuenta dentro de la transacción y devuelve 422 si está inactiva.
+                    if (card.dataset.activa !== '1') {
+                        return Swal.fire({
+                            icon: 'warning', title: 'Cuenta inactiva',
+                            text: 'No se pueden registrar movimientos hasta que se active.',
+                            confirmButtonColor: '#EC5FA3'
+                        });
+                    }
+
+                    const descripcion = document.getElementById('mov-descripcion').value.trim();
+                    const fecha = document.getElementById('mov-fecha').value;
+                    // parseMoney deshace el formato de miles: "1.250.000" → 1250000.
+                    const valor = window.parseMoney(monto.value);
+
+                    if (!fecha)
+                        return Swal.fire({ icon: 'warning', title: 'Falta la fecha', text: 'Indicá cuándo ocurrió el movimiento.', confirmButtonColor: '#EC5FA3' });
+                    if (valor <= 0)
+                        return Swal.fire({ icon: 'warning', title: 'Falta el monto', text: 'Ingresá un valor mayor que cero.', confirmButtonColor: '#EC5FA3' });
+                    if (!descripcion)
+                        return Swal.fire({ icon: 'warning', title: 'Falta la descripción', text: 'Contá de qué se trata el movimiento.', confirmButtonColor: '#EC5FA3' });
+
+                    const referencia = document.getElementById('mov-referencia').value.trim();
+                    const comprobantes = [...(inputArchivos.files || [])];
+
+                    if (!await confirmarMovimiento({ tipo: esEgreso() ? 'egreso' : 'ingreso', valor, fecha, descripcion, referencia, comprobantes })) return;
+
+                    const fd = new FormData();
+                    fd.append('tipo', esEgreso() ? 'egreso' : 'ingreso');
+                    fd.append('fecha', fecha);
+                    fd.append('valor', valor);
+                    fd.append('descripcion', descripcion);
+                    fd.append('referencia', referencia);
+                    comprobantes.forEach(f => fd.append('comprobantes', f));
+
+                    btnGuardar.disabled = true; btnGuardar.textContent = 'Guardando...';
+                    try {
+                        const r = await fetch(`/admin/bankentities/cajas/${idCuenta}/movimientos`, {
+                            method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd
+                        });
+                        const d = await r.json();
+                        if (!d.success) throw new Error(d.mensaje || 'No se pudo registrar.');
+
+                        await Swal.fire({
+                            icon: 'success', title: 'Movimiento registrado',
+                            text: d.adjuntos.length ? `Se adjuntaron ${d.adjuntos.length} comprobante(s).` : 'Quedó asentado en el libro.',
+                            confirmButtonColor: '#EC5FA3', timer: 2200, timerProgressBar: true
+                        });
+                        // Se recarga: el saldo de las tarjetas y el corrido de la tabla
+                        // cambian con cada movimiento nuevo.
+                        location.reload();
+                    } catch (err) {
+                        Swal.fire({ icon: 'error', title: 'No se pudo guardar', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    } finally {
+                        btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar movimiento';
+                    }
+                });
+
+                // ── EDITAR LA CUENTA ──────────────────────────────────────
+                // El nombre y el estado se pueden cambiar siempre. El tipo y la referencia
+                // solo mientras la cuenta no tenga ni un movimiento: definen qué es la
+                // cuenta y contra qué se concilia, y con historial adentro cambiarlas
+                // reescribiría el significado de lo ya asentado.
+                //
+                // Ocultar los campos acá es comodidad, no seguridad: quién puede editarlos
+                // lo decide el servidor cada vez, y vuelve a comprobarlo al guardar.
+                const TIPOS_CUENTA = [
+                    { valor: 'caja',      etiqueta: 'Caja',      icono: 'fi-rr-cash' },
+                    { valor: 'banco',     etiqueta: 'Banco',     icono: 'fi-rr-bank' },
+                    { valor: 'billetera', etiqueta: 'Billetera', icono: 'fi-rr-wallet' }
+                ];
+
+                document.getElementById('btn-editar')?.addEventListener('click', async () => {
+                    let datos;
+                    try {
+                        const r = await fetch(`/admin/bankentities/cajas/${idCuenta}/editar`, { headers: { Accept: 'application/json' } });
+                        datos = await r.json();
+                        if (!datos.success) throw new Error(datos.mensaje || 'No se pudo cargar la cuenta.');
+                    } catch (err) {
+                        return Swal.fire({ icon: 'error', title: 'No se pudo abrir', text: err.message, confirmButtonColor: '#EC5FA3' });
+                    }
+
+                    const c = datos.cuenta;
+                    const editable = datos.puedeEditarEstructura;
+
+                    const bloqueEstructura = editable
+                        ? `<div class="gh-form-campo">
+                               <label class="gh-form-label" for="ed-tipo-caja">Tipo de cuenta</label>
+                               <div class="gh-form-seg">
+                                   ${TIPOS_CUENTA.map(t => `
+                                       <label>
+                                           <input type="radio" name="ed-tipo" id="ed-tipo-${t.valor}" value="${t.valor}" class="gh-seg-marca" ${c.tipo === t.valor ? 'checked' : ''}>
+                                           <span><i class="fi ${t.icono}"></i>${t.etiqueta}</span>
+                                       </label>`).join('')}
+                               </div>
+                           </div>
+                           <div class="gh-form-campo">
+                               <label class="gh-form-label" for="ed-referencia">Número o referencia <span>(opcional)</span></label>
+                               <input id="ed-referencia" class="gh-form-input gh-form-mono" type="text" maxlength="50" autocomplete="off"
+                                      placeholder="Ej: 4821, 3167386129" value="${esc(c.referencia || '')}">
+                           </div>`
+                        : `<p class="gh-form-sellado">
+                               <i class="fi fi-rr-lock"></i>
+                               <span>El tipo (<b>${esc(tc(c.tipo))}</b>) y la referencia (<b>${esc(c.referencia || 'sin referencia')}</b>) quedaron fijos: esta cuenta ya tiene movimientos asentados y cambiarlos alteraría el significado de su historial.</span>
+                           </p>`;
+
+                    const { isConfirmed } = await Swal.fire({
+                        html: `
+                            <div class="gh-conf-html">
+                                <div class="gh-conf-cabecera">
+                                    <span class="gh-conf-badge"><i class="fi fi-rr-edit" style="font-size:.625rem"></i>Editar cuenta</span>
+                                    <p class="gh-conf-monto">${esc(tc(c.nombreCajaBanco))}</p>
+                                </div>
+
+                                <div class="gh-form">
+                                    <div class="gh-form-campo">
+                                        <label class="gh-form-label" for="ed-nombre">Nombre de la cuenta</label>
+                                        <input id="ed-nombre" class="gh-form-input" type="text" maxlength="50" autocomplete="off"
+                                               placeholder="Ej: Caja Principal San Diego" value="${esc(c.nombreCajaBanco)}">
+                                    </div>
+
+                                    <div class="gh-form-campo">
+                                        <label class="gh-form-label" for="ed-estado-activa">Estado</label>
+                                        <div class="gh-form-seg">
+                                            <label>
+                                                <input type="radio" name="ed-estado" id="ed-estado-activa" value="true" ${c.estado ? 'checked' : ''}>
+                                                <span><i class="fi fi-rr-check"></i>Activa</span>
+                                            </label>
+                                            <label>
+                                                <input type="radio" name="ed-estado" id="ed-estado-inactiva" value="false" class="gh-seg-apagar" ${c.estado ? '' : 'checked'}>
+                                                <span><i class="fi fi-rr-ban"></i>Inactiva</span>
+                                            </label>
+                                        </div>
+                                        <p style="font-size:.6875rem;color:#94A3B8;margin:0">Una cuenta inactiva no admite movimientos nuevos, pero su historial sigue disponible.</p>
+                                    </div>
+
+                                    ${bloqueEstructura}
+                                </div>
+
+                                <p id="ed-error" class="gh-form-error" style="display:none;margin-top:1rem"></p>
+                            </div>`,
+                        showCancelButton: true,
+                        confirmButtonText: 'Guardar cambios',
+                        cancelButtonText: 'Cancelar',
+                        reverseButtons: true,
+                        buttonsStyling: false,
+                        width: '30rem',
+                        customClass: {
+                            popup:         'gh-conf-popup gh-conf--neutro',
+                            htmlContainer: 'gh-conf-html-container',
+                            actions:       'gh-conf-acciones',
+                            confirmButton: 'gh-conf-btn gh-conf-confirmar',
+                            cancelButton:  'gh-conf-btn gh-conf-cancelar'
+                        },
+                        showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
+                        hideClass: { popup: 'gh-conf-sale',  backdrop: 'swal2-backdrop-hide' },
+                        didOpen: () => document.getElementById('ed-nombre')?.focus(),
+                        showLoaderOnConfirm: true,
+                        allowOutsideClick: () => !Swal.isLoading(),
+                        preConfirm: async () => {
+                            const aviso = document.getElementById('ed-error');
+                            // Devolver false deja el modal abierto con lo que el usuario ya
+                            // escribió. El motivo se pinta en el aviso propio y no con
+                            // showValidationMessage, que rompería el estilo de la ventana.
+                            const fallar = (m) => { aviso.textContent = m; aviso.style.display = 'block'; return false; };
+                            aviso.style.display = 'none';
+
+                            const nombre = document.getElementById('ed-nombre').value.trim();
+                            if (nombre.length < 2) return fallar('El nombre debe tener al menos 2 caracteres.');
+
+                            const cuerpo = {
+                                nombreCajaBanco: nombre,
+                                estado: document.querySelector('input[name="ed-estado"]:checked').value
+                            };
+                            // Solo se mandan si el servidor dijo que se pueden editar. Si no,
+                            // ni siquiera viajan: mandarlos iguales pasaría, pero es ruido.
+                            if (editable) {
+                                cuerpo.tipo = document.querySelector('input[name="ed-tipo"]:checked').value;
+                                cuerpo.referencia = document.getElementById('ed-referencia').value.trim();
+                            }
+
+                            try {
+                                const r = await fetch(`/admin/bankentities/cajas/${idCuenta}/editar`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, Accept: 'application/json' },
+                                    body: JSON.stringify(cuerpo)
+                                });
+                                const d = await r.json();
+                                if (!d.success) return fallar(d.mensaje || 'No se pudo guardar.');
+                                return d;
+                            } catch (_) {
+                                return fallar('No se pudo conectar con el servidor.');
+                            }
+                        }
+                    });
+
+                    if (isConfirmed) {
+                        await Swal.fire({
+                            icon: 'success', title: 'Cuenta actualizada',
+                            confirmButtonColor: '#EC5FA3', timer: 1600, timerProgressBar: true
+                        });
+                        // Se recarga: el nombre viaja al título, la miga y el encabezado, y
+                        // el estado cambia el badge. Repintar todo eso a mano sería peor.
+                        location.reload();
+                    }
+                });
+
+                actualizarPie();
+            })();

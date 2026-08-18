@@ -4,11 +4,11 @@ const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
 checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
-adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
+adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
 getPagosHoyPorMetodo,
-listarEntidades, crearEntidad, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
+listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
 getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
@@ -27,12 +27,13 @@ import { PuntosDeVenta } from "../models/index.js";
 import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado, historialPack } from '../controller/dosificacionController.js'
 
 
-import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation } from '../middlewares/fieldValidations.js';
+import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
 import uploadImages, { MAX_IMAGENES } from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
 import { recibirQr } from '../middlewares/uploadQr.js';
 import qrUploadRateLimit from '../middlewares/qrUploadRateLimit.js';
 import apiRateLimit from '../middlewares/apiRateLimit.js';
+import { subirComprobantesMovimiento } from '../middlewares/uploadComprobantes.js';
 
 
 
@@ -73,6 +74,19 @@ routes.get('/inventario/etiqueta-sku/:idProducto', imprimirEtiquetaSKU)
 //ENTIDADES BANCARIAS
 routes.get('/bankentities/listado', csrfProtection, listarEntidades);
 routes.post('/bankentities/crear', csrfProtection, crearEntidad);
+
+// CAJAS Y BANCOS — la validación va antes del controlador: un cuerpo inválido no
+// llega a tocar la base.
+routes.post('/bankentities/cajas/crear', csrfProtection, cajaBancoValidation, crearCajaBanco);
+
+// Perfil de una caja o banco con sus movimientos.
+routes.get('/bankentities/cajas/:idCajaBanco', csrfProtection, verPerfilCajaBanco);
+routes.get('/bankentities/cajas/:idCajaBanco/editar', csrfProtection, getCajaBancoEditar);
+routes.post('/bankentities/cajas/:idCajaBanco/editar', csrfProtection, cajaBancoEditValidation, editarCajaBanco);
+routes.get('/bankentities/cajas/:idCajaBanco/movimientos', getMovimientosCuentaJSON);
+routes.get('/bankentities/cajas/:idCajaBanco/movimientos/export', exportarMovimientosCuenta);
+// Los comprobantes van en memoria antes de subirse a R2, por eso el límite de multer.
+routes.post('/bankentities/cajas/:idCajaBanco/movimientos', csrfProtection, subirComprobantesMovimiento, crearMovimientoCuenta);
 routes.post('/bankentities/toggle/:id', csrfProtection, toggleEntidad);
 routes.get('/bankentities/detallesEntidad/:idEntidad', csrfProtection, verDetallesEntidad);
 routes.post('/bankentities/editar/:idEntidad', csrfProtection, editarEntidad);
@@ -212,6 +226,7 @@ routes.get('/api/tiendas/stats-hoy', getTiendasStatsHoy);
 routes.get('/api/personal/:idEmpleado/stats-mes', getStatsVendedorMes);
 routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', getTiendaStatsHoyDetalle);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', getFacturasJSON);
+routes.get('/api/tiendas/:idPuntoDeVenta/facturas/export', exportarFacturasTienda);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-abiertas', getCajasAbiertasPorFecha);
 routes.post('/api/tiendas/:idPuntoDeVenta/autorizar-factura-extemporanea', csrfProtection, autorizarFacturaExtemporanea);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-cerradas', getCajasCerradasAdmin);

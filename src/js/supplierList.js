@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 
 (function () {
     const inputBusqueda = document.getElementById('busquedaProvedor');
@@ -29,10 +30,10 @@
             contenedor.innerHTML += `
                 <tr class="hover:bg-gray-50 transition-colors group">
                     <td class="p-4">
-                        <div class="font-bold text-gray-800">${p.razonSocial}</div>
+                        <div class="font-bold text-gray-800">${tc(p.razonSocial)}</div>
                         <div class="text-xs text-gray-400">${p.emailProvedor || 'Sin email'}</div>
                     </td>
-                    <td class="p-4 text-sm text-gray-600">${p.nombreContacto || '--'}</td>
+                    <td class="p-4 text-sm text-gray-600">${tc(p.nombreContacto) || '--'}</td>
                     <td class="p-4 text-sm text-gray-600">${p.telefonoContacto || '--'}</td>
                     <td class="p-4 text-sm text-gray-600 font-mono">${p.taxIdSupplier}</td>
                     <td class="p-4">

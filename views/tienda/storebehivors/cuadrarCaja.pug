@@ -30,6 +30,13 @@ block contenedor
                         div(class="rounded-xl p-4 border-l-4 border-blue-400" style="background:#F0F4FF")
                             p(class="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1") Total de Ventas
                             p#cc-s-ventas(class="text-2xl font-bold text-slate-800") —
+
+                        //- Efectivo que debería estar físicamente en el cajón:
+                        //- base + ventas en efectivo − egresos pagados en efectivo.
+                        div(class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mt-3")
+                            p(class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1") Efectivo que debe haber en el cajón
+                            p#cc-s-esperado(class="text-2xl font-bold text-emerald-800") —
+                            p#cc-s-esperado-detalle(class="text-[10px] text-emerald-600 mt-0.5") —
                             i(class="fi fi-rr-chart-line-up text-blue-300 text-lg float-right -mt-8")
 
                         //- BASE
@@ -57,8 +64,11 @@ block contenedor
                                         tr(class="border-b border-slate-200")
                                             th(class="py-1 px-2 text-left text-slate-500 font-semibold") Referencia
                                             th(class="py-1 px-2 text-left text-slate-500 font-semibold") Descripción
+                                            th(class="py-1 px-2 text-center text-slate-500 font-semibold") Salió de
                                             th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
                                     tbody#cc-tbody-egresos
+                                //- Solo los egresos en efectivo mueven el cajón.
+                                p#cc-egresos-desglose(class="hidden text-[10px] text-slate-400 px-2 pt-1")
 
                         //- Ventas en Efectivo (acordeón)
                         div(class="rounded-xl border border-slate-200 overflow-hidden")

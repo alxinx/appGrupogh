@@ -74,7 +74,7 @@ block contenedor
                                             div(class="cardWhite p-5 flex flex-col gap-4")
                                                 //- --- PARTE SUPERIOR (Título y Badge) ---
                                                 div(class="flex items-center justify-between")
-                                                    h1.h1.text-left=listado.nombreComercial
+                                                    h1.h1.text-left= tc(listado.nombreComercial)
                                                     h5.h5 Nit : #{listado.taxId}
                                                     div(class="status-chip status-active"   ) Abierto
 

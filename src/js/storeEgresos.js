@@ -3,13 +3,59 @@
 
     const csrf = () => document.getElementById('csrf-token').value;
 
+    // Formatea un valor que viene del backend: un número (el total) o un DECIMAL de
+    // Sequelize, que llega como string con punto decimal ("10000.00").
+    //
+    // La versión anterior borraba los puntos antes de parsear —tratándolos como
+    // separadores de miles— y "10000.00" terminaba siendo 1.000.000: cien veces el valor
+    // real. Eso solo tiene sentido para texto tecleado por una persona, y el input del
+    // formulario ya se limpia por su cuenta antes de enviarse.
+    //
+    // Se redondea a pesos: los centavos no se muestran en el listado.
     const fmtMoney = (n) => {
-        const num = Math.round(parseFloat(String(n).replace(/\./g, '').replace(',', '.')) || 0);
-        return isNaN(num) ? '0' : num.toLocaleString('es-CO');
+        const num = Math.round(Number(n) || 0);
+        return num.toLocaleString('es-CO', { maximumFractionDigits: 0 });
     };
 
     // ─── FORMATEAR VALOR AL ESCRIBIR (preserva cursor) ───────────────────────
+    // Rojo para un gasto real, ámbar para un traslado: la plata del traslado no se
+                // perdió, cambió de lugar, y a simple vista tienen que verse distintos.
+                const badgeTipo = (t) => t === 'Traslado'
+                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap bg-amber-100 text-amber-700">Traslado</span>`
+                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap bg-red-100 text-red-600">Egreso</span>`;
+
     const inputValor = document.getElementById('egr-valor');
+
+    // ── Medio de pago del egreso ──────────────────────────────────────────────
+    // Solo el efectivo descuenta del cajón; si fue transferencia hay que decir de qué
+    // cuenta salió, para que el cuadre pueda separarlo.
+    const radiosMetodo   = document.querySelectorAll('input[name="egr-metodo"]');
+    const bloqueEntidad  = document.getElementById('egr-bloque-entidad');
+    const selEntidad     = document.getElementById('egr-entidad');
+    const errorEntidad   = document.getElementById('egr-error-entidad');
+    const ayudaMetodo    = document.getElementById('egr-ayuda-metodo');
+
+    const metodoElegido = () => document.querySelector('input[name="egr-metodo"]:checked')?.value || 'Efectivo';
+
+    // El formulario se renombra entero según lo que se esté registrando: un egreso del
+    // cajón o una transferencia desde una cuenta. Es el mismo registro, pero para el
+    // operador son dos operaciones distintas y el texto tiene que decirlo.
+    const titulo     = document.getElementById('egr-titulo');
+    const labelValor = document.getElementById('egr-label-valor');
+
+    const pintarMetodo = () => {
+        const electronico = metodoElegido() === 'Electronico';
+        bloqueEntidad?.classList.toggle('hidden', !electronico);
+        if (ayudaMetodo) ayudaMetodo.textContent = electronico
+            ? 'No descuenta del cajón: la plata sale de la cuenta.'
+            : 'Sale del cajón de la tienda.';
+        if (titulo)     titulo.textContent     = electronico ? 'Nueva Transferencia' : 'Nuevo Egreso';
+        if (labelValor) labelValor.textContent = electronico ? 'Valor de la transferencia *' : 'Valor del Egreso *';
+        if (!electronico && selEntidad) { selEntidad.value = ''; errorEntidad?.classList.add('hidden'); }
+    };
+    radiosMetodo.forEach(r => r.addEventListener('change', pintarMetodo));
+    selEntidad?.addEventListener('change', () => errorEntidad?.classList.add('hidden'));
+    pintarMetodo();
     inputValor.addEventListener('keydown', (e) => {
         const ok = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter','Home','End'];
         if (!ok.includes(e.key) && !/^\d$/.test(e.key)) e.preventDefault();
@@ -108,6 +154,7 @@
                 <td class="px-3 py-3 text-slate-500 text-xs whitespace-nowrap">${fecha}</td>
                 <td class="px-3 py-3 text-slate-600 text-xs">${desc}</td>
                 <td class="px-3 py-3 text-right font-bold text-slate-800 text-sm whitespace-nowrap">$${fmtMoney(e.valorEgreso)}</td>
+                <td class="px-3 py-3 text-center">${badgeTipo(e.tipo)}</td>
                 <td class="px-3 py-3 text-center">${badge}</td>
                 <td class="px-3 py-3 text-center">
                     <a href="/store/storebehivors/expenses/${e.idEgreso}/pdf" target="_blank"
@@ -121,7 +168,7 @@
     const cargarEgresos = async (pagina = 1) => {
         paginaActual = pagina;
         const tbody = document.getElementById('egr-tbody');
-        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-8 text-center text-gray-400 text-sm"><i class="fi fi-rr-spinner animate-spin mr-2"></i>Cargando...</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-8 text-center text-gray-400 text-sm"><i class="fi fi-rr-spinner animate-spin mr-2"></i>Cargando...</td></tr>`;
 
         const params = new URLSearchParams({ pagina });
         if (filtros.fechaA) params.append('fechaA', filtros.fechaA);
@@ -133,12 +180,12 @@
             const json = await r.json();
 
             if (!json.success) {
-                tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-8 text-center text-red-400 text-sm">Error al cargar los egresos.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-8 text-center text-red-400 text-sm">Error al cargar los egresos.</td></tr>`;
                 return;
             }
 
             if (!json.egresos.length) {
-                tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-8 text-center text-slate-400 text-sm">No hay egresos registrados con estos filtros.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-8 text-center text-slate-400 text-sm">No hay egresos registrados con estos filtros.</td></tr>`;
                 document.getElementById('egr-paginacion').innerHTML = '';
                 return;
             }
@@ -146,7 +193,7 @@
             tbody.innerHTML = json.egresos.map(egresoRow).join('');
             generarPaginacion('#egr-paginacion', json.totalPaginas, json.paginaActual, cargarEgresos);
         } catch (_) {
-            tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-8 text-center text-red-400 text-sm">Error de red.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-8 text-center text-red-400 text-sm">Error de red.</td></tr>`;
         }
     };
 
@@ -180,6 +227,15 @@
             return Swal.fire({ icon: 'warning', title: 'Empleado requerido', text: 'Ingresa el código del responsable.', confirmButtonColor: '#EC5FA3' });
         }
 
+        const metodoPago = metodoElegido();
+        const idEntidad  = selEntidad?.value || '';
+        if (metodoPago === 'Electronico' && !idEntidad) {
+            errorEntidad.textContent = 'Elegí con qué cuenta se pagó.';
+            errorEntidad.classList.remove('hidden');
+            selEntidad.focus();
+            return;
+        }
+
         const btn = document.getElementById('egr-submit');
         btn.disabled = true;
         btn.innerHTML = '<i class="fi fi-rr-spinner animate-spin mr-2"></i>Guardando...';
@@ -188,7 +244,7 @@
             const res = await fetch('/store/storebehivors/expenses/crear', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-                body: JSON.stringify({ valorEgreso: valor, referencia, codigoEmpleado, descripcion })
+                body: JSON.stringify({ valorEgreso: valor, referencia, codigoEmpleado, descripcion, metodoPago, idEntidad })
             });
             const json = await res.json();
 
@@ -203,6 +259,8 @@
             document.getElementById('egr-referencia').value = '';
             document.getElementById('egr-empleado').value = '';
             document.getElementById('egr-descripcion').value = '';
+            document.getElementById('egr-metodo-efectivo').checked = true;
+            pintarMetodo();
             feedbackEmp.textContent = '';
             setEmpleadoOk(false);
 

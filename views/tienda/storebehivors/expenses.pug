@@ -27,79 +27,9 @@ block contenedor
                             p(id="stat-total-hoy" class="text-2xl font-bold text-slate-800") —
 
                     //- ── DOS COLUMNAS ─────────────────────────────────────────────────────
-                    div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 items-start")
+                    div(class="col-span-12 grid grid-cols-1 md:grid-cols-[65fr_35fr] gap-4 items-start")
 
-                        //- ── COL 1: FORMULARIO ──────────────────────────────────────────
-                        div(class="bg-white/70 backdrop-blur-md rounded-2xl p-6")
-                            div(class="flex items-center gap-3 mb-6")
-                                div(class="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600")
-                                    i(class="fi fi-rr-add-document text-lg")
-                                h2(class="h2 !mb-0") Nuevo Egreso
-
-                            form#form-egreso(class="space-y-4")
-
-                                //- Valor
-                                div(class="space-y-1")
-                                    label(for="egr-valor" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Valor del Egreso *
-                                    div(class="relative")
-                                        span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm pointer-events-none") $
-                                        input(
-                                            type="text"
-                                            id="egr-valor"
-                                            placeholder="0"
-                                            inputmode="numeric"
-                                            autocomplete="off"
-                                            class="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
-                                        )
-
-                                //- Referencia
-                                div(class="space-y-1")
-                                    label(for="egr-referencia" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Referencia de Factura
-                                    input(
-                                        type="text"
-                                        id="egr-referencia"
-                                        placeholder="Ej: FAC-001, REC-2024..."
-                                        maxlength="50"
-                                        autocomplete="off"
-                                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
-                                    )
-
-                                //- Código empleado
-                                div(class="space-y-1")
-                                    label(for="egr-empleado" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Código de Empleado *
-                                    div(class="relative")
-                                        i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none")
-                                        input(
-                                            type="password"
-                                            id="egr-empleado"
-                                            placeholder="Ej: 00123"
-                                            maxlength="5"
-                                            autocomplete="one-time-code"
-                                            class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
-                                        )
-                                    p(id="egr-feedback-emp" class="text-xs ml-1 h-4 transition-colors")
-
-                                //- Descripción
-                                div(class="space-y-1")
-                                    label(for="egr-descripcion" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Descripción
-                                    textarea(
-                                        id="egr-descripcion"
-                                        rows="3"
-                                        maxlength="255"
-                                        placeholder="Detalle del egreso..."
-                                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
-                                    )
-
-                                button(
-                                    type="submit"
-                                    id="egr-submit"
-                                    disabled
-                                    class="w-full btn btn-primary py-3 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                )
-                                    i(class="fi fi-rr-disk")
-                                    | Registrar Egreso
-
-                        //- ── COL 2: LISTADO ─────────────────────────────────────────────
+                        //- ── IZQUIERDA · LISTADO (70%) ──────────────────────────────
                         div(class="bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col gap-4")
 
                             div(class="flex items-center gap-3 mb-2")
@@ -107,7 +37,6 @@ block contenedor
                                     i(class="fi fi-rr-list text-lg")
                                 h2(class="h2 !mb-0") Egresos registrados
 
-                            //- Filtros
                             div(class="bg-slate-50 rounded-xl p-4 grid grid-cols-2 gap-3")
                                 p(class="text-xs font-bold text-slate-500 uppercase tracking-wider col-span-2")
                                     i(class="fi fi-rr-filter mr-1")
@@ -135,7 +64,6 @@ block contenedor
                                         option(value="pendiente") Pendiente
                                         option(value="liquidada") Liquidada
 
-                            //- Tabla
                             div(class="overflow-x-auto")
                                 table(class="w-full text-left border-collapse")
                                     thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
@@ -144,16 +72,106 @@ block contenedor
                                             th(class="px-3 py-3 text-xs font-semibold text-gray-600 whitespace-nowrap") Fecha y hora
                                             th(class="px-3 py-3 text-xs font-semibold text-gray-600") Descripción
                                             th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-right") Valor
+                                            th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-center") Tipo
                                             th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-center") Estado
                                             th(class="px-3 py-3 text-xs font-semibold text-gray-600 text-center") PDF
                                     tbody#egr-tbody
                                         tr
-                                            td(colspan="6" class="px-3 py-8 text-center text-gray-500 text-sm")
+                                            td(colspan="7" class="px-3 py-8 text-center text-gray-500 text-sm")
                                                 i(class="fi fi-rr-spinner animate-spin mr-2")
                                                 | Cargando egresos...
 
-                            //- Paginación
                             div#egr-paginacion
+
+                        //- ── DERECHA · NUEVO EGRESO (30%) ──────────────────────────────
+                        div(class="bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                            div(class="flex items-center gap-3 mb-6")
+                                div(class="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600")
+                                    i(class="fi fi-rr-add-document text-lg")
+                                h2#egr-titulo(class="h2 !mb-0") Nuevo Egreso
+
+                            form#form-egreso(class="space-y-4")
+
+                                div(class="space-y-1")
+                                    label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Tipo de registro *
+                                    div(class="grid grid-cols-2 gap-2")
+                                        label(class="cursor-pointer")
+                                            input#egr-metodo-efectivo(type="radio" name="egr-metodo" value="Efectivo" checked class="peer sr-only")
+                                            div(class="flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold transition-all peer-checked:border-emerald-400 peer-checked:bg-emerald-50 peer-checked:text-emerald-700")
+                                                i(class="fi fi-rr-money-bill-wave")
+                                                | Egreso
+                                        label(class="cursor-pointer")
+                                            input#egr-metodo-electronico(type="radio" name="egr-metodo" value="Electronico" class="peer sr-only")
+                                            div(class="flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm font-semibold transition-all peer-checked:border-blue-400 peer-checked:bg-blue-50 peer-checked:text-blue-700")
+                                                i(class="fi fi-rr-bank")
+                                                | Transferencia
+                                    p#egr-ayuda-metodo(class="text-[10px] text-slate-400 mt-1") Sale del cajón de la tienda.
+
+                                div(class="space-y-1")
+                                    label#egr-label-valor(for="egr-valor" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Valor del Egreso *
+                                    div(class="relative")
+                                        span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm pointer-events-none") $
+                                        input(
+                                            type="text"
+                                            id="egr-valor"
+                                            placeholder="0"
+                                            inputmode="numeric"
+                                            autocomplete="off"
+                                            class="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                        )
+
+
+                                div#egr-bloque-entidad(class="space-y-1 hidden")
+                                    label(for="egr-entidad" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") ¿Con qué cuenta? *
+                                    select#egr-entidad(class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all")
+                                        option(value="") Seleccionar...
+                                        each ent in (entidades || [])
+                                            option(value=ent.idEntidad)= ent.nombreEntidad
+                                    p#egr-error-entidad(class="hidden text-[10px] font-bold text-red-500 mt-1")
+
+                                div(class="space-y-1")
+                                    label(for="egr-referencia" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Referencia de Factura
+                                    input(
+                                        type="text"
+                                        id="egr-referencia"
+                                        placeholder="Ej: FAC-001, REC-2024..."
+                                        maxlength="50"
+                                        autocomplete="off"
+                                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                    )
+
+                                div(class="space-y-1")
+                                    label(for="egr-empleado" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Código de Empleado *
+                                    div(class="relative")
+                                        i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none")
+                                        input(
+                                            type="password"
+                                            id="egr-empleado"
+                                            placeholder="Ej: 00123"
+                                            maxlength="5"
+                                            autocomplete="one-time-code"
+                                            class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                        )
+                                    p(id="egr-feedback-emp" class="text-xs ml-1 h-4 transition-colors")
+
+                                div(class="space-y-1")
+                                    label(for="egr-descripcion" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Descripción
+                                    textarea(
+                                        id="egr-descripcion"
+                                        rows="3"
+                                        maxlength="255"
+                                        placeholder="Detalle del egreso..."
+                                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
+                                    )
+
+                                button(
+                                    type="submit"
+                                    id="egr-submit"
+                                    disabled
+                                    class="w-full btn btn-primary py-3 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                )
+                                    i(class="fi fi-rr-disk")
+                                    | Registrar Egreso
 
     input#csrf-token(type="hidden" value=csrfToken)
     script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")

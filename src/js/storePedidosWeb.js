@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 (function () {
     'use strict';
 
@@ -41,7 +42,7 @@
     const filaPedido = (p) => `
         <tr class="hover:bg-pink-50/30 transition-colors">
             <td class="px-4 py-3 font-mono text-xs font-bold text-gh-primaryHover whitespace-nowrap">${p.numeroPedido}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">${p.nombreCliente}</td>
+            <td class="px-4 py-3 text-sm text-slate-700">${tc(p.nombreCliente)}</td>
             <td class="px-4 py-3 text-xs text-slate-500">
                 <p>${p.email || '—'}</p>
                 <p>${p.telefono || ''}</p>

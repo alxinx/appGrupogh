@@ -203,11 +203,17 @@
     };
 
     // ─── EGRESOS DEL CIERRE ───────────────────────────────────────────────────
+    // Rojo para un gasto real, ámbar para un traslado: la plata del traslado no se
+                // perdió, cambió de lugar, y a simple vista tienen que verse distintos.
+                const badgeTipo = (t) => t === 'Traslado'
+                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap bg-amber-100 text-amber-700">Traslado</span>`
+                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap bg-red-100 text-red-600">Egreso</span>`;
+
     const cargarEgresos = async () => {
         const tbody = document.getElementById('cc-egresos-tbody');
         if (!tbody || !cajaActual) return;
 
-        tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">
             <i class="fi fi-rr-spinner animate-spin mr-2"></i>Cargando...</td></tr>`;
 
         try {
@@ -215,7 +221,7 @@
             const json = await res.json();
 
             if (!json.success || !json.egresos.length) {
-                tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-10 text-center text-slate-400 text-sm">
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-slate-400 text-sm">
                     <i class="fi fi-rr-file-slash mr-2"></i>Sin egresos en este período.</td></tr>`;
                 return;
             }
@@ -225,10 +231,11 @@
                     <td class="px-4 py-3 text-xs font-mono text-slate-500">${e.referencia}</td>
                     <td class="px-4 py-3 text-sm text-slate-700">${e.descripcion}</td>
                     <td class="px-4 py-3 text-sm text-slate-500">${e.empleado}</td>
+                    <td class="px-4 py-3 text-center">${badgeTipo(e.tipo)}</td>
                     <td class="px-4 py-3 text-right font-bold text-red-500 text-sm whitespace-nowrap">${fmtCOP(e.valor)}</td>
                 </tr>`).join('');
         } catch (_) {
-            tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-red-400 text-sm">Error al cargar egresos.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-400 text-sm">Error al cargar egresos.</td></tr>`;
         }
     };
 

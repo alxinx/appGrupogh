@@ -45,6 +45,17 @@ const Productos = db.define('PRODUCTOS', {
         type: DataTypes.DECIMAL(10, 2),
         defaultValue: 0,
     },
+    // TEMPORAL — costo de adquisición/confección de la prenda.
+    // DECIMAL como el resto de los campos de dinero: nunca FLOAT, que redondea mal
+    // al sumar. Mismo (10,2) que los precios de esta tabla para poder compararlos
+    // sin conversiones.
+    // Para retirarlo: quitar este bloque, el campo del formulario, la whitelist de
+    // adminControllers y correr la migración con --revertir.
+    costo: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0,
+    },
     sku: {
         type: DataTypes.STRING(50),
         unique: true,

@@ -1,3 +1,4 @@
+import { tituloLista as tc } from '../../helpers/textoLista.js';
 (function(){
     const inputBusqueda = document.querySelector('#busquedaText');
     const selectCategoria = document.querySelector('#categoriaProductos');
@@ -25,7 +26,7 @@
                 <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td class="p-4"><img src="${imagenUrl}" class="w-12 h-12 object-cover rounded-lg shadow-sm"></td>
                     <td class="p-4">
-                        <div class="font-bold text-gray-800">${producto.nombreProducto}</div>
+                        <div class="font-bold text-gray-800">${tc(producto.nombreProducto)}</div>
                         <div class="text-xs text-gray-400">SKU: ${producto.sku}</div>
                     </td>
                     <td class="p-4 text-sm font-semibold text-gh-primary">
