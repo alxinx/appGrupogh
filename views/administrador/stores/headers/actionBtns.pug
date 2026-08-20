@@ -16,6 +16,20 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
                 | Nueva Tienda
 
     if subPagina === 'Estado de la tienda '
+        //- Solo aparece si esa tienda tiene una caja trabada en cuadre. Un botón siempre
+        //- visible para un caso excepcional se vuelve ruido, y peor: invita a apretarlo
+        //- cuando alguien SÍ está contando el cajón.
+        if cajaEnCuadre
+            button#btn-destrabar-cuadre(
+                type="button"
+                class="btn btn-outline flex items-center gap-2 !border-amber-300 !text-amber-700 hover:!bg-amber-50"
+                data-tienda=dato.idPuntoDeVenta
+                data-caja=cajaEnCuadre.codigo
+                title="Esta tienda tiene la caja trabada en cuadre y no puede facturar"
+            )
+                i(class="fi fi-rr-lock-open-alt")
+                | Destrabar caja
+
         a(href=`/admin/tiendas/editar/${dato.idPuntoDeVenta}`) 
             button(class="btn btn btn-danger flex items-center gap-2")
                 i(class="fi fi-rr-edit")

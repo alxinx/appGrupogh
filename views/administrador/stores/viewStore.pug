@@ -66,3 +66,47 @@ block contenedor
         script(src="/js/adminCierresCaja.js")
         script(src="/js/adminTrasladosTienda.js")
         script(src="/js/adminDocsTienda.js")
+
+        //- Destrabar la caja del cuadre. Va inline y no en un bundle: son veinte líneas
+        //- que solo existen si el botón está en la página, y ese botón casi nunca lo está.
+        if cajaEnCuadre
+            script.
+                document.getElementById('btn-destrabar-cuadre')?.addEventListener('click', async (ev) => {
+                    const btn  = ev.currentTarget;
+                    const { tienda, caja } = btn.dataset;
+
+                    const { isConfirmed } = await Swal.fire({
+                        icon: 'warning',
+                        title: 'Destrabar la caja',
+                        html: `La caja <b>${caja}</b> quedó trabada en cuadre y esta tienda <b>no puede facturar</b>.` +
+                              '<br><br>Al destrabarla vuelve a estado abierto y el punto de venta puede vender de nuevo. ' +
+                              'No se cierra la caja ni se toca ninguna cifra.' +
+                              '<br><br><b>Confirmá que nadie esté contando el cajón en este momento</b>: si alguien lo está haciendo, ' +
+                              'las ventas que entren ahora no van a estar en lo que contó.',
+                        showCancelButton: true,
+                        confirmButtonText: 'Destrabar',
+                        cancelButtonText: 'Cancelar',
+                        confirmButtonColor: '#EC5FA3'
+                    });
+                    if (!isConfirmed) return;
+
+                    btn.disabled = true;
+                    try {
+                        const r = await fetch(`/admin/tiendas/${tienda}/destrabar-cuadre`, {
+                            method: 'POST',
+                            //- El panel de admin no publica el token en un <meta>: se
+                            //- pasa desde el render, como en el resto de sus vistas.
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '#{csrfToken}' }
+                        });
+                        const d = await r.json();
+                        if (!d.success) {
+                            btn.disabled = false;
+                            return Swal.fire({ icon: 'error', title: 'No se pudo destrabar', text: d.mensaje, confirmButtonColor: '#EC5FA3' });
+                        }
+                        await Swal.fire({ icon: 'success', title: 'Caja liberada', text: d.mensaje, confirmButtonColor: '#EC5FA3' });
+                        location.reload();
+                    } catch (_) {
+                        btn.disabled = false;
+                        Swal.fire({ icon: 'error', title: 'Error de red', text: 'No se pudo conectar con el servidor.', confirmButtonColor: '#EC5FA3' });
+                    }
+                });

@@ -1,0 +1,18 @@
+extends ../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+                            div(class="col-span-12 flex items-center justify-center py-20")
+                                div(class="bg-white/70 backdrop-blur-md rounded-2xl p-10 max-w-lg text-center")
+                                    div(class="w-16 h-16 mx-auto rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-5")
+                                        i(class="fi fi-rr-lock text-2xl")
+                                    h1(class="text-xl font-bold text-slate-800") Sin módulos asignados
+                                    p(class="text-sm text-slate-500 mt-2")= mensaje
+                                    p(class="text-xs text-slate-400 mt-4") Pedile a un administrador que te asigne los módulos que necesitás desde tu ficha de empleado.

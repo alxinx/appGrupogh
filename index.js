@@ -10,6 +10,7 @@ import webRouters from "./routes/webRoutes.js"
 import webAdminRoutes from "./routes/webAdminRoutes.js"
 import webApiRoutes from "./routes/webApiRoutes.js"
 import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
+import permisosAdmin from "./middlewares/permisosAdmin.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
 import { cargarContadoresAdmin } from './middleware/adminMenuMiddleware.js';
@@ -89,7 +90,13 @@ app.use((req, res, next) => {
 // 4. Rutas
 app.use("/pagina", webRouters)
 app.use("/", loginRoutes); // LOGIN
-app.use("/admin", rutaProtegida, verificarRol('ADMIN'), cargarContadoresAdmin, adminRoutes); // ADMINISTRADOR
+// `permisosAdmin` va DESPUÉS de verificarRol y ANTES de las rutas: primero se confirma
+// que es un administrador, después a qué módulos de ese panel puede entrar. Hasta acá el
+// rol abría todo el panel y los permisos finos de USER_PERMISOS no los leía nadie.
+app.use("/admin", rutaProtegida, verificarRol('ADMIN'), permisosAdmin, cargarContadoresAdmin, adminRoutes); // ADMINISTRADOR
+// Sin `permisosAdmin`: el montaje de "/admin" de arriba corre primero y ya verificó la
+// carpeta /web con la ruta completa. Acá la ruta llega recortada ("/paginas"), así que
+// volver a verificarla la mediría contra un camino que no existe y rebotaría todo.
 app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), cargarContadoresAdmin, webAdminRoutes); // CMS E-COMMERCE
 app.use("/api/web", webApiRoutes); // API PÚBLICA TIENDA WEB
 app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS

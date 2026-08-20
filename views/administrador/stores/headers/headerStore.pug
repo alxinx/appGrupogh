@@ -1,5 +1,5 @@
-div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6")
-    div(class="flex justify-center  md:items-center gap-4")
+div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6 text-left")
+    div(class="flex md:items-center gap-4")
          div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
             if dato
                 if dato.activa === true
@@ -10,12 +10,15 @@ div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap
                 img(src="/img/avatars/tiendaNueva.png" alt="Tienda" class="w-17 h-17 object-contain")
 
     div(class="flex flex-col gap-1")
+        //- Clases explícitas y no `.h1`: esa clase global lleva `text-center`, que corría el
+        //- nombre de la tienda al medio de su columna aunque el bloque esté alineado a la
+        //- izquierda. Mismo criterio que ya se usa en el panel de tienda.
         if dato
-            h1.h1=dato.nombreComercial
-        else 
-            h1.h1 Nueva Tienda
+            h1(class="text-2xl md:text-3xl font-semibold text-gray-900 tracking-tight text-left")=dato.nombreComercial
+        else
+            h1(class="text-2xl md:text-3xl font-semibold text-gray-900 tracking-tight text-left") Nueva Tienda
         
-        div(class="flex justify-center md:items-center gap-2")
+        div(class="flex flex-wrap items-center gap-2")
              if dato
                 span(class="status-chip status-active")
                     | Abierta

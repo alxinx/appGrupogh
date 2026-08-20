@@ -13,115 +13,141 @@ aside(
   // Menu
   nav(class="flex-1 px-4 py-6 space-y-1 bg-[#F9F4FD] overflow-y-auto")
 
+    //- ── Filtro de permisos ──────────────────────────────────────────────────
+    //- `carpetasAdmin` lo arma el middleware `permisosAdmin` con los módulos que este
+    //- usuario tiene asignados. Un botón que lleva a un 403 es peor que no estar: el que
+    //- lo aprieta cree que el sistema falla, no que no tiene permiso.
+    //-
+    //- Si viniera vacío se muestra todo, para no dejar el menú en blanco por un fallo de
+    //- lectura: quien no tenga acceso rebota igual en el servidor, que es donde manda.
+    - const _cAdmin = (typeof carpetasAdmin !== 'undefined' && carpetasAdmin) || []
+    - const ver = (folder) => !_cAdmin.length || _cAdmin.includes(folder)
+    - const puede = (recurso, accion) => (typeof puedeAdmin === 'function' ? puedeAdmin(recurso, accion) : true)
+
     a(
       href="/admin"  class=`menu-item ${currentPath === '/' ? 'active' : ''}`)
       i(class="fi fi-rr-home text-lg")
       span Panel Principal
 
-    a(
-      href="/admin/tiendas" class=`menu-item ${currentPath === '/tiendas' ? 'active' : ''}`)
-      i(class="fi fi-rr-shop text-lg")
-      span Tiendas
+    if ver('/tiendas')
+      a(
+        href="/admin/tiendas" class=`menu-item ${currentPath === '/tiendas' ? 'active' : ''}`)
+        i(class="fi fi-rr-shop text-lg")
+        span Tiendas
 
-    // Inventario (submenu)
-    details(class="group")
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/inventario' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-box text-lg")
-          span Inventario y Productos
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+    if ver('/inventario')
+      // Inventario (submenu)
+      details(class="group")
+        summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/inventario' ? 'active' : ''}`)
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-box text-lg")
+            span Inventario y Productos
+          i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
 
-      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/admin/inventario/ingreso" class=`submenu-item`) Ingreso de Nuevo Producto
-        a(href="/admin/inventario/listado" class="submenu-item") Listado de producto
-        a(href="/admin/inventario/batch" class="submenu-item") Agregar Productos Al inventario
+        div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+          //- La carpeta ya la filtró `ver('/inventario')`. Acá se distingue por acción:
+          //- ofrecer "Ingreso de Nuevo Producto" a quien solo puede leer lo manda a un 403.
+          if puede('Inventario y Productos', 'CREATE')
+            a(href="/admin/inventario/ingreso" class=`submenu-item`) Ingreso de Nuevo Producto
+          if puede('Inventario y Productos', 'READ')
+            a(href="/admin/inventario/listado" class="submenu-item") Listado de producto
+          if puede('Inventario y Productos', 'CREATE')
+            a(href="/admin/inventario/batch" class="submenu-item") Agregar Productos Al inventario
 
       
     
 
         
 
-    // Dosificador y traslados (submenu)
-    details(class="group")
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr-warehouse-alt")
-          span Dosificación y Repartos
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+    if ver('/dosificaciones')
+      // Dosificador y traslados (submenu)
+      details(class="group")
+        summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-warehouse-alt")
+            span Dosificación y Repartos
+          i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
 
-      div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
-        a(href="/admin/dosificaciones/" class="submenu-item") Ver Paquetes Dosificados
-        a(href="/admin/dosificaciones/new" class="submenu-item") Dosificar productos
+        div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+          a(href="/admin/dosificaciones/" class="submenu-item") Ver Paquetes Dosificados
+          a(href="/admin/dosificaciones/new" class="submenu-item") Dosificar productos
 
     
-    //- Cajas, bancos y métodos de pago.
-    //- `trasladosPendientes` lo inyecta cargarContadoresAdmin: traslados de efectivo en
-    //- tránsito, o sea plata que ya salió del cajón de una tienda y todavía no está
-    //- asentada en ninguna cuenta. Mismo tratamiento que Tienda Web —badge que alterna
-    //- con un banner— porque es el mismo tipo de aviso: algo espera una acción del admin.
-    //- El id del enlace y los data-* son los que actualiza adminAlertas.js en vivo.
-    - const trasladosPorAceptar = typeof trasladosPendientes === 'number' ? trasladosPendientes : 0
-    a#menu-cajas-bancos(
-      href="/admin/bankentities/listado"
-      class=`menu-item ${trasladosPorAceptar > 0 ? 'has-alert' : ''} ${currentPath === '/bankentities/listado' ? 'active' : ''}`)
-      div(class="menu-alert-normal")
-        i(class="fi fi-rr-bank text-lg")
-        span Cajas, bancos y métodos de pago
-        span#menu-traslados-badge(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${trasladosPorAceptar > 0 ? '' : 'hidden'}`)= trasladosPorAceptar
-      div(class="menu-alert-banner bg-gh-primaryHover text-white")
-        i(class="fi fi-rr-bell text-base flex-shrink-0")
-        span#menu-traslados-texto(class="text-xs font-semibold leading-snug")
-          = trasladosPorAceptar === 1 ? '1 traslado pendiente por aceptar' : `${trasladosPorAceptar} traslados pendientes por aceptar`
+    if ver('/bankentities')
+      //- Cajas, bancos y métodos de pago.
+      //- `trasladosPendientes` lo inyecta cargarContadoresAdmin: traslados de efectivo en
+      //- tránsito, o sea plata que ya salió del cajón de una tienda y todavía no está
+      //- asentada en ninguna cuenta. Mismo tratamiento que Tienda Web —badge que alterna
+      //- con un banner— porque es el mismo tipo de aviso: algo espera una acción del admin.
+      //- El id del enlace y los data-* son los que actualiza adminAlertas.js en vivo.
+      - const trasladosPorAceptar = typeof trasladosPendientes === 'number' ? trasladosPendientes : 0
+      a#menu-cajas-bancos(
+        href="/admin/bankentities/listado"
+        class=`menu-item ${trasladosPorAceptar > 0 ? 'has-alert' : ''} ${currentPath === '/bankentities/listado' ? 'active' : ''}`)
+        div(class="menu-alert-normal")
+          i(class="fi fi-rr-bank text-lg")
+          span Cajas, bancos y métodos de pago
+          span#menu-traslados-badge(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${trasladosPorAceptar > 0 ? '' : 'hidden'}`)= trasladosPorAceptar
+        div(class="menu-alert-banner bg-gh-primaryHover text-white")
+          i(class="fi fi-rr-bell text-base flex-shrink-0")
+          span#menu-traslados-texto(class="text-xs font-semibold leading-snug")
+            = trasladosPorAceptar === 1 ? '1 traslado pendiente por aceptar' : `${trasladosPorAceptar} traslados pendientes por aceptar`
 
       
 
-    a(href="/admin/provedores" class=`menu-item ${currentPath === '/provedores' ? 'active' : ''}`)
-      i(class="fi fi-rr-supplier-alt text-lg")
-      span Provedores
+    if ver('/provedores')
+      a(href="/admin/provedores" class=`menu-item ${currentPath === '/provedores' ? 'active' : ''}`)
+        i(class="fi fi-rr-supplier-alt text-lg")
+        span Provedores
     
-    a(href="/admin/clientes" class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`)
-      i(class="fi fi-rr-users text-lg")
-      span Clientes
+    if ver('/clientes')
+      a(href="/admin/clientes" class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`)
+        i(class="fi fi-rr-users text-lg")
+        span Clientes
 
-    a(href="/admin/personal" class=`menu-item ${currentPath === '/personal' ? 'active' : ''}`)
-      i(class="fi fi-rr-user text-lg")
-      span Personal
+    if ver('/personal')
+      a(href="/admin/personal" class=`menu-item ${currentPath === '/personal' ? 'active' : ''}`)
+        i(class="fi fi-rr-user text-lg")
+        span Personal
 
-    a(href="/admin/pedidos" class=`menu-item ${currentPath === '/pedidos' ? 'active' : ''}`)
-      i(class="fi fi-rr-truck text-lg")
-      span Pedidos y Reparto
+    if ver('/pedidos')
+      a(href="/admin/pedidos" class=`menu-item ${currentPath === '/pedidos' ? 'active' : ''}`)
+        i(class="fi fi-rr-truck text-lg")
+        span Pedidos y Reparto
 
-    //- pedidosWebNuevos lo inyecta cargarContadoresAdmin en res.locals (pedidos 'en_revision',
-    //- es decir pagados y todavía sin tienda asignada). Sin pendientes no hay badge ni banner:
-    //- el ítem se comporta como cualquier otro del menú.
-    - const pedidosPorAtender = typeof pedidosWebNuevos === 'number' ? pedidosWebNuevos : 0
-    a#menu-tienda-web(
-      href="/admin/web/"
-      class=`menu-item ${pedidosPorAtender > 0 ? 'has-alert' : ''} ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
-      div(class="menu-alert-normal")
-        i(class="fi fi-rr-shop text-lg")
-        span Tienda Web
-        span#menu-pedidos-badge(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${pedidosPorAtender > 0 ? '' : 'hidden'}`)= pedidosPorAtender
-      div(class="menu-alert-banner bg-gh-primaryHover text-white")
-        i(class="fi fi-rr-bell text-base flex-shrink-0")
-        span#menu-pedidos-texto(class="text-xs font-semibold leading-snug")
-          = pedidosPorAtender === 1 ? '1 pedido nuevo por atender' : `${pedidosPorAtender} pedidos nuevos por atender`
+    if ver('/web')
+      //- pedidosWebNuevos lo inyecta cargarContadoresAdmin en res.locals (pedidos 'en_revision',
+      //- es decir pagados y todavía sin tienda asignada). Sin pendientes no hay badge ni banner:
+      //- el ítem se comporta como cualquier otro del menú.
+      - const pedidosPorAtender = typeof pedidosWebNuevos === 'number' ? pedidosWebNuevos : 0
+      a#menu-tienda-web(
+        href="/admin/web/"
+        class=`menu-item ${pedidosPorAtender > 0 ? 'has-alert' : ''} ${currentPath && currentPath.startsWith('/web') ? 'active' : ''}`)
+        div(class="menu-alert-normal")
+          i(class="fi fi-rr-shop text-lg")
+          span Tienda Web
+          span#menu-pedidos-badge(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${pedidosPorAtender > 0 ? '' : 'hidden'}`)= pedidosPorAtender
+        div(class="menu-alert-banner bg-gh-primaryHover text-white")
+          i(class="fi fi-rr-bell text-base flex-shrink-0")
+          span#menu-pedidos-texto(class="text-xs font-semibold leading-snug")
+            = pedidosPorAtender === 1 ? '1 pedido nuevo por atender' : `${pedidosPorAtender} pedidos nuevos por atender`
 
-    a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
-      i(class="fi fi-rr-settings text-lg")
-      span Settings
+    if ver('/configuracion')
+      a(href="/admin/configuracion" class=`menu-item ${currentPath === '/configuracion' ? 'active' : ''}`)
+        i(class="fi fi-rr-settings text-lg")
+        span Settings
 
    
-  //- Mantiene los dos avisos del menú al día por SSE, sin recargar la página. Va en el
-  //- menú y no en el layout porque el layout lo comparten el panel de tienda y el sitio
-  //- web, que no tienen /admin/sse.
-  script(src="/js/adminAlertas.js")
+    //- Mantiene los dos avisos del menú al día por SSE, sin recargar la página. Va en el
+    //- menú y no en el layout porque el layout lo comparten el panel de tienda y el sitio
+    //- web, que no tienen /admin/sse.
+    script(src="/js/adminAlertas.js")
 
-  // Logout
-  div(class="p-4 border-t border-gray-300")
-    form(action="/logout" method="POST")
-        input(type="hidden" name="_csrf" value=csrfToken)
-        button(
-        class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium shadow-neutral-500 shadow-2xl cursor-pointer"    )
-            i(class="fi fi-rr-sign-out-alt")
-            span Cerrar sesión
+    // Logout
+    div(class="p-4 border-t border-gray-300")
+      form(action="/logout" method="POST")
+          input(type="hidden" name="_csrf" value=csrfToken)
+          button(
+          class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium shadow-neutral-500 shadow-2xl cursor-pointer"    )
+              i(class="fi fi-rr-sign-out-alt")
+              span Cerrar sesión
