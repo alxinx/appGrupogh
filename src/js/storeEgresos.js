@@ -1,3 +1,5 @@
+import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../../helpers/descripcionEgreso.js';
+
 (function () {
     'use strict';
 
@@ -35,6 +37,40 @@
     // operador son dos operaciones distintas y el texto tiene que decirlo.
     const titulo     = document.getElementById('egr-titulo');
     const labelValor = document.getElementById('egr-label-valor');
+
+    // ── Descripción ───────────────────────────────────────────────────────────
+    // Obligatoria y con un mínimo de palabras. La regla no vive acá: se importa de
+    // helpers/descripcionEgreso.js, la misma que corre en el servidor y en el modelo. Un
+    // formulario que exige tres palabras contra un servidor que acepta una es peor que no
+    // validar en ninguno de los dos, porque nadie sabe cuál manda.
+    const inputDescripcion = document.getElementById('egr-descripcion');
+    const ayudaDescripcion = document.getElementById('egr-desc-ayuda');
+    const AYUDA_DESCRIPCION = ayudaDescripcion?.textContent || '';
+
+    // Cuenta hacia atrás mientras escribe. Decirle "faltan 2 palabras" mientras teclea le
+    // ahorra descubrirlo al pulsar el botón, que es cuando ya cree que terminó.
+    const pintarAyudaDescripcion = () => {
+        if (!ayudaDescripcion) return;
+        const texto = inputDescripcion?.value || '';
+        const n = contarPalabras(texto);
+
+        if (!texto.trim()) {
+            ayudaDescripcion.textContent = AYUDA_DESCRIPCION;
+            ayudaDescripcion.className = 'text-[11px] text-slate-400 ml-1';
+            return;
+        }
+        const { ok, mensaje } = validarDescripcionEgreso(texto);
+        if (ok) {
+            ayudaDescripcion.textContent = `${n} palabras · listo`;
+            ayudaDescripcion.className = 'text-[11px] text-emerald-600 ml-1';
+        } else {
+            const faltan = MINIMO_PALABRAS - n;
+            ayudaDescripcion.textContent = faltan > 0
+                ? `Falta${faltan === 1 ? '' : 'n'} ${faltan} palabra${faltan === 1 ? '' : 's'}.`
+                : mensaje;
+            ayudaDescripcion.className = 'text-[11px] text-amber-600 ml-1';
+        }
+    };
 
     // ── Tope de la transferencia ──────────────────────────────────────────────
     // Una transferencia saca efectivo del cajón para consignarlo, así que no puede
@@ -185,7 +221,7 @@
 
     // ── Habilitación del botón ────────────────────────────────────────────────
     // El botón se prende cuando el formulario está completo, no solo cuando el código de
-    // empleado es válido. La descripción no cuenta: es opcional.
+    // empleado es válido.
     //
     // Devuelve qué falta, no un booleano: un botón apagado sin motivo obliga a adivinar
     // cuál de los seis campos es el que sobra o falta.
@@ -205,6 +241,7 @@
         }
 
         if (!empleadoOk) faltan.push('un código de empleado válido');
+        if (!validarDescripcionEgreso(inputDescripcion?.value).ok) faltan.push('la descripción del egreso');
         return faltan;
     };
 
@@ -217,11 +254,49 @@
             : '';
     };
 
+    // La referencia significa tres cosas distintas según lo que se esté registrando, y el
+    // campo tiene que decir cuál:
+    //
+    //   · Egreso ......... el número de la factura que se pagó. Opcional: si se deja vacío
+    //                      el sistema pone EGR-{n}, para que el egreso se pueda nombrar
+    //                      después en el cuadre o por teléfono.
+    //   · A otra caja .... no hay nada externo que transcribir —la plata pasa de mano a
+    //                      mano—, así que la asigna el sistema como TRA-{n}.
+    //   · A un banco ..... el comprobante de la consignación. Obligatorio y a mano: es lo
+    //                      único que permite encontrar el movimiento en el extracto.
+    const ayudaReferencia = document.getElementById('egr-ayuda-referencia');
+
     const pintarDestino = () => {
-        const esCuenta = destinoEsCuenta();
+        const esCuenta    = destinoEsCuenta();
+        const electronico = metodoElegido() === 'Electronico';
         bloqueComprobante?.classList.toggle('hidden', !esCuenta);
+
         if (labelReferencia) labelReferencia.textContent = esCuenta ? 'Referencia consignación *' : 'Referencia de Factura';
-        if (inputReferencia) inputReferencia.placeholder = esCuenta ? 'Ej: 0012345678, comprobante Nequi...' : 'Ej: FAC-001, REC-2024...';
+
+        if (inputReferencia) {
+            inputReferencia.placeholder = esCuenta
+                ? 'Ej: 0012345678, comprobante Nequi...'
+                : electronico
+                    ? 'La asigna el sistema'
+                    : 'Ej: FAC-001, REC-2024...';
+            // Un traslado entre cajas no admite referencia escrita: no existe ninguna. Se
+            // deja el campo a la vista y bloqueado en vez de esconderlo, para que quede
+            // dicho que el traslado SÍ va a llevar una y no se busque dónde escribirla.
+            const laPoneElSistema = electronico && !esCuenta;
+            inputReferencia.readOnly = laPoneElSistema;
+            inputReferencia.classList.toggle('opacity-60', laPoneElSistema);
+            inputReferencia.classList.toggle('cursor-not-allowed', laPoneElSistema);
+            if (laPoneElSistema) inputReferencia.value = '';
+        }
+
+        if (ayudaReferencia) {
+            ayudaReferencia.textContent = esCuenta
+                ? 'El número del comprobante: con él se busca el movimiento en el extracto.'
+                : electronico
+                    ? 'El sistema le asigna una referencia TRA-… al registrarlo.'
+                    : 'Si la dejás vacía, el sistema le asigna una referencia EGR-…';
+        }
+
         if (!esCuenta) { limpiarComprobante(); errorComprobante?.classList.add('hidden'); }
     };
 
@@ -233,8 +308,9 @@
             : 'Sale del cajón de la tienda.';
         if (titulo)     titulo.textContent     = electronico ? 'Nueva Transferencia' : 'Nuevo Egreso';
         if (labelValor) labelValor.textContent = electronico ? 'Valor de la transferencia *' : 'Valor del Egreso *';
-        const desc = document.getElementById('egr-descripcion');
-        if (desc) desc.placeholder = electronico ? 'Detalle de la transferencia...' : 'Detalle del egreso...';
+        if (inputDescripcion) inputDescripcion.placeholder = electronico
+            ? 'Ej: consignación venta del día'
+            : 'Ej: pago servicio de agua';
         if (!electronico && selEntidad) { selEntidad.value = ''; errorEntidad?.classList.add('hidden'); }
         // El efectivo se vuelve a pedir al entrar a transferencia: entre que se abrió la
         // pantalla y ahora pudo entrar una venta o salir un egreso.
@@ -251,6 +327,7 @@
     });
     inputValor.addEventListener('input', () => { validarTope(); revisar(); });
     inputReferencia?.addEventListener('input', revisar);
+    inputDescripcion?.addEventListener('input', () => { pintarAyudaDescripcion(); revisar(); });
     pintarMetodo();
     inputValor.addEventListener('keydown', (e) => {
         const ok = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter','Home','End'];
@@ -317,35 +394,36 @@
         if (el) el.textContent = `$${fmtMoney(total)}`;
     };
 
-    // La tarjeta de transferencias todavía no tiene de dónde sacar el número. Cuando el
-    // servidor lo entregue, esto es lo único que hay que llamar; el aviso "sin conectar"
-    // se retira solo.
-    //
-    // Ojo al conectarla: `getTotalEgresosHoy` suma HOY todos los egresos del día sin
-    // filtrar por tipo, así que los traslados ya están contados adentro. Las dos cifras
-    // se pisarían. Hay que decidir si "Total egresos de hoy" pasa a excluir los
-    // traslados —que es lo que su nombre promete— o si la segunda tarjeta se rotula
-    // como un desglose de la primera.
+    // Lo trasladado hoy. Las dos cifras son disjuntas: el servidor las separa por `tipo`,
+    // así que "total egresos" ya no incluye lo que se consignó. Sumadas dan todo lo que
+    // salió del cajón; separadas dicen cuánto se gastó de verdad y cuánto sigue siendo
+    // del negocio, que es lo que el operador necesita saber antes de cerrar.
     const actualizarStatTransferido = (total) => {
         const el = document.getElementById('stat-transferido-hoy');
         if (!el) return;
+        // textContent y no innerHTML: además de escribir la cifra, se lleva por delante
+        // el hueso del esqueleto que estaba ocupando el lugar.
         el.textContent = `$${fmtMoney(total)}`;
-        el.classList.remove('egr-stat-valor--espera');
-        document.getElementById('stat-transferido-aviso')?.remove();
     };
     window.actualizarStatTransferido = actualizarStatTransferido;
 
+    // Las dos tarjetas se pintan con la MISMA respuesta. Pedirlas por separado abriría la
+    // puerta a mostrar la de un momento y la otra de otro: un egreso registrado entre las
+    // dos peticiones dejaría los números sin cuadrar contra el cajón.
     const cargarStatHoy = async () => {
         try {
             const r = await fetch('/store/storebehivors/expenses/total-hoy');
             const json = await r.json();
-            if (json.success) actualizarStatHoy(json.total);
+            if (!json.success) return;
+            actualizarStatHoy(json.egresos);
+            actualizarStatTransferido(json.traslados);
         } catch (_) {}
     };
 
     // ─── SSE: escuchar new_egreso despachado desde storeGlobal ───────────────
     window.onNuevoEgreso = (data) => {
-        actualizarStatHoy(data.totalHoy);
+        actualizarStatHoy(data.egresosHoy);
+        actualizarStatTransferido(data.trasladosHoy);
         prependarEgreso(data.egreso);
     };
 
@@ -676,7 +754,14 @@
                     <dl class="gh-conf-detalle">
                         ${fila('Fecha', esc(fechaLarga(new Date())))}
                         ${fila('Responsable', esc(nombreEmpleado || 'Sin verificar'), !nombreEmpleado)}
-                        ${fila('Referencia', referencia ? `<span class="gh-conf-mono">${esc(referencia)}</span>` : 'Sin referencia', !referencia)}
+                        ${fila('Referencia',
+                            referencia
+                                ? `<span class="gh-conf-mono">${esc(referencia)}</span>`
+                                // Ya no existe el "sin referencia": si el operador no escribió
+                                // una, el servidor le pone la suya. Decirlo acá evita que
+                                // vuelva atrás a buscar un campo que no hacía falta llenar.
+                                : `La asigna el sistema (${metodoPago === 'Electronico' ? 'TRA' : 'EGR'}-…)`,
+                            !referencia)}
                         ${fila('Descripción', descripcion ? esc(descripcion) : 'Sin descripción', !descripcion)}
                         ${destinoEsCuenta() ? fila('Comprobante', comprobante ? esc(comprobante.name) : 'Ninguno', !comprobante) : ''}
                     </dl>
@@ -716,13 +801,22 @@
         const valor = parseFloat(rawValor);
         const codigoEmpleado = document.getElementById('egr-empleado').value.trim().toUpperCase();
         const referencia = document.getElementById('egr-referencia').value.trim();
-        const descripcion = document.getElementById('egr-descripcion').value.trim();
+        const desc = validarDescripcionEgreso(inputDescripcion?.value);
+        // Se envía normalizada —espacios colapsados— para que lo que se guarda sea lo
+        // mismo que el servidor va a validar, y no una versión con saltos de línea que
+        // pase acá y falle allá.
+        const descripcion = desc.valor;
 
         if (!valor || valor <= 0) {
             return Swal.fire({ icon: 'warning', title: 'Valor inválido', text: 'Ingresa un valor mayor a $0.', confirmButtonColor: '#EC5FA3' });
         }
         if (!codigoEmpleado) {
             return Swal.fire({ icon: 'warning', title: 'Empleado requerido', text: 'Ingresa el código del responsable.', confirmButtonColor: '#EC5FA3' });
+        }
+        if (!desc.ok) {
+            inputDescripcion?.focus();
+            pintarAyudaDescripcion();
+            return Swal.fire({ icon: 'warning', title: 'Descripción requerida', text: desc.mensaje, confirmButtonColor: '#EC5FA3' });
         }
 
         const metodoPago  = metodoElegido();
@@ -793,7 +887,8 @@
             inputValor.value = '';
             document.getElementById('egr-referencia').value = '';
             document.getElementById('egr-empleado').value = '';
-            document.getElementById('egr-descripcion').value = '';
+            if (inputDescripcion) inputDescripcion.value = '';
+            pintarAyudaDescripcion();
             document.getElementById('egr-metodo-efectivo').checked = true;
             limpiarComprobante();
             pintarMetodo();

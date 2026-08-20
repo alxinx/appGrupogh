@@ -158,8 +158,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 const unico = data.productos[0];
                 if (unico.stock > 0) {
                     addToCart(unico);
-                    inputCodigo.value = '';
-                    limpiarCatalogo();
+                    limpiarBusqueda();
                     return;
                 }
             }
@@ -178,6 +177,24 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         productosEnPantalla.clear();
         if (catalogoPos) catalogoPos.innerHTML = '';
         setEscena(true);
+    };
+
+    // Deja el buscador como recién abierto el POS.
+    //
+    // Al facturar se vaciaba el carrito pero no esto: quedaban en pantalla las tarjetas de
+    // la búsqueda anterior, con su botón "Agregar al pedido" vivo. El operador que atiende
+    // al siguiente cliente ve productos que no son de esta orden y un clic de más los mete
+    // en la venta nueva sin que nadie lo note hasta el cuadre.
+    //
+    // El `clearTimeout` no es de adorno: si la venta se confirma dentro de los 350 ms del
+    // debounce, la búsqueda pendiente dispara DESPUÉS de limpiar y vuelve a pintar todo.
+    const limpiarBusqueda = () => {
+        clearTimeout(buscarTimer);
+        if (inputCodigo) inputCodigo.value = '';
+        limpiarCatalogo();
+        // Best-effort: la tirilla se abre en otra pestaña y puede llevarse el foco. Si
+        // vuelve a esta, el lector de barras escribe donde tiene que escribir.
+        inputCodigo?.focus();
     };
 
     if (inputCodigo) {
@@ -257,10 +274,60 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         return true;
     };
 
+    // ── CAJA EN CUADRE ───────────────────────────────────────────────────────
+    //
+    // Mientras el operador cuenta el cajón, esta terminal no vende. La caja es del punto
+    // de venta y no de la máquina, así que el bloqueo llega por SSE a las registradoras de
+    // ESTA sede —y solo a ésas—: otra tienda tiene su propia caja y sigue facturando.
+    //
+    // Esto es comodidad: el que de verdad impide la venta es el servidor, que devuelve
+    // 409 al facturar con la caja en 'auditoria'.
+    let cajaEnCuadre = false;
+
+    const cristalCuadre = () => `
+        <div class="bloqueo-cristal" id="pos-bloqueo-cuadre">
+            <img src="/img/avatars/seguro.webp" alt="" class="bloqueo-icono">
+            <p class="bloqueo-titulo">Caja en cierre</p>
+            <p class="bloqueo-texto">Se está cuadrando la caja. No se pueden registrar ventas hasta que termine el conteo.</p>
+        </div>`;
+
+    const pintarBloqueoCuadre = () => {
+        const panel = document.getElementById('drop-zone')?.firstElementChild;
+        if (!panel) return;
+        panel.classList.add('bloqueo-anfitrion');
+        const puesto = document.getElementById('pos-bloqueo-cuadre');
+        if (cajaEnCuadre && !puesto) panel.insertAdjacentHTML('beforeend', cristalCuadre());
+        if (!cajaEnCuadre && puesto) puesto.remove();
+    };
+
+    // El bloqueo llega por SSE en cualquier momento, incluso con el operador a mitad de un
+    // cobro. Quien tenga que reaccionar se anota acá y este punto no necesita conocerlo:
+    // el modal de Finalizar Venta lo usa para apagar el botón de cobro en vivo.
+    const oyentesCuadre = [];
+    const alCambiarCuadre = (fn) => { oyentesCuadre.push(fn); fn(); };
+
+    // El aviso se muestra al INTENTAR vender, no cuando llega el bloqueo: interrumpir a
+    // alguien que está atendiendo con un modal que no pidió es peor que dejarlo chocar
+    // con el cristal, que además explica por qué.
+    const bloqueadoPorCuadre = () => {
+        if (!cajaEnCuadre) return false;
+        window.showToast?.('La caja está en proceso de cierre: no se pueden registrar ventas hasta que termine el cuadre.', 'warning', 6000);
+        return true;
+    };
+
+    window.__posCajaEnCuadre = (valor) => {
+        cajaEnCuadre = !!valor;
+        pintarBloqueoCuadre();
+        // Un oyente que falle no puede dejar a los siguientes sin enterarse: si el modal
+        // de cobro no se bloqueara por un error acá, quedaría un botón de cobrar vivo.
+        oyentesCuadre.forEach((fn) => { try { fn(); } catch (e) { console.error('cuadre:', e); } });
+    };
+
     const addToCart = (p, qty = 1) => {
         if (!p?.idProducto || qty < 1) return;
 
         if (bloquearSiSinCaja()) return;
+        if (bloqueadoPorCuadre()) return;
         if (bloqueadoPorPedidoWeb('agregar productos')) return;
 
         if (cart.has(p.idProducto)) {
@@ -887,9 +954,46 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         ], { duration: 180, easing: 'ease-out' });
     };
 
+    // Se asigna más abajo, donde vive el interruptor oculto. Declararlo acá permite que
+    // el cierre del modal lo llame sin conocer sus detalles.
+    let resetearInterruptorOF = () => {};
+
+    // ── Marca OF de esta venta ────────────────────────────────────────────────
+    //
+    // La enciende el interruptor del formulario de cliente y viaja con la factura. Vive
+    // acá y no en el `checked` del control porque el control se esconde al cerrar el
+    // modal —hay que volver a descubrirlo— y la decisión no puede irse con él: se tomó
+    // para ESTA venta y tiene que llegar hasta que se facture.
+    //
+    // Se apaga sola al terminar la venta y al cambiar de cliente: heredarla a la orden
+    // siguiente marcaría facturas que nadie pidió marcar.
+    let ventaOF = false;
+
+    // Un dato que cambia un documento fiscal no puede ser invisible. El distintivo aparece
+    // junto al cliente en cuanto se enciende.
+    const pintarMarcaOF = () => {
+        const zona = document.getElementById('cli-display-nombre')?.parentElement;
+        if (!zona) return;
+        let chip = document.getElementById('pos-chip-of');
+        if (!ventaOF) { chip?.remove(); return; }
+        if (chip) return;
+        chip = document.createElement('span');
+        chip.id = 'pos-chip-of';
+        chip.className = 'inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded-full bg-gh-primary/15 text-[10px] font-bold tracking-wider text-gh-primaryHover';
+        chip.title = 'Esta factura se va a marcar como OF';
+        chip.textContent = 'OF';
+        zona.appendChild(chip);
+    };
+
+    const marcarVentaOF = (valor) => { ventaOF = !!valor; pintarMarcaOF(); };
+
     const cerrarModalCliente = () => {
         modalCliente?.classList.add('hidden');
         modalCliente?.classList.remove('flex');
+        // El atajo vuelve a esconderse. Si quedara a la vista, dejaría de ser algo que se
+        // descubre a propósito y pasaría a ser un control más del formulario — que es
+        // justo lo que no queremos que sea.
+        resetearInterruptorOF();
     };
 
     btnAbrirCliente?.addEventListener('click', abrirModalCliente);
@@ -897,8 +1001,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     modalCliente?.querySelectorAll('.btn-cerrar-modal-cliente').forEach(b => b.addEventListener('click', cerrarModalCliente));
 
     // ── Pestañas ──────────────────────────────────────────────────────────────
-    const TAB_ACTIVE   = ['bg-gh-primary/10', 'text-gh-primary'];
-    const TAB_INACTIVE = ['text-gray-400'];
+    const TAB_ACTIVE   = ['bg-gh-primary/10', 'cli-tab-activa'];
+    // slate-500 y no gray-400: la pestaña que NO está activa sigue siendo un control
+    // que hay que poder leer para saber a dónde lleva.
+    const TAB_INACTIVE = ['text-slate-500'];
 
     let tabActivo = 'natural'; // 'natural' | 'empresa'
 
@@ -931,11 +1037,169 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             });
         });
         filtrarTipoDoc(tab);
+        // La pestaña que aparece tiene que mostrar lo que ya se había escrito en la otra.
+        sincronizarEspejos(true);
         actualizarHeaderModal();
     };
 
     document.getElementById('tab-btn-natural')?.addEventListener('click', () => switchTab('natural'));
     document.getElementById('tab-btn-empresa')?.addEventListener('click', () => switchTab('empresa'));
+
+    // ── Espejos entre las dos pestañas ────────────────────────────────────────
+    //
+    // El tipo de documento, el número y la ubicación son el MISMO dato en persona y en
+    // empresa, pero cada pestaña los dibuja en su lugar. Duplicar los ids rompería
+    // `getElementById`, que devuelve el primero que encuentra, así que el campo real vive
+    // una sola vez —en la pestaña natural— y el de empresa es un espejo sin `name`: no
+    // viaja en el formulario, solo refleja y deja escribir.
+    //
+    // Sin esto, escribir el NIT en la pestaña de empresa no llegaría a guardarse.
+    const ESPEJOS = ['cli-tipo-doc', 'cli-numero-doc', 'cli-departamento', 'cli-municipio', 'cli-direccion'];
+
+    const sincronizarEspejos = (desdeReal = true) => {
+        ESPEJOS.forEach((id) => {
+            const real   = document.getElementById(id);
+            const espejo = document.getElementById(`${id}-espejo`);
+            if (!real || !espejo) return;
+            // Los `select` además copian sus opciones: el de municipios se repuebla por
+            // AJAX al elegir departamento y el espejo tiene que seguirlo.
+            if (real.tagName === 'SELECT' && desdeReal) espejo.innerHTML = real.innerHTML;
+            const origen = desdeReal ? real : espejo;
+            const destino = desdeReal ? espejo : real;
+            if (destino.value !== origen.value) destino.value = origen.value;
+        });
+    };
+
+    ESPEJOS.forEach((id) => {
+        const real   = document.getElementById(id);
+        const espejo = document.getElementById(`${id}-espejo`);
+        if (!real || !espejo) return;
+        // Lo que se escribe en el espejo se copia al real y se dispara su evento, para que
+        // la búsqueda por documento y la carga de municipios corran igual que si el
+        // operador hubiera escrito en la pestaña natural.
+        espejo.addEventListener('input',  () => { real.value = espejo.value; real.dispatchEvent(new Event('input',  { bubbles: true })); });
+        espejo.addEventListener('change', () => { real.value = espejo.value; real.dispatchEvent(new Event('change', { bubbles: true })); });
+        real.addEventListener('input',  () => sincronizarEspejos(true));
+        real.addEventListener('change', () => sincronizarEspejos(true));
+    });
+
+    // ── Responsabilidad fiscal: R-99-PN excluye a las demás ──────────────────
+    //
+    // R-99-PN significa "no aplica ninguna". Declararla junto con "gran contribuyente" es
+    // una contradicción y la DIAN rechaza la factura, así que marcarla apaga y bloquea el
+    // resto — y marcar cualquier otra libera R-99-PN. La regla se aplica en el formulario
+    // porque es donde el operador la entiende; el servidor igual filtra lo que llega.
+    const aplicarReglaR99 = () => {
+        const casillas = [...(modalCliente?.querySelectorAll('.cli-resp-chk') || [])];
+        if (!casillas.length) return;
+        const r99 = casillas.find(c => c.value === 'R-99-PN');
+        const otrasMarcadas = casillas.some(c => c !== r99 && c.checked);
+
+        casillas.forEach((c) => {
+            const bloquear = (c === r99) ? otrasMarcadas : !!r99?.checked;
+            c.disabled = bloquear;
+            if (bloquear) c.checked = false;
+            c.closest('.cli-resp')?.classList.toggle('cli-resp--inhabilitada', bloquear);
+        });
+    };
+
+    modalCliente?.addEventListener('change', (e) => {
+        if (e.target.classList?.contains('cli-resp-chk')) aplicarReglaR99();
+    });
+
+    // ── Interruptor oculto: pasar a Empresa sin retipear ─────────────────────
+    //
+    // Tres clics sobre el aviso del pie descubren un switch "OF". Encenderlo salta a la
+    // pestaña de empresa llevándose lo que ya se escribió.
+    //
+    // Está escondido a propósito: el camino normal para registrar una empresa son las
+    // pestañas de arriba, y un control más a la vista en un formulario de doce campos es
+    // ruido para el 99% de las veces. Esto es un atajo para quien empezó a cargar una
+    // persona y a mitad de camino descubre que le están facturando a una empresa.
+    {
+        const aviso   = document.getElementById('cli-aviso');
+        const envase  = document.getElementById('cli-of-wrap');
+        const sw      = document.getElementById('cli-of-switch');
+        const rotulo  = document.getElementById('cli-of-label');
+        const subtexto = document.getElementById('cli-aviso-sub');
+
+        // Contador propio y no el `detail` del evento: `detail` cuenta clics del navegador
+        // con SU ventana de tiempo, que en algunos equipos es demasiado corta para tres
+        // seguidos. Acá la ventana es explícita.
+        let clics = 0, reloj = null;
+
+        aviso?.addEventListener('click', () => {
+            if (envase && !envase.classList.contains('hidden')) return;   // ya está afuera
+            clearTimeout(reloj);
+            clics += 1;
+            reloj = setTimeout(() => { clics = 0; }, 600);
+            if (clics < 3) return;
+
+            clics = 0;
+            envase?.classList.remove('hidden');
+            envase?.classList.add('flex');
+        });
+
+        // Traslada a la pestaña de empresa lo que ya se escribió en la de persona. El
+        // documento y la ubicación no se copian: ya son el mismo campo vía espejo.
+        const heredarDatos = () => {
+            const val = (id) => document.getElementById(id)?.value?.trim() || '';
+            const set = (id, v) => { const el = document.getElementById(id); if (el && v && !el.value.trim()) el.value = v; };
+
+            // Nombre y apellidos armando la razón social: es lo que el operador ya tecleó
+            // y casi siempre es el nombre con el que la empresa está registrada.
+            const nombre = [val('cli-primer-nombre'), val('cli-segundo-nombre'),
+                            val('cli-primer-apellido'), val('cli-segundo-apellido')]
+                            .filter(Boolean).join(' ');
+            set('cli-razon-social', nombre);
+            set('cli-email-e',    val('cli-email-n'));
+            set('cli-telefono-e', val('cli-telefono-n'));
+            return nombre || val('cli-email-n') || val('cli-telefono-n');
+        };
+
+        // Vuelve a esconder el atajo y a poner el contador en cero: la próxima vez hay que
+        // descubrirlo de nuevo. NO toca la pestaña ni los campos — de eso se encarga el
+        // reseteo del formulario, y borrar datos desde acá sería una sorpresa.
+        //
+        // Tampoco apaga `ventaOF`: esconder el control no es deshacer la decisión. Se
+        // apaga al terminar la venta o al cambiar de cliente.
+        resetearInterruptorOF = () => {
+            clearTimeout(reloj);
+            clics = 0;
+            envase?.classList.add('hidden');
+            envase?.classList.remove('flex');
+            if (sw) sw.checked = false;
+            if (rotulo) rotulo.textContent = 'OF';
+            subtexto?.classList.add('hidden');
+        };
+
+        sw?.addEventListener('change', () => {
+            const encendido = sw.checked;
+            if (rotulo) rotulo.textContent = encendido ? 'ON' : 'OF';
+
+            // Lo que el interruptor decide de verdad: esta factura se marca OF. El salto a
+            // la pestaña de empresa es la consecuencia práctica —una OF casi siempre se
+            // emite a una empresa— y es lo que se ve; la marca es lo que queda.
+            marcarVentaOF(encendido);
+
+            if (!encendido) {
+                switchTab('natural');
+                subtexto?.classList.add('hidden');
+                return;
+            }
+
+            const hubo = heredarDatos();
+            switchTab('empresa');
+            if (subtexto) {
+                // Se dice qué se trajo: mover datos sin avisar deja al operador sin saber
+                // si tiene que volver a escribirlos.
+                subtexto.textContent = hubo
+                    ? 'Se pasaron a Empresa los datos que ya habías escrito. Revisá la razón social.'
+                    : 'Cambiado a Empresa.';
+                subtexto.classList.remove('hidden');
+            }
+        });
+    }
 
     // ── Preview en tiempo real del encabezado del modal ───────────────────────
     const actualizarHeaderModal = () => {
@@ -946,16 +1210,22 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const tipoDoc = document.getElementById('cli-tipo-doc')?.value || '';
         const numDoc  = document.getElementById('cli-numero-doc')?.value?.trim() || '';
 
+        // El subtítulo dice qué hacer mientras el formulario está vacío, y pasa a decir a
+        // QUIÉN se le está escribiendo apenas hay documento. Un rótulo fijo con la
+        // instrucción se vuelve ruido cuando ya se está a mitad de la carga.
+        let instruccion;
         if (tabActivo === 'empresa') {
             const razon = document.getElementById('cli-razon-social')?.value?.trim();
-            elNombre.textContent = razon || 'Empresa';
+            elNombre.textContent = razon || 'Nueva empresa';
+            instruccion = 'Completa la información para registrar una empresa';
         } else {
             const pn = document.getElementById('cli-primer-nombre')?.value?.trim()    || '';
             const pa = document.getElementById('cli-primer-apellido')?.value?.trim()  || '';
             elNombre.textContent = [pn, pa].filter(Boolean).join(' ') || 'Nuevo cliente';
+            instruccion = 'Completa la información para registrar un nuevo cliente';
         }
 
-        elDocDisplay.textContent = numDoc ? `${tipoDoc} ${numDoc}` : 'Completa el formulario';
+        elDocDisplay.textContent = numDoc ? `${tipoDoc} ${numDoc}` : instruccion;
     };
 
     ['cli-primer-nombre', 'cli-primer-apellido', 'cli-razon-social'].forEach(id =>
@@ -978,11 +1248,15 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         try {
             const resp = await fetch(`/store/json/municipios/${deptoId}`);
             const data = await resp.json();
+            // (el espejo se repuebla al final, con `sincronizarEspejos`)
             sel.innerHTML = '<option value="">Seleccionar...</option>' +
                 data.map(m => `<option value="${m.id}"${m.id === selectedId ? ' selected' : ''}>${m.nombre}</option>`).join('');
         } catch {
             sel.innerHTML = '<option value="">Error al cargar</option>';
         }
+        // El espejo de la pestaña de empresa recibe la misma lista: si no, ahí el
+        // selector de ciudad se queda vacío después de elegir departamento.
+        sincronizarEspejos(true);
     };
 
     document.getElementById('cli-departamento')?.addEventListener('change', (e) => {
@@ -1022,8 +1296,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const file = e.target.files?.[0];
         const el   = document.getElementById('cli-rut-nombre');
         if (!el) return;
-        if (file) { el.textContent = file.name; el.classList.remove('hidden'); }
-        else       { el.classList.add('hidden'); }
+        const vacio = document.getElementById('cli-rut-nombre-vacio');
+        if (file) { el.textContent = file.name; el.classList.remove('hidden'); vacio?.classList.add('hidden'); }
+        else       { el.classList.add('hidden');                              vacio?.classList.remove('hidden'); }
     });
 
     // ── Llenar formulario cuando se encuentra cliente ─────────────────────────
@@ -1051,6 +1326,12 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                     const el = modalCliente?.querySelector(`[name="${n}"]`);
                     if (el) el.checked = !!trib[n];
                 });
+                // Los códigos llegan como "O-13,O-15".
+                const declarados = String(trib.responsabilidad_fiscal || '').split(',').map(c => c.trim());
+                modalCliente?.querySelectorAll('.cli-resp-chk').forEach(chk => {
+                    chk.checked = declarados.includes(chk.value);
+                });
+                aplicarReglaR99();
             }
         } else {
             fill('cli-primer-nombre',    cli.primer_nombre);
@@ -1077,6 +1358,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
     // ── Volver al cliente genérico (tras finalizar una venta) ─────────────────
     const resetCliente = () => {
+        // Volver al consumidor final apaga la marca: se decidió para el cliente que se
+        // estaba cargando, no para la caja.
+        marcarVentaOF(false);
         if (inputIdCliente) inputIdCliente.value = CLIENTE_GENERICO.idCliente;
         const elNombre = document.getElementById('cli-display-nombre');
         const elDoc    = document.getElementById('cli-display-doc');
@@ -1105,10 +1389,13 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         modalCliente?.querySelectorAll('[name="gran_contribuyente"], [name="autorretenedor"], [name="agente_retencion"], [name="obligado_aduanero"]')
             .forEach(el => { el.checked = false; });
+        modalCliente?.querySelectorAll('.cli-resp-chk').forEach(el => { el.checked = false; });
+        aplicarReglaR99();
 
         const rutFile = document.getElementById('cli-rut-file');
         if (rutFile) rutFile.value = '';
         document.getElementById('cli-rut-nombre')?.classList.add('hidden');
+        document.getElementById('cli-rut-nombre-vacio')?.classList.remove('hidden');
 
         switchTab('natural');
     };
@@ -1166,6 +1453,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             fd.append('autorretenedor',     getChk('autorretenedor'));
             fd.append('agente_retencion',   getChk('agente_retencion'));
             fd.append('obligado_aduanero',  getChk('obligado_aduanero'));
+            // Una entrada por código marcado: el servidor las recibe como arreglo. Si no
+            // hay ninguna se manda vacío, que allá se guarda como nulo — "no declarado" no
+            // es lo mismo que declarar R-99-PN.
+            modalCliente?.querySelectorAll('.cli-resp-chk:checked')
+                .forEach(chk => fd.append('responsabilidad_fiscal', chk.value));
         } else {
             fd.append('primer_nombre',    getVal('cli-primer-nombre'));
             fd.append('segundo_nombre',   getVal('cli-segundo-nombre'));
@@ -1478,6 +1770,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         };
 
         const abrirFV = async () => {
+            if (bloqueadoPorCuadre()) return;
             if (!cart.size) {
                 Swal.fire({ icon: 'info', title: 'Orden vacía', text: 'Agrega productos antes de procesar la factura.', confirmButtonColor: '#EC5FA3' });
                 return;
@@ -1499,6 +1792,36 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             if (!modalFV) return;
             modalFV.classList.add('hidden');
             modalFV.classList.remove('flex');
+        };
+
+        // ── El cierre de caja alcanza al cobro ya empezado ─────────────────────
+        //
+        // El cristal sobre la columna de la orden no sirve de nada si el operador ya tiene
+        // este modal encima: la orden quedó tapada detrás, pero el botón de cobrar sigue a
+        // la vista. Acá el bloqueo cubre el modal completo —métodos de pago, código de
+        // empleado y botón— y explica por qué, en vez de dejar que descubra el freno
+        // recibiendo un error del servidor con la plata del cliente ya en la mano.
+        //
+        // No se cierra solo: cerrárselo de golpe le borraría los montos que venía
+        // capturando sin decirle nada. Lo cierra él, cuando leyó.
+        const pintarBloqueoFV = () => {
+            const panel = modalFV?.firstElementChild;
+            if (!panel) return;
+            panel.classList.add('bloqueo-anfitrion');
+            const puesto = panel.querySelector('#fv-bloqueo-cuadre');
+
+            if (!cajaEnCuadre) { puesto?.remove(); return; }
+            if (puesto) return;
+
+            panel.insertAdjacentHTML('beforeend', `
+                <div class="bloqueo-cristal" id="fv-bloqueo-cuadre">
+                    <img src="/img/avatars/seguro.webp" alt="" class="bloqueo-icono">
+                    <p class="bloqueo-titulo">Caja en cierre</p>
+                    <p class="bloqueo-texto">Se está cuadrando la caja. Esta venta no se puede registrar hasta que termine el conteo; la orden queda armada y podrás cobrarla apenas se libere.</p>
+                    <button type="button" class="bloqueo-accion" id="fv-bloqueo-cerrar">Entendido</button>
+                </div>`);
+
+            panel.querySelector('#fv-bloqueo-cerrar')?.addEventListener('click', cerrarFV);
         };
 
         // ── Cliente ────────────────────────────────────────────────────────────
@@ -1948,7 +2271,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
             const btn    = document.getElementById('btn-procesar-pago');
             if (!btn) return;
-            const activo = total > 0 && suma >= total && refsOk && refsTaOk && refsCrOk && empleadoActual !== null;
+            // `!cajaEnCuadre` va en la misma condición y no en un apagado aparte: cualquier
+            // tecleo en un monto vuelve a pasar por acá, y un apagado suelto lo revertiría.
+            const activo = !cajaEnCuadre && total > 0 && suma >= total && refsOk && refsTaOk && refsCrOk && empleadoActual !== null;
             btn.disabled  = !activo;
             btn.className = activo
                 ? 'flex items-center gap-3 px-8 py-3.5 bg-gh-primaryHover text-white rounded-2xl font-bold shadow-lg shadow-gh-primary/30 hover:brightness-110 transition-all active:scale-95 cursor-pointer'
@@ -2062,10 +2387,16 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         if (btnAbrir)  btnAbrir.addEventListener('click', abrirFV);
         if (btnCerrar) btnCerrar.addEventListener('click', cerrarFV);
 
+        // Se anota después de definir todo lo que usa. `alCambiarCuadre` lo corre una vez
+        // al registrarlo, así el modal ya nace bloqueado si la caja entró en cuadre antes
+        // de que esta pestaña terminara de cargar.
+        alCambiarCuadre(() => { pintarBloqueoFV(); actualizarResumenPagos(); });
+
         // Botón procesar pago (placeholder)
         document.getElementById('btn-procesar-pago')?.addEventListener('click', async () => {
             const btn = document.getElementById('btn-procesar-pago');
             if (!btn || btn.disabled) return;
+            if (bloqueadoPorCuadre()) return;
 
             // ── Armar payload ────────────────────────────────────────────────
             const idCliente  = document.getElementById('idCliente')?.value?.trim() || '0';
@@ -2113,11 +2444,16 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 const resp = await fetch('/store/facturas/procesar', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body:    JSON.stringify({ idCliente, idEmpleado, items, pagos: pagosPayload, idPedidoWeb: pedidoWebActivo })
+                    body:    JSON.stringify({ idCliente, idEmpleado, items, pagos: pagosPayload, idPedidoWeb: pedidoWebActivo, OF: ventaOF })
                 });
                 const data = await resp.json();
 
                 if (!data.success) {
+                    // El cierre pudo empezar entre que se abrió el modal y se pulsó cobrar
+                    // —o con el SSE caído—. El servidor es el que se entera de verdad, así
+                    // que su respuesta pone el POS en estado de cuadre: si no, el operador
+                    // vuelve a intentar contra el mismo 409 sin saber por qué.
+                    if (data.cajaEnCuadre) window.__posCajaEnCuadre(true);
                     Swal.fire({ icon: 'error', title: 'Error al facturar', text: data.mensaje, confirmButtonColor: '#EC5FA3' });
                     btn.disabled  = false;
                     actualizarResumenPagos();
@@ -2134,6 +2470,14 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 pagoWebActivo   = null;
                 renderCarrito();
                 resetCliente();
+                // Los pagos se resetean igual al abrir el modal, pero dejarlos servidos
+                // hasta entonces significa que el código de empleado validado sigue en el
+                // DOM y en memoria entre una venta y la siguiente.
+                resetearPagos();
+                limpiarBusqueda();
+                // La marca es de ESTA venta. Heredarla a la siguiente marcaría facturas
+                // que nadie pidió marcar.
+                marcarVentaOF(false);
                 // El pedido facturado ya no está 'trasladado': se relee del servidor para que
                 // salga del banner y el siguiente quede habilitado.
                 window.__recargarPedidosWebPendientes?.();
@@ -2200,4 +2544,12 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         if (isConfirmed) window.location.href = href;
     });
+
+    // Estado inicial del bloqueo. El evento SSE solo alcanza a quien ya estaba conectado;
+    // una terminal que abre el POS después de que empezó el cuadre tiene que enterarse
+    // igual, y por eso se consulta al cargar.
+    fetch('/store/storebehivors/caja/cuadre/estado')
+        .then(r => r.json())
+        .then(d => { if (d.success) window.__posCajaEnCuadre(d.enCuadre); })
+        .catch(() => {});
 })();
