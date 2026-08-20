@@ -27,7 +27,20 @@ const port = process.env.APP_PORT;
 // limitador del login bloquearía a todos los usuarios a la vez, y apiRateLimit trataría al
 // tráfico entero como un solo cliente. TRUST_PROXY declara cuántos saltos de confianza hay.
 // En local va en 0 (sin proxy) para que nadie pueda falsear su IP con X-Forwarded-For.
-app.set('trust proxy', parseInt(process.env.TRUST_PROXY) || 0);
+const TRUST_PROXY = parseInt(process.env.TRUST_PROXY);
+app.set('trust proxy', Number.isFinite(TRUST_PROXY) ? TRUST_PROXY : 0);
+
+// Sin la variable declarada, el valor cae en 0 y eso es lo correcto en local — pero en
+// producción detrás de un proxy es un fallo silencioso: todas las peticiones llegarían con
+// la misma IP y el limitador del login dejaría afuera a todos los usuarios tras cinco
+// fallos de cualquiera. El aviso existe para que ese caso no se descubra el día que pasa.
+if (!Number.isFinite(TRUST_PROXY)) {
+    console.warn(
+        '[config] TRUST_PROXY no está declarada; se asume 0 (sin proxy adelante).\n' +
+        '         Si la app corre detrás de Nginx, Cloudflare o un balanceador, ponela en 1:\n' +
+        '         de lo contrario los límites por IP tratan a todo el tráfico como un solo cliente.'
+    );
+}
 
 // Formateo de nombres en listados: disponible como tc() en cualquier vista Pug.
 // Es solo presentación — no altera lo que está guardado.
