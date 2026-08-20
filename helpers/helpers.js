@@ -1,6 +1,7 @@
 import sanitizeHtml from 'sanitize-html';
 import sharp from 'sharp';
 
+// Sanitizador para descripciones cortas: negritas, listas, enlaces y poco más.
 export const sanitizarHTML = (contenido) => {
     return sanitizeHtml(contenido, {
         allowedTags: [
@@ -13,6 +14,113 @@ export const sanitizarHTML = (contenido) => {
         // Elimina etiquetas vacías accidentales que ensucian el diseño
         exclusiveFilter: (frame) => {
             return frame.tag === 'p' && !frame.text.trim();
+        }
+    });
+};
+
+// Sanitizador para el cuerpo de una página del CMS.
+//
+// Es más permisivo que `sanitizarHTML` —una página necesita títulos, tablas, imágenes y
+// citas, no solo negritas— pero sigue siendo una LISTA BLANCA: lo que no está acá se
+// descarta. Nada de <script>, <iframe>, <object>, ni atributos `on*`.
+//
+// El contenido se guardaba tal cual llegaba del editor y se volvía a pintar sin escapar en
+// el formulario de edición. Un editor con acceso al CMS podía dejar un <script> que se
+// ejecutaba en el navegador de cualquier administrador que abriera esa página: robo de
+// sesión no, porque la cookie es httpOnly, pero sí acciones en su nombre con su sesión
+// abierta —crear usuarios, mover plata— que es peor.
+//
+// `allowedSchemes` deja fuera `javascript:` y `data:`, que son las dos formas de meter
+// código en un href o en un src aunque la etiqueta esté permitida.
+export const sanitizarContenidoPagina = (contenido) => {
+    return sanitizeHtml(String(contenido ?? ''), {
+        allowedTags: [
+            'p', 'br', 'hr', 'div', 'span', 'blockquote', 'pre', 'code',
+            'b', 'i', 'em', 'strong', 'u', 's', 'sub', 'sup', 'small',
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+            'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
+            'a', 'img', 'figure', 'figcaption',
+            // Obsoletas pero inofensivas: los editores de texto enriquecido y el pegado
+            // desde Word las siguen emitiendo. Descartarlas rompía el formato de páginas
+            // que ya estaban publicadas.
+            'font', 'mark', 'del', 'ins', 'abbr', 'cite', 'q'
+        ],
+        allowedAttributes: {
+            a:   ['href', 'target', 'rel', 'title'],
+            img:  ['src', 'alt', 'title', 'width', 'height', 'loading'],
+            font: ['size', 'face', 'color'],
+            td:   ['colspan', 'rowspan', 'align', 'valign'],
+            th:   ['colspan', 'rowspan', 'align', 'valign', 'scope'],
+            '*':  ['class', 'style', 'dir', 'lang']
+        },
+        allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+        // `style` se permite pero por lista blanca de propiedades y de valores. Dejarlo
+        // libre admitiría `expression()` y `url(javascript:...)`, que ejecutan código
+        // desde una hoja de estilos. Acá cada propiedad declara qué forma puede tener su
+        // valor, así que nada que no calce con esos patrones sobrevive.
+        //
+        // La lista cubre lo que emiten los editores de texto enriquecido —color,
+        // tipografía, alineación, bordes, espaciado—. Faltaban la mitad y saneaban a la
+        // basura páginas legítimas: el documento de tratamiento de datos perdía dos
+        // tercios de su formato.
+        allowedStyles: {
+            '*': (() => {
+                const COLOR   = [/^#(0x)?[0-9a-fA-F]{3,8}$/, /^rgba?\([\d\s.,%]+\)$/i, /^hsla?\([\d\s.,%]+\)$/i, /^[a-zA-Z-]+$/];
+                const MEDIDA  = [/^-?[\d.]+(?:px|em|rem|%|pt|vh|vw)?$/];
+                const MEDIDAS = [/^(-?[\d.]+(?:px|em|rem|%|pt)?\s*){1,4}$/];
+                const estilos = {
+                    'color': COLOR, 'background-color': COLOR, 'background': COLOR,
+                    'border-color': COLOR, 'border-top-color': COLOR, 'border-bottom-color': COLOR,
+                    'border-left-color': COLOR, 'border-right-color': COLOR,
+                    // Tipografía. `font-family` acepta comillas y comas: es una lista de
+                    // nombres, no una URL, y el patrón excluye paréntesis para que no
+                    // pueda colarse un url() ni un expression().
+                    'font-family':  [/^[a-zA-Z0-9\s,'"\u00C0-\u017F.-]+$/],
+                    'font-size':    MEDIDA,
+                    'font-weight':  [/^\d{3}$|^bold$|^bolder$|^normal$|^lighter$/i],
+                    'font-style':   [/^normal$|^italic$|^oblique$/i],
+                    'font-variant-ligatures': [/^[a-z-]+$/i],
+                    'line-height':  [/^[\d.]+(?:px|em|rem|%)?$/],
+                    // `normal` es un valor válido de estos dos y no es una medida.
+                    'letter-spacing': [...MEDIDA, /^normal$/i], 'word-spacing': [...MEDIDA, /^normal$/i],
+                    'border-collapse': [/^collapse$|^separate$/i],
+                    'border-spacing':  MEDIDAS,
+                    'text-align':      [/^left$|^right$|^center$|^justify$/i],
+                    'text-decoration': [/^[a-z\s-]+$/i],
+                    'text-transform':  [/^[a-z-]+$/i],
+                    'text-indent':     MEDIDA,
+                    'white-space':     [/^[a-z-]+$/i],
+                    'vertical-align':  [/^[a-z-]+$/i],
+                    'list-style-type': [/^[a-z-]+$/i],
+                    // Caja
+                    'width': MEDIDA, 'max-width': MEDIDA, 'min-width': MEDIDA,
+                    'height': MEDIDA, 'max-height': MEDIDA,
+                    'margin': MEDIDAS, 'padding': MEDIDAS,
+                    'border-radius': MEDIDAS,
+                    'float': [/^left$|^right$|^none$/i],
+                    'display': [/^block$|^inline$|^inline-block$|^none$|^flex$|^table$/i]
+                };
+                // border y sus cuatro lados: "3px solid rgb(17,17,17)". El patrón admite
+                // medida, estilo de línea y color, y nada más.
+                const BORDE = [/^[\d.]+(?:px|em|rem|pt)?\s+(?:solid|dashed|dotted|double|none)(?:\s+(?:#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\)|[a-zA-Z-]+))?$/i];
+                // Solo los CUATRO LADOS. El bucle no toca `margin`, `padding` ni `border`
+                // a secas: ésos ya están arriba admitiendo hasta cuatro valores, y
+                // pisarlos acá con el patrón de un solo valor descartaba `margin: 0 0 8px`.
+                for (const lado of ['-top', '-bottom', '-left', '-right']) {
+                    estilos[`border${lado}`]  = BORDE;
+                    estilos[`margin${lado}`]  = MEDIDA;
+                    estilos[`padding${lado}`] = MEDIDA;
+                }
+                estilos['border'] = BORDE;
+                return estilos;
+            })()
+        },
+        // Un enlace que sale del sitio no debe poder tocar la ventana que lo abrió.
+        transformTags: {
+            a: (nombre, attrs) => attrs.target === '_blank'
+                ? { tagName: 'a', attribs: { ...attrs, rel: 'noopener noreferrer' } }
+                : { tagName: 'a', attribs: attrs }
         }
     });
 };

@@ -22,7 +22,10 @@ routes.post("/logout", logout);
 //REGISTROS
 
 // Crea usuarios ADMIN. El controlador responde 404 salvo que REGISTRO_ABIERTO=true.
-routes.post("/register", registerValidation, registerLoginPost);
+// Mismo freno que el login. `/register` responde 404 salvo con REGISTRO_ABIERTO, pero el
+// límite va igual: si algún día esa variable queda encendida por descuido, no puede
+// quedar además un endpoint de alta de administradores sin ningún tope.
+routes.post("/register", loginRateLimit, registerValidation, registerLoginPost);
 
 // loginRateLimit va ANTES del validador: un bloqueo activo no debe gastar ni una
 // comparación de bcrypt, que es justamente lo que un atacante quiere provocar.

@@ -11,6 +11,7 @@ import webAdminRoutes from "./routes/webAdminRoutes.js"
 import webApiRoutes from "./routes/webApiRoutes.js"
 import { rutaProtegida, verificarRol } from "./middlewares/authMiddleware.js"
 import permisosAdmin from "./middlewares/permisosAdmin.js"
+import cabecerasSeguridad from "./middlewares/cabecerasSeguridad.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
 import { cargarContadoresAdmin } from './middleware/adminMenuMiddleware.js';
@@ -61,6 +62,9 @@ app.use('/api/web', (req, res, next) => {
 // 2. Configuración de Vistas
 app.set("view engine", "pug");
 app.set("views", "./views");
+
+// Cabeceras de seguridad en TODA respuesta, antes que cualquier ruta.
+app.use(cabecerasSeguridad);
 
 // 3. Middlewares de Seguridad (CSRF)
 const csrfMiddleware = csrf({ cookie: true });

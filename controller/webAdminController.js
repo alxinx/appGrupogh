@@ -6,6 +6,7 @@ import {
     VisitantesWeb, Entidades, PedidosWebHistorialEstado
 } from '../models/index.js';
 import { procesarPagoAprobado } from './webApiController.js';
+import { sanitizarContenidoPagina } from '../helpers/helpers.js';
 import s3Client from '../config/r2.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -535,7 +536,11 @@ export const crearPagina = async (req, res) => {
         await PaginasWeb.create({
             nombrePagina: nombrePagina.trim(),
             slug: slugClean,
-            contenido: contenido || '',
+            // El cuerpo se limpia ANTES de guardar, no al mostrarlo: si se guarda sucio,
+            // basta con que una sola pantalla lo pinte sin escapar para que el script
+            // corra. Sanear en la entrada deja la base con contenido en el que se puede
+            // confiar.
+            contenido: sanitizarContenidoPagina(contenido),
             tags: tags?.trim() || null,
             activa: activa === 'true' || activa === true
         });
@@ -558,7 +563,7 @@ export const actualizarPagina = async (req, res) => {
         await pagina.update({
             nombrePagina: nombrePagina.trim(),
             slug: slugClean,
-            contenido: contenido || '',
+            contenido: sanitizarContenidoPagina(contenido),
             tags: tags?.trim() || null,
             activa: activa === 'true' || activa === true
         });
