@@ -42,27 +42,37 @@ aside(
       i(class="fi fi-rr-paper-plane text-lg")
       span Traslados
 
-    if pedidosWebPendientesCount && pedidosWebPendientesCount > 0
-      a(href="/store/pedidos-web" class=`menu-item relative h-14 p-0 overflow-hidden ${currentPath === '/pedidos-web' ? 'active' : ''}`)
-        div(class="menu-alert-normal absolute inset-0 flex items-center gap-3 px-4")
-          i(class="fi fi-rr-shopping-bag text-lg")
-          span Pedidos Web
-          span(class="animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300")= pedidosWebPendientesCount
-        div(class="menu-alert-banner absolute inset-0 flex items-center gap-2.5 px-4 bg-gh-primaryHover text-white")
-          i(class="fi fi-rr-bell text-base flex-shrink-0")
-          span(class="text-xs font-semibold leading-snug") Pedidos web por despachar
-    else
-      a(href="/store/pedidos-web"
-        class=`menu-item ${currentPath === '/pedidos-web' ? 'active' : ''}`)
+    //- El aviso se enciende con la clase `has-alert`; la hoja decide el resto. Antes las
+    //- utilidades iban escritas a mano acá, y cuando el menú del admin pasó al
+    //- interruptor por clase, las reglas nuevas dejaron este banner en display:none.
+    //- Un solo mecanismo para los dos menús evita que vuelva a pasar.
+    - const pedidosPendientes = pedidosWebPendientesCount || 0
+    a#menu-pedidos-web(
+      href="/store/pedidos-web"
+      class=`menu-item ${pedidosPendientes > 0 ? 'has-alert' : ''} ${currentPath === '/pedidos-web' ? 'active' : ''}`)
+      div(class="menu-alert-normal")
         i(class="fi fi-rr-shopping-bag text-lg")
         span Pedidos Web
+        span#menu-pedidos-web-badge(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${pedidosPendientes > 0 ? '' : 'hidden'}`)= pedidosPendientes
+      div(class="menu-alert-banner bg-gh-primaryHover text-white")
+        i(class="fi fi-rr-bell text-base flex-shrink-0")
+        span(class="text-xs font-semibold leading-snug") Pedidos web por despachar
 
     details(class="group" data-folder="/storebehivors" style=vis('/storebehivors'))
-      summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/dosificaciones' ? 'active' : ''}`)
-        div(class="flex items-center gap-3")
-          i(class="fi fi-rr -dialogue-exchange")
-          span Caja y ventas
-        i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+      //- El aviso de traslados va en "Caja y ventas" y no en el subítem de Egresos:
+      //- el submenú puede estar plegado, y un badge que solo se ve al desplegar no avisa
+      //- de nada. storeGlobal.js prende `has-alert` acá cuando hay avisos sin confirmar.
+      summary#menu-caja-ventas(class=`menu-item cursor-pointer ${currentPath === '/dosificaciones' ? 'active' : ''}`)
+        div(class="menu-alert-normal justify-between w-full")
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr -dialogue-exchange")
+            span Caja y ventas
+          div(class="flex items-center gap-2")
+            span#menu-traslado-badge(class="hidden animate-badge-pulse min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300")
+            i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+        div(class="menu-alert-banner bg-gh-primaryHover text-white")
+          i(class="fi fi-rr-bell text-base flex-shrink-0")
+          span#menu-traslado-texto(class="text-xs font-semibold leading-snug")
 
       div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
         if sinCaja

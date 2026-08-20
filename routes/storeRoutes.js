@@ -35,10 +35,15 @@ import {
     getEgresoComprobantePDF,
     crearTrasladoEfectivo,
     getTrasladoEfectivoPDF,
+    getAvisosTraslado,
+    marcarAvisoTrasladoVisto,
     abrirCajaAPI,
     cuadrarCajaPage,
     getCuadreCajaDatos,
     cerrarCajaAPI,
+    iniciarCuadreCaja,
+    liberarCuadreCaja,
+    getEstadoCuadreCaja,
     getCuadrePDF,
     getSalesPage,
     getVentasMes,
@@ -137,6 +142,13 @@ routes.get('/storebehivors/', csrfProtection, cuadrarCajaPage);
 routes.get('/storebehivors/caja/datos', getCuadreCajaDatos);
 routes.post('/storebehivors/caja/cerrar', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'EDIT'), cerrarCajaAPI);
 routes.get('/storebehivors/caja/:idCajaTienda/pdf', getCuadrePDF);
+
+// Entrar y salir del cuadre. Mientras la caja está en 'auditoria' el POS no factura.
+// No piden código de empleado: no mueven plata, solo abren y cierran la ventana de
+// conteo, y exigir el código para volver a vender frenaría a la tienda sin motivo.
+routes.post('/storebehivors/caja/cuadre/iniciar', csrfProtection, iniciarCuadreCaja);
+routes.post('/storebehivors/caja/cuadre/liberar', csrfProtection, liberarCuadreCaja);
+routes.get('/storebehivors/caja/cuadre/estado', getEstadoCuadreCaja);
 routes.get('/storebehivors/expenses', csrfProtection, getExpensesPage);
 routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
 routes.get('/storebehivors/expenses/efectivo-disponible', getEfectivoDisponible);
@@ -159,6 +171,12 @@ routes.post('/storebehivors/expenses/traslado',
     verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
     crearTrasladoEfectivo);
 routes.get('/storebehivors/expenses/traslado/:idTraslado/pdf', getTrasladoEfectivoPDF);
+
+// Avisos de traslados que no entraron completos. Se consultan al cargar cualquier
+// pantalla de la tienda: el evento SSE solo llega si el navegador estaba abierto, y esto
+// es lo que hace que el aviso no se pierda.
+routes.get('/traslados/avisos', getAvisosTraslado);
+routes.post('/traslados/avisos/visto', csrfProtection, marcarAvisoTrasladoVisto);
 
 // Inventario — traslado desde perfil de producto
 routes.get('/inventario/json/empleado-traslado', validarEmpleadoTraslado);

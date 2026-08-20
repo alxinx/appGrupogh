@@ -169,6 +169,28 @@
             mostrarBannerDevuelto(codigo);
         });
 
+        // El administrador resolvió un traslado de efectivo y no entró completo. El
+        // operador tiene que enterarse acá y no por teléfono: esa diferencia vuelve a
+        // quedar a su cargo y la va a ver como faltante al cuadrar.
+        // La caja entró o salió de cuadre. El servidor reparte este evento por punto de
+        // venta, así que llega a las terminales de ESTA sede y a ninguna otra. Dentro de
+        // la sede sí llega a todas: si avisara solo a la que abrió el cuadre, la
+        // registradora de al lado seguiría vendiendo sobre la caja que se está contando.
+        sseSource.addEventListener('caja_en_cuadre', (e) => {
+            const { enCuadre } = JSON.parse(e.data);
+            if (typeof window.__posCajaEnCuadre === 'function') window.__posCajaEnCuadre(enCuadre);
+            showToast(enCuadre
+                ? 'La caja entró en cierre: las ventas quedan pausadas hasta que termine el cuadre.'
+                : 'La caja volvió a estar disponible: ya se puede vender.', enCuadre ? 'warning' : 'success', 8000);
+        });
+
+        sseSource.addEventListener('traslado_resuelto', (e) => {
+            const d = JSON.parse(e.data);
+            pendientesTraslado.push(d);
+            pintarAlertaTraslados();
+            avisarTrasladoResuelto(d);
+        });
+
         sseSource.addEventListener('new_egreso', (e) => {
             const data = JSON.parse(e.data);
             if (typeof window.onNuevoEgreso === 'function') window.onNuevoEgreso(data);
@@ -182,6 +204,191 @@
         sseSource.onerror = () => {
             setTimeout(conectarSSE, 5000);
         };
+    };
+
+    // ─── TRASLADO DE EFECTIVO RESUELTO SIN ENTRAR COMPLETO ───────────────────
+    //
+    // Solo llega cuando algo no cuadró: un rechazo o una controversia. Una aceptación
+    // completa no interrumpe a nadie — que la plata llegue bien es lo esperado.
+    //
+    // Es una ventana y no un toast a propósito: el toast se va solo en unos segundos y
+    // esto cambia el efectivo que el operador va a tener que responder al cerrar. Pide
+    // un clic para cerrarse.
+    // ── Avisos pendientes y su badge en el menú ──────────────────────────────
+    //
+    // El SSE solo alcanza a quien está conectado. Estos avisos además viven en la base
+    // —`avisoVistoEn` nulo— y se piden al cargar cualquier pantalla, así el operador que
+    // no estaba se entera igual al entrar. El badge se apaga cuando los confirma.
+    let pendientesTraslado = [];
+
+    const pintarAlertaTraslados = () => {
+        const item  = document.getElementById('menu-caja-ventas');
+        const badge = document.getElementById('menu-traslado-badge');
+        const texto = document.getElementById('menu-traslado-texto');
+        if (!item || !badge) return;
+
+        const n = pendientesTraslado.length;
+        item.classList.toggle('has-alert', n > 0);
+        badge.classList.toggle('hidden', n === 0);
+        badge.textContent = n;
+        if (texto) {
+            // "no cuadró" y no "no entró completo": ahora también entra el caso contrario,
+            // el traslado al que le sobró plata.
+            texto.textContent = n === 1
+                ? '1 traslado no cuadró'
+                : `${n} traslados no cuadraron`;
+        }
+    };
+
+    const marcarAvisoVisto = async (idTraslado) => {
+        try {
+            await fetch('/store/traslados/avisos/visto', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: JSON.stringify({ idTraslado })
+            });
+        } catch (_) { /* si falla, el aviso vuelve a salir la próxima vez: es lo correcto */ }
+        pendientesTraslado = pendientesTraslado.filter(a => a.idTraslado !== idTraslado);
+        pintarAlertaTraslados();
+    };
+
+    // Al entrar: lo que quedó sin ver mientras el navegador estaba cerrado. Se muestra de
+    // a uno, en orden, para que ninguno pase desapercibido detrás de otro.
+    const cargarAvisosPendientes = async () => {
+        try {
+            const r = await fetch('/store/traslados/avisos');
+            const d = await r.json();
+            if (!d.success || !d.avisos.length) return;
+            pendientesTraslado = d.avisos;
+            pintarAlertaTraslados();
+            for (const aviso of d.avisos) await avisarTrasladoResuelto(aviso);
+        } catch (_) {}
+    };
+
+    const avisarTrasladoResuelto = async (d) => {
+        const excedente = Math.round(Number(d.excedente) || 0);
+
+        // El servidor solo emite este evento cuando algo no cuadró, pero el filtro se
+        // repite acá: si alguna vez se emitiera también en las aceptaciones completas, el
+        // operador vería "Controversia" sobre un traslado que llegó perfecto. Confiar en
+        // que el otro lado filtra bien es la clase de suposición que se rompe callada.
+        //
+        // El excedente es la excepción: ese traslado queda 'Recibido' —lo que se mandó sí
+        // llegó completo— y aun así hay que avisar, porque en el fajo se fue plata de la
+        // caja menor.
+        const corregido = Math.round(Number(d.corregido) || 0);
+        if (d.estado !== 'Rechazado' && d.estado !== 'Controversia' && excedente <= 0 && corregido <= 0) return;
+
+        const pesos = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO');
+        const rechazado = d.estado === 'Rechazado';
+        const sobro     = excedente > 0;
+
+        // ── Corrección de una consignación ───────────────────────────────────
+        // El banco recibió un monto distinto del que se registró al despachar. No es un
+        // faltante ni un sobrante: el efectivo salió del cajón y llegó completo, lo que
+        // estaba mal era el número. Se avisa porque el egreso del turno cambió con él.
+        if (corregido > 0) {
+            const dif   = corregido - d.despachado;
+            const subio = dif > 0;
+            const cuerpoCor = `
+                <p class="text-sm text-slate-600 text-left">Registraste <b>${pesos(d.despachado)}</b> y el comprobante de la consignación muestra <b>${pesos(corregido)}</b>.</p>
+                <p class="text-sm text-slate-600 text-left mt-2">El administrador corrigió el traslado y su egreso al valor real. ${subio
+                    ? `Esos <b>${pesos(dif)}</b> sí salieron del cajón y no estaban registrados.`
+                    : `Esos <b>${pesos(-dif)}</b> nunca salieron del cajón y siguen en la tienda.`}</p>
+                <p class="text-xs text-slate-500 text-left mt-2">${d.ajusteAplicado === false
+                    ? 'La caja de ese turno <b>ya estaba cerrada</b>, así que su cuadre no cambió: hay que ajustarlo a mano.'
+                    : 'Con el egreso corregido, el cuadre de ese turno cierra exacto.'}</p>
+                ${d.observacion ? `<p class="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-200 text-left"><b>Nota:</b><br>${String(d.observacion).replace(/[<>]/g, '')}</p>` : ''}`;
+
+            if (typeof Swal === 'undefined') {
+                showToast(`Traslado ${d.codigo}: se corrigió de ${pesos(d.despachado)} a ${pesos(corregido)} según el comprobante.`, 'warning', 15000);
+                return;
+            }
+            await Swal.fire({
+                icon: 'info',
+                title: 'Se corrigió una consignación',
+                html: `<p class="text-xs font-mono text-slate-400 mb-2">${d.codigo}</p>${cuerpoCor}`,
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#EC5FA3',
+                allowOutsideClick: false
+            });
+            if (d.idTraslado) await marcarAvisoVisto(d.idTraslado);
+            return;
+        }
+
+        // ── Sobró plata ──────────────────────────────────────────────────────
+        // Es un aviso distinto de los otros dos y no una variante: acá al operador no le
+        // falta plata que deba responder, le sobró en el fajo. Lo que necesita saber es
+        // que su fondo de cambio quedó corto y que esa plata YA está en la cuenta, para
+        // que no la vuelva a enviar.
+        if (sobro) {
+            const cuerpoExc = `
+                <p class="text-sm text-slate-600 text-left">Despachaste <b>${pesos(d.despachado)}</b> y al contarlo en destino había <b>${pesos(d.despachado + excedente)}</b>.</p>
+                <p class="text-sm text-slate-600 text-left mt-2">Esos <b>${pesos(excedente)}</b> de más ya se descontaron de tu cajón, así que el cuadre te va a cerrar bien. Salen de las ventas en efectivo sin entregar; si no alcanzan, la diferencia la cubre la base y se repone con las próximas ventas.</p>
+                <p class="text-xs text-slate-500 text-left mt-2">Ya quedaron registrados en la cuenta destino: <b>no hay que volver a enviarlos</b>.</p>
+                ${d.observacion ? `<p class="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-200 text-left"><b>Nota de quien lo revisó:</b><br>${String(d.observacion).replace(/[<>]/g, '')}</p>` : ''}`;
+
+            if (typeof Swal === 'undefined') {
+                showToast(`Traslado ${d.codigo}: llegaron ${pesos(excedente)} de más. Salieron de tu caja menor y ya están registrados.`, 'warning', 15000);
+                return;
+            }
+
+            await Swal.fire({
+                icon: 'info',
+                title: 'Llegó efectivo de más',
+                html: `<p class="text-xs font-mono text-slate-400 mb-2">${d.codigo}</p>${cuerpoExc}`,
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#EC5FA3',
+                allowOutsideClick: false
+            });
+            if (d.idTraslado) await marcarAvisoVisto(d.idTraslado);
+            return;
+        }
+
+        const detalle = rechazado
+            ? `No se recibió nada de los <b>${pesos(d.despachado)}</b> que despachaste.`
+            : `De los <b>${pesos(d.despachado)}</b> que despachaste se recibieron <b>${pesos(d.aceptado)}</b>.`;
+
+        // `ajusteAplicado` dice si la caja de ese turno seguía abierta. Si ya había
+        // cerrado, su cuadre no se tocó y el faltante no aparece solo: alguien tiene que
+        // arreglarlo a mano, y callarlo dejaría un descuadre que nadie sabe explicar.
+        const queHacer = d.ajusteAplicado
+            ? `Esos <b>${pesos(d.devuelto)}</b> vuelven a quedar a tu cargo y los vas a ver como faltante al cuadrar la caja.`
+            : `Esos <b>${pesos(d.devuelto)}</b> vuelven a quedar a tu cargo, pero la caja de ese turno <b>ya estaba cerrada</b>, así que su cuadre no cambió. Hay que ajustarlo a mano.`;
+
+        const motivo = d.observacion
+            ? `<p class="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-200 text-left"><b>Nota de quien lo revisó:</b><br>${String(d.observacion).replace(/[<>]/g, '')}</p>`
+            : '';
+
+        const cuerpo = `
+            <p class="text-sm text-slate-600 text-left">${detalle}</p>
+            <p class="text-sm text-slate-600 text-left mt-2">${queHacer}</p>
+            <p class="text-xs text-slate-500 text-left mt-2">Si tenés ese efectivo y hay que volver a enviarlo, registrá un traslado nuevo: este ya quedó cerrado.</p>
+            ${motivo}`;
+
+        if (typeof Swal === 'undefined') {
+            // Sin SweetAlert en esta pantalla, el aviso no se pierde: cae al toast, que
+            // vive en este mismo archivo. NO se marca visto — sin confirmación explícita
+            // no hay forma de saber que alguien lo leyó, y prefiero repetirlo a perderlo.
+            showToast(`Traslado ${d.codigo}: se recibieron ${pesos(d.aceptado)} de ${pesos(d.despachado)}. ${pesos(d.devuelto)} vuelven a tu cargo.`, 'error', 15000);
+            return;
+        }
+
+        await Swal.fire({
+            icon: rechazado ? 'error' : 'warning',
+            title: rechazado ? 'Traslado rechazado' : 'Controversia en un traslado',
+            html: `<p class="text-xs font-mono text-slate-400 mb-2">${d.codigo}</p>${cuerpo}`,
+            confirmButtonText: 'Entendido',
+            confirmButtonColor: '#EC5FA3',
+            allowOutsideClick: false   // que no se cierre de un clic al pasar
+        });
+
+        // Recién acá se da por visto: el operador tuvo que apretar el botón. Cerrarlo con
+        // Esc o recargar la página lo deja pendiente, y vuelve a salir.
+        if (d.idTraslado) await marcarAvisoVisto(d.idTraslado);
     };
 
     // Banner persistente para traslados devueltos por vencimiento
@@ -339,6 +546,38 @@
                         menuBtn.replaceWith(link);
                     }
                     showToast('Caja abierta correctamente', 'success', 5000);
+                } else if (d.trasladosPendientes) {
+                    // Un renglón rojo no alcanza acá: el operador no puede resolverlo
+                    // solo y necesita saber QUÉ está trabado y por cuánto, para poder
+                    // llamar a quien tiene que aceptarlo. Sin la lista, lo único que ve
+                    // es una tienda que no abre.
+                    const pesos = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO');
+                    const filas = (d.traslados || []).map(t => `
+                        <div class="flex items-baseline justify-between gap-3 py-1.5 border-b border-amber-100 last:border-0">
+                            <div class="text-left min-w-0">
+                                <p class="font-mono text-xs font-bold text-amber-800">${t.codigo}</p>
+                                <p class="text-[11px] text-amber-700 truncate">a ${t.destino} · ${t.fecha}</p>
+                            </div>
+                            <span class="font-mono text-xs font-bold text-amber-800 shrink-0">${pesos(t.valor)}</span>
+                        </div>`).join('');
+
+                    if (typeof Swal !== 'undefined') {
+                        await Swal.fire({
+                            icon: 'warning',
+                            title: 'Hay efectivo sin aceptar',
+                            html: `
+                                <p class="text-sm text-slate-600 text-left">${d.mensaje}</p>
+                                <div class="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">${filas}</div>
+                                <p class="text-sm text-slate-700 text-left mt-3">Total en el aire: <b>${pesos(d.total)}</b></p>
+                                <p class="text-xs text-slate-500 text-left mt-2">Pedile al administrador que los acepte o los rechace desde Cajas y bancos. Apenas lo haga, la caja abre normal.</p>`,
+                            confirmButtonText: 'Entendido',
+                            confirmButtonColor: '#EC5FA3'
+                        });
+                    } else {
+                        setInfo(d.mensaje, false);
+                    }
+                    btnAbrir.disabled    = false;
+                    btnAbrir.textContent = 'Abrir Caja';
                 } else {
                     setInfo(d.mensaje || 'Error al abrir la caja', false);
                     btnAbrir.disabled    = false;
@@ -519,6 +758,11 @@
         // Alerta de traslados: carga inmediata + polling cada 30 s
         pollAlertasTraslado();
         setInterval(pollAlertasTraslado, 30_000);
+
+        // Avisos de traslados de efectivo que no entraron completos y que el operador
+        // todavía no confirmó. No necesitan polling: los que ya existían llegan acá y los
+        // nuevos entran por SSE mientras la pantalla esté abierta.
+        cargarAvisosPendientes();
     });
 
 })();

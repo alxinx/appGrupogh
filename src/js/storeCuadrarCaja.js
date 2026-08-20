@@ -51,6 +51,15 @@
     const sMedios   = $('cc-s-medios');
     const sCredito  = $('cc-s-credito');
 
+    // Tarjetas de cifra de la fila superior. "Total a entregar" y "Total egresos"
+    // también viven en la columna izquierda: son el mismo dato en dos lugares, así que
+    // se escriben juntos y nunca desde sitios distintos del archivo.
+    const kEntregar   = $('cc-k-entregar');
+    const kEgresos    = $('cc-k-egresos');
+    const kDiferencia = $('cc-k-diferencia');
+    const kDifDetalle = $('cc-k-diferencia-detalle');
+    const kCardDif    = kDiferencia?.closest('.cc-kpi');
+
     const oBase     = $('cc-o-base');
     const oEgresos  = $('cc-o-egresos');
     const oEfectivo = $('cc-o-efectivo');
@@ -65,21 +74,41 @@
     const checkDescuadre = $('cc-check-descuadre');
 
     // ── Acordeones ───────────────────────────────────────────────────────────
+    // El estado se aplica en un solo lugar (`setAcordeon`) para que abrir desde el
+    // renglón y abrir desde "Ver detalle" no puedan dejar el panel abierto con el
+    // chevron apuntando hacia arriba.
+    const setAcordeon = (panelId, iconId, abrir) => {
+        const panel = $(panelId);
+        const icon  = $(iconId);
+        if (!panel) return;
+        panel.classList.toggle('hidden', !abrir);
+        if (icon) icon.style.transform = abrir ? 'rotate(180deg)' : '';
+    };
+
     const initAcordeon = (btnId, panelId, iconId) => {
         const btn   = $(btnId);
         const panel = $(panelId);
-        const icon  = $(iconId);
-        if (!btn) return;
+        if (!btn || !panel) return;
+        btn.setAttribute('aria-expanded', 'false');
+        btn.setAttribute('aria-controls', panelId);
         btn.addEventListener('click', () => {
-            const open = !panel.classList.contains('hidden');
-            panel.classList.toggle('hidden', open);
-            icon.style.transform = open ? '' : 'rotate(180deg)';
+            const abrir = panel.classList.contains('hidden');
+            setAcordeon(panelId, iconId, abrir);
+            btn.setAttribute('aria-expanded', String(abrir));
         });
     };
     initAcordeon('cc-toggle-egresos',  'cc-acordeon-egresos',  'cc-icon-egresos');
     initAcordeon('cc-toggle-efectivo', 'cc-acordeon-efectivo', 'cc-icon-efectivo');
     initAcordeon('cc-toggle-medios',   'cc-acordeon-medios',   'cc-icon-medios');
     initAcordeon('cc-toggle-credito',  'cc-acordeon-credito',  'cc-icon-credito');
+
+    // "Ver detalle" de la tarjeta de egresos: no duplica la lista, lleva a la única
+    // que hay. Si ya está abierta igual hace scroll, que es lo que el operador pidió.
+    $('cc-k-ver-egresos')?.addEventListener('click', () => {
+        setAcordeon('cc-acordeon-egresos', 'cc-icon-egresos', true);
+        $('cc-toggle-egresos')?.setAttribute('aria-expanded', 'true');
+        $('cc-toggle-egresos')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
 
     // ── Fila de acordeón ────────────────────────────────────────────────────
     const buildRow = (tx) => {
@@ -98,6 +127,255 @@
         return tr;
     };
 
+    // ── Cifras del sistema ────────────────────────────────────────────────────
+    // Un solo sitio que escribe todas: varias aparecen dos veces en pantalla (egresos
+    // y total a entregar viven en una tarjeta y en un renglón), y actualizarlas por
+    // separado era lo que las dejaba diciendo cosas distintas después de registrar un
+    // egreso olvidado.
+    const pintarTotales = () => {
+        if (!dataSistema) return;
+        const { totales: t, caja } = dataSistema;
+
+        sVentas.textContent   = fmt(t.ventas);
+        sBase.textContent     = fmt(caja.cajaMenor);
+        sEgresos.textContent  = `-${fmt(t.egresos)}`;
+        sEfectivo.textContent = fmt(t.efectivo);
+        sMedios.textContent   = fmt(t.mediosElectronicos);
+        sCredito.textContent  = fmt(t.credito);
+
+        if (kEgresos) kEgresos.textContent = fmt(t.egresos);
+
+        // Efectivo que debería estar en el cajón. Antes esta cuenta la hacía el
+        // vendedor de cabeza; ahora sale del backend con el mismo criterio.
+        const elEsp = $('cc-s-esperado');
+        if (elEsp) {
+            elEsp.textContent = fmt(t.efectivoEsperado);
+            $('cc-s-esperado-detalle').textContent =
+                `Base ${fmt(caja.cajaMenor)} + ventas ${fmt(t.efectivo)} − egresos ${fmt(t.egresosEfectivo)}`;
+        }
+
+        // Lo que se entrega al cerrar: lo del cajón menos la base, que se queda para
+        // que el turno siguiente pueda dar cambio. El detalle nombra esa resta en vez
+        // de repetir la fórmula larga, para que se lea la relación entre las dos.
+        const elEnt = $('cc-s-entregar');
+        if (elEnt) {
+            elEnt.textContent = fmt(t.totalAEntregar);
+            // Cuando del cajón salió más efectivo del que entró por ventas no hay nada
+            // que entregar, y lo que falta es de la base. Decirlo en el renglón del
+            // detalle —donde ya se explica la resta— evita imprimir un negativo que se
+            // leería como un monto a cobrar.
+            $('cc-s-entregar-detalle').textContent = t.baseCorta > 0
+                ? `La base quedó corta en ${fmt(t.baseCorta)}: salió más efectivo del que entró por ventas. Se repone con las próximas ventas en efectivo.`
+                : `Cajón ${fmt(t.efectivoEsperado)} − base ${fmt(caja.cajaMenor)}, que queda para el próximo turno`;
+            $('cc-s-entregar-detalle').classList.toggle('font-semibold', t.baseCorta > 0);
+        }
+        if (kEntregar) kEntregar.textContent = fmt(t.totalAEntregar);
+    };
+
+    // Desglose del panel de egresos. Sale a función propia porque también hay que
+    // repintarlo al registrar un egreso olvidado: si solo se actualizaba el total, el
+    // desglose de abajo seguía contando la plata vieja.
+    const pintarDesgloseEgresos = () => {
+        if (!dataSistema) return;
+        const { totales: t, txEgresos } = dataSistema;
+
+        // Gastos y traslados, por separado. El total combinado sigue en el renglón
+        // porque es contra ese número que el operador escribe su conteo; acá se abre en
+        // sus dos partes, que significan cosas distintas.
+        const totalesEgr = $('cc-egresos-totales');
+        if (totalesEgr && txEgresos && txEgresos.length) {
+            const traslados = txEgresos
+                .filter(e => e.tipo === 'Traslado')
+                .reduce((a, e) => a + e.valor, 0);
+            // Por resta y no filtrando: así los dos números siempre suman el total que
+            // muestra el renglón, aunque algún registro viejo traiga un tipo raro.
+            $('cc-total-gastos').textContent    = fmt(t.egresos - traslados);
+            $('cc-total-traslados').textContent = fmt(traslados);
+            totalesEgr.classList.remove('hidden');
+        }
+
+        // Lo que salió del cajón y todavía nadie aceptó. Va como número y no solo como
+        // marcas en las filas: con la lista plegada —que es como está casi siempre— las
+        // marcas no se ven, y este es justo el dato que el operador necesita antes de
+        // firmar el cuadre.
+        const avisoPend = $('cc-egresos-pendiente');
+        if (avisoPend && txEgresos) {
+            const pendientes = txEgresos.filter(e => e.estadoTraslado === 'En Transito');
+            const montoPend  = pendientes.reduce((a, e) => a + e.valor, 0);
+            if (pendientes.length) {
+                avisoPend.innerHTML = `<i class="fi fi-rr-hourglass-end mt-px"></i><span>${
+                    pendientes.length === 1
+                        ? `Un traslado de <b>${fmt(montoPend)}</b> todavía no fue aceptado`
+                        : `${pendientes.length} traslados por <b>${fmt(montoPend)}</b> todavía no fueron aceptados`
+                }. Si el administrador rechaza o recibe menos, la diferencia vuelve a tu cuadre.</span>`;
+                avisoPend.classList.remove('hidden');
+            } else {
+                avisoPend.classList.add('hidden');
+            }
+        }
+
+        // El desglose deja claro cuánto de los egresos salió del cajón y cuánto no.
+        const desglose = $('cc-egresos-desglose');
+        if (desglose && t.egresos > 0) {
+            desglose.textContent = t.egresosElectronicos > 0
+                ? `Del cajón salieron ${fmt(t.egresosEfectivo)}; ${fmt(t.egresosElectronicos)} se pagaron por transferencia y no afectan el efectivo.`
+                : `Todos los egresos salieron del cajón.`;
+            desglose.classList.remove('hidden');
+        }
+    };
+
+    // ── Fila de egreso ──────────────────────────────────────────────────────
+    const FILA_SIN_EGRESOS = '<tr><td colspan="4" class="py-2 px-2 text-xs text-slate-400 text-center">Sin egresos</td></tr>';
+
+    const buildRowEgreso = (e) => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-slate-100';
+        // El distintivo va junto a la referencia y no en una columna propia: el panel es
+        // angosto y una quinta columna aprieta las cuatro que ya están. Es el mismo chip
+        // del listado de egresos, así el operador no aprende dos vocabularios para la
+        // misma distinción.
+        const chipTipo = e.tipo === 'Traslado'
+            ? '<span class="egr-tipo egr-tipo--traslado">Traslado</span>'
+            : '<span class="egr-tipo egr-tipo--egreso">Egreso</span>';
+
+        // Traslado despachado que nadie aceptó todavía. Es lo único de esta tabla que el
+        // operador no puede dar por cerrado: esa plata ya salió del cajón, pero el
+        // administrador todavía puede rechazarla o recibirla incompleta, y si eso pasa el
+        // faltante vuelve a este turno. Se avisa ANTES de que firme el cuadre, no después.
+        const chipPendiente = e.estadoTraslado === 'En Transito'
+            ? '<span class="egr-pendiente" title="Ya salió del cajón, pero el administrador todavía no lo acepta. Si lo rechaza o recibe menos, la diferencia vuelve a tu cuadre."><i class="fi fi-rr-hourglass-end"></i>Sin aceptar</span>'
+            : '';
+
+        tr.innerHTML = `
+            <td class="py-1.5 px-2 text-xs">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <a href="/store/storebehivors/expenses/${e.idEgreso}/pdf" target="_blank"
+                       class="text-pink-500 underline hover:text-pink-700 font-medium">${e.referencia}</a>
+                    ${chipTipo}
+                    ${chipPendiente}
+                </div>
+            </td>
+            <td class="py-1.5 px-2 text-slate-500 text-xs">${e.descripcion}</td>
+            <td class="py-1.5 px-2 text-center">${etiquetaMedio(e)}</td>
+            <td class="py-1.5 px-2 text-right font-mono text-xs font-semibold text-rose-600">${fmt(e.valor)}</td>`;
+        return tr;
+    };
+
+    // ── MODO DE TRABAJO ──────────────────────────────────────────────────────
+    //
+    // Entrar a esta pantalla no significa lo mismo que ir a cerrar la caja. El operador
+    // puede venir solo a mirar cómo va el turno, y ahí bloquear el POS de toda la tienda
+    // sería absurdo. Por eso se pregunta primero.
+    //
+    // Si viene a cerrar de verdad, la caja pasa a 'auditoria' y el POS deja de facturar:
+    // sin eso, una venta que entra mientras cuenta queda en los totales del cierre pero
+    // no en lo que él contó, y el descuadre se le anota a él aunque la plata esté ahí.
+    const CSRF = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    const post = (url) => fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF() }
+    }).then(r => r.json()).catch(() => ({ success: false }));
+
+    const cristalHTML = (titulo, texto, accion) => `
+        <div class="bloqueo-cristal">
+            <img src="/img/avatars/seguro.webp" alt="" class="bloqueo-icono">
+            <p class="bloqueo-titulo">${titulo}</p>
+            <p class="bloqueo-texto">${texto}</p>
+            ${accion ? `<button type="button" id="cc-btn-desbloquear" class="bloqueo-accion">${accion}</button>` : ''}
+        </div>`;
+
+    const bloquearConteo = () => {
+        const tarjeta = $('cc-tarjeta-operador');
+        if (!tarjeta || tarjeta.querySelector('.bloqueo-cristal')) return;
+        tarjeta.insertAdjacentHTML('beforeend', cristalHTML(
+            'Solo estás revisando',
+            'Entraste a mirar cómo va el turno, así que el conteo está bloqueado y la tienda sigue vendiendo. Para cerrar la caja hay que pausar las ventas.',
+            'Cuadrar caja ahora'
+        ));
+        $('cc-btn-desbloquear')?.addEventListener('click', async () => {
+            const d = await post('/store/storebehivors/caja/cuadre/iniciar');
+            if (!d.success) {
+                return Swal.fire({ icon: 'error', title: 'No se pudo iniciar el cuadre',
+                    text: d.mensaje || 'Intentá de nuevo.', confirmButtonColor: '#EC5FA3' });
+            }
+            tarjeta.querySelector('.bloqueo-cristal')?.remove();
+            soltarAlSalir();
+            // Los totales pudieron moverse mientras miraba: se recargan antes de contar.
+            cargarDatos();
+        });
+    };
+
+    // Al cerrar la pestaña sin terminar, la caja vuelve a 'abierto' sola. Sin esto, un
+    // operador que se va deja a toda la tienda sin poder facturar.
+    //
+    // Ese aviso es la vía rápida, no la garantía: si el equipo se apaga o se cae la red
+    // nunca sale. Por eso además se manda un latido mientras esta pantalla vive, y el
+    // servidor caduca el candado cuando el latido se detiene.
+    const LATIDO_MS = 5 * 60 * 1000;   // holgado frente a los 30 min de expiración
+    let latido = null;
+
+    const soltarAlSalir = () => {
+        if (!latido) {
+            latido = setInterval(() => {
+                // `iniciar` sobre una caja que ya está en cuadre solo corre la marca hacia
+                // adelante: no hace falta un endpoint aparte para decir "sigo acá".
+                //
+                // Con la pestaña en segundo plano el navegador estira los timers, así que
+                // el latido puede llegar tarde. Cinco minutos contra treinta deja margen
+                // de sobra incluso así.
+                post('/store/storebehivors/caja/cuadre/iniciar').catch(() => {});
+            }, LATIDO_MS);
+        }
+
+        window.addEventListener('pagehide', () => {
+            clearInterval(latido);
+            const url = '/store/storebehivors/caja/cuadre/liberar';
+            // sendBeacon sobrevive a la descarga de la página; un fetch normal se cancela.
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(url, new Blob([JSON.stringify({ _csrf: CSRF() })],
+                    { type: 'application/json' }));
+            }
+        }, { once: true });
+    };
+
+    const preguntarModo = async () => {
+        const { isConfirmed, isDenied } = await Swal.fire({
+            imageUrl: '/img/avatars/seguro.webp',
+            imageWidth: 96,
+            title: '¿Qué vas a hacer?',
+            html: `<p class="text-sm text-slate-600">Cerrar la caja <b>pausa las ventas</b> de toda la tienda mientras contás el cajón. Si solo venís a mirar, no hace falta.</p>`,
+            showConfirmButton: true,
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Cuadrar caja finalmente',
+            denyButtonText: 'Solo revisar',
+            cancelButtonText: 'Volver',
+            confirmButtonColor: '#047857',
+            denyButtonColor: '#6366F1',
+            cancelButtonColor: '#94A3B8',
+            reverseButtons: true,
+            allowOutsideClick: false,
+            allowEscapeKey: false
+        });
+
+        if (isConfirmed) {
+            const d = await post('/store/storebehivors/caja/cuadre/iniciar');
+            if (!d.success) {
+                await Swal.fire({ icon: 'error', title: 'No se pudo iniciar el cuadre',
+                    text: d.mensaje || 'Intentá de nuevo.', confirmButtonColor: '#EC5FA3' });
+                return bloquearConteo();
+            }
+            soltarAlSalir();
+            return;
+        }
+
+        if (isDenied) return bloquearConteo();
+
+        // "Volver": no se tocó nada, así que la tienda sigue vendiendo.
+        window.location.href = '/store/';
+    };
+
     // ── Cargar datos del sistema ──────────────────────────────────────────────
     const cargarDatos = async () => {
         try {
@@ -113,54 +391,20 @@
             $('cc-apertura-info').textContent =
                 `Abierta por: ${d.caja.empleadoApertura} • Base: ${fmt(d.caja.cajaMenor)}`;
 
-            // Sistema
-            sVentas.textContent   = fmt(d.totales.ventas);
-            sBase.textContent     = fmt(d.caja.cajaMenor);
-            sEgresos.textContent  = `-${fmt(d.totales.egresos)}`;
-            sEfectivo.textContent = fmt(d.totales.efectivo);
-            sMedios.textContent   = fmt(d.totales.mediosElectronicos);
-            sCredito.textContent  = fmt(d.totales.credito);
+            pintarTotales();
 
             // Default operador
             oBase.value = Math.round(d.caja.cajaMenor).toLocaleString('es-CO');
 
-            // Efectivo que debería estar en el cajón. Antes esta cuenta la hacía el
-            // vendedor de cabeza; ahora sale del backend con el mismo criterio.
-            const elEsp = $('cc-s-esperado');
-            if (elEsp) {
-                elEsp.textContent = fmt(d.totales.efectivoEsperado);
-                $('cc-s-esperado-detalle').textContent =
-                    `Base ${fmt(d.caja.cajaMenor)} + ventas en efectivo ${fmt(d.totales.efectivo)} − egresos en efectivo ${fmt(d.totales.egresosEfectivo)}`;
-            }
-
             // Acordeón — egresos
             const tbodyE = $('cc-tbody-egresos');
             if (!d.txEgresos || d.txEgresos.length === 0) {
-                tbodyE.innerHTML = '<tr><td colspan="4" class="py-2 px-2 text-xs text-slate-400 text-center">Sin egresos</td></tr>';
+                tbodyE.innerHTML = FILA_SIN_EGRESOS;
             } else {
-                d.txEgresos.forEach(e => {
-                    const tr = document.createElement('tr');
-                    tr.className = 'border-b border-slate-100';
-                    tr.innerHTML = `
-                        <td class="py-1.5 px-2 text-xs">
-                            <a href="/store/storebehivors/expenses/${e.idEgreso}/pdf" target="_blank"
-                               class="text-pink-500 underline hover:text-pink-700 font-medium">${e.referencia}</a>
-                        </td>
-                        <td class="py-1.5 px-2 text-slate-500 text-xs">${e.descripcion}</td>
-                        <td class="py-1.5 px-2 text-center">${etiquetaMedio(e)}</td>
-                        <td class="py-1.5 px-2 text-right font-mono text-xs font-semibold text-rose-600">${fmt(e.valor)}</td>`;
-                    tbodyE.appendChild(tr);
-                });
+                d.txEgresos.forEach(e => tbodyE.appendChild(buildRowEgreso(e)));
             }
 
-            // El desglose deja claro cuánto de los egresos salió del cajón y cuánto no.
-            const desglose = $('cc-egresos-desglose');
-            if (desglose && d.totales.egresos > 0) {
-                desglose.textContent = d.totales.egresosElectronicos > 0
-                    ? `Del cajón salieron ${fmt(d.totales.egresosEfectivo)}; ${fmt(d.totales.egresosElectronicos)} se pagaron por transferencia y no afectan el efectivo.`
-                    : `Todos los egresos salieron del cajón.`;
-                desglose.classList.remove('hidden');
-            }
+            pintarDesgloseEgresos();
 
             // Acordeón — efectivo
             const tbodyEf = $('cc-tbody-efectivo');
@@ -206,15 +450,40 @@
             { inp: oCredito,  sys: dataSistema.totales.credito },
         ];
         let hayDescuadre = false;
+        // Suma con signo, no de valores absolutos: si al operador le sobran $5.000 en el
+        // cajón y le faltan $5.000 en electrónicos, lo que hay es un pago mal clasificado,
+        // no un faltante de $10.000. El conteo de conceptos aparte dice cuántas casillas
+        // hay que revisar.
+        let saldoDif = 0;
+        let conDif   = 0;
         for (const { inp, sys } of pares) {
             const val    = parse(inp.value);
             const vacio  = inp.value.trim() === '';
             const diff   = !vacio && Math.abs(val - sys) > 0.5;
-            if (diff) hayDescuadre = true;
+            if (diff) { hayDescuadre = true; conDif++; saldoDif += val - sys; }
             inp.classList.remove(...ALERT_CLASS.split(' '), ...NORMAL_CLASS.split(' '));
             inp.classList.add(...(diff ? ALERT_CLASS : NORMAL_CLASS).split(' '));
         }
+        pintarDiferencia(saldoDif, conDif);
         toggleDescuadre(hayDescuadre);
+    };
+
+    // Tarjeta "Diferencia". El signo importa y se escribe explícito: "+" es plata de más
+    // en el conteo del operador, "−" es faltante. Sin el signo el operador no sabe si
+    // tiene que buscar dinero o explicar un sobrante.
+    const pintarDiferencia = (saldo, conceptos) => {
+        if (!kDiferencia) return;
+        const redondeado = Math.round(saldo);
+        const signo = redondeado > 0 ? '+' : redondeado < 0 ? '−' : '';
+        kDiferencia.textContent = signo + fmt(Math.abs(redondeado));
+        if (kDifDetalle) {
+            kDifDetalle.textContent = conceptos === 0
+                ? 'Sin diferencias'
+                : conceptos === 1
+                    ? '1 concepto con diferencia'
+                    : `${conceptos} conceptos con diferencia`;
+        }
+        kCardDif?.classList.toggle('is-descuadre', conceptos > 0);
     };
 
     // ── Checkbox de responsabilidad por descuadre ─────────────────────────────
@@ -489,24 +758,42 @@
 
         if (!isConfirmed || !resultado) return;
 
-        // Actualizar totales en caliente
-        dataSistema.totales.egresos = (dataSistema.totales.egresos || 0) + resultado.valor;
-        sEgresos.textContent = `-${fmt(dataSistema.totales.egresos)}`;
+        // Actualizar totales en caliente. El modal no manda `metodoPago`, así que el
+        // backend lo registra como efectivo: sale del cajón y baja el efectivo esperado
+        // y el total a entregar. Sin esto las tarjetas de arriba seguían mostrando la
+        // plata que ya no está.
+        const t = dataSistema.totales;
+        t.egresos          = (t.egresos || 0) + resultado.valor;
+        t.egresosEfectivo  = (t.egresosEfectivo || 0) + resultado.valor;
+        t.efectivoEsperado = (t.efectivoEsperado || 0) - resultado.valor;
+        // El egreso recién registrado puede llevar el neto por debajo de cero: ahí no se
+        // entrega nada y el faltante pasa a la base, igual que en el cálculo del servidor.
+        const netoTrasEgreso = (t.totalAEntregar || 0) - (t.baseCorta || 0) - resultado.valor;
+        t.totalAEntregar   = Math.max(0, netoTrasEgreso);
+        t.baseCorta        = Math.max(0, -netoTrasEgreso);
 
-        // Agregar fila al acordeón (quita el placeholder "Sin egresos" si existe)
+        const nuevoEgreso = {
+            idEgreso:    resultado.idEgreso,
+            referencia:  resultado.referencia || `EG-${resultado.idEgreso}`,
+            descripcion: resultado.descripcion || '—',
+            valor:       resultado.valor,
+            tipo:        'Egreso',
+            metodoPago:  'Efectivo',
+            entidad:     null
+        };
+        dataSistema.txEgresos = [nuevoEgreso, ...(dataSistema.txEgresos || [])];
+
+        pintarTotales();
+        pintarDesgloseEgresos();
+
+        // Agregar la fila al panel (quita el "Sin egresos" si estaba) y dejarlo abierto:
+        // el operador acaba de registrar algo y tiene que poder verificarlo.
         const tbodyE = $('cc-tbody-egresos');
-        const placeholder = tbodyE.querySelector('td[colspan="3"]');
+        const placeholder = tbodyE.querySelector('td[colspan]');
         if (placeholder) placeholder.closest('tr').remove();
-        const tr = document.createElement('tr');
-        tr.className = 'border-b border-slate-100';
-        tr.innerHTML = `
-            <td class="py-1.5 px-2 text-xs">
-                <a href="/store/storebehivors/expenses/${resultado.idEgreso}/pdf" target="_blank"
-                   class="text-pink-500 underline hover:text-pink-700 font-medium">${resultado.referencia || `EG-${resultado.idEgreso}`}</a>
-            </td>
-            <td class="py-1.5 px-2 text-slate-500 text-xs">${resultado.descripcion || '—'}</td>
-            <td class="py-1.5 px-2 text-right font-mono text-xs font-semibold text-rose-600">${fmt(resultado.valor)}</td>`;
-        tbodyE.insertBefore(tr, tbodyE.firstChild);
+        tbodyE.insertBefore(buildRowEgreso(nuevoEgreso), tbodyE.firstChild);
+        setAcordeon('cc-acordeon-egresos', 'cc-icon-egresos', true);
+        $('cc-toggle-egresos')?.setAttribute('aria-expanded', 'true');
 
         comparar();
 
@@ -526,5 +813,10 @@
     });
 
     // ── Init ──────────────────────────────────────────────────────────────────
-    document.addEventListener('DOMContentLoaded', cargarDatos);
+    document.addEventListener('DOMContentLoaded', () => {
+        // Los datos se cargan primero: la pregunta se responde mejor viendo la pantalla
+        // detrás, y si elige "solo revisar" ya están los totales a la vista.
+        cargarDatos();
+        preguntarModo();
+    });
 })();

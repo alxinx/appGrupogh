@@ -9,223 +9,324 @@ block contenedor
 
             main(class="flex-1 p-4 pb-10")
 
-                //- HEADER
-                div(class="flex items-center gap-4 mb-6 bg-white/70 backdrop-blur-md rounded-2xl p-5 shadow-sm")
-                    div(class="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md shadow-pink-200" style="background:linear-gradient(135deg,#EC5FA3,#d44a8a)")
-                        i(class="fi fi-rr-calculator text-white text-2xl")
+                //- ══ HEADER ═════════════════════════════════════════════════
+                //- Mismo molde que Pedidos Web, Egresos y Traslados: plato redondo con
+                //- degradado y sombra interior + avatar. El ícono de fuente que había acá
+                //- era el único de la tienda que no seguía ese patrón.
+                div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 mb-5 flex items-center gap-5 shadow-sm border border-white/60")
+                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                        img(src="/img/avatars/cajaRegistradora.webp" alt="Cuadre de caja" class="w-17 h-17 object-contain")
                     div
-                        h1(class="text-xl font-bold text-slate-800") Cuadre de Caja
-                        p#cc-apertura-info(class="text-xs text-slate-400 mt-0.5") Cargando datos...
+                        h1(class="text-2xl font-bold text-slate-800") Cuadre de Caja
+                        p#cc-apertura-info(class="text-sm text-slate-400 mt-0.5") Cargando datos...
 
-                //- DOS COLUMNAS
-                div(class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5")
+                //- ══ CIFRAS DEL TURNO ═══════════════════════════════════════
+                //- Las cinco cifras con las que se decide el cierre, arriba y de un vistazo.
+                //- Antes vivían mezcladas entre las filas del detalle, así que había que
+                //- leer la lista entera para saber cuánta plata hay que entregar.
+                div(class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-5")
 
-                    //- ── COLUMNA IZQUIERDA: Valores del Sistema ──────────────
-                    div(class="bg-white/80 backdrop-blur-md rounded-2xl p-5 shadow-sm space-y-3")
-                        div(class="flex items-center gap-2 mb-4")
-                            i(class="fi fi-rr-screen text-pink-500 text-base")
-                            h2(class="font-bold text-slate-700 text-sm uppercase tracking-wide") Valores del Sistema
+                    div(class="cc-kpi cc-kpi--azul")
+                        div(class="cc-kpi-plato")
+                            i(class="fi fi-rr-chart-line-up")
+                        div(class="min-w-0")
+                            p(class="cc-kpi-label") Total de ventas
+                            p#cc-s-ventas(class="cc-kpi-valor") —
+                            p(class="cc-kpi-nota") Facturado hoy en todos los medios
 
-                        //- Total ventas
-                        div(class="rounded-xl p-4 border-l-4 border-blue-400" style="background:#F0F4FF")
-                            p(class="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1") Total de Ventas
-                            p#cc-s-ventas(class="text-2xl font-bold text-slate-800") —
+                    div(class="cc-kpi cc-kpi--verde")
+                        div(class="cc-kpi-plato")
+                            i(class="fi fi-rr-money-bill-wave")
+                        div(class="min-w-0")
+                            p(class="cc-kpi-label") Efectivo esperado
+                            p(class="cc-kpi-valor")
+                                span#cc-s-esperado —
+                                i(class="fi fi-rr-info cc-info ml-1 align-middle" title="Lo que debe haber físicamente en el cajón: base + ventas en efectivo − egresos que salieron del cajón.")
+                            p#cc-s-esperado-detalle(class="cc-kpi-nota") —
 
-                        //- Efectivo que debería estar físicamente en el cajón:
-                        //- base + ventas en efectivo − egresos pagados en efectivo.
-                        div(class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mt-3")
-                            p(class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1") Efectivo que debe haber en el cajón
-                            p#cc-s-esperado(class="text-2xl font-bold text-emerald-800") —
-                            p#cc-s-esperado-detalle(class="text-[10px] text-emerald-600 mt-0.5") —
-                            i(class="fi fi-rr-chart-line-up text-blue-300 text-lg float-right -mt-8")
+                    div(class="cc-kpi cc-kpi--ambar")
+                        div(class="cc-kpi-plato")
+                            i(class="fi fi-rr-wallet")
+                        div(class="min-w-0")
+                            p(class="cc-kpi-label") Total a entregar
+                            p#cc-k-entregar(class="cc-kpi-valor") —
+                            p(class="cc-kpi-nota") Lo del cajón sin la base del próximo turno
 
-                        //- BASE
-                        div(class="flex justify-between items-center px-4 py-3 rounded-xl bg-slate-50 border border-slate-200")
-                            span(class="text-sm text-slate-600") Base (Caja Menor)
-                            span#cc-s-base(class="font-semibold text-slate-800") —
+                    div(class="cc-kpi cc-kpi--rosa")
+                        div(class="cc-kpi-plato")
+                            i(class="fi fi-rr-arrow-small-down")
+                        div(class="min-w-0")
+                            p(class="cc-kpi-label") Total egresos y traslados
+                            p#cc-k-egresos(class="cc-kpi-valor") —
+                            //- Lleva al mismo acordeón del detalle en vez de repetir la lista:
+                            //- un solo lugar donde se leen los movimientos.
+                            button#cc-k-ver-egresos(type="button" class="cc-kpi-link") Ver detalle
 
-                        //- Egresos (acordeón)
-                        div(class="rounded-xl border border-slate-200 overflow-hidden")
-                            button#cc-toggle-egresos(
-                                type="button"
-                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
-                            )
-                                div(class="flex items-center gap-2")
-                                    span(class="text-sm text-slate-600") Total Egresos
-                                    span#cc-btn-nuevo-egreso(
-                                        class="text-xs text-pink-500 hover:text-pink-700 underline font-medium leading-none cursor-pointer"
-                                    ) [+ Registrar egreso olvidado]
-                                div(class="flex items-center gap-2")
-                                    span#cc-s-egresos(class="font-semibold text-rose-600") —
-                                    i#cc-icon-egresos(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
-                            div#cc-acordeon-egresos(class="hidden px-2 pb-2")
-                                table(class="w-full text-xs mt-1")
-                                    thead
-                                        tr(class="border-b border-slate-200")
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Referencia
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Descripción
-                                            th(class="py-1 px-2 text-center text-slate-500 font-semibold") Salió de
-                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
-                                    tbody#cc-tbody-egresos
-                                //- Solo los egresos en efectivo mueven el cajón.
-                                p#cc-egresos-desglose(class="hidden text-[10px] text-slate-400 px-2 pt-1")
+                    div(class="cc-kpi cc-kpi--violeta")
+                        div(class="cc-kpi-plato")
+                            i(class="fi fi-rr-scale-comparison")
+                        div(class="min-w-0")
+                            p(class="cc-kpi-label") Diferencia
+                            p#cc-k-diferencia(class="cc-kpi-valor") $0
+                            p#cc-k-diferencia-detalle(class="cc-kpi-nota") Sin diferencias
 
-                        //- Ventas en Efectivo (acordeón)
-                        div(class="rounded-xl border border-slate-200 overflow-hidden")
-                            button#cc-toggle-efectivo(
-                                type="button"
-                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
-                            )
-                                span(class="text-sm text-slate-600") Ventas en Efectivo
-                                div(class="flex items-center gap-2")
-                                    span#cc-s-efectivo(class="font-semibold text-slate-800") —
-                                    i#cc-icon-efectivo(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
-                            div#cc-acordeon-efectivo(class="hidden px-2 pb-2")
-                                table(class="w-full text-xs mt-1")
-                                    thead
-                                        tr(class="border-b border-slate-200")
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Nro Factura
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Entidad
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Ref.
-                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
-                                    tbody#cc-tbody-efectivo
+                //- ══ DOS COLUMNAS ═══════════════════════════════════════════
+                div(class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start")
 
-                        //- Medios Electrónicos (acordeón)
-                        div(class="rounded-xl border border-slate-200 overflow-hidden")
-                            button#cc-toggle-medios(
-                                type="button"
-                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
-                            )
-                                span(class="text-sm text-slate-600") Medios Electrónicos
-                                div(class="flex items-center gap-2")
-                                    span#cc-s-medios(class="font-semibold text-slate-800") —
-                                    i#cc-icon-medios(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
-                            div#cc-acordeon-medios(class="hidden px-2 pb-2")
-                                table(class="w-full text-xs mt-1")
-                                    thead
-                                        tr(class="border-b border-slate-200")
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Nro Factura
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Entidad
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Ref.
-                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
-                                    tbody#cc-tbody-medios
+                    //- ── IZQUIERDA · RESUMEN DEL SISTEMA ─────────────────────
+                    //- Cada renglón con chevron abre la lista de movimientos que compone
+                    //- esa cifra. El renglón entero es el botón: apuntarle a una flechita
+                    //- de 12px con el dedo en el mostrador no funciona.
+                    div(class="bg-white/80 backdrop-blur-md rounded-2xl p-5 shadow-sm border border-white/60")
+                        div(class="mb-4")
+                            h2(class="text-lg font-bold text-slate-800") Resumen del sistema
+                            p(class="text-xs text-slate-400 mt-0.5") Calculado por el sistema — no se puede editar
 
-                        //- Ventas a Crédito (acordeón)
-                        div(class="rounded-xl border border-slate-200 overflow-hidden")
-                            button#cc-toggle-credito(
-                                type="button"
-                                class="w-full flex justify-between items-center px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
-                            )
-                                span(class="text-sm text-slate-600") Ventas a Crédito
-                                div(class="flex items-center gap-2")
-                                    span#cc-s-credito(class="font-semibold text-slate-800") —
-                                    i#cc-icon-credito(class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
-                            div#cc-acordeon-credito(class="hidden px-2 pb-2")
-                                table(class="w-full text-xs mt-1")
-                                    thead
-                                        tr(class="border-b border-slate-200")
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Nro Factura
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Entidad
-                                            th(class="py-1 px-2 text-left text-slate-500 font-semibold") Ref.
-                                            th(class="py-1 px-2 text-right text-slate-500 font-semibold") Valor
-                                    tbody#cc-tbody-credito
+                        div(class="space-y-2.5")
 
-                        div(class="mt-2 flex items-start gap-2 px-4 py-3 rounded-xl bg-pink-50 border border-pink-100 text-xs text-pink-500")
+                            //- BASE
+                            div(class="cc-item")
+                                div(class="cc-fila")
+                                    div(class="cc-plato cc-plato--violeta")
+                                        i(class="fi fi-rr-money-bill-wave-alt")
+                                    span(class="cc-label") Base (Caja menor)
+                                    i(class="fi fi-rr-info cc-info" title="El efectivo con el que se abrió el turno. Se queda en el cajón para dar cambio en el siguiente.")
+                                    span#cc-s-base(class="cc-valor") —
+
+                            //- VENTAS EN EFECTIVO (acordeón)
+                            div(class="cc-item")
+                                button#cc-toggle-efectivo(type="button" class="cc-fila")
+                                    div(class="cc-plato cc-plato--verde")
+                                        i(class="fi fi-rr-inbox-out")
+                                    span(class="cc-label") Ventas en efectivo
+                                    i(class="fi fi-rr-info cc-info" title="Lo que entró al cajón por facturas pagadas en efectivo.")
+                                    span#cc-s-efectivo(class="cc-valor") —
+                                    i#cc-icon-efectivo(class="fi fi-rr-angle-small-down cc-chevron")
+                                div#cc-acordeon-efectivo(class="cc-panel hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="cc-tabla")
+                                            thead
+                                                tr
+                                                    th Nro Factura
+                                                    th Entidad
+                                                    th Ref.
+                                                    th(class="text-right") Valor
+                                            tbody#cc-tbody-efectivo
+
+                            //- EGRESOS (acordeón)
+                            div(class="cc-item")
+                                button#cc-toggle-egresos(type="button" class="cc-fila")
+                                    div(class="cc-plato cc-plato--rosa")
+                                        i(class="fi fi-rr-inbox-in")
+                                    span(class="cc-label") Total egresos y traslados
+                                    i(class="fi fi-rr-info cc-info" title="Gastos y traslados de efectivo del turno. Solo los que salieron del cajón mueven el efectivo.")
+                                    //- Registrar un egreso olvidado es la única acción de esta
+                                    //- columna: va acá, pegada a la cifra que corrige.
+                                    span#cc-btn-nuevo-egreso(class="cc-accion") + Registrar egreso olvidado
+                                    span#cc-s-egresos(class="cc-valor cc-valor--rosa") —
+                                    i#cc-icon-egresos(class="fi fi-rr-angle-small-down cc-chevron")
+                                div#cc-acordeon-egresos(class="cc-panel hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="cc-tabla")
+                                            thead
+                                                tr
+                                                    th Referencia
+                                                    th Descripción
+                                                    th(class="text-center") Salió de
+                                                    th(class="text-right") Valor
+                                            tbody#cc-tbody-egresos
+
+                                    //- Los dos conceptos totalizados por separado. Sumarlos en
+                                    //- una sola cifra hace parecer que el negocio gastó plata
+                                    //- que en realidad solo se mudó de cuenta, y esa lectura es
+                                    //- la que infla los egresos de un cierre. El total combinado
+                                    //- sigue en el renglón, porque es contra ese número que el
+                                    //- operador escribe su conteo.
+                                    div#cc-egresos-totales(class="hidden mt-2 pt-2 border-t border-slate-200 space-y-1")
+                                        div(class="flex justify-between items-baseline")
+                                            span(class="text-[11px] text-slate-500") Egresos
+                                            span#cc-total-gastos(class="text-xs font-semibold text-rose-700 font-mono") —
+                                        div(class="flex justify-between items-baseline")
+                                            span(class="text-[11px] text-slate-500") Traslados de efectivo
+                                            span#cc-total-traslados(class="text-xs font-semibold text-amber-700 font-mono") —
+
+                                    //- Cuánto de lo que salió del cajón todavía nadie aceptó. Es el
+                                    //- número que el operador necesita antes de firmar: si el
+                                    //- administrador rechaza o recibe menos, esa diferencia vuelve a
+                                    //- este turno. Solo aparece cuando hay algo pendiente.
+                                    p#cc-egresos-pendiente(class="hidden text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-2 flex items-start gap-1.5")
+
+                                    //- Solo los egresos en efectivo mueven el cajón.
+                                    p#cc-egresos-desglose(class="hidden text-[10px] text-slate-400 pt-1")
+
+                            //- MEDIOS ELECTRÓNICOS (acordeón)
+                            div(class="cc-item")
+                                button#cc-toggle-medios(type="button" class="cc-fila")
+                                    div(class="cc-plato cc-plato--azul")
+                                        i(class="fi fi-rr-credit-card")
+                                    span(class="cc-label") Medios electrónicos
+                                    i(class="fi fi-rr-info cc-info" title="Tarjetas, transferencias y QR. La plata entró a la cuenta del negocio, no al cajón.")
+                                    span#cc-s-medios(class="cc-valor") —
+                                    i#cc-icon-medios(class="fi fi-rr-angle-small-down cc-chevron")
+                                div#cc-acordeon-medios(class="cc-panel hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="cc-tabla")
+                                            thead
+                                                tr
+                                                    th Nro Factura
+                                                    th Entidad
+                                                    th Ref.
+                                                    th(class="text-right") Valor
+                                            tbody#cc-tbody-medios
+
+                            //- VENTAS A CRÉDITO (acordeón)
+                            div(class="cc-item")
+                                button#cc-toggle-credito(type="button" class="cc-fila")
+                                    div(class="cc-plato cc-plato--lila")
+                                        i(class="fi fi-rr-time-past")
+                                    span(class="cc-label") Ventas a crédito
+                                    i(class="fi fi-rr-info cc-info" title="Facturas que quedaron por cobrar. Hoy no entró plata por ellas.")
+                                    span#cc-s-credito(class="cc-valor") —
+                                    i#cc-icon-credito(class="fi fi-rr-angle-small-down cc-chevron")
+                                div#cc-acordeon-credito(class="cc-panel hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="cc-tabla")
+                                            thead
+                                                tr
+                                                    th Nro Factura
+                                                    th Entidad
+                                                    th Ref.
+                                                    th(class="text-right") Valor
+                                            tbody#cc-tbody-credito
+
+                            //- TOTAL A ENTREGAR — cierre de la columna
+                            //- Es la conclusión de todo lo de arriba: el renglón se destaca
+                            //- porque es el único número que el operador se lleva en la mano.
+                            div(class="cc-item cc-item--destacado")
+                                div(class="cc-fila")
+                                    div(class="cc-plato cc-plato--ambar")
+                                        i(class="fi fi-rr-sack-dollar")
+                                    div(class="min-w-0")
+                                        p(class="text-base font-bold text-slate-800") Total a entregar
+                                        p#cc-s-entregar-detalle(class="text-[11px] text-amber-700/80 mt-0.5") —
+                                    span#cc-s-entregar(class="cc-valor cc-valor--grande") —
+
+                        div(class="mt-4 flex items-start gap-2 px-4 py-3 rounded-xl bg-pink-50 border border-pink-100 text-xs text-pink-500")
                             i(class="fi fi-rr-info mt-0.5 flex-shrink-0")
                             span Los valores del sistema son automáticos y no pueden ser editados. Corresponden a los registros digitales del día.
 
-                    //- ── COLUMNA DERECHA: Conteo del Operador ────────────────
-                    div(class="bg-white/80 backdrop-blur-md rounded-2xl p-5 shadow-sm space-y-4")
-                        div(class="flex items-center gap-2 mb-4")
-                            i(class="fi fi-rr-user-pen text-pink-500 text-base")
-                            h2(class="font-bold text-slate-700 text-sm uppercase tracking-wide") Conteo del Operador
+                    //- ── DERECHA · CONTEO DEL OPERADOR ───────────────────────
+                    //- Mismo orden de conceptos que la columna izquierda, renglón por
+                    //- renglón: así se compara mirando de lado, sin buscar dónde quedó
+                    //- cada campo.
+                    //- `bloqueo-anfitrion` da el `position: relative` que el cristal necesita
+                    //- para cubrir exactamente esta tarjeta. El cristal se inyecta desde
+                    //- storeCuadrarCaja.js cuando el operador elige "solo revisar".
+                    div#cc-tarjeta-operador(class="bloqueo-anfitrion bg-white/80 backdrop-blur-md rounded-2xl p-5 shadow-sm border border-white/60")
+                        div(class="flex items-start gap-3 mb-4")
+                            div(class="cc-plato cc-plato--rosa mt-0.5")
+                                i(class="fi fi-rr-user-pen")
+                            div
+                                h2(class="text-lg font-bold text-slate-800") Conteo del operador
+                                p(class="text-xs text-slate-400 mt-0.5") Ingresa el conteo real de los valores en la caja
 
-                        //- BASE operador
-                        div
-                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Base (Caja Menor)
-                            div(class="relative")
-                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
-                                input#cc-o-base(
-                                    type="text" inputmode="numeric"
-                                    placeholder="0"
-                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
-                                    data-field="base"
+                        div(class="space-y-2")
+
+                            div(class="cc-orow")
+                                div(class="cc-plato cc-plato--violeta")
+                                    i(class="fi fi-rr-money-bill-wave-alt")
+                                label(for="cc-o-base" class="cc-label") Base (Caja menor)
+                                div(class="cc-ocampo")
+                                    span(class="cc-osigno") $
+                                    input#cc-o-base(
+                                        type="text" inputmode="numeric" placeholder="0"
+                                        class="cc-input border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
+                                        data-field="base"
+                                    )
+
+                            div(class="cc-orow")
+                                div(class="cc-plato cc-plato--verde")
+                                    i(class="fi fi-rr-inbox-out")
+                                label(for="cc-o-efectivo" class="cc-label") Ventas en efectivo
+                                div(class="cc-ocampo")
+                                    span(class="cc-osigno") $
+                                    input#cc-o-efectivo(
+                                        type="text" inputmode="numeric" placeholder="0"
+                                        class="cc-input border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
+                                        data-field="efectivo"
+                                    )
+
+                            div(class="cc-orow")
+                                div(class="cc-plato cc-plato--rosa")
+                                    i(class="fi fi-rr-inbox-in")
+                                label(for="cc-o-egresos" class="cc-label") Total egresos y traslados
+                                div(class="cc-ocampo")
+                                    span(class="cc-osigno") $
+                                    input#cc-o-egresos(
+                                        type="text" inputmode="numeric" placeholder="0"
+                                        class="cc-input border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
+                                        data-field="egresos"
+                                    )
+
+                            div(class="cc-orow")
+                                div(class="cc-plato cc-plato--azul")
+                                    i(class="fi fi-rr-credit-card")
+                                label(for="cc-o-medios" class="cc-label") Medios electrónicos
+                                div(class="cc-ocampo")
+                                    span(class="cc-osigno") $
+                                    input#cc-o-medios(
+                                        type="text" inputmode="numeric" placeholder="0"
+                                        class="cc-input border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
+                                        data-field="medios"
+                                    )
+
+                            div(class="cc-orow")
+                                div(class="cc-plato cc-plato--lila")
+                                    i(class="fi fi-rr-time-past")
+                                label(for="cc-o-credito" class="cc-label") Ventas a crédito
+                                div(class="cc-ocampo")
+                                    span(class="cc-osigno") $
+                                    input#cc-o-credito(
+                                        type="text" inputmode="numeric" placeholder="0"
+                                        class="cc-input border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
+                                        data-field="credito"
+                                    )
+
+                        //- Nota — texto libre, así que el campo va debajo del rótulo y no al
+                        //- costado como los importes.
+                        div(class="cc-orow cc-orow--bloque mt-3")
+                            div(class="cc-plato cc-plato--slate")
+                                i(class="fi fi-rr-comment-alt")
+                            div(class="flex-1 min-w-0")
+                                label(for="cc-nota" class="cc-label block mb-1.5") Nota (opcional)
+                                textarea#cc-nota(
+                                    rows="2"
+                                    maxlength="255"
+                                    placeholder="Observaciones del cierre..."
+                                    class="cc-input cc-input--texto border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
                                 )
 
-                        //- Egresos operador
-                        div
-                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Total Egresos
-                            div(class="relative")
-                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
-                                input#cc-o-egresos(
-                                    type="text" inputmode="numeric"
-                                    placeholder="0"
-                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
-                                    data-field="egresos"
-                                )
-
-                        //- Efectivo operador
-                        div
-                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Ventas en Efectivo
-                            div(class="relative")
-                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
-                                input#cc-o-efectivo(
-                                    type="text" inputmode="numeric"
-                                    placeholder="0"
-                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
-                                    data-field="efectivo"
-                                )
-
-                        //- Medios electrónicos operador
-                        div
-                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Medios Electrónicos
-                            div(class="relative")
-                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
-                                input#cc-o-medios(
-                                    type="text" inputmode="numeric"
-                                    placeholder="0"
-                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
-                                    data-field="medios"
-                                )
-
-                        //- Crédito operador
-                        div
-                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Ventas a Crédito
-                            div(class="relative")
-                                span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none") $
-                                input#cc-o-credito(
-                                    type="text" inputmode="numeric"
-                                    placeholder="0"
-                                    class="cc-input w-full pl-7 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-mono focus:outline-none transition-colors"
-                                    data-field="credito"
-                                )
-
-                        //- Nota
-                        div
-                            label(class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1") Nota (opcional)
-                            textarea#cc-nota(
-                                rows="2"
-                                maxlength="255"
-                                placeholder="Observaciones del cierre..."
-                                class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all"
-                            )
-
-                        //- Código empleado
-                        div
-                            label(class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2") Código del Vendedor / Autorización
-                            div(class="relative")
-                                i(class="fi fi-rr-key absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none")
-                                input#cc-codigo-empleado(
-                                    type="password"
-                                    placeholder="• • • • • •"
-                                    maxlength="10"
-                                    autocomplete="one-time-code"
-                                    class="w-full pl-9 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm font-mono tracking-widest focus:outline-none transition-colors"
-                                )
-                            p#cc-empleado-info(class="text-xs mt-1.5 h-4")
+                        //- Código del vendedor — separador arriba: acá deja de describirse
+                        //- el turno y empieza a autorizarse el cierre.
+                        div(class="mt-4 pt-4 border-t border-slate-100")
+                            div(class="cc-orow cc-orow--bloque")
+                                div(class="cc-plato cc-plato--rosa")
+                                    i(class="fi fi-rr-shield-check")
+                                div(class="flex-1 min-w-0")
+                                    label(for="cc-codigo-empleado" class="cc-label block mb-1.5") Código del vendedor / autorización
+                                    div(class="relative")
+                                        input#cc-codigo-empleado(
+                                            type="password"
+                                            placeholder="Ingresa tu código"
+                                            maxlength="10"
+                                            autocomplete="one-time-code"
+                                            class="cc-input cc-input--clave border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
+                                        )
+                                        i(class="fi fi-rr-lock absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-sm")
+                                    p#cc-empleado-info(class="text-xs mt-1.5 h-4")
 
                         //- Aviso + botón cerrar
-                        div(class="space-y-3")
+                        div(class="space-y-3 mt-4")
                             div(class="flex items-start gap-2 px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-xs text-green-700")
                                 i(class="fi fi-rr-badge-check mt-0.5 flex-shrink-0")
                                 span Al proceder, se generará un comprobante de cierre impreso y se notificará a la administración.
@@ -247,6 +348,177 @@ block contenedor
                                 span Cerrar e imprimir cuadre de caja
 
     input#csrf-token(type="hidden" value=csrfToken)
+
+    //- Hoja de esta pantalla. Va como CSS propio y no como utilidades porque las filas
+    //- de los acordeones las arma el JavaScript: ese marcado no lo ve el escáner de
+    //- clases de Tailwind y las utilidades nuevas no llegarían a output.css. Los colores
+    //- salen de los mismos tokens del tema.
+    style.
+        /* ── Tarjetas de cifra ─────────────────────────────────────────────── */
+        .cc-kpi {
+            display: flex; align-items: flex-start; gap: 0.875rem;
+            padding: 1rem 1.125rem; border-radius: 1rem;
+            border: 1px solid transparent;
+        }
+        .cc-kpi-plato {
+            width: 2.75rem; height: 2.75rem; border-radius: 0.875rem;
+            display: grid; place-items: center; flex-shrink: 0; font-size: 1.125rem;
+        }
+        .cc-kpi-label {
+            font-size: 0.6875rem; font-weight: 800; letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+        /* Cifras proporcionales y no tabulares: la tabular le da a cada dígito el ancho
+           de un cero y a este tamaño "$100.000" se ve suelto. La tabular queda para las
+           columnas que sí se alinean entre sí. */
+        .cc-kpi-valor {
+            margin-top: 0.125rem; font-size: 1.5rem; line-height: 1.15;
+            font-weight: 800; letter-spacing: -0.02em; color: #1E293B;
+            white-space: nowrap;
+        }
+        .cc-kpi-nota { margin-top: 0.1875rem; font-size: 0.6875rem; line-height: 1.35; color: #64748B; }
+        .cc-kpi-link {
+            margin-top: 0.1875rem; font-size: 0.6875rem; font-weight: 600;
+            color: #E24C95; text-decoration: underline; text-underline-offset: 2px;
+            background: none; border: 0; padding: 0; cursor: pointer;
+        }
+        .cc-kpi-link:hover { color: #BE185D; }
+        .cc-kpi-link:focus-visible { outline: 2px solid #E24C95; outline-offset: 2px; border-radius: 4px; }
+
+        .cc-kpi--azul    { background: #EFF6FF; border-color: #DBEAFE; }
+        .cc-kpi--azul    .cc-kpi-plato { background: #DBEAFE; color: #2563EB; }
+        .cc-kpi--azul    .cc-kpi-label { color: #2563EB; }
+
+        .cc-kpi--verde   { background: #ECFDF5; border-color: #D1FAE5; }
+        .cc-kpi--verde   .cc-kpi-plato { background: #D1FAE5; color: #059669; }
+        .cc-kpi--verde   .cc-kpi-label { color: #047857; }
+
+        .cc-kpi--ambar   { background: #FFFBEB; border-color: #FDE68A; }
+        .cc-kpi--ambar   .cc-kpi-plato { background: #FEF3C7; color: #D97706; }
+        .cc-kpi--ambar   .cc-kpi-label { color: #B45309; }
+
+        .cc-kpi--rosa    { background: #FFF1F2; border-color: #FECDD3; }
+        .cc-kpi--rosa    .cc-kpi-plato { background: #FFE4E6; color: #E11D48; }
+        .cc-kpi--rosa    .cc-kpi-label { color: #BE123C; }
+
+        .cc-kpi--violeta { background: #F5F3FF; border-color: #DDD6FE; }
+        .cc-kpi--violeta .cc-kpi-plato { background: #EDE9FE; color: #7C3AED; }
+        .cc-kpi--violeta .cc-kpi-label { color: #6D28D9; }
+
+        /* Con descuadre la tarjeta cambia de familia entera —no solo el número—, porque
+           es el aviso que dispara la casilla de responsabilidad de abajo. */
+        .cc-kpi--violeta.is-descuadre { background: #FFF1F2; border-color: #FDA4AF; }
+        .cc-kpi--violeta.is-descuadre .cc-kpi-plato { background: #FFE4E6; color: #E11D48; }
+        .cc-kpi--violeta.is-descuadre .cc-kpi-label { color: #BE123C; }
+        .cc-kpi--violeta.is-descuadre .cc-kpi-valor { color: #BE123C; }
+        .cc-kpi--violeta.is-descuadre .cc-kpi-nota  { color: #BE123C; font-weight: 600; }
+
+        /* ── Renglones del resumen ─────────────────────────────────────────── */
+        .cc-item {
+            border: 1px solid #E9EDF3; border-radius: 0.875rem;
+            background: #fff; overflow: hidden;
+        }
+        .cc-fila {
+            display: flex; align-items: center; gap: 0.75rem;
+            width: 100%; padding: 0.75rem 0.875rem;
+            text-align: left; background: transparent; border: 0;
+        }
+        /* El renglón entero es el disparador del acordeón: acertarle a una flecha de
+           12px con el dedo, de pie en el mostrador, no funciona. */
+        button.cc-fila { cursor: pointer; transition: background-color .15s ease; }
+        button.cc-fila:hover { background: #FDF6FA; }
+        button.cc-fila:focus-visible { outline: 2px solid #E24C95; outline-offset: -2px; }
+
+        .cc-plato {
+            width: 2.25rem; height: 2.25rem; border-radius: 0.75rem;
+            display: grid; place-items: center; flex-shrink: 0; font-size: 0.9375rem;
+        }
+        .cc-plato--violeta { background: #EDE9FE; color: #7C3AED; }
+        .cc-plato--verde   { background: #D1FAE5; color: #059669; }
+        .cc-plato--rosa    { background: #FFE4E6; color: #E11D48; }
+        .cc-plato--azul    { background: #DBEAFE; color: #2563EB; }
+        .cc-plato--lila    { background: #F3E8FF; color: #9333EA; }
+        .cc-plato--ambar   { background: #FEF3C7; color: #D97706; }
+        .cc-plato--slate   { background: #F1F5F9; color: #64748B; }
+
+        .cc-label { font-size: 0.9375rem; font-weight: 500; color: #334155; }
+        .cc-valor {
+            margin-left: auto; font-size: 1rem; font-weight: 800; color: #1E293B;
+            white-space: nowrap; font-variant-numeric: tabular-nums;
+        }
+        .cc-valor--rosa   { color: #E11D48; }
+        .cc-valor--grande { font-size: 1.375rem; letter-spacing: -0.02em; }
+
+        .cc-chevron { color: #94A3B8; font-size: 0.75rem; flex-shrink: 0; transition: transform .2s ease; }
+
+        .cc-info { color: #CBD5E1; font-size: 0.75rem; flex-shrink: 0; cursor: help; }
+        .cc-info:hover { color: #94A3B8; }
+
+        /* La acción se lee como enlace y no como botón: compite con el chevron del
+           propio renglón, y el que manda acá es el chevron. */
+        .cc-accion {
+            font-size: 0.6875rem; font-weight: 600; line-height: 1;
+            color: #E24C95; text-decoration: underline; text-underline-offset: 2px;
+            cursor: pointer; white-space: nowrap;
+        }
+        .cc-accion:hover { color: #BE185D; }
+
+        .cc-item--destacado {
+            background: linear-gradient(135deg, #FFFCF3 0%, #FEF3C7 100%);
+            border-color: #FDE68A;
+        }
+
+        /* ── Panel de movimientos ──────────────────────────────────────────── */
+        .cc-panel {
+            border-top: 1px solid #F1F5F9; background: #FBFCFE;
+            padding: 0.5rem 0.875rem 0.75rem;
+        }
+        .cc-panel.hidden { display: none; }
+
+        .cc-tabla { width: 100%; font-size: 0.75rem; border-collapse: collapse; }
+        .cc-tabla th {
+            padding: 0.375rem 0.5rem; text-align: left; white-space: nowrap;
+            font-size: 0.625rem; font-weight: 700; letter-spacing: 0.05em;
+            text-transform: uppercase; color: #94A3B8;
+            border-bottom: 1px solid #E2E8F0;
+        }
+        .cc-tabla th.text-right  { text-align: right; }
+        .cc-tabla th.text-center { text-align: center; }
+        .cc-tabla td { padding: 0.375rem 0.5rem; vertical-align: middle; }
+        .cc-tabla tbody tr { border-bottom: 1px solid #F1F5F9; }
+        .cc-tabla tbody tr:last-child { border-bottom: 0; }
+
+        /* ── Conteo del operador ───────────────────────────────────────────── */
+        .cc-orow { display: flex; align-items: center; gap: 0.75rem; padding: 0.25rem 0; }
+        .cc-orow--bloque { align-items: flex-start; }
+        .cc-orow--bloque .cc-plato { margin-top: 1.4rem; }
+
+        .cc-ocampo { position: relative; margin-left: auto; width: 46%; min-width: 9rem; max-width: 15rem; }
+        .cc-osigno {
+            position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);
+            color: #94A3B8; font-weight: 700; pointer-events: none;
+        }
+        /* Sin `border-color` ni `background`: los pone Tailwind desde el marcado y los
+           cambia el JavaScript cuando el conteo no coincide con el sistema. Fijarlos acá
+           ganaría por orden en la hoja y el campo nunca se pondría rojo. */
+        .cc-input {
+            width: 100%; padding: 0.625rem 0.75rem 0.625rem 1.75rem;
+            border-width: 1px; border-style: solid; border-radius: 0.75rem;
+            font-size: 0.875rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+        }
+        .cc-input:focus { outline: none; }
+        .cc-input--texto {
+            padding: 0.625rem 0.75rem; resize: none;
+            font-family: inherit; font-size: 0.8125rem;
+        }
+        .cc-input--clave { padding: 0.75rem 2.25rem 0.75rem 0.875rem; letter-spacing: 0.15em; }
+
+        @media (max-width: 480px) {
+            .cc-orow { flex-wrap: wrap; }
+            .cc-ocampo { width: 100%; max-width: none; margin-left: 0; }
+        }
+
     script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
     script(src="/js/helpers.js")
     script(src="/js/storeCuadrarCaja.js")

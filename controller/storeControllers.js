@@ -9,10 +9,11 @@ import {
     DetallesPagosFactura, RegimenFacturacion, Egresos,
     CajaTienda, UserPermisos, PermisosAcciones, PermisosRecursos,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb,
-    CajasYBancos, TrasladoEfectivo, TrasladoEfectivoHistorial
+    CajasYBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, MovimientosCajasBancos
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import { sincronizarReservas, liberarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
+import { validarDescripcionEgreso } from '../helpers/descripcionEgreso.js';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { fileURLToPath } from 'url';
@@ -28,11 +29,12 @@ import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
 import { tituloLista } from '../helpers/textoLista.js';
 import { prepararVoucher } from '../helpers/voucherTraslado.js';
-import { resumenPendientes } from '../helpers/trasladosPendientes.js';
+import { resumenPendientes, wherePendienteAceptar } from '../helpers/trasladosPendientes.js';
+import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
 import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
 import { randomUUID } from 'crypto';
 import sharp from 'sharp';
-import { crearConCodigo } from '../helpers/secuencias.js';
+import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
 import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
@@ -58,7 +60,12 @@ const dashboardStores = async (req, res) => {
             ? CajaTienda.findOne({
                 where: {
                     idPuntoDeVenta,
-                    estado: 'abierto',
+                    // También 'auditoria': una caja que quedó a medio cuadrar de ayer
+                    // sigue siendo una caja vencida sin cerrar. Con solo 'abierto', el
+                    // menú no la encontraba y en vez de "Cerrar Caja Anterior" ofrecía
+                    // "Apertura de Caja" — sobre una caja que sí existe y que el sistema
+                    // no dejaría abrir de nuevo.
+                    estado: { [Op.in]: ESTADOS_CAJA_VIVA },
                     fechaCierre: null,
                     permite_factura_extemporanea: false,
                     fechaApertura: { [Op.lt]: limiteCaja }
@@ -549,9 +556,15 @@ const _generarCodigoCaja = async (idPuntoDeVenta, nombreComercial) => {
     return `${prefijo}-${String(nro).padStart(6, '0')}`;
 };
 
+// Estados en los que la caja del turno sigue viva. 'auditoria' es la caja que el
+// operador está cuadrando: ya no admite ventas, pero todo lo demás —leer sus totales,
+// cerrarla, calcular el efectivo disponible— tiene que seguir funcionando. Tratarla como
+// inexistente rompería la propia pantalla de cuadre.
+const ESTADOS_CAJA_VIVA = ['abierto', 'auditoria'];
+
 const _getCajaAbierta = (idPuntoDeVenta, includes = [], transaction = undefined) =>
     CajaTienda.findOne({
-        where: { idPuntoDeVenta, estado: 'abierto', fechaCierre: null },
+        where: { idPuntoDeVenta, estado: { [Op.in]: ESTADOS_CAJA_VIVA }, fechaCierre: null },
         include: includes,
         transaction
     });
@@ -565,12 +578,17 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
     const [egresosRows, facturas] = await Promise.all([
         Egresos.findAll({
             where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
-            attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso', 'metodoPago', 'idEntidad', 'idCajaBanco'],
+            attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso', 'metodoPago', 'idEntidad', 'idCajaBanco', 'tipo'],
             include: [
                 { model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false },
                 // Los traslados apuntan a una cuenta propia, no a una entidad de cobro.
                 // Sin este include el cuadre los mostraría sin destino.
-                { model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco'], required: false }
+                { model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco'], required: false },
+                // El estado del traslado. Un traslado 'En Transito' es plata que ya salió
+                // del cajón pero que nadie aceptó todavía: el operador cierra su turno
+                // respondiendo por un efectivo que el otro lado aún puede rechazar, y
+                // tiene derecho a verlo marcado antes de firmar el cuadre.
+                { model: TrasladoEfectivo, as: 'trasladoEfectivo', attributes: ['estado'], required: false }
             ],
             transaction
         }),
@@ -616,6 +634,13 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
         descripcion: e.descripcion || '—',
         valor:       Math.round(parseFloat(e.valorEgreso) || 0),
         metodoPago:  e.metodoPago || 'Efectivo',
+        // Un gasto y un traslado son las dos cosas que salen del cajón, pero significan
+        // distinto: uno es plata que el negocio gastó, el otro es plata que solo cambió
+        // de lugar. Sin este campo el cuadre los suma en un solo número y esa diferencia
+        // se pierde.
+        tipo:        e.tipo || 'Egreso',
+        // Nulo en un egreso común: no hay traslado del que hablar.
+        estadoTraslado: e.trasladoEfectivo?.estado || null,
         entidad:     e.cajaBancoDestino?.nombreCajaBanco || e.entidad?.nombreEntidad || null
     }));
     const sEgresos            = txEgresos.reduce((s, e) => s + e.valor, 0);
@@ -1375,7 +1400,8 @@ const guardarCliente = async (req, res) => {
         tipo_documento, numero_doc, digito_verif,
         razon_social, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
         email, telefono,
-        regimen_fiscal, gran_contribuyente, autorretenedor, agente_retencion, obligado_aduanero,
+        regimen_fiscal, responsabilidad_fiscal,
+        gran_contribuyente, autorretenedor, agente_retencion, obligado_aduanero,
         ciiu, descripcion_ciiu, fecha_rut,
         idDepartamento, nombreDepartamento, idMunicipio, nombreMunicipio, direccion
     } = req.body;
@@ -1434,8 +1460,21 @@ const guardarCliente = async (req, res) => {
         // Tributario (solo si empresa)
         if (esEmpresa && regimen_fiscal) {
             const tribExist = await ClientesTributario.findOne({ where: { idCliente }, transaction: t });
+            // Los códigos llegan como arreglo desde el formulario. Se normalizan a la
+            // cadena "O-13,O-15" que guarda la columna, filtrando contra la lista válida:
+            // un código inventado en el navegador no puede terminar en una factura.
+            const CODIGOS_DIAN = ['O-13', 'O-15', 'O-23', 'O-47', 'R-99-PN'];
+            const responsabilidades = (Array.isArray(responsabilidad_fiscal)
+                ? responsabilidad_fiscal
+                : String(responsabilidad_fiscal || '').split(','))
+                .map(c => String(c).trim().toUpperCase())
+                .filter(c => CODIGOS_DIAN.includes(c));
+
             const tribData = {
                 regimen_fiscal,
+                // Nulo y no cadena vacía: "todavía no se declaró" es distinto de haber
+                // declarado R-99-PN, que es decir que no aplica ninguna.
+                responsabilidad_fiscal: responsabilidades.length ? [...new Set(responsabilidades)].join(',') : null,
                 gran_contribuyente: toBool(gran_contribuyente),
                 autorretenedor:     toBool(autorretenedor),
                 agente_retencion:   toBool(agente_retencion),
@@ -1542,6 +1581,12 @@ const procesarFactura = async (req, res) => {
   try {
     const { idCliente, idEmpleado, items, pagos, idPedidoWeb } = req.body;
     const idPuntoDeVenta = req.idPuntoDeVenta;
+
+    // La marca OF viene del interruptor del formulario de cliente. Se normaliza a booleano
+    // acá y no se toma del body tal cual: es una columna de la factura y `req.body` no se
+    // pasa nunca directo a `create` (CLAUDE.md §12). Ausente significa "no aplica", que es
+    // el caso de casi todas las ventas.
+    const marcarOF = req.body?.OF === true || req.body?.OF === 'true' || req.body?.OF === 1;
     const WHOLESALE_MIN  = parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6;
 
     // ── 1. Validar datos del frontend ─────────────────────────────────────────
@@ -1551,6 +1596,19 @@ const procesarFactura = async (req, res) => {
     const cajaAbierta = await _getCajaAbierta(idPuntoDeVenta);
     if (!cajaAbierta)
         return res.status(403).json({ success: false, mensaje: 'No hay caja abierta. Debes abrir la caja antes de facturar.' });
+
+    // El cristal sobre la orden en el POS es comodidad; esto es lo que de verdad impide
+    // vender. Sin este freno, una venta que entra mientras el operador cuenta el cajón
+    // aparece en los totales del cierre pero no en lo que él contó, y el descuadre se le
+    // anota a él aunque la plata esté ahí.
+    // El candado caduca: una caja trabada por una pestaña que se cerró de golpe no puede
+    // dejar a la tienda sin facturar para siempre. Si venció, se libera y la venta sigue.
+    if (cajaAbierta.estado === 'auditoria' && !(await _liberarCuadreSiVencio(idPuntoDeVenta, cajaAbierta)))
+        return res.status(409).json({
+            success: false,
+            cajaEnCuadre: true,
+            mensaje: 'La caja está en proceso de cierre. No se pueden registrar ventas hasta que termine el cuadre.'
+        });
 
     if (!idCliente || typeof idCliente !== 'string' || !idCliente.trim())
         return res.status(400).json({ success: false, mensaje: 'Cliente inválido.' });
@@ -1699,7 +1757,10 @@ const procesarFactura = async (req, res) => {
             prefijo:              regimen.prefijo     || '',
             numeroFactura:        String(nroFactura),
             fechaEmision:         `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,'0')}-${String(ahora.getDate()).padStart(2,'0')}`,
-            horaEmision:          ahora.toTimeString().slice(0, 8)
+            horaEmision:          ahora.toTimeString().slice(0, 8),
+            // Marcada OF: sale en la hoja aparte del informe de facturación de la tienda,
+            // con los datos tributarios del cliente abiertos en columnas.
+            OF:                   marcarOF
         }, { transaction: t });
 
         await RegimenFacturacion.update(
@@ -2360,7 +2421,16 @@ const getCuadreCajaDatos = async (req, res) => {
                 egresosEfectivo: sEgresosEfectivo, egresosElectronicos: sEgresosElectronicos,
                 // Lo que debería estar físicamente en el cajón. Antes esta cuenta la hacía
                 // el vendedor de cabeza; ahora sale del mismo lugar que todo lo demás.
-                efectivoEsperado: Math.round(parseFloat(caja.cajaMenor) || 0) + sEfectivo - sEgresosEfectivo
+                efectivoEsperado: Math.round(parseFloat(caja.cajaMenor) || 0) + sEfectivo - sEgresosEfectivo,
+                // Lo que la tienda entrega al cerrar. Es lo del cajón MENOS la base: la
+                // caja menor no se entrega, se queda para que el turno siguiente pueda dar
+                // cambio. Son dos números distintos y confundirlos hace entregar de más o
+                // de menos, así que los dos salen calculados de acá y no de la cabeza de
+                // nadie.
+                // Nunca negativo: si del cajón salió más de lo que entró por ventas, no hay
+                // nada que entregar y el faltante es de la base, que se informa aparte.
+                totalAEntregar: Math.max(0, sEfectivo - sEgresosEfectivo),
+                baseCorta:      Math.max(0, sEgresosEfectivo - sEfectivo)
             },
             txEfectivo,
             txElectronicos,
@@ -2369,6 +2439,146 @@ const getCuadreCajaDatos = async (req, res) => {
         });
     } catch (e) {
         console.error('getCuadreCajaDatos:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// ─── ENTRAR Y SALIR DEL CUADRE ───────────────────────────────────────────────
+//
+// Mientras el operador cuenta el cajón, la caja pasa a 'auditoria' y el POS deja de
+// facturar. Sin esto, una venta que entra a mitad del conteo queda en los totales del
+// cierre pero no en lo que el operador contó, y el descuadre se le anota a él aunque la
+// plata esté físicamente en el cajón.
+//
+// El cambio se avisa por SSE a las terminales DE ESTE PUNTO DE VENTA y solo a ellas
+// —`broadcast` reparte por idPuntoDeVenta—. La caja es de la sede, no de la máquina: si
+// una tienda tiene dos registradoras, las dos se frenan; las demás sedes ni se enteran y
+// siguen vendiendo con su propia caja.
+
+const _avisarEstadoCuadre = (idPdv, enCuadre) => {
+    try {
+        broadcast(idPdv, 'caja_en_cuadre', { enCuadre });
+    } catch (e) {
+        console.error('avisar estado de cuadre:', e);
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Expiración del candado de cuadre.
+//
+// 'auditoria' frena la facturación de toda la sede. Se soltaba solo si el navegador
+// alcanzaba a avisar al cerrarse; si el equipo se apaga o se cae la red, ese aviso no
+// llega y la tienda queda sin poder facturar hasta que alguien lo note.
+//
+// Acá el candado caduca. La pantalla del cuadre lo refresca mientras está viva, así que
+// un conteo largo de verdad nunca se corta; lo que caduca es el candado abandonado.
+//
+// La liberación es perezosa a propósito: no hay proceso de fondo ni cron que mantener,
+// la suelta la primera petición que se topa con ella. Y va con el estado en el WHERE, así
+// que si dos peticiones llegan juntas solo una libera y solo una avisa.
+// ─────────────────────────────────────────────────────────────────────────────
+const CUADRE_TIMEOUT_MS = (parseInt(process.env.CUADRE_TIMEOUT_MIN, 10) || 30) * 60 * 1000;
+
+const _cuadreVencido = (caja) => {
+    if (!caja || caja.estado !== 'auditoria') return false;
+    // Sin marca no se puede saber cuándo empezó: son las cajas que ya estaban trabadas
+    // antes de que existiera la columna. Se dan por vencidas para que no queden colgadas
+    // eternamente, que es justamente el problema que esto viene a resolver.
+    if (!caja.cuadreDesde) return true;
+    return Date.now() - new Date(caja.cuadreDesde).getTime() > CUADRE_TIMEOUT_MS;
+};
+
+/**
+ * Libera la caja si su cuadre caducó. Devuelve true si la liberó.
+ */
+const _liberarCuadreSiVencio = async (idPdv, caja) => {
+    if (!_cuadreVencido(caja)) return false;
+    const [filas] = await CajaTienda.update(
+        { estado: 'abierto', cuadreDesde: null },
+        { where: { idCajaTienda: caja.idCajaTienda, estado: 'auditoria' } }
+    );
+    if (!filas) return false;
+    console.warn(`[cuadre] caja ${caja.codigo || caja.idCajaTienda} liberada por vencimiento`);
+    _avisarEstadoCuadre(idPdv, false);
+    return true;
+};
+
+// POST /store/storebehivors/caja/cuadre/iniciar
+//
+// También hace de latido: la pantalla del cuadre lo vuelve a llamar cada tanto para
+// decir que sigue ahí, y eso corre la marca hacia adelante.
+const iniciarCuadreCaja = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
+
+    try {
+        // `update` con el estado en el WHERE y revisando filas afectadas: si otra terminal
+        // ganó la carrera, no se pisa su resultado ni se avisa dos veces.
+        const [filas] = await CajaTienda.update(
+            { estado: 'auditoria', cuadreDesde: new Date() },
+            { where: { idPuntoDeVenta: idPdv, estado: 'abierto', fechaCierre: null } }
+        );
+
+        if (!filas) {
+            const caja = await _getCajaAbierta(idPdv);
+            if (!caja) return res.status(409).json({ success: false, mensaje: 'No hay una caja abierta para cuadrar.' });
+            // Ya estaba en auditoría: o alguien más entró al cuadre antes, o es esta misma
+            // pantalla mandando su latido. En los dos casos se corre la marca: el candado
+            // tiene dueño vivo y no hay razón para que caduque.
+            await CajaTienda.update(
+                { cuadreDesde: new Date() },
+                { where: { idCajaTienda: caja.idCajaTienda, estado: 'auditoria' } }
+            );
+            return res.json({ success: true, yaEstaba: true });
+        }
+
+        _avisarEstadoCuadre(idPdv, true);
+        return res.json({ success: true, yaEstaba: false });
+    } catch (e) {
+        console.error('iniciarCuadreCaja:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo iniciar el cuadre.' });
+    }
+};
+
+// POST /store/storebehivors/caja/cuadre/liberar
+//
+// Devuelve la caja a 'abierto'. Lo llama el botón "Volver a vender" y también la propia
+// pantalla al abandonarse, para que nadie quede sin poder facturar porque alguien cerró
+// una pestaña.
+const liberarCuadreCaja = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
+
+    try {
+        const [filas] = await CajaTienda.update(
+            { estado: 'abierto', cuadreDesde: null },
+            { where: { idPuntoDeVenta: idPdv, estado: 'auditoria', fechaCierre: null } }
+        );
+        if (filas) _avisarEstadoCuadre(idPdv, false);
+        return res.json({ success: true, liberada: filas > 0 });
+    } catch (e) {
+        console.error('liberarCuadreCaja:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo liberar la caja.' });
+    }
+};
+
+// GET /store/storebehivors/caja/cuadre/estado
+// Lo consulta el POS al cargar: el evento SSE solo llega a quien ya estaba conectado, y
+// una terminal que abre después tiene que enterarse igual de que la caja está en cuadre.
+const getEstadoCuadreCaja = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+    try {
+        const caja = await _getCajaAbierta(idPdv);
+        // Si el candado caducó se suelta acá mismo: esta es la petición que hace el POS
+        // al cargar, así que una terminal que abre después de un cuadre abandonado se
+        // encuentra la caja libre en vez del cristal encima.
+        if (await _liberarCuadreSiVencio(idPdv, caja)) {
+            return res.json({ success: true, enCuadre: false, liberadaPorVencimiento: true });
+        }
+        return res.json({ success: true, enCuadre: caja?.estado === 'auditoria' });
+    } catch (e) {
+        console.error('getEstadoCuadreCaja:', e);
         return res.status(500).json({ success: false });
     }
 };
@@ -2386,7 +2596,8 @@ const cerrarCajaAPI = async (req, res) => {
 
         // ── Buscar la caja por idCajaTienda + idPuntoDeVenta + estado abierto ──
         const caja = await CajaTienda.findOne({
-            where: { idCajaTienda, idPuntoDeVenta: idPdv, estado: 'abierto' },
+            // También en 'auditoria': es justamente la caja que se está cuadrando.
+            where: { idCajaTienda, idPuntoDeVenta: idPdv, estado: { [Op.in]: ESTADOS_CAJA_VIVA } },
             include: [
                 { model: Empleados,    as: 'empleadoApertura', attributes: ['PrimerNombre', 'PrimerApellido'] },
                 { model: PuntosDeVenta, as: 'puntoDeVenta',    attributes: ['nombreComercial', 'footerBill'] }
@@ -2429,6 +2640,8 @@ const cerrarCajaAPI = async (req, res) => {
 
             await caja.update({
                 idEmpleadoCierre:               empleadoCierre.idEmpleado,
+                // La marca del cuadre muere con la caja: una cerrada nunca está en cuadre.
+                cuadreDesde:                    null,
                 fechaCierre:                    new Date(),
                 cajaMenorRegistrada:            oBase,
                 ventasTotales:                  sVentas,
@@ -2603,13 +2816,65 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
     const crReg = Math.round(parseFloat(caja.ventasCreditoRegistradas)             || 0);
     const meReg = Math.round(parseFloat(caja.ventasMediosElectronicosRegistradas)  || 0);
     const egReg = Math.round(parseFloat(caja.egresosTotalesRegistrados)            || 0);
-    filaPuntos('Efectivo Registrado',             fmt(efReg), { checkbox: true, bold: Math.abs(efReg - Math.round(sums.sEfectivo)) > 0.5 });
+    // Estas cuatro cifras son lo que DECLARÓ EL OPERADOR al cerrar, no lo que hay en el
+    // cajón. Se llamaban "Efectivo Registrado", "Egresos Registrado"… y ese rótulo se
+    // leía como "el efectivo que quedó": con una caja sin medios electrónicos ni crédito,
+    // "Efectivo Registrado" da igual que "Ventas Totales" y parece que no se restó nada.
+    // Decir de quién es el número saca la ambigüedad de raíz.
+    filaPuntos('Ventas en efectivo (operador)',   fmt(efReg), { checkbox: true, bold: Math.abs(efReg - Math.round(sums.sEfectivo)) > 0.5 });
     doc.moveDown(0.1);
-    filaPuntos('Crédito Registrado',              fmt(crReg), { checkbox: true, bold: Math.abs(crReg - Math.round(sums.sCredito))  > 0.5 });
+    filaPuntos('Ventas a crédito (operador)',     fmt(crReg), { checkbox: true, bold: Math.abs(crReg - Math.round(sums.sCredito))  > 0.5 });
     doc.moveDown(0.1);
-    filaPuntos('Medios Electrónicos Registrado',  fmt(meReg), { checkbox: true, bold: Math.abs(meReg - Math.round(sums.sMedios))   > 0.5 });
+    filaPuntos('Medios electrónicos (operador)',  fmt(meReg), { checkbox: true, bold: Math.abs(meReg - Math.round(sums.sMedios))   > 0.5 });
     doc.moveDown(0.1);
-    filaPuntos('Egresos Registrado',              fmt(egReg), { checkbox: true, bold: Math.abs(egReg - Math.round(sums.sEgresos))  > 0.5 });
+    filaPuntos('Egresos (operador)',              fmt(egReg), { checkbox: true, bold: Math.abs(egReg - Math.round(sums.sEgresos))  > 0.5 });
+    doc.moveDown(0.3); hr();
+
+    // ── El neto: contra esto se cuenta el cajón ───────────────────────────────
+    //
+    // El recibo listaba los componentes por separado y nunca imprimía el resultado, así
+    // que quien audita el papel tenía que hacer la resta de cabeza — que es exactamente
+    // lo que este comprobante existe para evitar. Se imprimen los dos números porque son
+    // distintos y confundirlos hace entregar de más o de menos:
+    //
+    //   · en el cajón = base + ventas en efectivo − egresos en efectivo
+    //   · a entregar  = lo mismo SIN la base, que se queda para el turno siguiente
+    //
+    // Se usa `sEgresosEfectivo` y no `sEgresos`: un egreso pagado por transferencia no
+    // sale del cajón y restarlo dejaría el efectivo esperado corto por ese monto.
+    const egresosEfectivo = Math.round(sums.sEgresosEfectivo || 0);
+    const efectivoEsperado = cajaMenorSistema + Math.round(sums.sEfectivo) - egresosEfectivo;
+    const neto             = Math.round(sums.sEfectivo) - egresosEfectivo;
+
+    // El neto puede dar negativo: pasa cuando del cajón salió más efectivo del que
+    // entró por ventas, y entonces la diferencia salió de la base. No se puede entregar
+    // un monto negativo, así que se entrega cero y el faltante se dice aparte, en
+    // palabras. Un "-$5.000" impreso en el renglón de lo que hay que entregar no se
+    // entiende y se presta a que alguien lo lea como un monto a cobrar.
+    const aEntregar   = Math.max(0, neto);
+    const baseCorta   = Math.max(0, -neto);
+
+    seccionTitulo('EFECTIVO ESPERADO');
+    doc.font('Helvetica').fontSize(6).text(
+        `Base ${fmt(cajaMenorSistema)} + ventas en efectivo ${fmt(Math.round(sums.sEfectivo))} - egresos en efectivo ${fmt(egresosEfectivo)}`,
+        MARGIN, doc.y, { width: CW }
+    );
+    doc.moveDown(0.2);
+    filaPuntos('DEBE HABER EN EL CAJON', fmt(efectivoEsperado), { bold: true });
+    doc.moveDown(0.1);
+    filaPuntos('TOTAL A ENTREGAR',       fmt(aEntregar),        { bold: true });
+    doc.moveDown(0.1);
+    if (baseCorta > 0) {
+        doc.font('Helvetica-Bold').fontSize(6).text(
+            `La base quedo corta en ${fmt(baseCorta)}: del cajon salio mas efectivo del que entro por ventas. Se repone con las proximas ventas en efectivo.`,
+            MARGIN, doc.y, { width: CW }
+        );
+        doc.moveDown(0.1);
+    }
+    doc.font('Helvetica').fontSize(5.5).text(
+        `A entregar = lo del cajon menos la base de ${fmt(cajaMenorSistema)}, que queda para el proximo turno.`,
+        MARGIN, doc.y, { width: CW }
+    );
     doc.moveDown(0.3); hr();
 
     // ── Detalle: transacciones electrónicas (Banco / Billetera / Tarjeta) ──────
@@ -2620,17 +2885,71 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
 
     // ── SECCIÓN 6: egresos ───────────────────────────────────────────────────────
     if (txEgresos.length > 0) {
-        seccionTitulo('EGRESOS');
+        seccionTitulo('EGRESOS Y TRASLADOS DE EFECTIVO');
         for (const e of txEgresos) {
             // El comprobante impreso también tiene que decir de dónde salió la plata:
-            // quien concilia después no puede quedar con la misma ambigüedad.
-            const origen = e.metodoPago === 'Electronico' ? ` (${e.entidad || 'transferencia'})` : '';
-            filaPuntos(`${e.referencia}${origen}`, fmt(e.valor));
+            // quien concilia después no puede quedar con la misma ambigüedad. En un
+            // traslado lo que interesa es lo contrario —a dónde fue—, que es lo que
+            // permite seguirle el rastro a esa plata desde este papel.
+            // `->` y no una flecha Unicode: la Helvetica estándar de PDFKit codifica en
+            // WinAnsi y no tiene glifo para U+2192, así que la flecha salía impresa como
+            // un signo de admiración. Los acentos sí están en WinAnsi y se usan libremente.
+            const destino = e.tipo === 'Traslado'
+                ? (e.entidad ? ` -> ${e.entidad}` : '')
+                : (e.metodoPago === 'Electronico' ? ` (${e.entidad || 'transferencia'})` : '');
+            // Marcas de una o dos letras y no la palabra entera: la línea ya lleva
+            // referencia, destino y valor, y en 227 puntos de ancho no entra una columna
+            // más. El asterisco es lo único que distingue un traslado ya asentado de uno
+            // que todavía puede volver.
+            const marca = e.tipo !== 'Traslado' ? ''
+                : (e.estadoTraslado === 'En Transito' ? '[T*] ' : '[T] ');
+            filaPuntos(`${marca}${e.referencia}${destino}`, fmt(e.valor));
             doc.moveDown(0.1);
         }
         hr();
-        filaPuntos('TOTAL EGRESOS:', fmt(sums.sEgresos), { bold: true });
+
+        // Los dos conceptos se totalizan por separado. Sumarlos en una sola cifra hace
+        // parecer que el negocio gastó plata que en realidad solo se mudó a otra cuenta,
+        // y esa lectura es la que infla los egresos de un cierre.
+        const totalTraslados = txEgresos.filter(e => e.tipo === 'Traslado').reduce((a, e) => a + e.valor, 0);
+        const totalGastos    = Math.round(sums.sEgresos) - totalTraslados;
+
+        filaPuntos('TOTAL EGRESOS:',   fmt(totalGastos),    { bold: true });
+        doc.moveDown(0.1);
+        filaPuntos('TOTAL TRASLADOS:', fmt(totalTraslados), { bold: true });
+        doc.moveDown(0.1);
+        filaPuntos('TOTAL GENERAL:',   fmt(Math.round(sums.sEgresos)), { bold: true });
+        // Lo que salió del cajón y el destino todavía no aceptó. Va con el mismo peso que
+        // los otros totales porque explica una parte del descuadre: si acá figuran
+        // $100.000 sin aceptar, esa es la razón por la que esos $100.000 no están
+        // físicamente en el punto de venta, y la referencia de la línea de arriba es por
+        // dónde se le sigue el rastro.
+        const totalSinAceptar = txEgresos
+            .filter(e => e.estadoTraslado === 'En Transito')
+            .reduce((a, e) => a + e.valor, 0);
+
+        if (totalSinAceptar > 0) {
+            doc.moveDown(0.1);
+            filaPuntos('SIN ACEPTAR AÚN:', fmt(totalSinAceptar), { bold: true });
+        }
+
+        if (totalTraslados > 0) {
+            doc.moveDown(0.1);
+            doc.font('Helvetica').fontSize(5.5).text(
+                '[T] = traslado de efectivo a una caja o cuenta del negocio: esa plata no se gastó, cambió de lugar.',
+                MARGIN, doc.y, { width: CW }
+            );
+        }
+
+        if (totalSinAceptar > 0) {
+            doc.moveDown(0.1);
+            doc.font('Helvetica-Bold').fontSize(5.5).text(
+                '[T*] = despachado, pero el destino todavía NO lo aceptó. Esa plata ya salió del cajón y por eso no está en la tienda. Si el destino la rechaza o recibe menos, la diferencia vuelve a este turno.',
+                MARGIN, doc.y, { width: CW }
+            );
+        }
         if (sums.sEgresosElectronicos > 0) {
+            doc.moveDown(0.1);
             filaPuntos('  De los cuales salieron del cajón:', fmt(sums.sEgresosEfectivo));
         }
         doc.moveDown(0.3); hr();
@@ -2743,6 +3062,13 @@ const crearEgreso = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Valor inválido.' });
     }
 
+    // El formulario ya la exige, pero eso es del navegador. Un egreso sin motivo es plata
+    // que sale sin dejar dicho en qué se usó, y el cuadre no puede reconstruirlo después.
+    const desc = validarDescripcionEgreso(descripcion);
+    if (!desc.ok) {
+        return res.status(400).json({ success: false, mensaje: desc.mensaje });
+    }
+
     // Una transferencia mueve el efectivo del cajón a una cuenta propia.
     const metodo = metodoPago === 'Electronico' ? 'Electronico' : 'Efectivo';
     let cuentaDestino = null;
@@ -2780,33 +3106,34 @@ const crearEgreso = async (req, res) => {
 
     try {
         const cajaActiva = await CajaTienda.findOne({
-            where: { idPuntoDeVenta: idPdv, estado: 'abierto' },
+            where: { idPuntoDeVenta: idPdv, estado: { [Op.in]: ESTADOS_CAJA_VIVA } },
             attributes: ['idCajaTienda']
         });
 
-        const egreso = await Egresos.create({
+        // Una transferencia saca el efectivo del cajón y lo consigna en una cuenta del
+        // propio negocio: esa plata no se gastó, cambió de lugar. Sin escribir el tipo,
+        // todo caía en el default 'Egreso' y consignar la venta del día aparecía en los
+        // reportes como si el negocio hubiera gastado esa plata, que es exactamente lo
+        // que la columna existe para evitar.
+        const tipoEgreso = metodo === 'Electronico' ? 'Traslado' : 'Egreso';
+
+        // La transacción existe por la referencia: el número se reserva en SECUENCIAS y
+        // tiene que confirmarse junto con la fila que lo usa. Si el INSERT falla, el
+        // contador vuelve atrás y ese número queda libre para el próximo egreso.
+        const egreso = await db.transaction(async (t) => Egresos.create({
             idPuntoDeVenta: idPdv,
             idEmpleado: empleado.idEmpleado,
             idCajaTienda: cajaActiva?.idCajaTienda || null,
             valorEgreso: valor,
-            referencia: referencia?.trim() || null,
-            descripcion: descripcion?.trim() || null,
+            referencia: referencia?.trim() || await _referenciaAutomatica(tipoEgreso, t),
+            descripcion: desc.valor,
             metodoPago: metodo,
             idCajaBanco: cuentaDestino?.idCajaBanco || null,
-            // Una transferencia saca el efectivo del cajón y lo consigna en una cuenta
-            // del propio negocio: esa plata no se gastó, cambió de lugar. Sin escribir
-            // el tipo, todo caía en el default 'Egreso' y consignar la venta del día
-            // aparecía en los reportes como si el negocio hubiera gastado esa plata,
-            // que es exactamente lo que la columna existe para evitar.
-            tipo: metodo === 'Electronico' ? 'Traslado' : 'Egreso',
+            tipo: tipoEgreso,
             estado: 'pendiente'
-        });
+        }, { transaction: t }));
 
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        const totalHoy = await Egresos.sum('valorEgreso', {
-            where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: hoy } }
-        });
+        const totales = await _totalesEgresosHoy(idPdv);
 
         // La fila viaja con la misma forma que la del listado (`filaEgreso`): la que
         // aparece sola arriba de la tabla tiene que verse igual que después de recargar.
@@ -2820,10 +3147,15 @@ const crearEgreso = async (req, res) => {
                     ? { nombreCajaBanco: cuentaDestino.nombreCajaBanco, referencia: cuentaDestino.referencia }
                     : null
             }),
-            totalHoy: totalHoy || 0
+            egresosHoy:   totales.egresos,
+            trasladosHoy: totales.traslados
         });
 
-        broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta: idPdv, egresosHoy: totalHoy || 0 });
+        // Al admin sigue yendo TODO lo que salió del cajón, gastos y traslados juntos: su
+        // tablero suma los egresos de cada tienda sin separar por tipo, y mandarle acá un
+        // número con otro criterio dejaría la tarjeta en vivo peleada con la que se pinta
+        // al recargar esa misma pantalla.
+        broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta: idPdv, egresosHoy: totales.total });
 
         return res.json({
             success: true,
@@ -2833,6 +3165,129 @@ const crearEgreso = async (req, res) => {
     } catch (e) {
         console.error('crearEgreso:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
+    }
+};
+
+// ─── AVISOS DE TRASLADOS RESUELTOS SIN ENTRAR COMPLETOS ──────────────────────
+//
+// El aviso viaja por SSE en el momento, pero un evento SSE se pierde si el navegador no
+// está abierto: el administrador resuelve a las ocho de la noche y el operador, que ya se
+// fue, nunca se entera de que le quedó un faltante a cargo. Estos dos endpoints hacen que
+// el aviso sobreviva a eso — `avisoVistoEn` nulo significa "todavía no lo vio".
+
+// Un traslado 'Recibido' no tiene nada que avisar: entró completo.
+// Qué traslados tienen algo que avisarle al punto de venta.
+//
+// No alcanza con el estado: un traslado que llegó con EXCEDENTE queda 'Recibido' —lo que
+// la tienda mandó sí entró completo— y aun así hay algo que contar, porque en el fajo se
+// fue plata de la caja menor y el operador va a encontrar el fondo de cambio corto al
+// cerrar. Por eso la condición es "estado que no cuadró O hubo excedente".
+const _whereAvisoPendiente = (idPdv) => ({
+    idTiendaOrigen: idPdv,
+    avisoVistoEn: null,
+    [Op.or]: [
+        { estado: { [Op.in]: ['Rechazado', 'Controversia'] } },
+        { valorExcedente: { [Op.gt]: 0 } },
+        // Corrección bancaria: el traslado quedó 'Recibido' pero por un valor distinto al
+        // que la tienda registró al despachar, y su egreso cambió con él. El operador
+        // tiene que enterarse porque es su cuadre el que se movió.
+        //
+        // Se detecta comparando el valor actual contra el que quedó en el paso de salida
+        // —que es append-only y guarda para siempre lo que se registró originalmente—, y
+        // no buscando un texto en la observación: un cambio de redacción no puede apagar
+        // un aviso.
+        literal(`EXISTS (SELECT 1 FROM TRASLADO_EFECTIVO_HISTORIAL h
+                         WHERE h.idTrasladosEfectivo = TRASLADO_EFECTIVO.idTrasladosEfectivo
+                           AND h.tipoTransaccion = 'Salida'
+                           AND h.valorTransaccion <> TRASLADO_EFECTIVO.valorTraslado)`)
+    ]
+});
+
+// GET /store/traslados/avisos
+const getAvisosTraslado = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    try {
+        const filas = await TrasladoEfectivo.findAll({
+            where: _whereAvisoPendiente(idPdv),
+            attributes: ['idTrasladosEfectivo', 'codigoTraslado', 'estado', 'valorTraslado', 'valorExcedente', 'idMovimiento'],
+            include: [{ model: MovimientosCajasBancos, as: 'movimiento', attributes: ['valor'], required: false }],
+            // El más viejo primero: se muestran en el orden en que ocurrieron.
+            order: [['updatedAt', 'ASC']]
+        });
+
+        // La observación con la que se resolvió es el último paso de la bitácora. Se piden
+        // todas juntas, no una por traslado.
+        const ids = filas.map(f => f.idTrasladosEfectivo);
+        const notas = {};
+        if (ids.length) {
+            const pasos = await TrasladoEfectivoHistorial.findAll({
+                where: {
+                    idTrasladosEfectivo: { [Op.in]: ids },
+                    // 'Ingreso' entra por la corrección bancaria, que deja su explicación
+                    // ahí. No arrastra ruido: un traslado aceptado sin novedad nunca
+                    // aparece en esta lista.
+                    tipoTransaccion: { [Op.in]: ['Rechazado', 'Controversia', 'Excedente', 'Ingreso'] }
+                },
+                attributes: ['idTrasladosEfectivo', 'observacion'],
+                order: [['idTransaccion', 'ASC']],
+                raw: true
+            });
+            for (const p of pasos) notas[p.idTrasladosEfectivo] = p.observacion;
+        }
+
+        return res.json({
+            success: true,
+            avisos: filas.map(t => {
+                const despachado = Math.round(parseFloat(t.valorTraslado) || 0);
+                const aceptado   = Math.round(parseFloat(t.movimiento?.valor) || 0);
+                return {
+                    idTraslado:  t.idTrasladosEfectivo,
+                    codigo:      t.codigoTraslado,
+                    estado:      t.estado,
+                    despachado,
+                    aceptado,
+                    devuelto:    despachado - aceptado,
+                    excedente:   Math.round(parseFloat(t.valorExcedente) || 0),
+                    // El aviso guardado no sabe cuál fue el valor original —vive en la
+                    // bitácora— y no lo necesita: el texto de la corrección ya lo dice.
+                    corregido:   null,
+                    // Un aviso guardado se muestra al entrar, cuando la caja de aquel
+                    // turno ya no es la de hoy. Se dice sin prometer un ajuste automático
+                    // que a esta altura ya no puede ocurrir.
+                    ajusteAplicado: false,
+                    observacion: notas[t.idTrasladosEfectivo] || null
+                };
+            })
+        });
+    } catch (e) {
+        console.error('getAvisosTraslado:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// POST /store/traslados/avisos/visto
+//
+// Marca uno o todos como vistos. El `where` incluye `avisoVistoEn: null` para que dos
+// pestañas confirmando a la vez no se pisen la fecha: gana la primera y la segunda no
+// afecta filas, que es lo correcto — la hora del aviso es cuándo lo vio, no cuándo hizo
+// el último clic.
+const marcarAvisoTrasladoVisto = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    const { idTraslado } = req.body;
+
+    try {
+        const where = _whereAvisoPendiente(idPdv);
+        if (idTraslado) where.idTrasladosEfectivo = idTraslado;
+
+        const [filas] = await TrasladoEfectivo.update({ avisoVistoEn: new Date() }, { where });
+        return res.json({ success: true, marcados: filas });
+    } catch (e) {
+        console.error('marcarAvisoTrasladoVisto:', e);
+        return res.status(500).json({ success: false });
     }
 };
 
@@ -2886,6 +3341,37 @@ const egresoAntesDe = ({ createdAt, idEgreso }) => ({
 const OFFSET_BOGOTA = '-05:00';
 const inicioDiaBogota = (iso) => new Date(`${iso}T00:00:00.000${OFFSET_BOGOTA}`);
 const finDiaBogota    = (iso) => new Date(`${iso}T23:59:59.999${OFFSET_BOGOTA}`);
+
+// `en-CA` porque su formato de fecha corta ES el ISO `YYYY-MM-DD`, que es lo que
+// `inicioDiaBogota` espera. No hay que armarlo a mano con getFullYear/getMonth, que
+// además daría el día del reloj del servidor y no el de Bogotá.
+const _hoyEnBogota = () =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+
+/**
+ * Los dos números del resumen del día, en UNA consulta agrupada por tipo.
+ *
+ * Son disjuntos a propósito: un egreso es plata que el negocio gastó; un traslado es plata
+ * que solo cambió de lugar y sigue siendo del negocio. Sumarlos en un mismo "total de
+ * egresos" —que es lo que había— contaba dos veces la misma plata al mostrar las dos
+ * tarjetas juntas, y presentaba la consignación de la venta del día como si fuera un gasto.
+ *
+ * El día es el de Bogotá y no el del reloj del servidor. El atajo "Hoy" del listado ya
+ * corta así, y dos cifras en la misma pantalla que no coincidan en qué es "hoy" son peor
+ * que no tener la segunda.
+ */
+const _totalesEgresosHoy = async (idPdv) => {
+    const filas = await Egresos.findAll({
+        where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: inicioDiaBogota(_hoyEnBogota()) } },
+        attributes: ['tipo', [fn('SUM', col('valorEgreso')), 'total']],
+        group: ['tipo'],
+        raw: true
+    });
+    const de = (t) => parseFloat(filas.find(f => f.tipo === t)?.total || 0) || 0;
+    const egresos   = de('Egreso');
+    const traslados = de('Traslado');
+    return { egresos, traslados, total: egresos + traslados };
+};
 
 const ISO_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -2998,11 +3484,11 @@ const getTotalEgresosHoy = async (req, res) => {
     if (!idPdv) return res.status(403).json({ success: false });
 
     try {
-        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-        const total = await Egresos.sum('valorEgreso', {
-            where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: hoy } }
-        });
-        return res.json({ success: true, total: total || 0 });
+        // Las tres claves van con nombre propio. Un `total` a secas obligaba a adivinar si
+        // incluía los traslados, y esa duda es justamente la que hacía que las dos
+        // tarjetas mostraran la misma plata.
+        const { egresos, traslados, total } = await _totalesEgresosHoy(idPdv);
+        return res.json({ success: true, egresos, traslados, total });
     } catch (e) {
         console.error('getTotalEgresosHoy:', e);
         return res.status(500).json({ success: false });
@@ -3075,6 +3561,35 @@ const _generarCodigoTraslado = async (pdv, transaction) => {
 // comprobante impreso.
 const _exigeVoucher = (tipoCuenta) => ['banco', 'billetera'].includes(tipoCuenta);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Referencia de un egreso o de un traslado, cuando el operador no escribió ninguna.
+//
+// Era un campo libre y opcional, y en la práctica quedaba vacío. Un egreso sin referencia
+// no se puede nombrar: en el cuadre, en el listado y en una llamada por teléfono no hay
+// forma de señalar CUÁL de los tres egresos de $50.000 de esa tienda es el que está en
+// discusión. En un traslado hacia otra caja el problema es estructural: la plata pasa de
+// mano a mano y no existe ningún comprobante externo que transcribir.
+//
+// Lo que el operador escriba manda SIEMPRE. En un egreso su referencia es el número de la
+// factura que pagó; en un traslado a un banco es el comprobante de la consignación, que es
+// lo único que permite encontrar el movimiento en el extracto. Pisarlos con un correlativo
+// interno sería borrar el dato útil y dejar el inútil.
+//
+// El número sale de SECUENCIAS y no de un MAX+1: se reserva con un UPDATE sobre una sola
+// fila, así dos egresos simultáneos hacen fila en vez de llevarse el mismo número. Y como
+// se reserva dentro de la transacción que lo usa, si esa transacción se revierte el número
+// vuelve atrás con ella: no quedan huecos en la numeración.
+// ─────────────────────────────────────────────────────────────────────────────
+const SECUENCIA_REFERENCIA = {
+    Egreso:   { secuencia: 'egreso_referencia',            prefijo: 'EGR-' },
+    Traslado: { secuencia: 'traslado_efectivo_referencia', prefijo: 'TRA-' }
+};
+
+const _referenciaAutomatica = async (tipo, transaction) => {
+    const { secuencia, prefijo } = SECUENCIA_REFERENCIA[tipo] || SECUENCIA_REFERENCIA.Egreso;
+    return `${prefijo}${await siguienteNumero(secuencia, transaction)}`;
+};
+
 // Rechazo de negocio dentro de la transacción. Lanzarlo hace el rollback (que es lo que
 // se quiere) y al salir se distingue de una falla real: éste es un 422 con un motivo que
 // el operador puede leer, la otra es un 500 genérico.
@@ -3094,6 +3609,11 @@ const crearTrasladoEfectivo = async (req, res) => {
 
     if (!idCajaBanco)
         return res.status(400).json({ success: false, mensaje: 'Indicá a qué cuenta se traslada el efectivo.' });
+
+    // Antes de subir el voucher: rechazar acá ahorra un archivo en R2 que nadie va a usar.
+    const desc = validarDescripcionEgreso(descripcion);
+    if (!desc.ok)
+        return res.status(400).json({ success: false, mensaje: desc.mensaje });
 
     try {
         // ── Cuenta destino ───────────────────────────────────────────────────
@@ -3206,6 +3726,13 @@ const crearTrasladoEfectivo = async (req, res) => {
 
             const codigoTraslado = await _generarCodigoTraslado(pdv, t);
 
+            // Hacia otra caja no hay comprobante externo que transcribir: la plata pasa de
+            // mano a mano. Sin una referencia propia, ese traslado no se puede nombrar en
+            // el listado ni en el cuadre. Hacia un banco, en cambio, lo que el operador
+            // escribió es el número de la consignación y no se toca: es lo único que
+            // permite encontrar el movimiento en el extracto.
+            const referenciaFinal = referencia?.trim() || await _referenciaAutomatica('Traslado', t);
+
             const traslado = await TrasladoEfectivo.create({
                 idTrasladosEfectivo: idTraslado,
                 idTiendaOrigen:  idPdv,
@@ -3222,7 +3749,7 @@ const crearTrasladoEfectivo = async (req, res) => {
                 // lo que lee el cuadre de caja; acá vive en el documento del traslado,
                 // que es lo que ve quien la acepta del otro lado y contra lo que concilia
                 // el movimiento en el extracto.
-                referencia:      referencia?.trim() || null,
+                referencia:      referenciaFinal,
                 valorTraslado:   valor,
                 codigoTraslado,
                 estado:          'En Transito'
@@ -3234,7 +3761,7 @@ const crearTrasladoEfectivo = async (req, res) => {
                 idEmpleado:          empleado.idEmpleado,
                 tipoTransaccion:     'Salida',
                 valorTransaccion:    valor,
-                observacion:         descripcion?.trim() || null
+                observacion:         desc.valor
             }, { transaction: t });
 
             // El egreso: esto es lo que descuenta el cajón en el cuadre de hoy.
@@ -3243,8 +3770,8 @@ const crearTrasladoEfectivo = async (req, res) => {
                 idEmpleado:         empleado.idEmpleado,
                 idCajaTienda:       caja.idCajaTienda,
                 valorEgreso:        valor,
-                referencia:         referencia?.trim() || null,
-                descripcion:        descripcion?.trim() || null,
+                referencia:         referenciaFinal,
+                descripcion:        desc.valor,
                 metodoPago:         'Efectivo',
                 idCajaBanco:        cuenta.idCajaBanco,
                 idTrasladoEfectivo: idTraslado,
@@ -3269,10 +3796,7 @@ const crearTrasladoEfectivo = async (req, res) => {
         // Fuera de la transacción y en su propio try: un broadcast que falle no puede
         // tumbar un traslado ya asentado ni dejar la respuesta sin enviar.
         try {
-            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-            const totalHoy = await Egresos.sum('valorEgreso', {
-                where: { idPuntoDeVenta: idPdv, createdAt: { [Op.gte]: hoy } }
-            });
+            const totales = await _totalesEgresosHoy(idPdv);
 
             broadcast(idPdv, 'new_egreso', {
                 egreso: filaEgreso({
@@ -3280,9 +3804,10 @@ const crearTrasladoEfectivo = async (req, res) => {
                     empleado: { PrimerNombre: empleado.nombre },
                     cajaBancoDestino: { nombreCajaBanco: cuenta.nombreCajaBanco, referencia: cuenta.referencia }
                 }),
-                totalHoy: totalHoy || 0
+                egresosHoy:   totales.egresos,
+                trasladosHoy: totales.traslados
             });
-            broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta: idPdv, egresosHoy: totalHoy || 0 });
+            broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta: idPdv, egresosHoy: totales.total });
 
             // Aviso al panel del admin: hay un traslado esperando que alguien lo acepte.
             // Va el total y el desglose por cuenta en el MISMO evento —el badge del menú
@@ -3322,146 +3847,19 @@ const crearTrasladoEfectivo = async (req, res) => {
 
 // GET /store/storebehivors/expenses/traslado/:idTraslado/pdf
 //
-// Comprobante del traslado. Se arma al vuelo y no se guarda: los datos ya están en la
-// base y un PDF archivado sería una segunda copia que puede quedar desactualizada.
-//
-// Lleva las dos firmas en blanco a propósito. Quien envía firma al despachar; quien
-// recibe firma al aceptar, y en este momento todavía no se sabe quién va a ser
-// —`idEmpleadoRecibe` es nulo hasta que alguien acepta la plata—. El papel firmado por
-// los dos es lo que respalda un traslado a otra caja física, donde no hay extracto
-// bancario que lo demuestre.
+// El mismo comprobante que emite el administrador, generado por el mismo helper. Acotado
+// a la tienda de la sesión: sin ese filtro, cambiar el id en la URL mostraría el
+// comprobante de otra sede.
 const getTrasladoEfectivoPDF = async (req, res) => {
-    const { idTraslado } = req.params;
-    const idPdv = req.idPuntoDeVenta;
-
     try {
-        const traslado = await TrasladoEfectivo.findOne({
-            // El filtro por tienda no es adorno: sin él, cambiar el id en la URL mostraría
-            // el comprobante de otra sede.
-            where: { idTrasladosEfectivo: idTraslado, idTiendaOrigen: idPdv },
-            include: [
-                { model: Empleados,     as: 'empleadoEnvia',    attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'], required: false },
-                { model: Empleados,     as: 'empleadoRecibe',   attributes: ['PrimerNombre', 'PrimerApellido'], required: false },
-                { model: PuntosDeVenta, as: 'tiendaOrigen',     attributes: ['nombreComercial'], required: false },
-                { model: CajasYBancos,  as: 'cajaBancoDestino', attributes: ['nombreCajaBanco', 'tipo', 'referencia'], required: false }
-            ]
-        });
+        const traslado = await buscarTrasladoParaPDF(req.params.idTraslado, { idTiendaOrigen: req.idPuntoDeVenta });
         if (!traslado) return res.status(404).json({ success: false, mensaje: 'Traslado no encontrado.' });
 
-        // La observación del despacho es el primer paso de la bitácora.
-        const salida = await TrasladoEfectivoHistorial.findOne({
-            where: { idTrasladosEfectivo: idTraslado, tipoTransaccion: 'Salida' },
-            order: [['idTransaccion', 'ASC']],
-            attributes: ['observacion'],
-            raw: true
-        });
-
-        const W = 227, MARGIN = 10, CW = W - MARGIN * 2, LOGO_H = 55;
-
-        const doc = new PDFDocument({
-            size: [W, 560],
-            margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
-            autoFirstPage: true
-        });
-        const chunks = [];
-        doc.on('data', c => chunks.push(c));
-        const pdfEnd = new Promise(r => doc.on('end', r));
-
-        const hr = () => {
-            doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#BBBBBB').lineWidth(0.5).stroke();
-            doc.moveDown(0.4);
-        };
-
-        const fila = (label, valor) => {
-            const y = doc.y;
-            doc.font('Helvetica-Bold').fontSize(6.5).text(label, MARGIN, y, { width: CW * 0.38 });
-            doc.font('Helvetica').fontSize(6.5).text(String(valor), MARGIN + CW * 0.38, y, { width: CW * 0.62 });
-            doc.y = Math.max(doc.y, y + 11);
-            doc.moveDown(0.1);
-        };
-
-        // Línea de firma: el renglón y, debajo, para qué es. Se deja alto suficiente
-        // arriba para que quepa una firma de verdad y no un garabato apretado.
-        const firma = (rotulo, nombre) => {
-            doc.moveDown(2.2);
-            const y = doc.y;
-            doc.moveTo(MARGIN + 10, y).lineTo(MARGIN + CW - 10, y).strokeColor('#333333').lineWidth(0.5).stroke();
-            doc.y = y + 3;
-            doc.font('Helvetica-Bold').fontSize(6).text(rotulo, MARGIN, doc.y, { width: CW, align: 'center' });
-            doc.font('Helvetica').fontSize(6).text(nombre, MARGIN, doc.y, { width: CW, align: 'center' });
-        };
-
-        const logoX = MARGIN + (CW - LOGO_H) / 2;
-        doc.image(LOGO_PATH, logoX, MARGIN, { width: LOGO_H, height: LOGO_H });
-        doc.y = MARGIN + LOGO_H + 6;
-
-        doc.font('Helvetica-Bold').fontSize(9).text('TRASLADO DE EFECTIVO', MARGIN, doc.y, { width: CW, align: 'center' });
-        doc.moveDown(0.2);
-        doc.font('Helvetica-Bold').fontSize(8).text(traslado.codigoTraslado, MARGIN, doc.y, { width: CW, align: 'center' });
-        doc.moveDown(0.5);
-        hr();
-
-        const f = new Date(traslado.createdAt);
-        const fechaLarga = f.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'America/Bogota' }) +
-            ' ' + f.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' });
-
-        const destino = traslado.cajaBancoDestino
-            ? tituloLista(traslado.cajaBancoDestino.nombreCajaBanco) +
-              (traslado.cajaBancoDestino.referencia ? ` (${traslado.cajaBancoDestino.referencia})` : '')
-            : 'N/A';
-
-        fila('Origen:',  tituloLista(traslado.tiendaOrigen?.nombreComercial || 'N/A'));
-        fila('Destino:', destino);
-        if (traslado.referencia) fila('Referencia:', traslado.referencia);
-        fila('Fecha:',   fechaLarga);
-        fila('Estado:',  traslado.estado);
-
-        doc.moveDown(0.2); hr();
-
-        const envia = traslado.empleadoEnvia
-            ? `${traslado.empleadoEnvia.PrimerNombre} ${traslado.empleadoEnvia.PrimerApellido}`
-            : 'N/A';
-        fila('Trasladado por:', envia);
-        if (traslado.empleadoEnvia?.codigoEmpleado) fila('Código:', traslado.empleadoEnvia.codigoEmpleado);
-
-        if (salida?.observacion) {
-            doc.moveDown(0.2);
-            doc.font('Helvetica-Bold').fontSize(6.5).text('Observaciones:', MARGIN, doc.y, { width: CW });
-            doc.moveDown(0.1);
-            doc.font('Helvetica').fontSize(6.5).text(salida.observacion, MARGIN, doc.y, { width: CW });
-            doc.moveDown(0.3);
-        }
-
-        doc.moveDown(0.2); hr();
-
-        const valorStr = `$${Math.round(parseFloat(traslado.valorTraslado)).toLocaleString('es-CO')}`;
-        doc.font('Helvetica').fontSize(6.5).text('VALOR TRASLADADO', MARGIN, doc.y, { width: CW, align: 'center' });
-        doc.moveDown(0.1);
-        doc.font('Helvetica-Bold').fontSize(16).text(valorStr, MARGIN, doc.y, { width: CW, align: 'center' });
-        doc.moveDown(0.5);
-        hr();
-
-        firma('ENTREGA', envia);
-        // Si ya fue aceptado, el nombre de quien recibió va impreso; si no, el renglón
-        // queda para que lo firme quien reciba.
-        const recibe = traslado.empleadoRecibe
-            ? `${traslado.empleadoRecibe.PrimerNombre} ${traslado.empleadoRecibe.PrimerApellido}`
-            : 'Nombre y cédula';
-        firma('RECIBE', recibe);
-
-        doc.moveDown(1);
-        const footerCD = process.env.FOOTER_CODEDREAM || '';
-        if (footerCD) doc.font('Helvetica').fontSize(6).text(footerCD, MARGIN, doc.y, { width: CW, align: 'center' });
-
-        doc.end();
-        await pdfEnd;
-
-        const buf = Buffer.concat(chunks);
+        const buf = await generarPDFTraslado(traslado);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="traslado-${traslado.codigoTraslado}.pdf"`);
         res.setHeader('Content-Length', buf.length);
         return res.send(buf);
-
     } catch (e) {
         console.error('getTrasladoEfectivoPDF:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al generar el comprobante.' });
@@ -3889,6 +4287,49 @@ const abrirCajaAPI = async (req, res) => {
         if (cajaExistente)
             return res.status(400).json({ success: false, mensaje: 'Hay una caja pendiente de cierre. Ciérrala antes de abrir una nueva.' });
 
+        // ── No se abre con plata del turno anterior en el aire ────────────────
+        //
+        // Un traslado 'En Transito' es efectivo que ya salió del cajón y que todavía nadie
+        // aceptó. Si el destino lo rechaza o recibe de menos, esa diferencia vuelve a la
+        // tienda — pero el cuadre del que la despachó ya está firmado y no se puede tocar,
+        // así que esa plata queda sin asiento en ninguna parte.
+        //
+        // El freno va en la APERTURA y no en el cierre a propósito. Bloquear el cierre
+        // dejaría al cajero encerrado de noche esperando a un administrador que ya se fue,
+        // y a la mañana siguiente la tienda tampoco abriría. Acá el turno cierra normal,
+        // el cajero se va, y la exigencia cae en la mañana: sobre el administrador, que es
+        // quien tiene que resolverlo, y a una hora en la que está.
+        //
+        // También impide que el problema se herede: sin este freno, la plata que vuelve
+        // aterriza en el turno de otro cajero, que termina respondiendo por un traslado
+        // que no despachó.
+        const enElAire = await TrasladoEfectivo.findAll({
+            where: { idTiendaOrigen: idPuntoDeVenta, ...wherePendienteAceptar() },
+            attributes: ['idTrasladosEfectivo', 'codigoTraslado', 'valorTraslado', 'createdAt'],
+            include: [{ model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco'], required: false }],
+            order: [['createdAt', 'ASC']]
+        });
+
+        if (enElAire.length) {
+            const total = enElAire.reduce((a, t) => a + (parseFloat(t.valorTraslado) || 0), 0);
+            return res.status(409).json({
+                success: false,
+                trasladosPendientes: true,
+                mensaje: enElAire.length === 1
+                    ? 'Hay un traslado de efectivo que el destino todavía no aceptó. La caja no se puede abrir hasta que se resuelva.'
+                    : `Hay ${enElAire.length} traslados de efectivo que el destino todavía no aceptó. La caja no se puede abrir hasta que se resuelvan.`,
+                total,
+                traslados: enElAire.map(t => ({
+                    codigo:  t.codigoTraslado,
+                    valor:   Math.round(parseFloat(t.valorTraslado) || 0),
+                    destino: t.cajaBancoDestino?.nombreCajaBanco
+                        ? tituloLista(t.cajaBancoDestino.nombreCajaBanco)
+                        : 'cuenta del negocio',
+                    fecha: new Date(t.createdAt).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })
+                }))
+            });
+        }
+
         const cajaMenor = Number(req.body.cajaMenor);
         if (!Number.isFinite(cajaMenor) || cajaMenor < 0)
             return res.status(400).json({ success: false, mensaje: 'Caja menor inválida.' });
@@ -3900,7 +4341,10 @@ const abrirCajaAPI = async (req, res) => {
             idPuntoDeVenta,
             codigo,
             idEmpleadoApertura: idEmpleado,
-            idEmpleadoCierre:   idEmpleado,   // placeholder hasta el cierre real
+            // Se deja nulo a propósito: quién cierra el turno no se sabe al abrirlo, y
+            // puede no ser quien lo abrió. `cerrarCajaAPI` lo llena con el empleado que
+            // de verdad cerró.
+            idEmpleadoCierre:   null,
             cajaMenor,
             fechaApertura: new Date(),
             estado: 'abierto'
@@ -4043,10 +4487,15 @@ export {
     getEgresoComprobantePDF,
     crearTrasladoEfectivo,
     getTrasladoEfectivoPDF,
+    getAvisosTraslado,
+    marcarAvisoTrasladoVisto,
     abrirCajaAPI,
     cuadrarCajaPage,
     getCuadreCajaDatos,
     cerrarCajaAPI,
+    iniciarCuadreCaja,
+    liberarCuadreCaja,
+    getEstadoCuadreCaja,
     getCuadrePDF,
     _generarPDFCuadre,
     _calcularTransaccionesCaja,

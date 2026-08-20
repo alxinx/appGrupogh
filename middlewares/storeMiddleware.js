@@ -34,7 +34,9 @@ export const cargarPuntoDeVenta = async (req, res, next) => {
                 const caja = await CajaTienda.findOne({
                     where: {
                         idPuntoDeVenta: req.idPuntoDeVenta,
-                        estado: 'abierto',
+                        // 'auditoria' es la caja que se está cuadrando: sigue siendo la
+                        // caja del turno, así que las pantallas no deben decir "sin caja".
+                        estado: { [Op.in]: ['abierto', 'auditoria'] },
                         fechaCierre: null,
                         [Op.or]: [
                             { fechaApertura: { [Op.gte]: inicioDia } },
