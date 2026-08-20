@@ -50,12 +50,16 @@ const TrasladoEfectivoHistorial = db.define('TRASLADO_EFECTIVO_HISTORIAL', {
         references: { model: 'EMPLEADOS', key: 'idEmpleado' }
     },
 
+    // 'Excedente' es su propio paso y no un segundo 'Ingreso': un traslado que llega con
+    // sobrante queda 'Recibido' —lo que la tienda mandó sí llegó completo— y el sobrante
+    // es un hecho aparte. Con dos 'Ingreso' en la bitácora, cualquier suma de lo asentado
+    // daría el total mezclado y nadie podría separar una cosa de la otra.
     tipoTransaccion: {
-        type: DataTypes.ENUM('Ingreso', 'Salida', 'Controversia', 'Rechazado'),
+        type: DataTypes.ENUM('Ingreso', 'Salida', 'Controversia', 'Rechazado', 'Excedente'),
         allowNull: false,
         validate: {
             isIn: {
-                args: [['Ingreso', 'Salida', 'Controversia', 'Rechazado']],
+                args: [['Ingreso', 'Salida', 'Controversia', 'Rechazado', 'Excedente']],
                 msg: 'Tipo de transacción inválido.'
             }
         }

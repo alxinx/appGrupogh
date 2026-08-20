@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import db from "../config/bd.js"
+import { validarDescripcionEgreso } from "../helpers/descripcionEgreso.js";
 
 const Egresos = db.define('EGRESOS', {
     idEgreso: {
@@ -72,7 +73,20 @@ const Egresos = db.define('EGRESOS', {
     },
     descripcion: {
         type: DataTypes.STRING(255),
-        allowNull: true
+        // La columna sigue admitiendo NULL en la base y así se queda: los egresos que se
+        // registraron cuando el campo era opcional existen y no se les puede inventar un
+        // motivo. La obligatoriedad se aplica de acá en adelante, sobre lo que se escribe.
+        //
+        // Sequelize valida solo los campos que cambian en un `update`, así que ajustar el
+        // valor de un egreso viejo —lo que hace la resolución de una controversia— no se
+        // topa con esta regla por una descripción nula que ya venía así.
+        allowNull: false,
+        validate: {
+            conMotivoReal(valor) {
+                const r = validarDescripcionEgreso(valor);
+                if (!r.ok) throw new Error(r.mensaje);
+            }
+        }
     },
     estado: {
         type: DataTypes.ENUM('pendiente', 'liquidada'),

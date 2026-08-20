@@ -70,6 +70,15 @@ const TrasladoEfectivo = db.define('TRASLADO_EFECTIVO', {
         references: { model: 'MOVIMIENTOS_CAJAS_BANCOS', key: 'idMovimiento' }
     },
 
+    // El movimiento aparte donde se asentó el sobrante. Va separado del principal a
+    // propósito: son dos hechos distintos —lo que la tienda mandó y lo que sobró— y
+    // sumarlos en una sola línea haría imposible conciliar el traslado contra el extracto.
+    idMovimientoExcedente: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: 'MOVIMIENTOS_CAJAS_BANCOS', key: 'idMovimiento' }
+    },
+
     // Número o referencia del traslado. Libre y opcional: no todo traslado tiene una
     // —de un cajón a otro no hay nada que referenciar—, y cuando la hay es un dato que
     // se transcribe de un comprobante externo, así que no se valida su forma.
@@ -88,12 +97,55 @@ const TrasladoEfectivo = db.define('TRASLADO_EFECTIVO', {
         }
     },
 
+    // Cuánto llegó DE MÁS a destino. Nulo en la enorme mayoría de los traslados: solo
+    // se llena cuando el que recibe contó más de lo que el punto de venta despachó.
+    //
+    // Vive acá y no dentro de `valorTraslado` porque el traslado NO se reescribe: sigue
+    // valiendo lo que la tienda registró, y así el documento y el movimiento principal
+    // siguen coincidiendo peso por peso contra el extracto. El sobrante se asienta en su
+    // propio movimiento, apuntado por `idMovimientoExcedente`.
+    //
+    // El tope lo pone la caja menor del turno: los billetes pegados salen del fajo que el
+    // operador armó, y ese fajo solo puede llevar de más lo que había en el cajón como
+    // fondo de cambio. Un excedente mayor no es un error de conteo — es plata que nunca
+    // fue del negocio (un adelanto de un cliente, el bolsillo de un empleado) y meterla
+    // acá la volvería un ingreso sin dueño.
+    //
+    // Del lado del punto de venta el excedente se descuenta con un egreso propio, no
+    // tocando `cajaMenor`: la resta del cuadre lo cobra primero contra las ventas en
+    // efectivo sin entregar y solo lo que no alcanza llega a la base, que además se
+    // repone sola con las ventas siguientes.
+    valorExcedente: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        validate: {
+            min: { args: [0.01], msg: 'El excedente debe ser mayor que cero.' }
+        }
+    },
+
     // Código legible para la trazabilidad: es lo que se imprime en el comprobante y lo
     // que se busca cuando alguien pregunta por un envío.
     codigoTraslado: {
         type: DataTypes.STRING(50),
         allowNull: false,
         unique: true
+    },
+
+    // Cuándo el punto de venta se enteró de que este traslado no entró completo.
+    //
+    // El aviso viaja por SSE, y un evento SSE se pierde si el navegador no está abierto:
+    // el administrador resuelve un traslado a las 8 de la noche y el operador, que ya se
+    // fue, nunca ve que le quedó un faltante a cargo. Con esta marca el aviso deja de
+    // depender de que alguien esté mirando la pantalla: nulo significa "todavía no lo
+    // vio" y se le muestra al entrar.
+    //
+    // Aplica a los traslados que terminaron en 'Rechazado' o 'Controversia', y también a
+    // los 'Recibido' que llegaron con excedente: al operador le sobró plata en el fajo y
+    // tiene que saberlo antes de contar la base, o va a cerrar sin entender por qué el
+    // fondo de cambio no da.
+    avisoVistoEn: {
+        type: DataTypes.DATE,
+        allowNull: true
     },
 
     // Nace en tránsito: un traslado sin estado no existe como hecho. Los cuatro valores

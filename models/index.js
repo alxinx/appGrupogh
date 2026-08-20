@@ -103,6 +103,9 @@ CajaTienda.hasMany(TrasladoEfectivo,   { as: 'trasladosEfectivo', foreignKey: 'i
 TrasladoEfectivo.belongsTo(CajaTienda, { as: 'cajaTienda',        foreignKey: 'idCajaTienda' });
 
 TrasladoEfectivo.belongsTo(MovimientosCajasBancos, { as: 'movimiento', foreignKey: 'idMovimiento' });
+// El sobrante tiene su propio movimiento: dos alias distintos sobre la misma tabla porque
+// son dos hechos distintos del mismo traslado.
+TrasladoEfectivo.belongsTo(MovimientosCajasBancos, { as: 'movimientoExcedente', foreignKey: 'idMovimientoExcedente' });
 
 // El egreso que descuenta el cajón por este traslado. Uno solo: un traslado saca la
 // plata del cajón una vez. El egreso es lo que ve el cuadre de caja; el traslado es el

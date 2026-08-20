@@ -84,6 +84,20 @@ const FacturaClientes = db.define('FACTURA_CLIENTES', {
     estado :{
         type : ENUM('pendiente', 'liquidada'),
         defaultValue : 'pendiente'
+    },
+
+    // La factura fue marcada como OF por el punto de venta.
+    //
+    // Las marcadas salen en su propia hoja del informe de facturación de la tienda, con
+    // los datos tributarios del cliente abiertos en columnas. Booleano y no un ENUM
+    // porque no hay un tercer estado: está marcada o no lo está.
+    //
+    // El nombre va en mayúsculas contra la convención `camelCase` del resto: es una sigla,
+    // y `of` en minúscula se confunde con la palabra inglesa al leer el código.
+    OF: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
     }
 }, {
     tableName: 'FACTURA_CLIENTES',
