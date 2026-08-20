@@ -14,9 +14,11 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
+import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
+import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
@@ -126,7 +128,10 @@ const dashboard = async (req, res) => {
     const tiendas = listaPuntosDeVenta.map(t => {
         const caja = cajasMap[t.idPuntoDeVenta];
         let estadoCaja = 'cerrada';
-        if (caja && caja.estado === 'abierto' && !caja.fechaCierre) estadoCaja = 'abierta';
+        // 'auditoria' es la caja que se está cuadrando: sigue abierta hasta que se cierre.
+        // Con solo 'abierto', el tablero mostraba como cerrada una tienda que estaba
+        // contando su cajón.
+        if (caja && ['abierto', 'auditoria'].includes(caja.estado) && !caja.fechaCierre) estadoCaja = 'abierta';
         else if (caja && caja.fechaCierre) estadoCaja = 'cuadrada';
         return { ...t, estadoCaja };
     });
@@ -166,7 +171,10 @@ const dashboardStores = async (req, res) => {
     const tiendas = listaPuntosDeVenta.map(t => {
         const caja = cajasMap[t.idPuntoDeVenta];
         let estadoCaja = 'cerrada';
-        if (caja && caja.estado === 'abierto' && !caja.fechaCierre) estadoCaja = 'abierta';
+        // 'auditoria' es la caja que se está cuadrando: sigue abierta hasta que se cierre.
+        // Con solo 'abierto', el tablero mostraba como cerrada una tienda que estaba
+        // contando su cajón.
+        if (caja && ['abierto', 'auditoria'].includes(caja.estado) && !caja.fechaCierre) estadoCaja = 'abierta';
         else if (caja && caja.fechaCierre) estadoCaja = 'cuadrada';
         return { ...t, estadoCaja };
     });
@@ -1363,9 +1371,17 @@ const saveBatchOrder = async (req, res) => {
 const verTienda = async (req, res) => {
 
     const { idPuntoDeVenta } = req.params
-    const puntoVenta = await PuntosDeVenta.findOne({
-        where: { idPuntoDeVenta: idPuntoDeVenta }
-    })
+    const [puntoVenta, cajaEnCuadre] = await Promise.all([
+        PuntosDeVenta.findOne({ where: { idPuntoDeVenta } }),
+        // La caja trabada en 'auditoria', si la hay. Con eso el encabezado puede ofrecer
+        // el botón de destrabar sin que nadie tenga que entrar a la base a mirarlo.
+        CajaTienda.findOne({
+            where: { idPuntoDeVenta, estado: 'auditoria', fechaCierre: null },
+            attributes: ['idCajaTienda', 'codigo', 'cuadreDesde'],
+            raw: true
+        })
+    ])
+
     return res.status(201).render('./administrador/stores/viewStore', {
         pagina: req.path,
         subPagina: "Estado de la tienda ",
@@ -1374,7 +1390,39 @@ const verTienda = async (req, res) => {
         subPath: process.env.R2_PUBLIC_URL,
 
         dato: puntoVenta,
+        cajaEnCuadre
     })
+}
+
+// POST /admin/tiendas/:idPuntoDeVenta/destrabar-cuadre
+//
+// Suelta a mano una caja que quedó en 'auditoria'. El candado ya caduca solo, pero la
+// espera es de media hora y una tienda que no puede facturar no espera media hora: esto
+// es la salida inmediata para quien la está atendiendo por teléfono.
+//
+// No cierra la caja ni toca ninguna cifra: solo devuelve el estado a 'abierto', que es
+// exactamente lo que habría hecho el navegador del operador si hubiera podido avisar.
+const destrabarCuadreTienda = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    try {
+        const [filas] = await CajaTienda.update(
+            { estado: 'abierto', cuadreDesde: null },
+            { where: { idPuntoDeVenta, estado: 'auditoria', fechaCierre: null } }
+        );
+
+        if (!filas) {
+            return res.status(409).json({ success: false, mensaje: 'Esa tienda no tiene ninguna caja trabada en cuadre.' });
+        }
+
+        // Al punto de venta, para que el cristal del POS se levante sin recargar.
+        try { broadcast(idPuntoDeVenta, 'caja_en_cuadre', { enCuadre: false }); } catch (_) {}
+
+        console.warn(`[cuadre] caja de ${idPuntoDeVenta} destrabada a mano por el usuario ${req.usuario?.idUsuario}`);
+        return res.json({ success: true, mensaje: 'La caja quedó liberada: la tienda ya puede facturar.' });
+    } catch (e) {
+        console.error('destrabarCuadreTienda:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo liberar la caja.' });
+    }
 }
 
 
@@ -4960,6 +5008,572 @@ const listarMovimientosCuenta = async (idCajaBanco, { cursor = null, desde = nul
     return { movimientos, cursorSiguiente: hayMas ? armarCursor(pagina[pagina.length - 1]) : null };
 };
 
+
+// ─── ACEPTAR, RECHAZAR O ACEPTAR PARCIALMENTE UN TRASLADO ────────────────────
+//
+// Tres desenlaces, uno solo por petición y todos dentro de la misma transacción:
+//
+//   valor === despachado  → 'Recibido'      · movimiento por el total
+//   0 < valor < despachado→ 'Controversia'  · movimiento por lo aceptado
+//   rechazo               → 'Rechazado'     · sin movimiento
+//
+// Lo que NO se acepta se queda físicamente en la tienda. Como el egreso descontó el
+// cajón al despachar, hay que devolvérselo: se ajusta el egreso al valor realmente
+// aceptado (o se anula). Eso solo se puede hacer mientras la caja de ese turno siga
+// abierta —el egreso todavía en 'pendiente'—; si ya cerró, el cuadre está firmado y no
+// se toca: la diferencia queda anotada en la bitácora y avisada al punto de venta.
+//
+// Forma manejada de `db.transaction`: commit al resolver, rollback al lanzar. Sin
+// `t.commit()` ni `t.rollback()` a mano no existe el caso de un rollback sobre una
+// transacción ya cerrada, que lanzaría un segundo error dentro del catch y dejaría la
+// petición colgada.
+
+// Rechazo de negocio: sale como 422 con un motivo legible, no como un 500.
+class ErrorDecision extends Error {}
+
+const _pesosCO = (n) => `$${Math.round(parseFloat(n) || 0).toLocaleString('es-CO')}`;
+
+// GET /admin/bankentities/empleado/validar/:codigo
+//
+// Dice si ese código puede resolver un traslado, ANTES de que el operador apriete un
+// botón. Es exactamente la misma comprobación que hace la ruta que asienta la plata
+// —código válido, empleado habilitado, permiso de Bancos—, solo que en modo consulta:
+// si acá dice que sí y allá dice que no, el bug está en uno de los dos.
+//
+// No es un oráculo de códigos: vive detrás de verificarRol('ADMIN'), y un administrador
+// ya puede ver en Personal quién tiene permiso de bancos. Lo que evita es que alguien
+// llene el formulario entero para enterarse recién al final de que su código no sirve.
+const validarEmpleadoBancos = async (req, res) => {
+    const codigo = String(req.params.codigo || '').trim().toUpperCase();
+    if (!codigo) return res.status(400).json({ success: false, mensaje: 'Código requerido.' });
+
+    try {
+        const empleado = await Empleados.findOne({
+            where: { codigoEmpleado: codigo },
+            attributes: ['idEmpleado', 'idUsuario', 'PrimerNombre', 'PrimerApellido', 'estado']
+        });
+
+        // Mismo criterio que verificarCodigoEmpleadoAdmin: se bloquea a quien ya no es de
+        // confianza, no a quien está de licencia.
+        if (!empleado || ['suspendido', 'despedido'].includes(empleado.estado))
+            return res.json({ success: false, mensaje: 'Código de empleado inválido.' });
+
+        if (!empleado.idUsuario)
+            return res.json({ success: false, mensaje: 'Ese empleado no tiene acceso al sistema.' });
+
+        const ids = await resolverIds('Bancos', 'administrativo', 'EDIT');
+        if (!ids) return res.status(500).json({ success: false, mensaje: 'Configuración de permisos inválida.' });
+
+        const permiso = await UserPermisos.findOne({
+            where: { idUsuario: empleado.idUsuario, idRecurso: ids.idRecurso, idAccion: ids.idAccion },
+            attributes: ['idPermiso']
+        });
+        if (!permiso)
+            return res.json({ success: false, mensaje: 'Ese empleado no tiene permiso sobre cajas y bancos.' });
+
+        return res.json({
+            success: true,
+            nombre: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`.trim()
+        });
+    } catch (e) {
+        console.error('validarEmpleadoBancos:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
+    }
+};
+
+const decidirTrasladoEfectivo = async (req, res) => {
+    const { idTraslado } = req.params;
+    const empleado = req.empleadoVerificado;
+    const { decision, observacion, idCajaBancoDestino } = req.body;
+
+    if (!['aceptar', 'rechazar'].includes(decision))
+        return res.status(400).json({ success: false, mensaje: 'Decisión inválida.' });
+
+    const valorPedido = Math.round(parseFloat(req.body.valor) || 0);
+
+    try {
+        const resultado = await db.transaction(async (t) => {
+            // Lock sobre el traslado. Dos administradores con la misma pantalla abierta
+            // podrían aceptarlo dos veces y asentar la plata dos veces; el lock hace que
+            // el segundo espere y encuentre el estado ya cambiado.
+            // El lock va SIN includes a propósito. Un `SELECT ... FOR UPDATE` con JOIN
+            // bloquea también las filas de las tablas unidas, y acá eso serían el punto de
+            // venta y el empleado que despachó: dos traslados de la misma tienda se
+            // bloquearían entre sí sin necesidad. Los datos de contexto se leen aparte,
+            // que además es lo único que hacen: nombres para armar textos.
+            const traslado = await TrasladoEfectivo.findOne({
+                where: { idTrasladosEfectivo: idTraslado },
+                lock: t.LOCK.UPDATE,
+                transaction: t
+            });
+
+            if (!traslado) throw new ErrorDecision('El traslado no existe.');
+
+            const [tiendaOrigen, empleadoEnvia] = await Promise.all([
+                PuntosDeVenta.findByPk(traslado.idTiendaOrigen, { attributes: ['nombreComercial'], transaction: t, raw: true }),
+                Empleados.findByPk(traslado.idEmpleadoEnvia,   { attributes: ['PrimerNombre', 'PrimerApellido'], transaction: t, raw: true })
+            ]);
+            if (traslado.estado !== 'En Transito')
+                throw new ErrorDecision(`Este traslado ya fue resuelto: figura como "${traslado.estado}".`);
+
+            const despachado = Math.round(parseFloat(traslado.valorTraslado) || 0);
+            const rechaza    = decision === 'rechazar';
+
+            // ── Destino ──────────────────────────────────────────────────────
+            // Redirigir solo entre cajas, y se revalida acá: el selector del navegador
+            // es comodidad, esto es lo que impide que una petición armada a mano mande
+            // efectivo a un banco.
+            let idDestino = traslado.idCajaBanco;
+            if (idCajaBancoDestino && idCajaBancoDestino !== traslado.idCajaBanco) {
+                const [origen, nueva] = await Promise.all([
+                    CajasYBancos.findByPk(traslado.idCajaBanco, { attributes: ['tipo'], transaction: t }),
+                    CajasYBancos.findOne({
+                        where: { idCajaBanco: idCajaBancoDestino, estado: true },
+                        attributes: ['idCajaBanco', 'tipo', 'nombreCajaBanco'],
+                        transaction: t
+                    })
+                ]);
+                if (!nueva)                     throw new ErrorDecision('La caja destino no existe o está inactiva.');
+                if (origen?.tipo !== 'caja')    throw new ErrorDecision('Solo se puede redirigir un traslado dirigido a una caja.');
+                if (nueva.tipo !== 'caja')      throw new ErrorDecision('Un traslado solo se puede redirigir hacia otra caja.');
+                idDestino = nueva.idCajaBanco;
+            }
+
+            // ── Cuánto de más se puede aceptar ───────────────────────────────
+            //
+            // Que llegue de más pasa, y por un motivo mundano: dos billetes pegados en el
+            // fajo que el operador armó. Ese fajo sale del cajón, así que lo único que
+            // puede llevar de más es lo que había ahí como fondo de cambio. Por eso el
+            // tope es la caja menor del turno y no un porcentaje: un excedente mayor que
+            // la base no puede ser un error de conteo. Es plata que nunca fue del negocio
+            // —un adelanto que un cliente dejó, los billetes que un empleado puso de su
+            // bolsillo para no perder una venta por falta de vuelto— y asentarla acá la
+            // convertiría en un ingreso sin dueño, imposible de devolver a quien le
+            // corresponde. De paso ataja el error de tecleo: con base de $100.000,
+            // escribir $10.500.000 en vez de $1.050.000 no pasa.
+            //
+            // Va DESPUÉS de resolver el destino porque el tope depende de a dónde entra
+            // la plata, y el destino puede haberse redirigido.
+            //
+            // El excedente SOLO existe cuando alguien cuenta billetes, o sea cuando el
+            // destino es una caja. En un banco o una billetera no hay conteo: el banco ya
+            // dijo cuánto entró y el comprobante lo prueba, así que la plata que salió del
+            // cajón es exactamente la que llegó. Cualquier diferencia ahí no es un
+            // sobrante físico — es que el punto de venta tecleó mal el monto, y eso se
+            // arregla corrigiendo el registro, no asentando plata de más.
+            //
+            // Sin esta distinción, un traslado de $10.000 al banco con $100.000 realmente
+            // consignados quedaría con $90.000 anotados como "excedente de la caja menor",
+            // que es falso, y el operador arrastrando un faltante de $90.000.
+            const cuentaDestinoFinal = await CajasYBancos.findByPk(idDestino, {
+                attributes: ['tipo'], transaction: t, raw: true
+            });
+            const destinoEsCaja = cuentaDestinoFinal?.tipo === 'caja';
+
+            const cajaTurno = await CajaTienda.findByPk(traslado.idCajaTienda, {
+                attributes: ['cajaMenor', 'fechaApertura', 'fechaCierre'], transaction: t, raw: true
+            });
+            const baseTurno = Math.round(parseFloat(cajaTurno?.cajaMenor) || 0);
+
+            // El egreso que descontó el cajón. Se toma acá —y con bloqueo— porque lo
+            // necesitan tanto el techo físico como el ajuste posterior, y pedirlo dos
+            // veces abriría una ventana entre una lectura y la otra.
+            const egresoDelTraslado = await Egresos.findOne({
+                where: { idTrasladoEfectivo: idTraslado },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            // Qué se alcanzó a arreglar en el cuadre del turno que despachó. Se declara
+            // acá porque lo escriben tres caminos —el excedente, la corrección bancaria y
+            // la devolución por controversia— y todos necesitan el mismo lugar.
+            //   aplicado    → la caja seguía abierta y su cuadre ya refleja el cambio
+            //   cajaCerrada → estaba firmada; quedó anotado y hay que ajustarlo a mano
+            const ajuste = { devuelto: 0, aplicado: false, cajaCerrada: false };
+
+            if (!rechaza && valorPedido <= 0)
+                throw new ErrorDecision('El valor recibido debe ser mayor que cero. Si no recibiste nada, rechazá el traslado.');
+
+            // ── Banco o billetera: el registro se corrige, no se acepta a medias ──
+            //
+            // En una cuenta bancaria nadie cuenta billetes. El banco ya dijo cuánto entró
+            // y el comprobante lo prueba, así que la plata que salió del cajón es
+            // exactamente la que llegó. Si el número no coincide con el que registró el
+            // punto de venta, el que está mal es el número —tecleó $10.000 donde consignó
+            // $100.000, o al revés—, y eso se arregla corrigiendo el dato.
+            //
+            // El administrador es quien lo corrige: tiene el comprobante a la vista y es
+            // el responsable de que los movimientos del banco en el software digan lo
+            // mismo que el extracto.
+            //
+            // Nada se borra: el valor originalmente registrado queda para siempre en el
+            // paso de 'Salida' de la bitácora, que es append-only.
+            const corrige = !rechaza && !destinoEsCaja && valorPedido !== despachado;
+
+            if (corrige && valorPedido > despachado) {
+                // Techo natural: no se pudo haber sacado del cajón más de lo que el cajón
+                // tenía. Sin este límite, subregistrar el traslado sería la forma de meter
+                // plata sin origen — el mismo agujero que la regla de la caja menor tapa
+                // del otro lado.
+                const cerrada = !!cajaTurno?.fechaCierre;
+                const { sEfectivo, sEgresosEfectivo } = await _calcularTransaccionesCaja(
+                    traslado.idTiendaOrigen,
+                    new Date(cajaTurno.fechaApertura),
+                    cerrada ? new Date(cajaTurno.fechaCierre) : new Date(),
+                    cerrada ? 'liquidada' : 'pendiente',
+                    t
+                );
+                // El egreso de ESTE traslado ya está contado dentro de `sEgresosEfectivo`.
+                // Se le devuelve para saber cuánto efectivo había realmente en el cajón
+                // disponible para este envío.
+                const yaContado   = Math.round(parseFloat(egresoDelTraslado?.valorEgreso) || 0);
+                const techoFisico = baseTurno + Math.round(sEfectivo) - (Math.round(sEgresosEfectivo) - yaContado);
+
+                if (valorPedido > techoFisico) {
+                    throw new ErrorDecision(
+                        `No se pudieron consignar ${_pesosCO(valorPedido)}: en ese turno el cajón llegó a tener ${_pesosCO(techoFisico)} contando la base y las ventas en efectivo. Si el comprobante dice más, esa plata no salió de esta caja y hay que registrarla aparte.`
+                    );
+                }
+            }
+
+            if (!rechaza && destinoEsCaja && valorPedido > despachado + baseTurno) {
+                throw new ErrorDecision(baseTurno > 0
+                    ? `No podés registrar más de ${_pesosCO(despachado + baseTurno)}: lo despachado (${_pesosCO(despachado)}) más la caja menor de ese turno (${_pesosCO(baseTurno)}). Un sobrante mayor no salió del cajón y hay que registrarlo aparte, no dentro de este traslado.`
+                    : `Esa caja abrió sin caja menor, así que no hay de dónde pudiera salir un sobrante: no podés registrar más de ${_pesosCO(despachado)}.`);
+            }
+
+            // En un banco el traslado pasa a valer lo corregido y no hay parcial ni
+            // excedente: el número del extracto ES el traslado. En una caja, en cambio, lo
+            // que ampara el traslado nunca pasa de lo despachado y el resto es excedente.
+            const valorFinal = corrige ? valorPedido : despachado;
+            const aceptado   = rechaza ? 0 : (destinoEsCaja ? Math.min(valorPedido, despachado) : valorPedido);
+            const excedente  = (rechaza || !destinoEsCaja) ? 0 : Math.max(0, valorPedido - despachado);
+            const parcial    = !rechaza && destinoEsCaja && aceptado < despachado;
+
+
+            // ── Textos por defecto ───────────────────────────────────────────
+            const tienda   = tituloLista(tiendaOrigen?.nombreComercial || 'el punto de venta');
+            const quienEnvio = empleadoEnvia
+                ? tituloLista(`${empleadoEnvia.PrimerNombre} ${empleadoEnvia.PrimerApellido}`)
+                : 'el operador';
+            const nota = (observacion || '').trim();
+
+            // Texto de la corrección bancaria. Va armado por el sistema y no lo escribe
+            // nadie: es la explicación de por qué el traslado ya no vale lo que decía, y
+            // tiene que decir lo mismo siempre, con los dos números a la vista.
+            const notaCorreccion = corrige
+                ? (valorPedido > despachado
+                    ? `[Corrección] El punto de venta registró ${_pesosCO(despachado)} y realmente se consignaron ${_pesosCO(valorPedido)}. Se corrigió el traslado y su egreso al valor del comprobante: esos ${_pesosCO(valorPedido - despachado)} sí salieron del cajón y no estaban registrados. El monto original queda en el paso de salida de esta bitácora.`
+                    : `[Corrección] El punto de venta registró ${_pesosCO(despachado)} y realmente se consignaron ${_pesosCO(valorPedido)}. Se corrigió el traslado y su egreso al valor del comprobante: esos ${_pesosCO(despachado - valorPedido)} nunca salieron del cajón y siguen en la tienda. El monto original queda en el paso de salida de esta bitácora.`)
+                : null;
+
+            const notaFinal = notaCorreccion || nota || (rechaza
+                ? `${empleado.nombre} rechazó en 100% la transacción proveniente del ${tienda} trasladado por ${quienEnvio}`
+                : parcial
+                    ? `${empleado.nombre} aceptó solo ${_pesosCO(aceptado)} de ${_pesosCO(despachado)} de la transacción proveniente del ${tienda} trasladado por ${quienEnvio}`
+                    : `${empleado.nombre} aceptó la transacción proveniente del ${tienda} trasladado por ${quienEnvio}`);
+
+            // ── Movimiento en la cuenta destino ──────────────────────────────
+            // Solo si entró plata. Un rechazo no genera movimiento: nada llegó, y un
+            // movimiento en cero ensuciaría el libro sin decir nada.
+            let idMovimiento = null;
+            if (aceptado > 0) {
+                const movimiento = await MovimientosCajasBancos.create({
+                    idCajaBanco: idDestino,
+                    idEmpleado:  empleado.idEmpleado,
+                    tipo:        'ingreso',
+                    valor:       aceptado,
+                    fecha:       new Date(),
+                    referencia:  traslado.codigoTraslado,
+                    descripcion: notaFinal
+                }, { transaction: t });
+                idMovimiento = movimiento.idMovimiento;
+                // `aceptado` ya vale lo corregido cuando el destino es una cuenta
+                // bancaria: es el número del comprobante, que es el que tiene que
+                // aparecer en el libro para poder conciliarlo contra el extracto.
+            }
+
+            // ── El sobrante, en su propio movimiento ─────────────────────────
+            //
+            // Aparte y no sumado al anterior: el movimiento del traslado tiene que valer
+            // exactamente lo que la tienda despachó, o conciliar contra el extracto deja
+            // de ser posible. El sobrante es otro hecho y va en otra línea, con una
+            // observación que dice de dónde salió para que dentro de seis meses nadie
+            // tenga que adivinar por qué entraron esos pesos sueltos.
+            let idMovimientoExcedente = null;
+            if (excedente > 0) {
+                const movExcedente = await MovimientosCajasBancos.create({
+                    idCajaBanco: idDestino,
+                    idEmpleado:  empleado.idEmpleado,
+                    tipo:        'ingreso',
+                    valor:       excedente,
+                    fecha:       new Date(),
+                    referencia:  traslado.codigoTraslado,
+                    descripcion: `Excedente del traslado ${traslado.codigoTraslado}: se despacharon ${_pesosCO(despachado)} desde ${tienda} y se contaron ${_pesosCO(despachado + excedente)}. Los ${_pesosCO(excedente)} de diferencia salieron de la caja menor del punto de venta.`
+                }, { transaction: t });
+                idMovimientoExcedente = movExcedente.idMovimiento;
+            }
+
+            // ── El traslado ──────────────────────────────────────────────────
+            // `update` con el estado en el WHERE y revisando filas afectadas: si otra
+            // petición ganó la carrera entre el lock y esto, no se pisa su resultado.
+            // Una corrección deja el traslado 'Recibido': entró completo lo que de verdad
+            // se consignó. No es una controversia — no hay nada en disputa, había un
+            // número mal escrito.
+            const estadoFinal = rechaza ? 'Rechazado' : (parcial ? 'Controversia' : 'Recibido');
+            const [filas] = await TrasladoEfectivo.update(
+                {
+                    estado:           estadoFinal,
+                    idEmpleadoRecibe: empleado.idEmpleado,
+                    idCajaBanco:      idDestino,
+                    idMovimiento,
+                    // En una caja `valorTraslado` NO se toca: sigue valiendo lo que el
+                    // punto de venta registró y el sobrante se guarda al lado. En un banco
+                    // sí se corrige, porque ahí el valor del comprobante es el único que
+                    // existe y el registro anterior era simplemente un error de tecleo.
+                    valorTraslado:    valorFinal,
+                    valorExcedente:   excedente > 0 ? excedente : null,
+                    idMovimientoExcedente
+                },
+                {
+                    where: { idTrasladosEfectivo: idTraslado, estado: 'En Transito' },
+                    transaction: t
+                }
+            );
+            if (!filas) throw new ErrorDecision('El traslado cambió de estado mientras se resolvía. Volvé a abrirlo.');
+
+            // ── Bitácora ─────────────────────────────────────────────────────
+            await TrasladoEfectivoHistorial.create({
+                idTrasladosEfectivo: idTraslado,
+                idEmpleado:          empleado.idEmpleado,
+                tipoTransaccion:     rechaza ? 'Rechazado' : (parcial ? 'Controversia' : 'Ingreso'),
+                // Lo que efectivamente se movió: en un rechazo es el valor rechazado, que
+                // es todo; en los otros dos, lo aceptado.
+                valorTransaccion:    rechaza ? despachado : aceptado,
+                observacion:         notaFinal
+            }, { transaction: t });
+
+            // El sobrante deja su propio paso. Es lo que alguien va a leer cuando se
+            // pregunte por qué el cajón de esa tienda quedó corto ese día.
+            if (excedente > 0) {
+                await TrasladoEfectivoHistorial.create({
+                    idTrasladosEfectivo: idTraslado,
+                    idEmpleado:          empleado.idEmpleado,
+                    tipoTransaccion:     'Excedente',
+                    valorTransaccion:    excedente,
+                    observacion:         `${empleado.nombre} contó ${_pesosCO(despachado + excedente)} sobre ${_pesosCO(despachado)} despachados desde ${tienda} por ${quienEnvio}. Los ${_pesosCO(excedente)} de más se asentaron en un movimiento aparte de la misma cuenta y se descontaron del cajón del punto de venta.`
+                }, { transaction: t });
+
+                // ── El espejo en el punto de venta ───────────────────────────
+                //
+                // Del cajón salió el despachado MÁS el excedente, pero el egreso solo
+                // registra el despachado. Sin esta segunda línea, el cuadre le pide al
+                // operador un efectivo que ya no está y el faltante aparece sin causa.
+                //
+                // Va como egreso APARTE y no sumado al del traslado: así el traslado y su
+                // egreso siguen valiendo lo mismo —que es lo que permite conciliarlos— y
+                // el sobrante queda como un hecho propio, igual que del lado de la cuenta
+                // destino, donde también entró en un movimiento separado.
+                //
+                // Y no se toca `cajaMenor`. La resta del cuadre reparte sola: mientras
+                // haya ventas en efectivo sin entregar, el excedente sale de ahí y la base
+                // queda intacta; recién cuando no alcanzan, el faltante llega a la base. Y
+                // cada venta en efectivo posterior lo repone antes de volverse entregable,
+                // porque sube el mismo número del que se resta.
+                if (egresoDelTraslado && egresoDelTraslado.estado === 'pendiente') {
+                    const refBase = egresoDelTraslado.referencia || traslado.codigoTraslado;
+                    await Egresos.create({
+                        idPuntoDeVenta:     traslado.idTiendaOrigen,
+                        idEmpleado:         traslado.idEmpleadoEnvia,
+                        idCajaTienda:       traslado.idCajaTienda,
+                        valorEgreso:        excedente,
+                        // Sufijo y no la misma referencia: dos filas idénticas en el
+                        // listado no se pueden distinguir al reclamar por una de ellas.
+                        referencia:         `${refBase}-EXC`.slice(0, 50),
+                        descripcion:        `Excedente del traslado ${traslado.codigoTraslado}: salieron ${_pesosCO(despachado + excedente)} del cajón y el traslado registraba ${_pesosCO(despachado)}.`.slice(0, 255),
+                        metodoPago:         'Efectivo',
+                        idCajaBanco:        idDestino,
+                        idTrasladoEfectivo: idTraslado,
+                        tipo:               'Traslado',
+                        estado:             'pendiente'
+                    }, { transaction: t });
+                    ajuste.aplicado = true;
+                } else if (egresoDelTraslado) {
+                    // El cuadre de ese turno ya está firmado: no se le agregan egresos.
+                    ajuste.cajaCerrada = true;
+                    await TrasladoEfectivoHistorial.create({
+                        idTrasladosEfectivo: idTraslado,
+                        idEmpleado:          empleado.idEmpleado,
+                        tipoTransaccion:     'Controversia',
+                        valorTransaccion:    excedente,
+                        observacion:         `Los ${_pesosCO(excedente)} de excedente no se descontaron del cajón de ${tienda}: el cuadre de ese turno ya estaba cerrado. Requiere ajuste manual.`
+                    }, { transaction: t });
+                }
+            }
+
+            // ── Qué pasa con el egreso que descontó el cajón ─────────────────
+            //
+            // El egreso baja a lo que el negocio REALMENTE recibió. Del punto de venta
+            // salió, según sus propios registros, el valor despachado; pero a destino
+            // llegó menos, y esa diferencia vuelve a ser responsabilidad del punto de
+            // venta: es plata que reportó como enviada y que nadie recibió.
+            //
+            // El efecto es deliberado: el cuadre de esa caja queda corto por la
+            // diferencia. Ese faltante ES el mensaje —el punto de venta tiene que
+            // responder por él—, no un error del sistema. Por eso el motivo se anota
+            // también en la descripción del egreso: sin eso, el vendedor ve un descuadre
+            // sin explicación y no puede saber de dónde salió.
+            //
+            //   Rechazo total → egreso en 0: no salió nada, la plata sigue en la tienda.
+            //   Parcial       → egreso = lo aceptado; la diferencia queda a cargo del PV.
+            const devuelto = destinoEsCaja ? despachado - aceptado : 0;
+            ajuste.devuelto = devuelto;
+
+            // ── El egreso de una corrección bancaria ─────────────────────────
+            //
+            // Sube o baja hasta el valor del comprobante, que es lo que de verdad salió
+            // del cajón. No es un cargo contra nadie: es el mismo hecho, bien anotado. Con
+            // el egreso corregido el cuadre de ese turno cierra exacto — ni sobran los
+            // pesos que nunca salieron, ni faltan los que salieron sin registrarse.
+            if (corrige) {
+                if (egresoDelTraslado && egresoDelTraslado.estado === 'pendiente') {
+                    const marca = `[Corregido: se registró ${_pesosCO(despachado)} y se consignaron ${_pesosCO(valorPedido)}]`;
+                    await egresoDelTraslado.update({
+                        valorEgreso: valorPedido,
+                        descripcion: `${egresoDelTraslado.descripcion ? egresoDelTraslado.descripcion + ' ' : ''}${marca}`.slice(0, 255)
+                    }, { transaction: t });
+                    ajuste.aplicado = true;
+                } else if (egresoDelTraslado) {
+                    // El cuadre de ese turno ya está firmado. Corregir el egreso cambiaría
+                    // un cierre cerrado, así que no se toca y queda dicho en la bitácora.
+                    ajuste.cajaCerrada = true;
+                    await TrasladoEfectivoHistorial.create({
+                        idTrasladosEfectivo: idTraslado,
+                        idEmpleado:          empleado.idEmpleado,
+                        tipoTransaccion:     'Controversia',
+                        valorTransaccion:    Math.abs(valorPedido - despachado),
+                        observacion:         `El egreso de ${tienda} no se corrigió: el cuadre de ese turno ya estaba cerrado. Sigue figurando por ${_pesosCO(despachado)} cuando se consignaron ${_pesosCO(valorPedido)}. Requiere ajuste manual.`
+                    }, { transaction: t });
+                }
+            }
+
+            if (devuelto > 0) {
+                const egreso = egresoDelTraslado;
+
+                if (egreso && egreso.estado === 'pendiente') {
+                    // La caja del turno sigue abierta, así que el egreso todavía se puede
+                    // ajustar al valor que el negocio recibió de verdad.
+                    //
+                    // Se BAJA el valor, nunca se borra la fila. EGRESOS no es `paranoid`,
+                    // así que un destroy sería un DELETE físico de un registro financiero,
+                    // y eso no se hace: el egreso existió y su rastro tiene que quedar. Un
+                    // rechazo total lo deja en $0, y el cuadre lo lista con su motivo, que
+                    // dice más que una línea que desapareció sin explicación.
+                    const motivo = aceptado > 0
+                        ? `[Controversia: se recibieron ${_pesosCO(aceptado)} de ${_pesosCO(despachado)}; los ${_pesosCO(devuelto)} restantes quedan a cargo del punto de venta]`
+                        : '[Traslado rechazado: el efectivo volvió al punto de venta]';
+                    await egreso.update({
+                        valorEgreso: aceptado,
+                        descripcion: `${egreso.descripcion ? egreso.descripcion + ' ' : ''}${motivo}`.slice(0, 255)
+                    }, { transaction: t });
+                    ajuste.aplicado = true;
+                } else if (egreso) {
+                    // La caja ya cerró y su cuadre está firmado: no se toca. Queda
+                    // anotado como un paso más de la bitácora, que es append-only y por
+                    // lo tanto es evidencia.
+                    ajuste.cajaCerrada = true;
+                    await TrasladoEfectivoHistorial.create({
+                        idTrasladosEfectivo: idTraslado,
+                        idEmpleado:          empleado.idEmpleado,
+                        tipoTransaccion:     'Controversia',
+                        valorTransaccion:    devuelto,
+                        observacion:         `${_pesosCO(devuelto)} quedan a cargo de ${tienda}, pero el cuadre de ese turno ya está cerrado y no se modificó: esa plata figura como salida del punto de venta. Requiere ajuste manual en el cuadre.`
+                    }, { transaction: t });
+                }
+            }
+
+            return {
+                estadoFinal, aceptado, despachado, devuelto, excedente, ajuste,
+                corrige, valorCorregido: corrige ? valorPedido : null,
+                idPuntoDeVenta: traslado.idTiendaOrigen,
+                codigo: traslado.codigoTraslado,
+                notaFinal
+            };
+        });
+
+        // ── Avisos ───────────────────────────────────────────────────────────
+        // Fuera de la transacción y en su propio try: un aviso que falle no puede tumbar
+        // una decisión ya asentada ni dejar la respuesta sin enviar.
+        try {
+            broadcast('__ADMIN__', 'traslados_pendientes', await resumenPendientes());
+            invalidarContadoresAdmin();
+
+            // Al punto de venta, cuando lo que llegó no fue lo que salió —en cualquiera de
+            // las dos direcciones—. Un 'Recibido' con excedente también avisa: al operador
+            // le sobró plata en el fajo y tiene que saberlo ANTES de contar la base, o
+            // cierra el turno sin entender por qué el fondo de cambio no da.
+            if (resultado.estadoFinal !== 'Recibido' || resultado.excedente > 0 || resultado.corrige) {
+                broadcast(resultado.idPuntoDeVenta, 'traslado_resuelto', {
+                    idTraslado,
+                    codigo:     resultado.codigo,
+                    estado:     resultado.estadoFinal,
+                    despachado: resultado.despachado,
+                    aceptado:   resultado.aceptado,
+                    devuelto:   resultado.devuelto,
+                    excedente:  resultado.excedente,
+                    corregido:  resultado.corrige ? resultado.valorCorregido : null,
+                    // Dice si la caja de ese turno seguía abierta. Si sí, el egreso ya
+                    // se ajustó y el faltante aparece solo en su cuadre; si ya había
+                    // cerrado, hay que arreglarlo a mano y el operador debe saberlo.
+                    ajusteAplicado: resultado.ajuste.aplicado,
+                    observacion: resultado.notaFinal
+                });
+            }
+        } catch (e) {
+            console.error('decidirTrasladoEfectivo: aviso posterior falló', e);
+        }
+
+        return res.json({
+            success: true,
+            estado:     resultado.estadoFinal,
+            aceptado:   resultado.aceptado,
+            devuelto:   resultado.devuelto,
+            excedente:  resultado.excedente,
+            corregido:  resultado.corrige ? resultado.valorCorregido : null,
+            despachado: resultado.despachado,
+            codigo:     resultado.codigo,
+            // El navegador abre el comprobante con el estado final.
+            pdf: `/admin/bankentities/traslados/${idTraslado}/pdf`,
+            avisoCajaCerrada: resultado.ajuste.cajaCerrada
+        });
+
+    } catch (e) {
+        if (e instanceof ErrorDecision)
+            return res.status(422).json({ success: false, mensaje: e.message });
+
+        console.error('decidirTrasladoEfectivo:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo registrar la decisión.' });
+    }
+};
+
+// GET /admin/bankentities/traslados/:idTraslado/pdf
+// Sin filtro por tienda: el administrador ve los traslados de todas las sedes.
+const getTrasladoPDFAdmin = async (req, res) => {
+    try {
+        const traslado = await buscarTrasladoParaPDF(req.params.idTraslado);
+        if (!traslado) return res.status(404).send('Traslado no encontrado.');
+
+        const buf = await generarPDFTraslado(traslado);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="traslado-${traslado.codigoTraslado}.pdf"`);
+        res.setHeader('Content-Length', buf.length);
+        return res.send(buf);
+    } catch (e) {
+        console.error('getTrasladoPDFAdmin:', e);
+        return res.status(500).send('Error al generar el comprobante.');
+    }
+};
+
 const verPerfilCajaBanco = async (req, res) => {
     try {
         const cuenta = await CajasYBancos.findByPk(req.params.idCajaBanco, { raw: true });
@@ -4968,7 +5582,7 @@ const verPerfilCajaBanco = async (req, res) => {
         const inicioMes = new Date();
         inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
 
-        const [totales, delMes, { movimientos, cursorSiguiente }, trasladosPendientes] = await Promise.all([
+        const [totales, delMes, { movimientos, cursorSiguiente }, trasladosPendientes, cajasDestino] = await Promise.all([
             MovimientosCajasBancos.findAll({
                 where: { idCajaBanco: cuenta.idCajaBanco },
                 attributes: [[SUMA_CON_SIGNO, 'saldo']],
@@ -4989,7 +5603,29 @@ const verPerfilCajaBanco = async (req, res) => {
             listarMovimientosCuenta(req.params.idCajaBanco, {}),
             // Van aparte del libro y no paginados: un traslado en tránsito todavía no es
             // un movimiento, y son pocos por definición —lo que espera aceptación—.
-            listarPendientesDeCuenta(req.params.idCajaBanco)
+            listarPendientesDeCuenta(req.params.idCajaBanco),
+            // Cajas a las que se podría redirigir un traslado que llegó acá.
+            //
+            // SOLO entre cajas. Un traslado a un banco o a una billetera ya se consignó
+            // en esa cuenta concreta: la plata está en el extracto de ese banco y
+            // apuntarla a otro lado sería declarar un movimiento que no ocurrió. Entre
+            // cajas sí: el efectivo es físico y todavía puede terminar en otro cajón del
+            // negocio, que es la corrección que esto habilita.
+            //
+            // Si la cuenta actual no es una caja, ni se consulta: no hay redirección
+            // posible y la lista viajaría al navegador para nada.
+            cuenta.tipo === 'caja'
+                ? CajasYBancos.findAll({
+                    where: {
+                        tipo: 'caja',
+                        estado: true,
+                        idCajaBanco: { [Op.ne]: cuenta.idCajaBanco }
+                    },
+                    attributes: ['idCajaBanco', 'nombreCajaBanco', 'referencia'],
+                    order: [['nombreCajaBanco', 'ASC'], ['idCajaBanco', 'ASC']],
+                    raw: true
+                })
+                : []
         ]);
 
         const porTipo = Object.fromEntries(delMes.map(r => [r.tipo, r]));
@@ -5012,6 +5648,7 @@ const verPerfilCajaBanco = async (req, res) => {
             movimientos,
             cursorSiguiente,
             trasladosPendientes,
+            cajasDestino,
             filtros: { desde: '', hasta: '', ahora: iso(ahora).slice(0, 16) }
         });
     } catch (e) {
@@ -5281,6 +5918,300 @@ const crearAyudasHoja = (ws, anchoTotal) => {
     return { banda, casillas };
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hoja "OF" del informe de facturación.
+//
+// Las facturas que el punto de venta marcó, con los datos tributarios del cliente
+// abiertos en columnas. Vive en su propia función y no dentro de `exportarFacturasTienda`
+// porque esa función ya mide 250 líneas y esto es un documento aparte con su propia
+// cabecera, sus propias columnas y su propio criterio.
+//
+// Comparte `crearAyudasHoja`, los tokens `XLS` y el formato de pesos con las otras dos
+// hojas: el archivo tiene que leerse como un solo documento.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Cuántas facturas OF se traen por vuelta. Igual que el resto de los informes: se pide una
+// tanda, se escribe al stream y se descarta (CLAUDE.md §11).
+const TANDA_OF = 300;
+
+const construirHojaOF = async (wb, { donde, tienda, fechaListado, fFechaLarga, enlaceFactura }) => {
+    // Solo las marcadas. Se apoya en el índice (idPuntoDeVenta, OF, fechaEmision).
+    const dondeOF = { ...donde, OF: true };
+
+    const totalOF = await FacturaClientes.count({ where: dondeOF });
+
+    const ws = wb.addWorksheet('OF', {
+        properties: { tabColor: { argb: XLS.marca } },
+        views: [{ state: 'frozen', ySplit: 7, xSplit: 2 }],   // congela cabecera y las dos primeras columnas
+        pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    });
+
+    // El orden sigue el del bloque "adquiriente" de la factura electrónica: identificación,
+    // condición tributaria, actividad, domicilio fiscal, contacto. Quien transcribe a la
+    // plataforma de la DIAN lee de izquierda a derecha sin saltar.
+    ws.columns = [
+        { key: 'nro',        width: 15 },
+        { key: 'razon',      width: 34 },
+        { key: 'nombres',    width: 28 },
+        { key: 'tipoPer',    width: 12 },
+        { key: 'tipoDoc',    width: 11 },
+        { key: 'doc',        width: 18 },
+        { key: 'dv',         width: 5  },
+        { key: 'docCompleto',width: 20 },
+        { key: 'regimen',    width: 24 },
+        { key: 'respFiscal', width: 22 },
+        { key: 'granC',      width: 9  },
+        { key: 'autorret',   width: 9  },
+        { key: 'agenteRet',  width: 9  },
+        { key: 'aduanero',   width: 9  },
+        { key: 'ciiu',       width: 8  },
+        { key: 'descCiiu',   width: 30 },
+        { key: 'fechaRut',   width: 12 },
+        { key: 'pais',       width: 7  },
+        { key: 'codDepto',   width: 8  },
+        { key: 'depto',      width: 18 },
+        { key: 'codMun',     width: 8  },
+        { key: 'municipio',  width: 18 },
+        { key: 'direccion',  width: 30 },
+        { key: 'postal',     width: 9  },
+        { key: 'email',      width: 28 },
+        { key: 'telefono',   width: 15 },
+        { key: 'valor',      width: 16 }
+    ];
+
+    const ANCHO = ws.columns.length;
+    const { banda, casillas } = crearAyudasHoja(ws, ANCHO);
+
+    banda(`FACTURAS MARCADAS OF  ·  ${fFechaLarga(fechaListado)}  ·  ${totalOF === 1 ? '1 factura' : totalOF + ' facturas'}`, {
+        font: { name: 'Calibri', size: 9, bold: true, color: { argb: XLS.blanco } },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.marca } },
+        alignment: { vertical: 'middle', indent: 1 }
+    }, 22);
+
+    banda(tituloLista(tienda.nombreComercial), {
+        font: { name: 'Calibri', size: 20, bold: true, color: { argb: XLS.tinta } },
+        alignment: { vertical: 'middle', indent: 1 }
+    }, 32);
+
+    ws.addRow([]).commit();
+
+    casillas([
+        { etiqueta: 'RAZÓN SOCIAL',      valor: tituloLista(tienda.razonSocial || tienda.nombreComercial) },
+        { etiqueta: 'FECHA DEL LISTADO', valor: fFechaLarga(fechaListado) },
+        { etiqueta: 'FACTURAS OF',       valor: totalOF }
+    ]);
+
+    ws.addRow([]).commit();
+
+    const cabecera = ws.addRow([
+        'Nro Factura', 'Razón social', 'Nombres y apellidos', 'Persona',
+        'Tipo doc.', 'NIT / Documento', 'DV', 'NIT completo',
+        'Régimen', 'Resp. fiscal (DIAN)', 'Gran contr.', 'Autorret.', 'Ag. retención', 'Aduanero',
+        'CIIU', 'Actividad económica', 'Fecha RUT',
+        'País', 'Cód. dpto', 'Departamento', 'Cód. mun.', 'Municipio',
+        'Dirección', 'Cód. postal', 'Email', 'Teléfono', 'Valor'
+    ]);
+    cabecera.height = 30;
+    cabecera.eachCell((celda) => {
+        celda.font = { name: 'Calibri', size: 9, bold: true, color: { argb: XLS.blanco } };
+        celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
+        // Ajuste de línea: "Ag. retención" en una columna de 9 no entra en un renglón, y
+        // recortado deja al lector adivinando cuál de las tres condiciones es.
+        celda.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
+    });
+    // Centradas: las cuatro condiciones, el DV y los códigos DANE. Son valores cortos y
+    // centrados se barren de un vistazo; alineados a la izquierda quedan sueltos.
+    [7, 11, 12, 13, 14, 18, 19, 21, 24, 27].forEach(i => {
+        cabecera.getCell(i).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    });
+    cabecera.commit();
+
+    const primeraDeDatos = cabecera.number + 1;
+    let escritas = 0, mayor = 0;
+
+    // Sí / — en vez de VERDADERO/FALSO: son cuatro columnas angostas leídas de un vistazo,
+    // y el guion deja ver de inmediato cuáles condiciones aplican sin leer palabra por
+    // palabra.
+    const marca = (v) => (v ? 'Sí' : '—');
+    const REGIMEN = { '48': '48 — Responsable de IVA', '49': '49 — No responsable de IVA' };
+
+    for (let pagina = 0; ; pagina++) {
+        const tanda = await FacturaClientes.findAll({
+            where: dondeOF,
+            include: [{
+                model: Clientes, as: 'cliente', required: false,
+                attributes: ['tipo_persona', 'tipo_documento', 'numero_doc', 'digito_verif',
+                             'razon_social', 'primer_nombre', 'segundo_nombre',
+                             'primer_apellido', 'segundo_apellido', 'email', 'telefono'],
+                include: [
+                    { model: ClientesTributario, as: 'tributario', required: false },
+                    { model: ClientesUbicacion,  as: 'ubicaciones', required: false }
+                ]
+            },
+            { model: DetallesFactura, as: 'detalles', attributes: ['total'], required: false }],
+            order: [['numeroFactura', 'ASC'], ['idFacturaCliente', 'ASC']],
+            limit: TANDA_OF,
+            offset: pagina * TANDA_OF,
+            distinct: true,
+            subQuery: false
+        });
+        if (!tanda.length) break;
+
+        for (const f of tanda) {
+            const cli = f.cliente;
+            // `hasMany`, así que llegan como arreglo aunque en la práctica sea uno solo.
+            const trib = cli?.tributario?.[0]  || {};
+            const ubi  = cli?.ubicaciones?.[0] || {};
+
+            const total = f.detalles.reduce((s, d) => s + parseFloat(d.total || 0), 0);
+            if (total > mayor) mayor = total;
+
+            const nombre = f.idCliente === '0'
+                ? 'Consumidor Final'
+                : (cli?.razon_social
+                    || [cli?.primer_nombre, cli?.segundo_nombre, cli?.primer_apellido, cli?.segundo_apellido]
+                        .filter(Boolean).join(' ').trim()
+                    || 'N/A');
+
+            // Nombre completo aparte de la razón social: una persona natural no tiene razón
+            // social y una jurídica no tiene nombres, así que mezclarlos en una columna
+            // obliga a adivinar cuál de los dos se está leyendo.
+            const nombresPersona = [cli?.primer_nombre, cli?.segundo_nombre,
+                                    cli?.primer_apellido, cli?.segundo_apellido]
+                                    .filter(Boolean).join(' ').trim();
+
+            // El documento con su dígito, como se transcribe a la DIAN. Se arma acá para
+            // que nadie tenga que concatenar dos columnas a mano.
+            const docCompleto = cli?.numero_doc
+                ? (cli.digito_verif ? `${cli.numero_doc}-${cli.digito_verif}` : cli.numero_doc)
+                : '—';
+
+            const fila = ws.addRow([
+                enlaceFactura(f.idFacturaCliente, `${f.prefijo || ''}${f.numeroFactura}`),
+                cli?.razon_social ? tituloLista(cli.razon_social) : '—',
+                nombresPersona ? tituloLista(nombresPersona) : (f.idCliente === '0' ? 'Consumidor Final' : '—'),
+                cli?.tipo_persona === 'J' ? 'Jurídica' : cli?.tipo_persona === 'N' ? 'Natural' : '—',
+                cli?.tipo_documento || '—',
+                cli?.numero_doc     || '—',
+                cli?.digito_verif   || '—',
+                docCompleto,
+                REGIMEN[trib.regimen_fiscal] || trib.regimen_fiscal || '—',
+                // Los códigos tal como se declararon. Vacío significa que nadie los
+                // declaró todavía — distinto de R-99-PN, que es declarar que no aplica
+                // ninguna. Se dice con palabras para que quien transcribe no lo confunda.
+                trib.responsabilidad_fiscal || 'Sin declarar',
+                marca(trib.gran_contribuyente),
+                marca(trib.autorretenedor),
+                marca(trib.agente_retencion),
+                marca(trib.obligado_aduanero),
+                trib.ciiu             || '—',
+                trib.descripcion_ciiu || '—',
+                trib.fecha_rut ? new Date(`${trib.fecha_rut}T00:00:00`) : '—',
+                ubi.pais || '—',
+                // Códigos DANE: son los que pide la plataforma de facturación, no el
+                // nombre. Van al lado del nombre para poder verificar que corresponden.
+                ubi.idDepartamento || '—',
+                ubi.nombreDepartamento ? tituloLista(ubi.nombreDepartamento) : '—',
+                ubi.idMunicipio || '—',
+                ubi.nombreMunicipio    ? tituloLista(ubi.nombreMunicipio)    : '—',
+                ubi.direccion || '—',
+                ubi.codigo_postal || '—',
+                cli?.email    || '—',
+                cli?.telefono || '—',
+                total
+            ]);
+
+            fila.height = 18;
+            fila.eachCell({ includeEmpty: true }, (celda) => {
+                celda.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
+                celda.alignment = { vertical: 'middle', indent: 1 };
+                celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
+                if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
+            });
+
+            fila.getCell('A').font = { name: 'Consolas', size: 9, bold: true, underline: true, color: { argb: XLS.marca } };
+            // Razón social y nombre en negrita: son lo que identifica al adquiriente.
+            ['B', 'C'].forEach(c => { fila.getCell(c).font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.tinta } }; });
+
+            // Todo lo que se transcribe dígito por dígito va en monoespaciada: documentos,
+            // códigos DANE, CIIU, postal y teléfono. Un 1 y un 7 mal leídos en una factura
+            // electrónica la rechazan.
+            ['E', 'F', 'G', 'O', 'R', 'S', 'U', 'X', 'Z'].forEach(c => {
+                fila.getCell(c).font = { name: 'Consolas', size: 9, color: { argb: XLS.apagado } };
+            });
+            // El NIT con su dígito es el que se copia: va destacado sobre los dos que lo
+            // componen, para que nadie arme la cadena a mano y se equivoque.
+            fila.getCell('H').font = { name: 'Consolas', size: 10, bold: true, color: { argb: XLS.tinta } };
+            fila.getCell('H').alignment = { vertical: 'middle', horizontal: 'center' };
+            ['G', 'R', 'S', 'U', 'X'].forEach(c => { fila.getCell(c).alignment = { vertical: 'middle', horizontal: 'center' }; });
+            fila.getCell('I').font = { name: 'Calibri', size: 9, color: { argb: XLS.apagado } };
+
+            // Los códigos DIAN, en monoespaciada y destacados cuando existen: son lo que
+            // se transcribe. "Sin declarar" se apaga, porque es la ausencia del dato.
+            const cResp = fila.getCell('J');
+            const declarados = cResp.value !== 'Sin declarar';
+            cResp.font = declarados
+                ? { name: 'Consolas', size: 9, bold: true, color: { argb: XLS.tinta } }
+                : { name: 'Calibri', size: 9, italic: true, color: { argb: XLS.apagado } };
+
+            // Las cuatro condiciones DIAN: la que aplica se ve, la que no se apaga. Es lo
+            // que permite barrer la columna sin leerla.
+            ['K', 'L', 'M', 'N'].forEach((c) => {
+                const celda = fila.getCell(c);
+                const activa = celda.value === 'Sí';
+                celda.alignment = { vertical: 'middle', horizontal: 'center' };
+                // El guion no se apaga hasta desaparecer: "no aplica" y "celda vacía" son
+                // cosas distintas, y con el gris del borde no se distinguen.
+                celda.font = activa
+                    ? { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.ingresoTinta } }
+                    : { name: 'Calibri', size: 10, color: { argb: XLS.apagado } };
+                if (activa) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.ingresoFondo } };
+            });
+
+            const cRut = fila.getCell('Q');
+            if (cRut.value instanceof Date) cRut.numFmt = 'dd/mm/yyyy';
+            cRut.alignment = { vertical: 'middle', horizontal: 'center' };
+
+            // Actividad, dirección y correo: texto de apoyo, un punto más chico.
+            ['P', 'T', 'V', 'W', 'Y'].forEach(c => { fila.getCell(c).font = { name: 'Calibri', size: 9, color: { argb: XLS.apagado } }; });
+
+            const cValor = fila.getCell('AA');
+            cValor.numFmt = FORMATO_PESOS;
+            cValor.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.ingresoTinta } };
+            cValor.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+
+            fila.commit();
+            escritas++;
+        }
+
+        if (tanda.length < TANDA_OF) break;
+    }
+
+    if (!escritas) {
+        // La hoja existe igual aunque esté vacía: si desapareciera, quien la busca no
+        // sabría si es que no hubo facturas OF o si el informe se generó mal.
+        banda('Ninguna factura de esta fecha fue marcada como OF.', {
+            font: { name: 'Calibri', size: 11, italic: true, color: { argb: XLS.apagado } },
+            alignment: { vertical: 'middle', horizontal: 'center' }
+        }, 28);
+    } else {
+        const ultima = primeraDeDatos + escritas - 1;
+        ws.addConditionalFormatting({
+            ref: `AA${primeraDeDatos}:AA${ultima}`,
+            rules: [{
+                type: 'dataBar', gradient: true, priority: 2,
+                color: { argb: 'FF10B981' },
+                cfvo: [{ type: 'num', value: 0 }, { type: 'num', value: mayor || 1 }]
+            }]
+        });
+        ws.autoFilter = { from: { row: cabecera.number, column: 1 }, to: { row: ultima, column: ANCHO } };
+    }
+
+    await ws.commit();
+    return escritas;
+};
+
 // GET /admin/bankentities/cajas/:idCajaBanco/movimientos/export
 //
 // Devuelve un .xlsx real (OOXML) escrito en streaming con ExcelJS. Antes se emitía
@@ -5334,8 +6265,41 @@ const exportarMovimientosCuenta = async (req, res) => {
 
         const nombreArchivo = `movimientos-${cuenta.nombreCajaBanco.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '')}-${ahora.toISOString().slice(0, 10)}.xlsx`;
 
+        // Qué abarca el archivo, en palabras. El banner lo usa para que dos exportaciones
+        // de la misma cuenta con rangos distintos no sean indistinguibles una vez
+        // descargadas. Se arma con los mismos filtros que la consulta, así no puede
+        // describir un recorte distinto del que trae adentro.
+        const dia = (iso) => fFecha(new Date(`${iso}T00:00:00`));
+        const rango =
+            desde && hasta ? `${dia(desde)} al ${dia(hasta)}`
+            : desde        ? `Desde el ${dia(desde)}`
+            : hasta        ? `Hasta el ${dia(hasta)}`
+            : 'Todo el historial';
+        const soloTipo = tipo === 'ingreso' ? '  ·  Solo ingresos'
+                       : tipo === 'egreso'  ? '  ·  Solo egresos'
+                       : '';
+        const periodo = `${rango}${soloTipo}`;
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+
+        // Blindaje del stream. ExcelJS envuelve la respuesta en un archiver que sigue
+        // empujando datos de forma asíncrona; si algo falla a mitad de la generación y el
+        // catch corta la respuesta, ese archiver escribe sobre un stream ya cerrado. Ese
+        // write emite un 'error' en `res`, y un 'error' sin oyente en un EventEmitter
+        // TUMBA EL PROCESO: un informe que no se pudo armar se llevaba puesto el servidor
+        // entero. Con este oyente el fallo queda en el log y la petición muere sola.
+        res.on('error', (err) => console.error('exportarMovimientosCuenta: stream cortado ·', err.code || err.message));
+
+        // Además, si el stream se rompe, `wb.commit()` no resuelve NUNCA: el archiver se
+        // queda esperando un destino que ya no acepta bytes y el handler nunca termina.
+        // Esta promesa hace que el `await` del final siempre termine.
+        //
+        // RESUELVE, no rechaza. Una versión anterior la hacía rechazar y era peor que el
+        // problema: el stream se corta mucho antes de que alguien espere esta promesa, y
+        // una promesa rechazada que nadie está escuchando todavía tumba el proceso igual
+        // que el 'error' sin oyente que vinimos a arreglar.
+        const streamRoto = new Promise((resolver) => res.once('error', () => resolver('roto')));
 
         // El workbook escribe directo sobre la respuesta: el archivo nunca existe completo
         // ni en memoria ni en disco.
@@ -5530,13 +6494,17 @@ const exportarMovimientosCuenta = async (req, res) => {
         }
 
         ws.commit();
-        await wb.commit();     // cierra el ZIP y termina la respuesta
+        // Cierra el ZIP y termina la respuesta, o corta si el destino dejó de escuchar.
+        const desenlace = await Promise.race([wb.commit().then(() => 'listo'), streamRoto]);
+        if (desenlace === 'roto') { res.destroy(); return; }
     } catch (e) {
         console.error('exportarMovimientosCuenta:', e);
         // Si el archivo ya empezó a bajar no se puede mandar un 500: los encabezados
         // salieron hace rato. Se corta la descarga, que el navegador reporta como archivo
-        // incompleto, y el motivo queda en el log.
-        if (res.headersSent) return res.destroy();
+        // incompleto, y el motivo queda en el log. El oyente de 'error' puesto más arriba
+        // es el que evita que los últimos bytes del archiver, al escribir sobre esta
+        // respuesta ya cerrada, terminen tumbando el proceso.
+        if (res.headersSent || res.writableEnded) { res.destroy(); return; }
         return res.status(500).send('No se pudo generar el archivo.');
     }
 };
@@ -5608,8 +6576,47 @@ const exportarFacturasTienda = async (req, res) => {
         const limpio = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
             .replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '');
 
+        // El número de factura enlaza a su tirilla. Tiene que ser absoluta: el .xlsx viaja
+        // por correo y se abre en equipos que no saben de dónde salió, así que una ruta
+        // relativa no lleva a ninguna parte.
+        const baseUrl  = `${process.env.APP_URL}:${process.env.APP_PORT}`;
+        const urlPDF   = (id) => `${baseUrl}/admin/api/factura/${id}/tirilla`;
+
+        // ── Por qué una fórmula y no un hipervínculo de verdad ────────────────
+        //
+        // Un hipervínculo real obliga a ExcelJS a escribir un elemento <hyperlinks> en la
+        // hoja y una relación por celda. Y su escritor en streaming lo emite ANTES de
+        // <conditionalFormatting>, cuando el esquema de SpreadsheetML exige el orden
+        // contrario. Excel valida ese orden y rechaza el archivo con "Encontramos un
+        // problema con el contenido"; Vista Previa de macOS es más permisiva y lo abre
+        // igual, así que el archivo parece sano hasta que alguien lo abre de verdad.
+        //
+        // `HYPERLINK()` es una fórmula: se resuelve dentro de la celda, no necesita
+        // relación y no genera el elemento que rompe el orden. El enlace se comporta igual
+        // al hacer clic.
+        //
+        // Las comillas del rótulo se duplican, que es como se escapan dentro de una cadena
+        // de fórmula. Un prefijo de factura con comillas rompería el archivo entero.
+        const enlaceFactura = (id, rotulo) => ({
+            formula: `HYPERLINK("${urlPDF(id)}","${String(rotulo).replace(/"/g, '""')}")`
+        });
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="facturacion-${limpio(tienda.nombreComercial)}-${fecha}.xlsx"`);
+
+        // Mismo blindaje que en exportarMovimientosCuenta, por el mismo motivo: ExcelJS
+        // envuelve la respuesta en un archiver que sigue empujando bytes de forma
+        // asíncrona. Si algo falla a mitad y el catch corta la respuesta, ese archiver
+        // escribe sobre un stream cerrado; ese write emite un 'error' en `res`, y un
+        // 'error' sin oyente TUMBA EL PROCESO. Un informe que no se pudo armar no puede
+        // llevarse puesto el servidor.
+        res.on('error', (err) => console.error('exportarFacturasTienda: stream cortado ·', err.code || err.message));
+
+        // Y si el destino deja de aceptar bytes, `wb.commit()` no resuelve nunca y el
+        // handler queda colgado. Esta promesa RESUELVE —no rechaza— para que el `await`
+        // del final siempre termine: una promesa rechazada que todavía nadie escucha
+        // tumbaría el proceso igual que el 'error' que vinimos a evitar.
+        const streamRoto = new Promise((resolver) => res.once('error', () => resolver('roto')));
 
         const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: false });
         wb.creator = 'Grupo GH';
@@ -5765,8 +6772,10 @@ const exportarFacturasTienda = async (req, res) => {
 
                 if (total > mayor) mayor = total;
 
+                const nro = `${f.prefijo || ''}${f.numeroFactura}`;
+
                 const fila = ws.addRow([
-                    `${f.prefijo || ''}${f.numeroFactura}`,
+                    enlaceFactura(f.idFacturaCliente, nro),
                     tituloLista(cliente),
                     doc,
                     fechaListado,
@@ -5785,7 +6794,9 @@ const exportarFacturasTienda = async (req, res) => {
                     if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
                 });
 
-                fila.getCell('A').font = { name: 'Consolas', size: 9, bold: true, color: { argb: XLS.tinta } };
+                // Subrayado y color de marca: sin eso Excel pinta el enlace de azul con su
+                // propio estilo y el informe deja de verse como los demás.
+                fila.getCell('A').font = { name: 'Consolas', size: 9, bold: true, underline: true, color: { argb: XLS.marca } };
                 fila.getCell('B').font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.tinta } };
                 fila.getCell('C').font = { name: 'Consolas', size: 9, color: { argb: XLS.apagado } };
                 fila.getCell('D').numFmt = 'dd/mm/yyyy';
@@ -5825,10 +6836,31 @@ const exportarFacturasTienda = async (req, res) => {
         }
 
         ws.commit();
-        await wb.commit();
+
+        // ══ HOJA "OF" ════════════════════════════════════════════════════════
+        //
+        // Las facturas que el punto de venta marcó como OF, con los datos tributarios del
+        // cliente abiertos en columnas. Esta hoja es la que se entrega a quien la pide,
+        // así que lleva el dato completo —régimen, condiciones DIAN, CIIU, RUT,
+        // ubicación— y no el resumen de una línea que alcanza para el listado general.
+        //
+        // Va en hoja aparte y no como filas marcadas de la primera por una razón práctica:
+        // son diecisiete columnas contra nueve. Mezcladas, la tabla del listado quedaría
+        // vacía en dos tercios de su ancho para todas las facturas que no son OF.
+        //
+        // Se escribe DESPUÉS de confirmar la primera hoja: con el escritor en streaming
+        // una hoja confirmada ya no admite filas, así que el orden es el orden final.
+        await construirHojaOF(wb, { donde, tienda, fechaListado, fFechaLarga, enlaceFactura });
+
+        // Cierra el ZIP y termina la respuesta, o corta si el destino dejó de escuchar.
+        const desenlace = await Promise.race([wb.commit().then(() => 'listo'), streamRoto]);
+        if (desenlace === 'roto') { res.destroy(); return; }
     } catch (e) {
         console.error('exportarFacturasTienda:', e);
-        if (res.headersSent) return res.destroy();
+        // Si el archivo ya empezó a bajar no se puede mandar un 500: los encabezados
+        // salieron hace rato. Se corta la descarga, que el navegador reporta como archivo
+        // incompleto, y el motivo queda en el log.
+        if (res.headersSent || res.writableEnded) { res.destroy(); return; }
         return res.status(500).send('No se pudo generar el archivo.');
     }
 };
@@ -6278,7 +7310,9 @@ const getCajasCerradasAdmin = async (req, res) => {
                 apertura:        c.fechaApertura,
                 cierre:          c.fechaCierre,
                 empleadoApertura: `${c.empleadoApertura?.PrimerNombre || ''} ${c.empleadoApertura?.PrimerApellido || ''}`.trim(),
-                empleadoCierre:   `${c.empleadoCierre?.PrimerNombre  || ''} ${c.empleadoCierre?.PrimerApellido  || ''}`.trim()
+                // Una caja abierta todavía no tiene quién la cierre: se muestra la raya
+                // en vez de una celda vacía, que se lee como un dato que se perdió.
+                empleadoCierre:   `${c.empleadoCierre?.PrimerNombre  || ''} ${c.empleadoCierre?.PrimerApellido  || ''}`.trim() || '—'
             }))
         });
     } catch (e) {
@@ -7009,6 +8043,7 @@ export {
     newStore, // [DELETE?]
     saveStoreBasic,
     verTienda,
+    destrabarCuadreTienda,
     editarTienda,
     postNuevaTienda,
     dashboardInventorys,
@@ -7050,7 +8085,7 @@ export {
     jsonPermisosAcciones,
     verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
     getPagosHoyPorMetodo,
-    listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
+    listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, decidirTrasladoEfectivo, validarEmpleadoBancos, getTrasladoPDFAdmin, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
     getStatsVendedorMes,
     getCajasCerradasAdmin,
     getAdminCuadrePDF,

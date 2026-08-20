@@ -263,6 +263,7 @@ block contenedor
                                     data-cuenta=cuenta.nombreCajaBanco
                                     data-referencia=cuenta.referencia || ''
                                     data-tipo-cuenta=cuenta.tipo
+                                    data-cajas=JSON.stringify(cajasDestino || [])
                                     data-activa=cuenta.estado ? '1' : '0'
                                 )
                                     //- ── CUENTA INACTIVA ───────────────────────────────
@@ -527,6 +528,76 @@ block contenedor
                otro color pierde contraste. */
             .gh-tras-dif b { font-weight: 800; }
 
+            /* Redirigir el traslado a otra caja. El botón es discreto a propósito: la
+               acción esperada es aceptar donde lo mandaron, y esto es la excepción. */
+            .gh-tras-cambiar {
+                margin-left: 0.5rem;
+                padding: 0.0625rem 0.375rem;
+                border: 1px solid #E2E8F0; border-radius: 999px;
+                background: #fff; color: #64748B;
+                font-size: 0.625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+                cursor: pointer;
+                transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+            }
+            .gh-tras-cambiar:hover { background: #F1F5F9; border-color: #CBD5E1; color: #334155; }
+            .gh-tras-cambiar:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+
+            .gh-tras-select {
+                width: 100%;
+                padding: 0.4375rem 0.625rem;
+                border: 1px solid #F59E0B; border-radius: 0.625rem;
+                background: #fff; color: #1E293B; font-size: 0.8125rem;
+            }
+            .gh-tras-select:focus {
+                outline: none;
+                box-shadow: 0 0 0 3px rgb(245 158 11 / 0.18);
+            }
+
+            /* Mismo tratamiento que el aviso de diferencia de monto: es el otro modo en
+               que lo asentado deja de coincidir con lo que se envió. */
+            .gh-tras-redirige {
+                margin-top: 0.375rem; padding: 0.4375rem 0.625rem;
+                border-radius: 0.625rem;
+                background: #FFFBEB; border: 1px solid #FDE68A;
+                font-size: 0.75rem; color: #92400E;
+            }
+
+            .gh-tras-emp {
+                width: 100%; margin-top: 0.25rem;
+                padding: 0.625rem 0.75rem;
+                border: 1px solid #E2E8F0; border-radius: var(--radius-gh, 12px);
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                font-size: 0.9375rem; letter-spacing: 0.25em; text-transform: uppercase;
+                color: #1E293B; background: #fff;
+            }
+            .gh-tras-emp:focus {
+                outline: none; border-color: var(--color-gh-primary, #F794C9);
+                box-shadow: 0 0 0 3px rgb(247 148 201 / 0.25);
+            }
+
+            .gh-tras-emp-estado {
+                min-height: 1rem; margin-top: 0.25rem;
+                font-size: 0.6875rem; font-weight: 600; color: #64748B;
+            }
+            .gh-tras-emp-ok  { color: #047857; }
+            .gh-tras-emp-mal { color: #BE123C; }
+
+            /* Un botón apagado tiene que verse apagado: si solo deja de responder, el
+               operador cree que la pantalla se colgó. */
+            .gh-tras-btn:disabled {
+                opacity: 0.45;
+                cursor: not-allowed;
+            }
+            .gh-tras-aceptar:disabled:hover  { background: #047857; }
+            .gh-tras-rechazar:disabled:hover { background: #fff; border-color: #FECDD3; }
+
+            .gh-tras-error {
+                margin-top: 0.5rem; padding: 0.5rem 0.75rem;
+                border-radius: var(--radius-gh, 12px);
+                background: #FFF1F2; border: 1px solid #FECDD3;
+                font-size: 0.75rem; font-weight: 600; color: #9F1239;
+            }
+
             .gh-tras-obs {
                 width: 100%; margin-top: 0.25rem;
                 padding: 0.625rem 0.75rem;
@@ -750,12 +821,39 @@ block contenedor
                 // A qué cuenta entra la plata. En un banco la referencia es el número de
                 // cuenta, y sin él "Bancolombia" no alcanza cuando el negocio tiene más de
                 // una: quien acepta necesita saber en cuál va a buscar el movimiento.
-                const destinoRotulo = () => {
+                const nombreCuentaActual = () => {
                     const nombre = esc(tc(card.dataset.cuenta || ''));
                     const ref    = (card.dataset.referencia || '').trim();
                     return ref
                         ? `${nombre} <span class="gh-conf-mono">${esc(ref)}</span>`
                         : nombre;
+                };
+
+                // Cajas a las que se puede redirigir. Solo hay lista si esta cuenta es una
+                // caja: el servidor no la manda en otro caso.
+                const cajasDestino = (() => {
+                    try { return JSON.parse(card.dataset.cajas || '[]'); } catch (_) { return []; }
+                })();
+                const puedeRedirigir = card.dataset.tipoCuenta === 'caja' && cajasDestino.length > 0;
+
+                // El destino se muestra como texto y solo se vuelve editable si alguien lo
+                // pide: lo normal es aceptar la plata en la cuenta a la que la mandaron, y
+                // redirigirla es la excepción. Un selector abierto de entrada invita a
+                // tocar lo que casi siempre está bien.
+                const destinoRotulo = () => {
+                    if (!puedeRedirigir) return nombreCuentaActual();
+
+                    const opciones = [
+                        `<option value="">${esc(tc(card.dataset.cuenta || ''))} (como se envió)</option>`,
+                        ...cajasDestino.map(c => `<option value="${esc(c.idCajaBanco)}">${esc(tc(c.nombreCajaBanco))}${c.referencia ? ` — ${esc(c.referencia)}` : ''}</option>`)
+                    ].join('');
+
+                    return `
+                        <span id="tras-destino-texto">${nombreCuentaActual()}
+                            <button type="button" id="tras-cambiar-destino" class="gh-tras-cambiar">Cambiar</button>
+                        </span>
+                        <select id="tras-destino" class="gh-tras-select" style="display:none">${opciones}</select>
+                        <p id="tras-destino-aviso" class="gh-tras-redirige" style="display:none"></p>`;
                 };
 
                 const abrirTraslado = async (t) => {
@@ -814,6 +912,13 @@ block contenedor
 
                                     <label class="gh-tras-rotulo">Comprobante del envío</label>
                                     ${adjuntos}
+
+                                    <label class="gh-tras-rotulo" for="tras-emp">Código de empleado *</label>
+                                    <input id="tras-emp" class="gh-tras-emp" type="password" maxlength="5"
+                                           inputmode="numeric" autocomplete="one-time-code"
+                                           placeholder="Ej: 00123">
+                                    <p id="tras-emp-estado" class="gh-tras-emp-estado"></p>
+                                    <p id="tras-error" class="gh-tras-error" style="display:none"></p>
                                 </div>
                             </div>`,
                         // showDenyButton en vez de un cancel disfrazado: rechazar es una
@@ -837,6 +942,76 @@ block contenedor
                         },
                         showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
                         didOpen: () => {
+                            // Los dos botones nacen apagados. Aceptar y rechazar pasan por
+                            // el MISMO endpoint y exigen el MISMO permiso de bancos, así
+                            // que dejar rechazar encendido solo serviría para que el
+                            // servidor devolviera 403 después de llenar el formulario.
+                            const btnOk = Swal.getConfirmButton();
+                            const btnNo = Swal.getDenyButton();
+                            const estado = document.getElementById('tras-emp-estado');
+                            const campoEmp = document.getElementById('tras-emp');
+
+                            const habilitar = (puede) => {
+                                btnOk.disabled = !puede;
+                                btnNo.disabled = !puede;
+                            };
+                            habilitar(false);
+
+                            // Se valida contra el servidor —código, empleado habilitado y
+                            // permiso sobre Bancos— con la misma comprobación que después
+                            // hace la ruta que asienta la plata. Acá es cortesía; la que
+                            // manda es la del servidor.
+                            let temporizador = null;
+                            campoEmp.addEventListener('input', () => {
+                                clearTimeout(temporizador);
+                                habilitar(false);
+                                estado.textContent = '';
+                                estado.className = 'gh-tras-emp-estado';
+
+                                const codigo = campoEmp.value.trim();
+                                if (codigo.length < 3) return;
+
+                                temporizador = setTimeout(async () => {
+                                    try {
+                                        const r = await fetch(`/admin/bankentities/empleado/validar/${encodeURIComponent(codigo.toUpperCase())}`);
+                                        const d = await r.json();
+                                        // El código pudo cambiar mientras viajaba la
+                                        // consulta; si ya no es el mismo, la respuesta no
+                                        // corresponde y se descarta.
+                                        if (campoEmp.value.trim().toUpperCase() !== codigo.toUpperCase()) return;
+
+                                        if (d.success) {
+                                            estado.textContent = `✓ ${tc(d.nombre)} puede resolver traslados`;
+                                            estado.className = 'gh-tras-emp-estado gh-tras-emp-ok';
+                                            habilitar(true);
+                                        } else {
+                                            estado.textContent = d.mensaje || 'Código inválido.';
+                                            estado.className = 'gh-tras-emp-estado gh-tras-emp-mal';
+                                        }
+                                    } catch (_) {
+                                        estado.textContent = 'No se pudo verificar el código.';
+                                        estado.className = 'gh-tras-emp-estado gh-tras-emp-mal';
+                                    }
+                                }, 400);
+                            });
+
+                            const btnDestino = document.getElementById('tras-cambiar-destino');
+                            const selDestino = document.getElementById('tras-destino');
+                            const avisoDest  = document.getElementById('tras-destino-aviso');
+
+                            btnDestino?.addEventListener('click', () => {
+                                document.getElementById('tras-destino-texto').style.display = 'none';
+                                selDestino.style.display = 'block';
+                                selDestino.focus();
+                            });
+
+                            selDestino?.addEventListener('change', () => {
+                                const elegida = cajasDestino.find(c => c.idCajaBanco === selDestino.value);
+                                if (!elegida) { avisoDest.style.display = 'none'; return; }
+                                avisoDest.style.display = 'block';
+                                avisoDest.innerHTML = `El traslado se asienta en <b>${esc(tc(elegida.nombreCajaBanco))}</b>, no en la cuenta a la que se envió. El cambio queda anotado en la bitácora.`;
+                            });
+
                             const campo = document.getElementById('tras-valor');
                             const pista = document.getElementById('tras-pista');
                             const dif   = document.getElementById('tras-dif');
@@ -859,13 +1034,36 @@ block contenedor
                                 const delta = n - Math.round(t.valor);
                                 if (!delta) { dif.style.display = 'none'; return; }
                                 dif.style.display = 'block';
-                                dif.innerHTML = delta > 0
-                                    ? `Llegaron <b>${pesos(delta)}</b> de más respecto de lo despachado.`
-                                    : `Faltan <b>${pesos(-delta)}</b> respecto de lo despachado.`;
+
+                                if (delta < 0 && t.destinoCaja) {
+                                    dif.innerHTML = `Faltan <b>${pesos(-delta)}</b> respecto de lo despachado.`;
+                                    return;
+                                }
+
+                                // Sobrante. Se dice qué va a hacer el sistema ANTES de
+                                // confirmar: que entra en un movimiento aparte y que esa
+                                // plata salió de la caja menor de la tienda. Enterarse
+                                // después, viendo dos líneas en el libro, es peor.
+                                // Cuenta bancaria: no hay conteo ni sobrante. El monto del
+                                // comprobante es el único que existe, así que cambiarlo es
+                                // corregir el registro del punto de venta. El techo lo pone
+                                // el servidor —cuánto efectivo llegó a haber en ese cajón—,
+                                // que es lo único que acá no se puede saber.
+                                if (!t.destinoCaja) {
+                                    dif.innerHTML = `El banco recibió <b>${pesos(n)}</b> y no los ${pesos(t.valor)} registrados. Se corrige el traslado y el egreso del punto de venta a ${pesos(n)}; el monto original queda en la bitácora.`;
+                                    return;
+                                }
+                                if (n > t.maximo) {
+                                    dif.innerHTML = t.baseTurno > 0
+                                        ? `<b>${pesos(delta)}</b> de más superan la caja menor de ese turno (<b>${pesos(t.baseTurno)}</b>). Un sobrante mayor no salió del cajón: hay que registrarlo aparte.`
+                                        : `Esa caja abrió sin caja menor, así que no hay de dónde pudiera salir un sobrante.`;
+                                    return;
+                                }
+                                dif.innerHTML = `Llegaron <b>${pesos(delta)}</b> de más. Se registran en un <b>movimiento aparte</b> de esta cuenta; el traslado queda intacto en ${pesos(t.valor)}.`;
                             });
                         },
-                        preConfirm: () => leerDecision(),
-                        preDeny:    () => leerDecision()
+                        preConfirm: () => validarDecision(t, 'aceptar'),
+                        preDeny:    () => validarDecision(t, 'rechazar')
                     });
 
                     if (!isConfirmed && !isDenied) return;
@@ -875,23 +1073,93 @@ block contenedor
                 // Lo que el operador dejó en la ventana, sin importar qué botón apretó.
                 const leerDecision = () => ({
                     valor:       parseInt((document.getElementById('tras-valor').value || '').replace(/\D/g, ''), 10) || 0,
-                    observacion: document.getElementById('tras-obs').value.trim()
+                    observacion: document.getElementById('tras-obs').value.trim(),
+                    codigoEmpleado: document.getElementById('tras-emp').value.trim().toUpperCase(),
+                    // Vacío = se asienta donde se envió. Solo lleva id cuando el operador
+                    // eligió otra caja, así el backend distingue "no se tocó" de "se
+                    // redirigió a la misma", que no son lo mismo en la bitácora.
+                    idCajaBancoDestino: document.getElementById('tras-destino')?.value || null
                 });
 
-                const enviarDecision = (t, decision, datos) => {
-                    // TODO(siguiente paso): POST al endpoint que asienta o devuelve el
-                    // traslado. Al aceptar tiene que crear el MOVIMIENTOS_CAJAS_BANCOS,
-                    // llenar idMovimiento e idEmpleadoRecibe, pasar el estado a 'Recibido'
-                    // —o a 'Controversia' si el valor no coincide— y agregar el paso a la
-                    // bitácora; al rechazar, dejarlo en 'Rechazado' y decidir qué pasa con
-                    // el egreso que ya descontó el cajón de la tienda.
-                    console.log('[traslado] decisión pendiente de conectar', { traslado: t.idTraslado, decision, ...datos });
-                    Swal.fire({
-                        icon: 'info',
-                        title: decision === 'aceptar' ? 'Aceptar traslado' : 'Rechazar traslado',
-                        html: `El flujo todavía no está conectado.<br>Traslado <strong class="font-mono">${esc(t.codigo)}</strong> por <strong>${pesos(datos.valor)}</strong>.`,
-                        confirmButtonColor: '#EC5FA3'
-                    });
+                // Validación en la ventana: devolver false la deja abierta con todo lo que
+                // el operador ya escribió. `showValidationMessage` rompería el estilo.
+                const validarDecision = (t, decision) => {
+                    const aviso = document.getElementById('tras-error');
+                    const fallar = (m) => { aviso.textContent = m; aviso.style.display = 'block'; return false; };
+                    aviso.style.display = 'none';
+
+                    const d = leerDecision();
+                    if (!d.codigoEmpleado) return fallar('Ingresá tu código de empleado.');
+
+                    if (decision === 'aceptar') {
+                        if (d.valor <= 0) return fallar('El valor recibido debe ser mayor que cero. Si no recibiste nada, rechazá el traslado.');
+                        // El techo es lo despachado MÁS la caja menor del turno. Un fajo
+                        // armado desde ese cajón solo puede llevar de más lo que había
+                        // ahí como fondo de cambio; por encima de eso es plata que nunca
+                        // fue del negocio y meterla acá la vuelve un ingreso sin dueño.
+                        // El servidor lo vuelve a verificar: esto es comodidad.
+                        // En una cuenta bancaria el techo depende de cuánto efectivo llegó
+                        // a haber en el cajón de ese turno, que solo el servidor sabe: acá
+                        // no se limita y él responde con el motivo si no alcanza.
+                        if (t.destinoCaja && d.valor > t.maximo)
+                            return fallar(t.baseTurno > 0
+                                ? `No podés registrar más de ${pesos(t.maximo)}: lo despachado (${pesos(t.valor)}) más la caja menor de ese turno (${pesos(t.baseTurno)}).`
+                                : `Esa caja abrió sin caja menor: no podés registrar más de ${pesos(t.valor)}.`);
+                    }
+                    return d;
+                };
+
+                const enviarDecision = async (t, decision, datos) => {
+                    Swal.fire({ title: 'Registrando...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+                    try {
+                        const r = await fetch(`/admin/bankentities/traslados/${t.idTraslado}/decidir`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, Accept: 'application/json' },
+                            body: JSON.stringify({ decision, ...datos })
+                        });
+                        const d = await r.json();
+
+                        if (!d.success) {
+                            // El middleware del código de empleado cierra la sesión tras
+                            // cinco intentos fallidos; ahí no hay nada que reintentar.
+                            if (d.logout) { window.location.href = '/'; return; }
+                            return Swal.fire({ icon: 'error', title: 'No se pudo registrar', text: d.mensaje || 'Intentá de nuevo.', confirmButtonColor: '#EC5FA3' });
+                        }
+
+                        // El comprobante con el estado final se abre solo.
+                        window.open(d.pdf, '_blank', 'noopener');
+
+                        const titulo = d.corregido > 0
+                            ? 'Consignación corregida'
+                            : ({ Recibido: 'Traslado aceptado', Controversia: 'Traslado en controversia', Rechazado: 'Traslado rechazado' }[d.estado] || 'Traslado resuelto');
+                        // Los tres desenlaces dicen cosas distintas y el operador tiene
+                        // que poder distinguirlos de un vistazo. En la controversia lo
+                        // importante es que la diferencia NO se pierde: vuelve a quedar a
+                        // cargo del punto de venta, que la va a ver como faltante en su
+                        // cuadre.
+                        const cuerpo =
+                            d.estado === 'Rechazado'   ? `No entró nada. <strong>${pesos(d.devuelto)}</strong> vuelven a quedar a cargo del punto de venta.`
+                          : d.estado === 'Controversia' ? `Entraron <strong>${pesos(d.aceptado)}</strong> de <strong>${pesos(d.aceptado + d.devuelto)}</strong>. Los <strong>${pesos(d.devuelto)}</strong> restantes vuelven a quedar a cargo del punto de venta, que los verá como faltante en su cuadre.`
+                          : d.corregido > 0
+                              ? `El punto de venta había registrado <strong>${pesos(d.despachado)}</strong> y realmente se consignaron <strong>${pesos(d.corregido)}</strong>.<br><br>Se corrigió el traslado y el egreso de la tienda a ${pesos(d.corregido)}. El monto original queda en la bitácora y ya se le avisó al operador.`
+                          : d.excedente > 0
+                              // Se detallan las DOS líneas porque en el libro van a
+                              // aparecer separadas, y quien las vea mañana tiene que
+                              // reconocerlas como una sola operación.
+                              ? `Entraron <strong>${pesos(d.aceptado + d.excedente)}</strong> en dos movimientos: <strong>${pesos(d.aceptado)}</strong> del traslado y <strong>${pesos(d.excedente)}</strong> de excedente.<br><br>El traslado queda intacto en ${pesos(d.aceptado)}. Los ${pesos(d.excedente)} de más salieron de la caja menor del punto de venta, que queda corta por ese monto hasta que la repongan; ya se le avisó al operador.`
+                              : `Entraron <strong>${pesos(d.aceptado)}</strong> a esta cuenta.`;
+                        // Si la caja del turno ya había cerrado, el egreso no se pudo
+                        // ajustar y alguien tiene que hacerlo a mano. Callarlo dejaría un
+                        // descuadre que nadie sabría explicar.
+                        const extra = d.avisoCajaCerrada
+                            ? '<br><br><b>La caja de ese turno ya estaba cerrada</b>, así que su cuadre no se modificó. Esa plata figura como salida y hay que ajustarla a mano.'
+                            : '';
+
+                        await Swal.fire({ icon: 'success', title: titulo, html: cuerpo + extra, confirmButtonColor: '#EC5FA3' });
+                        location.reload();   // el traslado sale de la lista y el saldo cambió
+                    } catch (_) {
+                        Swal.fire({ icon: 'error', title: 'Error de red', text: 'No se pudo conectar con el servidor.', confirmButtonColor: '#EC5FA3' });
+                    }
                 };
 
                 tbody?.addEventListener('click', (ev) => {

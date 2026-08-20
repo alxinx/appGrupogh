@@ -1,7 +1,7 @@
 import { fn, col, Op } from 'sequelize';
 import {
     TrasladoEfectivo, TrasladoEfectivoHistorial,
-    Empleados, PuntosDeVenta, Documentacion
+    Empleados, PuntosDeVenta, Documentacion, CajaTienda, CajasYBancos
 } from '../models/index.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,7 +70,14 @@ export const listarPendientesDeCuenta = async (idCajaBanco) => {
         where: { idCajaBanco, ...wherePendienteAceptar() },
         include: [
             { model: PuntosDeVenta, as: 'tiendaOrigen',  attributes: ['nombreComercial'], required: false },
-            { model: Empleados,     as: 'empleadoEnvia', attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'], required: false }
+            { model: Empleados,     as: 'empleadoEnvia', attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'], required: false },
+            // La caja menor del turno del que salió la plata. Es el techo de lo que se
+            // puede registrar como recibido: un fajo armado desde ese cajón solo puede
+            // llevar de más lo que había ahí como fondo de cambio.
+            { model: CajaTienda,    as: 'cajaTienda',    attributes: ['cajaMenor'], required: false },
+            // El tipo de la cuenta destino decide si el excedente siquiera aplica: solo
+            // hay sobrante donde alguien cuenta billetes.
+            { model: CajasYBancos,  as: 'cajaBancoDestino', attributes: ['tipo'], required: false }
         ],
         // El más viejo primero: lo que lleva más tiempo esperando es lo que más urge.
         order: [['createdAt', 'ASC'], ['idTrasladosEfectivo', 'ASC']]
@@ -117,11 +124,21 @@ export const listarPendientesDeCuenta = async (idCajaBanco) => {
 
     return traslados.map((t) => {
         const f = new Date(t.createdAt);
+        const valor       = parseFloat(t.valorTraslado) || 0;
+        const destinoCaja = t.cajaBancoDestino?.tipo === 'caja';
+        // A un banco no le puede entrar de más: no hay conteo, el comprobante manda.
+        const baseTurno   = destinoCaja ? Math.round(parseFloat(t.cajaTienda?.cajaMenor) || 0) : 0;
         return {
             idTraslado:   t.idTrasladosEfectivo,
             codigo:       t.codigoTraslado,
             referencia:   t.referencia || null,
-            valor:        parseFloat(t.valorTraslado) || 0,
+            valor,
+            // Cuánto de más se puede registrar, y por qué. El navegador los usa para el
+            // tope del campo; el servidor los vuelve a calcular al decidir, que es lo que
+            // de verdad manda.
+            baseTurno,
+            destinoCaja,
+            maximo:       Math.round(valor) + baseTurno,
             origen:       t.tiendaOrigen?.nombreComercial || 'Punto de venta',
             envia:        t.empleadoEnvia
                 ? `${t.empleadoEnvia.PrimerNombre} ${t.empleadoEnvia.PrimerApellido}`.trim()

@@ -37,6 +37,75 @@
         window.__sseAlertas.addEventListener(evento, handler);
     };
 
+    // ── Campana ──────────────────────────────────────────────────────────────
+    //
+    // Se sintetiza con WebAudio en vez de cargar un archivo: no suma un binario al
+    // repositorio, no depende de que un asset exista en producción y suena igual sin
+    // conexión.
+    //
+    // Los navegadores no dejan sonar nada hasta que la persona interactuó con la página,
+    // así que el contexto se desbloquea con el primer clic o tecla. Si el aviso llega
+    // antes de eso simplemente no suena: el badge y el banner siguen avisando igual.
+    const campana = (() => {
+        let ctx = null;
+
+        const contexto = () => {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return null;
+            if (!ctx) ctx = new AC();
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+            return ctx;
+        };
+
+        ['pointerdown', 'keydown'].forEach(ev =>
+            document.addEventListener(ev, () => contexto(), { once: true, passive: true }));
+
+        // Arma y dispara el golpe. Se llama solo con el contexto ya corriendo: si está
+        // suspendido, `currentTime` no avanza y el sonido queda agendado para cuando
+        // reanude, que puede ser minutos después y suena a fantasma.
+        const golpear = (c) => {
+            const t0 = c.currentTime;
+            const salida = c.createGain();
+            // Ataque instantáneo y caída larga: es lo que distingue un golpe de campana de
+            // un pitido. Las rampas son exponenciales porque el oído percibe el volumen en
+            // escala logarítmica; una rampa lineal se oye como un corte seco al final.
+            salida.gain.setValueAtTime(0.0001, t0);
+            salida.gain.exponentialRampToValueAtTime(0.30, t0 + 0.008);
+            salida.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.8);
+            salida.connect(c.destination);
+
+            // Una campana no es un tono puro. Estos tres parciales —fundamental, quinta y
+            // dos octavas arriba— son lo que le da el timbre metálico; con un solo seno
+            // suena a alarma de microondas.
+            [[880, 1, 1.8], [1320, 0.45, 1.0], [2640, 0.15, 0.55]].forEach(([hz, vol, vida]) => {
+                const osc = c.createOscillator();
+                const g   = c.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(hz, t0);
+                g.gain.setValueAtTime(vol, t0);
+                // Los armónicos agudos se apagan antes que el fundamental, como en una
+                // campana de verdad: por eso el sonido se va "oscureciendo" al decaer.
+                g.gain.exponentialRampToValueAtTime(0.0001, t0 + vida);
+                osc.connect(g);
+                g.connect(salida);
+                osc.start(t0);
+                osc.stop(t0 + 1.9);
+            });
+        };
+
+        return () => {
+            const c = contexto();
+            if (!c) return;
+            // `resume()` es una promesa: justo después del primer clic el contexto todavía
+            // figura 'suspended' aunque ya vaya a reanudar. Comprobar el estado y salir
+            // —que es lo que hacía antes— dejaba la campana muda casi siempre. Acá se
+            // espera a que reanude y recién ahí se golpea; si el navegador se niega
+            // porque no hubo gesto, no pasa nada y el badge avisa igual.
+            if (c.state === 'running') { golpear(c); return; }
+            c.resume().then(() => golpear(c)).catch(() => {});
+        };
+    })();
+
     // Prende o apaga el aviso de un ítem del menú. `has-alert` es el interruptor: la
     // hoja de estilos decide con esa sola clase si el ítem es una fila normal o el
     // bloque de 3.5rem donde el banner rota con el contenido.
@@ -65,31 +134,45 @@
     // Campanas del listado de cajas y bancos. Solo existen si esa pantalla está abierta;
     // en cualquier otra página del panel no hay ninguna y el bucle no hace nada.
     const pintarCampanas = (porCuenta) => {
-        document.querySelectorAll('.campana-traslado').forEach((campana) => {
-            const n = porCuenta[campana.dataset.caja] || 0;
-            campana.classList.toggle('hidden', n === 0);
-            campana.title = `${n} traslado(s) de efectivo esperando que esta cuenta los acepte`;
-            const contador = campana.querySelector('.campana-n');
+        // `chip` y no `campana`: ese nombre ya es la función que hace sonar la campana, y
+        // tenerlo tapado acá adentro pide una confusión.
+        document.querySelectorAll('.campana-traslado').forEach((chip) => {
+            const n = porCuenta[chip.dataset.caja] || 0;
+            chip.classList.toggle('hidden', n === 0);
+            chip.title = `${n} traslado(s) de efectivo esperando que esta cuenta los acepte`;
+            const contador = chip.querySelector('.campana-n');
             if (contador) contador.textContent = n;
             // Solo la campana que cambió llama la atención, y una sola vez: si todas
             // parpadearan en cada aviso, ninguna diría nada.
-            if (n > 0 && campana.dataset.previo !== String(n)) {
-                campana.classList.remove('campana-entra');
-                void campana.offsetWidth;   // reinicia la animación aunque el valor repita
-                campana.classList.add('campana-entra');
+            if (n > 0 && chip.dataset.previo !== String(n)) {
+                chip.classList.remove('campana-entra');
+                void chip.offsetWidth;   // reinicia la animación aunque el valor repita
+                chip.classList.add('campana-entra');
             }
-            campana.dataset.previo = String(n);
+            chip.dataset.previo = String(n);
         });
     };
 
     document.addEventListener('DOMContentLoaded', () => {
+        // El punto de partida sale de lo que el servidor ya pintó en el menú. Sin esa
+        // referencia, el primer evento que llegara sonaría aunque el número no hubiera
+        // subido — o peor, aunque hubiera bajado porque alguien acaba de aceptar uno.
+        let totalTraslados = Number(document.getElementById('menu-traslados-badge')?.textContent) || 0;
+
         // El evento trae el total y el desglose por cuenta juntos: el menú necesita uno y
-        // el listado el otro, y mandarlos en dos eventos abriría la puerta a que se
-        // pinten estados de momentos distintos.
+        // el listado el otro, y mandarlos en dos eventos abriría la puerta a que se pinten
+        // estados de momentos distintos.
         suscribir('traslados_pendientes', (ev) => {
             try {
                 const d = JSON.parse(ev.data);
-                pintarTraslados(Number(d.total) || 0);
+                const total = Number(d.total) || 0;
+
+                // Suena solo cuando LLEGA algo nuevo. Que el contador baje significa que
+                // alguien resolvió un traslado, y eso no se anuncia con una campana.
+                if (total > totalTraslados) campana();
+                totalTraslados = total;
+
+                pintarTraslados(total);
                 pintarCampanas(d.porCuenta || {});
             } catch (_) {}
         });
