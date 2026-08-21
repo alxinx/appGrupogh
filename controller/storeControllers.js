@@ -791,7 +791,7 @@ const getInventarioJSON = async (req, res) => {
 
             const zeroStockIds = productIdsTienda.filter(id => (mapTienda[id] || 0) <= 0);
             const stockOrderClause = zeroStockIds.length
-                ? [[literal(`CASE WHEN \`Productos\`.\`idProducto\` IN (${zeroStockIds.map(id => `'${id}'`).join(',')}) THEN 1 ELSE 0 END`), 'ASC']]
+                ? [[literal(`CASE WHEN \`PRODUCTOS\`.\`idProducto\` IN (${zeroStockIds.map(id => `'${id}'`).join(',')}) THEN 1 ELSE 0 END`), 'ASC']]
                 : [];
 
             const result = await Productos.findAndCountAll({

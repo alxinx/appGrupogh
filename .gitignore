@@ -1,5 +1,7 @@
 .env
 .env.*
+.env.production
+.env.production.bak
 
 # Dependencias
 node_modules/
@@ -57,3 +59,15 @@ Thumbs.db
 
 # Documentos de diseño / notas internas
 .documents/
+
+
+#CERTIFICADOS
+certs/
+
+#skills
+skills-lock.json
+
+.agents/
+.claude/
+.dockerignore
+Dockerfile
