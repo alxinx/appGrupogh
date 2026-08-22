@@ -60,7 +60,7 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
         //- SKU
         div(class="col-span-12 md:col-span-4")
             label.label SKU
-                input(class="field-text" type="text" name="sku" id="sku" placeholder="Código interno" value = (producto && producto.sku) ? producto.sku : "")
+                input(class="field-text" type="text" name="sku" id="sku" maxlength="13" placeholder="Código interno" value = (producto && producto.sku) ? producto.sku : "")
                 #errorSku
 
         //- EAN

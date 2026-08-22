@@ -24,7 +24,7 @@ import { subirQrEntidad, toggleQrEntidad, previewQrEntidad } from "../controller
 import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
-import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado, historialPack } from '../controller/dosificacionController.js'
+import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado, historialPack, imprimirGuiaEmpaque } from '../controller/dosificacionController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
@@ -333,6 +333,7 @@ routes.get('/api/dosificaciones/productos/:id', pDos('READ'), obtenerProductosPo
 routes.get('/api/dosificaciones/metadata/:id', pDos('READ'), obtenerMetadataDose);
 routes.get('/dosificaciones/etiquetas/unica/:idPack/', pDos('READ'), imprimirEtiquetasPorPack);
 routes.get('/dosificaciones/comprobante/:idTraslado', pDos('READ'), imprimirComprobanteTraslado);
+routes.get('/dosificaciones/guia/:idDosificacion', pDos('READ'), imprimirGuiaEmpaque);
 
 routes.get('/dosificaciones/etiquetas/:idDosificacion/:numLote', pDos('READ'), imprimirEtiquetasLote);
 routes.get('/api/dosificaciones/:query', pDos('READ'), obtenerDosificacionesPaginadas)

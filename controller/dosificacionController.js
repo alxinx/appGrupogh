@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
 import { broadcast } from '../helpers/sseManager.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
+import { calcularKitting } from '../src/js/dosificador.js';
 
 dotenv.config()
 
@@ -152,56 +153,19 @@ const guardarDosificacion = async (req, res) => {
 };
 
 /* ==========================================
-   LÓGICA DEL ALGORITMO (Backend Version)
+   LÓGICA DEL ALGORITMO — delega en el mismo módulo que usa la vista previa del
+   formulario (src/js/dosificador.js), para que lo que el usuario ve antes de guardar
+   sea exactamente lo que se persiste. Acá solo se adapta el array del body a un mapa
+   idProducto -> cantidad, sumando si el mismo producto viene repetido en dos filas del
+   formulario: pisar la cantidad en vez de sumarla hacía desaparecer unidades del plan
+   de empaque sin ningún aviso.
    ========================================== */
 function ejecutarAlgoritmoKittingBackend(productosArray, capacidad) {
-    // Convertimos el array del body a un objeto de stock para el algoritmo
-    let stock = {};
-    productosArray.forEach(p => { stock[p.idProducto] = p.cantidad; });
-
-    let totalUnidades = Object.values(stock).reduce((a, b) => a + b, 0);
-    let numPacksCompletos = Math.floor(totalUnidades / capacidad);
-    let planEmpaque = [];
-
-    for (let i = 0; i < numPacksCompletos; i++) {
-        let bolsa = {};
-        let totalEnBolsa = 0;
-        let stockRestanteBolsa = Object.values(stock).reduce((a, b) => a + b, 0);
-
-        Object.keys(stock).forEach(idProd => {
-            let proporcion = stock[idProd] / stockRestanteBolsa;
-            let asignacion = Math.floor(proporcion * capacidad);
-            asignacion = Math.min(asignacion, stock[idProd]);
-            bolsa[idProd] = asignacion;
-            totalEnBolsa += asignacion;
-            stock[idProd] -= asignacion;
-        });
-
-        while (totalEnBolsa < capacidad) {
-            let idPrioridad = Object.keys(stock).reduce((a, b) => stock[a] > stock[b] ? a : b);
-            if (stock[idPrioridad] > 0) {
-                bolsa[idPrioridad]++;
-                stock[idPrioridad]--;
-                totalEnBolsa++;
-            } else break;
-        }
-        planEmpaque.push(bolsa);
-    }
-
-    // Agrupación por configuración para optimizar inserts
-    const grupos = {};
-    planEmpaque.forEach(p => {
-        const key = JSON.stringify(Object.fromEntries(Object.entries(p).sort()));
-        grupos[key] = (grupos[key] || 0) + 1;
+    const stock = {};
+    productosArray.forEach((p) => {
+        stock[p.idProducto] = (stock[p.idProducto] || 0) + Number(p.cantidad);
     });
-
-    return {
-        packs: Object.entries(grupos).map(([config, cantidad]) => ({
-            cantidad,
-            detalle: JSON.parse(config)
-        })),
-        residuo: Object.fromEntries(Object.entries(stock).filter(([_, v]) => v > 0))
-    };
+    return calcularKitting(stock, capacidad);
 }
 
 
@@ -1006,6 +970,249 @@ const imprimirComprobanteTraslado = async (req, res) => {
     }
 };
 
+// Guía de empaque en PDF: el documento que se entrega en físico a quien arma los bultos.
+// Por cada lote explica cuántas bolsas idénticas armar y con qué mezcla exacta de producto,
+// y las conecta con el código de etiqueta ya impreso en cada bulto (imprimirEtiquetasLote)
+// para que el empacador pueda ubicar sus bultos en la mesa sin adivinar.
+const imprimirGuiaEmpaque = async (req, res) => {
+    try {
+        const { idDosificacion } = req.params;
+        const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+        // Mismo include/orden que verDosificacion: agrupar por numLote depende de que
+        // los bultos lleguen ya ordenados por codigoEtiqueta.
+        const dose = await Dosificaciones.findByPk(idDosificacion, {
+            include: [{
+                model: Pack,
+                as: 'PACKs',
+                include: [{
+                    model: DetallesPack,
+                    as: 'DETALLES_PACKs',
+                    include: [{ model: Productos, as: 'producto', attributes: ['nombreProducto', 'sku'] }]
+                }]
+            }],
+            order: [[{ model: Pack, as: 'PACKs' }, 'numLote', 'ASC'],
+                    [{ model: Pack, as: 'PACKs' }, 'idPack', 'ASC']]
+        });
+
+        if (!dose) return res.status(404).send('Dosificación no encontrada');
+
+        const gruposLotes = dose.PACKs.reduce((acc, pack) => {
+            if (!acc[pack.numLote]) acc[pack.numLote] = [];
+            acc[pack.numLote].push(pack);
+            return acc;
+        }, {});
+
+        const lotes = Object.keys(gruposLotes).sort((a, b) => a - b).map((numLote) => {
+            const bultos = gruposLotes[numLote];
+            const primerPack = bultos[0];
+            // El include ordena por idPack (UUID), que no guarda relación con el correlativo
+            // impreso en la etiqueta — para el rango hay que ordenar por el código en sí.
+            const codigosOrdenados = bultos.map((p) => p.codigoEtiqueta).sort();
+            return {
+                numLote: Number(numLote),
+                esResiduo: primerPack.tipo === 'RESIDUO',
+                cantidadBultos: bultos.length,
+                codigoInicio: codigosOrdenados[0],
+                codigoFin: codigosOrdenados[codigosOrdenados.length - 1],
+                // Cantidad 0 significa "este producto no entra en esta bolsa": el algoritmo de
+                // kitting igual la deja en el detalle (asigna un piso proporcional a cada
+                // referencia). Mostrarla en la guía confundiría al empacador.
+                detalles: primerPack.DETALLES_PACKs
+                    .filter((d) => d.cantidad > 0)
+                    .map((d) => ({
+                        nombreProducto: d.producto?.nombreProducto || 'Producto eliminado',
+                        sku: d.producto?.sku || '—',
+                        cantidad: d.cantidad
+                    }))
+            };
+        });
+
+        const prefijoDose = dose.idDosificacion.substring(0, 4).toUpperCase();
+        const totalBultos = dose.PACKs.length;
+
+        const PAGE_W = 595.28; // A4
+        const PAGE_H = 841.89;
+        const MARGIN = 40;
+        const CW = PAGE_W - MARGIN * 2;
+
+        const doc = new PDFDocument({ size: 'A4', margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN } });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=guia-empaque-D${prefijoDose}.pdf`);
+        doc.pipe(res);
+
+        let y = MARGIN;
+
+        // --- ENCABEZADO ---
+        try {
+            doc.image(path.join(__dirname, '../public/img/logo.png'), MARGIN, y, { width: 55 });
+        } catch (_) { /* sin logo, seguimos sin bloquear el documento */ }
+
+        doc.fillColor('#111827').fontSize(18).font('Helvetica-Bold')
+            .text('Guía de Empaque', MARGIN + 68, y + 4, { width: CW - 68 });
+        doc.fillColor('#6b7280').fontSize(10).font('Helvetica')
+            .text(`Dosificación D${prefijoDose} · ${formatearFecha(dose.fecha)}`, MARGIN + 68, y + 26, { width: CW - 68 });
+        y += 65;
+
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(1).strokeColor('#e5e7eb').stroke();
+        y += 16;
+
+        // --- RESUMEN ---
+        const colW = CW / 4;
+        const resumen = [
+            ['Unid. por bolsa', dose.capacidadBolsa],
+            ['Total unidades', Number(dose.totalUnidades).toLocaleString('es-CO')],
+            ['Total bultos', totalBultos],
+            ['Lotes', lotes.length]
+        ];
+        resumen.forEach(([label, valor], i) => {
+            const x = MARGIN + colW * i;
+            doc.fillColor('#9ca3af').fontSize(8).font('Helvetica-Bold').text(label.toUpperCase(), x, y, { width: colW - 10 });
+            doc.fillColor('#111827').fontSize(16).font('Helvetica-Bold').text(String(valor), x, y + 12, { width: colW - 10 });
+        });
+        doc.fillColor('#000');
+        y += 50;
+
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(1).strokeColor('#e5e7eb').stroke();
+        y += 20;
+
+        // --- UNA SECCIÓN POR LOTE ---
+        const ROW_H = 18;
+        // El SKU necesita bastante más ancho que el resto: los códigos de este catálogo
+        // llegan a 17 caracteres y con poco espacio pdfkit los partía en dos líneas,
+        // pisando la fila de abajo. Se define una vez: la usan tanto cada tabla de lote
+        // como el resumen final, para que las columnas queden alineadas entre secciones.
+        const col = {
+            producto: { x: MARGIN + 10, w: 190 },
+            sku:      { x: MARGIN + 210, w: 175 },
+            cantidad: { x: MARGIN + CW - 90, w: 80 }
+        };
+        for (const lote of lotes) {
+            const alturaLote = 36 + ROW_H * (lote.detalles.length + 1 + (lote.esResiduo ? 1 : 0)) + 16;
+            if (y + alturaLote > PAGE_H - MARGIN) {
+                doc.addPage();
+                y = MARGIN;
+            }
+
+            const colorFondo = lote.esResiduo ? '#FDE7F2' : '#F3F4F6';
+            const colorTexto = lote.esResiduo ? '#E24C95' : '#111827';
+            const plural = lote.cantidadBultos > 1;
+            const titulo = lote.esResiduo
+                ? `Pack de saldo — arma ${lote.cantidadBultos} bolsa${plural ? 's' : ''} así`
+                : `Lote ${lote.numLote} — arma ${lote.cantidadBultos} bolsa${plural ? 's idénticas' : ''} así`;
+            const rangoEtiquetas = lote.codigoInicio === lote.codigoFin
+                ? `Etiqueta ${lote.codigoInicio}`
+                : `Etiquetas ${lote.codigoInicio} a ${lote.codigoFin}`;
+
+            const BAND_H = 28;
+            const tituloW = CW * 0.55;
+            doc.rect(MARGIN, y, CW, BAND_H).fill(colorFondo);
+            doc.fillColor(colorTexto).fontSize(11).font('Helvetica-Bold')
+                .text(titulo, MARGIN + 10, y + 8, { width: tituloW - 10, lineBreak: false, ellipsis: true });
+            doc.fillColor(colorTexto).fontSize(8).font('Helvetica')
+                .text(rangoEtiquetas, MARGIN + tituloW, y + 10, { width: CW - tituloW - 10, align: 'right', lineBreak: false });
+            doc.fillColor('#000');
+            y += BAND_H + 8;
+
+            // Encabezado de tabla del lote.
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#9ca3af');
+            doc.text('PRODUCTO', col.producto.x, y, { width: col.producto.w, lineBreak: false });
+            doc.text('SKU', col.sku.x, y, { width: col.sku.w, lineBreak: false });
+            doc.text('CANT. / BOLSA', col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+            y += 14;
+            doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
+            y += 6;
+
+            doc.fillColor('#111827').font('Helvetica').fontSize(10);
+            lote.detalles.forEach((d) => {
+                doc.font('Helvetica').fontSize(10).fillColor('#111827')
+                    .text(d.nombreProducto, col.producto.x, y, { width: col.producto.w, lineBreak: false, ellipsis: true });
+                doc.font('Helvetica').fontSize(9).fillColor('#6b7280')
+                    .text(d.sku, col.sku.x, y, { width: col.sku.w, lineBreak: false, ellipsis: true });
+                doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827')
+                    .text(String(d.cantidad), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+                y += ROW_H;
+            });
+
+            // El saldo es la única bolsa que no repite capacidad completa — vale la pena
+            // marcar cuánto suma en total, para que quede claro que es un remanente chico.
+            if (lote.esResiduo) {
+                const totalSaldo = lote.detalles.reduce((acc, d) => acc + d.cantidad, 0);
+                doc.moveTo(col.cantidad.x - 10, y).lineTo(MARGIN + CW, y).lineWidth(0.5).strokeColor('#f4c9de').stroke();
+                y += 4;
+                doc.font('Helvetica-Bold').fontSize(9).fillColor('#E24C95')
+                    .text('TOTAL SALDO', col.producto.x, y, { width: col.producto.w + col.sku.w, lineBreak: false });
+                doc.text(String(totalSaldo), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+                y += ROW_H - 4;
+            }
+
+            y += 16;
+        }
+
+        // --- TOTAL GENERAL POR PRODUCTO ---
+        // Suma cada línea (cantidad por bolsa × cantidad de bultos de ese lote) para dar
+        // el total real que debe salir de esta dosificación, sin importar en cuántos
+        // lotes distintos haya quedado repartido el mismo producto.
+        const totalesPorSku = new Map();
+        lotes.forEach((lote) => {
+            lote.detalles.forEach((d) => {
+                const acumulado = totalesPorSku.get(d.sku) || { nombreProducto: d.nombreProducto, sku: d.sku, total: 0 };
+                acumulado.total += d.cantidad * lote.cantidadBultos;
+                totalesPorSku.set(d.sku, acumulado);
+            });
+        });
+        const totalesOrdenados = [...totalesPorSku.values()].sort((a, b) => a.nombreProducto.localeCompare(b.nombreProducto));
+        const granTotal = totalesOrdenados.reduce((acc, t) => acc + t.total, 0);
+
+        const alturaResumen = 40 + ROW_H * (totalesOrdenados.length + 1) + 20;
+        if (y + alturaResumen > PAGE_H - MARGIN) {
+            doc.addPage();
+            y = MARGIN;
+        }
+
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(1).strokeColor('#e5e7eb').stroke();
+        y += 16;
+
+        doc.fillColor('#111827').fontSize(13).font('Helvetica-Bold').text('Total General por Producto', MARGIN, y);
+        y += 22;
+
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#9ca3af');
+        doc.text('PRODUCTO', col.producto.x, y, { width: col.producto.w, lineBreak: false });
+        doc.text('SKU', col.sku.x, y, { width: col.sku.w, lineBreak: false });
+        doc.text('TOTAL GLOBAL', col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+        y += 14;
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
+        y += 6;
+
+        totalesOrdenados.forEach((t) => {
+            doc.font('Helvetica').fontSize(10).fillColor('#111827')
+                .text(t.nombreProducto, col.producto.x, y, { width: col.producto.w, lineBreak: false, ellipsis: true });
+            doc.font('Helvetica').fontSize(9).fillColor('#6b7280')
+                .text(t.sku, col.sku.x, y, { width: col.sku.w, lineBreak: false, ellipsis: true });
+            doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827')
+                .text(String(t.total), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+            y += ROW_H;
+        });
+
+        doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).strokeColor('#111827').stroke();
+        y += 6;
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827')
+            .text('TOTAL GENERAL', col.producto.x, y, { width: col.producto.w + col.sku.w, lineBreak: false });
+        doc.text(String(granTotal), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+        y += ROW_H;
+
+        // --- PIE ---
+        doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#9ca3af')
+            .text('Verifica cada bolsa contra esta guía antes de sellarla y etiquetarla.', MARGIN, PAGE_H - MARGIN - 12, { width: CW, align: 'center' });
+
+        doc.end();
+    } catch (error) {
+        console.error('Error generando guía de empaque:', error);
+        res.status(500).send('Error interno al generar la guía de empaque');
+    }
+};
+
 const historialPack = async (req, res) => {
     try {
         const { idPack } = req.params;
@@ -1062,5 +1269,5 @@ export {
     guardarDosificacion, homeDose, verDosificacionDetalle, obtenerMetadataDose,
     newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales,
     obtenerProductosPorDose, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack,
-    imprimirComprobanteTraslado, historialPack
+    imprimirComprobanteTraslado, historialPack, imprimirGuiaEmpaque
 };

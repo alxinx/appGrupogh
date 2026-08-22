@@ -2999,6 +2999,30 @@ const slugUnico = async (base, { idProductoActual = null, transaction = null } =
     return `${limpio}-${Date.now().toString(36)}`;
 };
 
+const normalizarSku13 = (valor) => String(valor || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-_]/g, '')
+    .slice(0, 13);
+
+const skuUnico13 = async (base, { transaction = null, usados = new Set() } = {}) => {
+    const limpio = normalizarSku13(base);
+    if (!limpio) return '';
+
+    let candidato = limpio;
+    let n = 2;
+    while (usados.has(candidato) || await Productos.findOne({
+        where: { sku: candidato },
+        attributes: ['idProducto'],
+        ...(transaction ? { transaction } : {})
+    })) {
+        const sufijo = String(n++);
+        candidato = `${limpio.slice(0, 13 - sufijo.length)}${sufijo}`;
+    }
+    usados.add(candidato);
+    return candidato;
+};
+
 // Resuelve el NOMBRE de una familia a su fila en FAMILIA, creándola si no existe.
 // Devuelve null cuando no hay nombre: el producto queda sin agrupar, que es válido.
 // El nombre se normaliza en el modelo, así que dos grafías distintas de lo mismo caen
@@ -3090,9 +3114,13 @@ const saveProduct = async (req, res, next) => {
 
             const t = await db.transaction();
             const idsCreados = [];
+            const skusUsados = new Set();
             try {
                 for (const combo of combos) {
-                    const skuCombo = (skuPorCombinacion[combo.idAtributos] || '').trim().toUpperCase();
+                    const skuCombo = await skuUnico13(skuPorCombinacion[combo.idAtributos], {
+                        transaction: t,
+                        usados: skusUsados
+                    });
                     if (!skuCombo) throw new Error(`Falta el SKU para la combinación ${combo.idAtributos}`);
 
                     const nombreColor = nombrePorAtributo[combo.idColor] || '';
@@ -3177,7 +3205,7 @@ const saveProduct = async (req, res, next) => {
         const datosParaDB = {
             nombreProducto,
             slug: slugLibre,
-            sku: req.body.sku,
+            sku: normalizarSku13(req.body.sku),
             ean: req.body.ean,
             idFamilia: idFamiliaParaDB,
             idCategoria: idCategoriaParaDB,

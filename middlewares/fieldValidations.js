@@ -59,7 +59,7 @@ const productBasicValidation = [
     // que el SKU de la cabecera queda de sobra: solo se usa como base para sugerirlos.
     check('sku')
         .trim()
-        .customSanitizer(value => String(value || '').toUpperCase().replace(/[^A-Z0-9-_]/g, ''))
+        .customSanitizer(value => String(value || '').toUpperCase().replace(/[^A-Z0-9-_]/g, '').slice(0, 13))
         .custom((valor, { req }) => {
             let combos = 0;
             try {

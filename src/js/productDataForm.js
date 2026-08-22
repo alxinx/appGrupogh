@@ -245,7 +245,8 @@
 
         const skuInput = document.getElementById('sku');
         const eanInput = document.getElementById('ean');
-        if(skuInput) skuInput.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
+            if(skuInput) skuInput.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
+            if(skuInput) skuInput.setAttribute('maxlength', '13');
         if(eanInput) eanInput.addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
 
     });
@@ -530,6 +531,18 @@ actualizarEstadoWeb();
         const compactar = (txt) => (txt || '')
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const limitarSku = (txt, usados = new Set()) => {
+            const base = compactar(txt).slice(0, 13);
+            if (!base) return '';
+            let candidato = base;
+            let n = 2;
+            while (usados.has(candidato)) {
+                const sufijo = String(n++);
+                candidato = `${base.slice(0, 13 - sufijo.length)}${sufijo}`;
+            }
+            usados.add(candidato);
+            return candidato;
+        };
 
         // La base sale del SKU escrito; si se dejó vacío (alta por combinaciones), del nombre
         // del producto, que es lo que el operador ya tipeó.
@@ -551,15 +564,9 @@ actualizarEstadoWeb();
         Object.entries(variantesActuales).forEach(([idTalla, colores]) => {
             (colores || []).forEach(idColor => {
                 const color4 = compactar(nombreColorPorId(idColor)).slice(0, 4);
-                let sugerido = skuBase + color4 + (incluirTalla ? compactar(nombreTallaPorId(idTalla)) : '');
+                let sugerido = limitarSku(skuBase + color4 + (incluirTalla ? compactar(nombreTallaPorId(idTalla)) : ''), usados);
                 // Red de seguridad: dos colores que empiezan igual (VERDE BOTELLA / VERDE SECO
                 // -> ambos VERD) darían el mismo SKU. Se numera para que nunca salga repetido.
-                if (usados.has(sugerido)) {
-                    let n = 2;
-                    while (usados.has(`${sugerido}${n}`)) n++;
-                    sugerido = `${sugerido}${n}`;
-                }
-                usados.add(sugerido);
                 porResolver.push(sugerido);
 
                 combos.push({
@@ -598,7 +605,7 @@ actualizarEstadoWeb();
         listaSku.innerHTML = combos.map(c => `
             <div class="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2">
                 <span class="text-xs font-bold text-gray-500 flex-1">Talla ${c.nombreTalla} · ${c.nombreColor}</span>
-                <input type="text" class="input-sku-combo field-text w-44 text-sm uppercase" data-key="${c.idAtributos}" value="${c.skuSugerido}">
+                <input type="text" maxlength="13" class="input-sku-combo field-text w-44 text-sm uppercase" data-key="${c.idAtributos}" value="${c.skuSugerido}">
             </div>
         `).join('');
 
@@ -725,7 +732,7 @@ actualizarEstadoWeb();
             let hayError = false;
 
             inputs.forEach(input => {
-                const valor = input.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '');
+                const valor = input.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '').slice(0, 13);
                 input.value = valor;
                 if (!valor || skusVistos.has(valor)) hayError = true;
                 skusVistos.add(valor);
@@ -807,6 +814,7 @@ actualizarEstadoWeb();
     const inputMayorista = document.getElementById('precioVentaMayorista');
     const inputMayoristaSurtido = document.getElementById('precioVentaMayoristaSurtido');
     const inputPublico = document.getElementById('precioVentaPublicoFinal');
+    const inputCosto = document.getElementById('costo');
 
     // 1. Función para limpiar y formatear SOLO al cargar (Backend -> UI)
     const formatInitialValue = (n) => {
@@ -824,7 +832,7 @@ actualizarEstadoWeb();
         return new Intl.NumberFormat('es-CO').format(value);
     };
 
-    const inputs = [inputMayorista, inputMayoristaSurtido, inputPublico];
+    const inputs = [inputMayorista, inputMayoristaSurtido, inputPublico, inputCosto];
 
     inputs.forEach(input => {
         if(!input) return;

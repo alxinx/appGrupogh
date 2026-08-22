@@ -1,133 +1,118 @@
 form(action="", method="post" id="formularioProducto" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
 
+    input(type="hidden", name="_csrf" value = csrfToken)
 
     //- COLUMNA IZQUIERDA
-    input(type="hidden", name="_csrf" value = csrfToken)
     div(class="col-span-12 md:col-span-8 grid grid-cols-12 gap-4 cards cardsWhite p-6")
-        
-        //- Nombre del Producto
-        //- SEPARADOR 100% (ATRIBUTOS)
-        div(class="col-span-12 -mx-6 mt-4")
-            
-            h1.h1(class="text-left pl-11 flex items-center text-gray-700")
-                i.fi-rr-features.pr-2
+
+        //- SEPARADOR 100% (DATOS BÁSICOS)
+        div(class="col-span-12 -mx-6 px-6 pb-3 border-b border-gray-100")
+            h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
+                i.fi-rr-features
                 | Datos Básicos
 
-        div(class="col-span-8")
-            .div(class="alert alert-warning")
+        div(class="col-span-12 md:col-span-8")
+            div(class="alert alert-warning")
                 div(class="alert-icon")
                     i.fi-rr-light-emergency-on
-                | Los productos que serán dosificados irán a la bodega de tránsito.
+                div(class="flex-1")
+                    p.alert-title Van a la bodega de tránsito
+                    p.alert-text Los productos que se dosifiquen aquí quedan en la bodega de tránsito hasta que se trasladen a una tienda.
 
-        div(class="col-span-4")
-            label.label Cuántas unidades por paquete?
-            input(type="number" id="unidadesPorPaquete" name="unidadesPorPaquete"  min="1" max="30"  value="12" class="field-text  text-5xl bg-gray-100 cursor-not-allowed text-center opacity-75" readonly)
+        div(class="col-span-12 md:col-span-4")
+            label.label(for="unidadesPorPaquete") Unidades por paquete
+            input(type="number" id="unidadesPorPaquete" name="unidadesPorPaquete" min="1" max="36" value="12" class="field-text text-5xl bg-gray-100 cursor-not-allowed text-center opacity-75" readonly)
+            p.helper-text(class="text-center") Doble clic para cambiar (máx. 36)
 
-        //ROWS
+        //- SEPARADOR 100% (QUÉ VAMOS A DOSIFICAR)
+        div(class="col-span-12 -mx-6 px-6 pb-3 mt-2 border-b border-gray-100")
+            h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
+                i.fi-rr-box-alt
+                | Qué Vamos a Dosificar
 
-        //- ROWS
-        div#contenedor-productos(class="col-span-12 contents")
-            //- Fila Base
-            div.fila-producto(class="col-span-12 grid grid-cols-12 gap-4 items-end mb-4 border-b pb-4 border-gray-100")
-                input(type="hidden", name="idProducto[]")
-                
-                div(class="col-span-12 md:col-span-3")
-                    label.label Sku 
-                    input(type="text" name="sku[]" class="field-text sku-input" placeholder="ABD-CDS")
-                
-                div(class="col-span-12 md:col-span-3")
-                    label.label Nombre del Producto
-                    input(type="text" name="name[]" class="field-text" placeholder="Producto..." disabled)
-                
-                div(class="col-span-12 md:col-span-2")
-                    label.label Cantidad 
-                    input(type="number" name="cantidad[]" min="1" placeholder="1000" class="field-text")
-                
-                div(class="col-span-12 md:col-span-2")
-                    label.label Valor Unidad 
-                    input(type="text" name="valorUnidad[]" placeholder="$30.000" class="field-text currency-input")
-                
-                div(class="col-span-12 md:col-span-2 flex gap-2 ")
-                    button(type="button" class="btn btn-secondary addMore w-full justify-center" title="Agregar referencia") 
-                        i.fi-rr-square-plus
-                    button(type="button" class="btn btn-danger btn-remove-row hidden w-full justify-center" title="Eliminar referencia") 
-                        i.fi-rr-trash
-        
-               
+        div(class="col-span-12 overflow-x-auto")
+            table(class="w-full text-sm")
+                thead
+                    tr(class="bg-gray-50 text-gray-500 uppercase text-xs")
+                        th(class="py-3 px-3 text-left rounded-tl-lg" style="width:18%") Sku
+                        th(class="py-3 px-3 text-left" style="width:34%") Nombre del Producto
+                        th(class="py-3 px-3 text-left" style="width:14%") Cantidad
+                        th(class="py-3 px-3 text-left" style="width:24%") Valor Unidad
+                        th(class="py-3 px-2 text-center rounded-tr-lg" style="width:10%") &nbsp;
+                tbody#contenedor-productos
+                    tr.fila-producto(class="border-b border-gray-100 align-top")
+                        td(class="py-3 px-3")
+                            input(type="hidden", name="idProducto[]")
+                            input(type="text" name="sku[]" class="field-text sku-input" placeholder="ABD-CDS")
+                        td(class="py-3 px-3")
+                            input(type="text" name="name[]" class="field-text" placeholder="Se completa con el SKU" disabled)
+                        td(class="py-3 px-3")
+                            input(type="number" name="cantidad[]" min="1" placeholder="1000" class="field-text")
+                        td(class="py-3 px-3")
+                            input(type="text" name="valorUnidad[]" placeholder="$30.000 (opcional)" class="field-text currency-input")
+                        td(class="py-3 px-2 text-center")
+                            button(type="button" class="btn btn-icon btn-remove-row hidden" title="Eliminar referencia")
+                                i.fi-rr-trash
 
-
-
-
-
-       
-
-
+        div(class="col-span-12")
+            button(type="button" class="btn btn-secondary addMore flex items-center gap-2 text-sm" title="Agregar referencia")
+                i.fi-rr-plus-small
+                | Agregar producto
 
 
-
-
-                            
-    //- COLUMNA DERECHA
     //- COLUMNA DERECHA
     div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4 sticky top-4")
         div(class="p-6")
-            h1.h1(class="mb-6 border-b pb-2")
-                i.fi-rr-dashboard-monitor.pr-2
-                | Monitor de Dosificación
+            div(class="-mx-6 px-6 pb-3 border-b border-gray-100")
+                h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
+                    i.fi-rr-dashboard-monitor
+                    | Monitor de Dosificación
 
-            div(class="flex flex-col gap-6")
+            div(class="flex flex-col gap-6 mt-6")
 
-                //- MONITOER DE EMPAQUE SUGERIDO.
-                div(class="mt-6")
-                    h2.h2(class="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4") 
-                        i.fi-rr-list-check.pr-2
+                //- MONITOR DE EMPAQUE SUGERIDO.
+                div
+                    h3.h5(class="mb-3 flex items-center gap-2")
+                        i.fi-rr-list-check
                         | Plan de Empaque Sugerido
-                    
+
                     //- Este es el contenedor donde el JS inyectará las tareas
                     div#monitorPlanDetalle(class="flex flex-col gap-3 max-h-[500px] overflow-y-auto pr-2")
                         div(class="text-center py-8 text-gray-400 border-2 border-dashed border-gray-100 rounded-xl")
                             i.fi-rr-boxes(class="text-4xl mb-2 block")
                             p.text-xs Ingresa productos para generarte el plan de empaque
 
-
-
                 //- Unidades por Paquete
                 div(class="flex justify-between items-center bg-gray-50 p-4 rounded-lg")
                     div
-                        p.label(class="mb-0 text-gray-500") Unidades x paquete
-                        p(class="text-xs text-gray-400") (Capacidad de la bolsa)
-                    span#monitorUnidadesXPaquete(class="text-3xl font-bold text-blue-600") 12
+                        p.label-xs(class="mb-0.5") Unidades x paquete
+                        p(class="text-xs text-gray-400") Capacidad de la bolsa
+                    span#monitorUnidadesXPaquete(class="text-3xl font-bold text-gh-primaryHover") 12
+
                 //- Cantidad Total de Productos
                 div(class="flex justify-between items-center bg-gray-50 p-4 rounded-lg")
                     div
-                        p.label(class="mb-0 text-gray-500") Cant. total productos
-                        p(class="text-xs text-gray-400") (Suma de todas las referencias)
-                    span#monitorTotalProductos(class="text-3xl font-bold text-green-600") 0
+                        p.label-xs(class="mb-0.5") Cant. total productos
+                        p(class="text-xs text-gray-400") Suma de todas las referencias
+                    span#monitorTotalProductos(class="text-3xl font-bold text-gh-primaryHover") 0
+
                 //- Cálculo de Packs (Extra para utilidad del usuario)
-                div(class="mt-4 p-4 border-t border-dashed border-gray-200")
+                div(class="p-4 border-t border-dashed border-gray-200 flex flex-col gap-2")
                     div(class="flex justify-between items-center")
-                        p.label.text-gray-600 Estimación de Packs
+                        p.label-xs Estimación de packs
                         span#monitorEstimacionPacks(class="text-xl font-semibold text-gray-700") 0
-                
+
                     div(class="flex justify-between items-center")
-                            p.label.text-gray-600 Unidades sobrantes
-                            span#monitorSobrantes(class="text-xl font-semibold text-orange-600") 0
+                        p.label-xs Unidades sobrantes
+                        span#monitorSobrantes(class="text-xl font-semibold text-orange-600") 0
 
-                
-                
-            
-
-
-            
 
     div(class="col-span-12")
-        div(class="flex  justify-center")
-            button(class="btn btn-primary w-full"  type="submit" id="guardar" )
+        div(class="flex justify-center")
+            button(class="btn btn-primary w-full" type="submit" id="guardar")
                 i.fi-rr-disk
                 | #{btnName}
 
 
-
-script(src="/js/dataDose.js" type="module") 
-script(src="/js/dosificador.js" type="module") 
-script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")           
+script(src="/js/dataDose.js" type="module")
+script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")

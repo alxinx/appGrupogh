@@ -1,63 +1,12 @@
 import { formatMoney, cleanMoney } from './utils.js';
+import { calcularKitting } from './dosificador.js';
 
 (function() {
     const inputUnidades = document.querySelector('#unidadesPorPaquete');
     const contenedor = document.querySelector('#contenedor-productos');
 
     /* ==========================================
-       1. ALGORITMO DE KITTING PROPORCIONAL
-       ========================================== */
-    const calcularKitting = (productos, capacidad) => {
-        let stock = { ...productos };
-        let totalUnidades = Object.values(stock).reduce((a, b) => a + b, 0);
-        let numPacksCompletos = Math.floor(totalUnidades / capacidad);
-        let planEmpaque = [];
-
-        for (let i = 0; i < numPacksCompletos; i++) {
-            let bolsa = {};
-            let totalEnBolsa = 0;
-            let stockRestanteBolsa = Object.values(stock).reduce((a, b) => a + b, 0);
-
-            Object.keys(stock).forEach(sku => {
-                let proporcion = stock[sku] / stockRestanteBolsa;
-                let asignacion = Math.floor(proporcion * capacidad);
-                asignacion = Math.min(asignacion, stock[sku]);
-                bolsa[sku] = asignacion;
-                totalEnBolsa += asignacion;
-                stock[sku] -= asignacion;
-            });
-
-            while (totalEnBolsa < capacidad) {
-                let skuPrioridad = Object.keys(stock).reduce((a, b) => stock[a] > stock[b] ? a : b);
-                if (stock[skuPrioridad] > 0) {
-                    bolsa[skuPrioridad]++;
-                    stock[skuPrioridad]--;
-                    totalEnBolsa++;
-                } else break;
-            }
-            planEmpaque.push(bolsa);
-        }
-
-        const agruparConfiguraciones = (packs) => {
-            const grupos = {};
-            packs.forEach(p => {
-                const key = JSON.stringify(Object.fromEntries(Object.entries(p).sort()));
-                grupos[key] = (grupos[key] || 0) + 1;
-            });
-            return Object.entries(grupos).map(([config, cantidad]) => ({
-                cantidad,
-                detalle: JSON.parse(config)
-            }));
-        };
-
-        return {
-            packs: agruparConfiguraciones(planEmpaque),
-            residuo: Object.fromEntries(Object.entries(stock).filter(([_, v]) => v > 0))
-        };
-    };
-
-    /* ==========================================
-       2. GESTIÓN DE CAPACIDAD (Doble Clic)
+       1. GESTIÓN DE CAPACIDAD (Doble Clic)
        ========================================== */
     inputUnidades.addEventListener('dblclick', function() {
         this.readOnly = false;
@@ -203,10 +152,11 @@ document.addEventListener('change', async (e) => {
         // Obtenemos los valores críticos de cada fila
         const idProd = f.querySelector('input[name="idProducto[]"]').value.trim();
         const cant = f.querySelector('input[name="cantidad[]"]').value.trim();
-        const valUnidad = f.querySelector('input[name="valorUnidad[]"]').value.trim();
 
-        // REGLA DE ORO: Si no hay ID de producto, la fila es inválida
-        if (!idProd || idProd === "" || !cant || parseInt(cant) <= 0 || !valUnidad) {
+        // REGLA DE ORO: Si no hay ID de producto o cantidad válida, la fila es inválida.
+        // Valor Unidad quedó como dato opcional: no todo lo que se dosifica tiene un costo
+        // cargado en el momento, y no hay por qué bloquear el empaque físico por eso.
+        if (!idProd || idProd === "" || !cant || parseInt(cant) <= 0) {
             todasOk = false;
         }
     });
@@ -253,7 +203,9 @@ document.addEventListener('change', async (e) => {
         const cantidad = parseInt(fila.querySelector('input[name="cantidad[]"]').value) || 0;
         
         if (sku && cantidad > 0) {
-            productosParaKitting[sku] = cantidad;
+            // Suma en vez de pisar: si el mismo SKU quedó cargado en dos filas, las
+            // unidades de la primera no pueden desaparecer del plan de empaque.
+            productosParaKitting[sku] = (productosParaKitting[sku] || 0) + cantidad;
             mapaNombres[sku] = nombre; // Guardamos el nombre asociado al SKU
         }
     });
@@ -380,13 +332,18 @@ if (btnGuardar) {
             const resultado = await respuesta.json();
 
             if (resultado.mensaje === 'ok') {
-                await Swal.fire({
+                const urlGuia = `/admin/dosificaciones/guia/${resultado.idDosificacion}`;
+                const { isConfirmed } = await Swal.fire({
                     title: '¡Dosificación Exitosa!',
-                    text: 'Los bultos fueron generados correctamente.',
+                    text: 'Los bultos fueron generados correctamente. Descarga la guía de empaque para dársela a quien va a armar los bultos.',
                     icon: 'success',
-                    confirmButtonText: 'Aceptar',
+                    confirmButtonText: 'Descargar Guía de Empaque',
                     allowOutsideClick: false
                 });
+                // El click en "Descargar" ES el gesto del usuario que habilita abrir la
+                // pestaña nueva — hacerlo después (ej. en un then asíncrono más tardío) lo
+                // bloquearía el navegador.
+                if (isConfirmed) window.open(urlGuia, '_blank');
                 window.location.href = '/admin/dosificaciones/';
             } else {
                 throw new Error();
