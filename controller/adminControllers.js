@@ -398,7 +398,7 @@ const getFacturasJSON = async (req, res) => {
                     required: false
                 }
             ],
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'DESC'], ['idFacturaCliente', 'ASC']],
             limit: limite,
             offset,
             distinct: true
@@ -670,7 +670,7 @@ const getCierreFacturasJSON = async (req, res) => {
                     include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }]
                 }
             ],
-            order: [['createdAt', 'ASC']],
+            order: [['createdAt', 'ASC'], ['idFacturaCliente', 'ASC']],
             limit: limite, offset, distinct: true
         });
 
@@ -2499,7 +2499,7 @@ const filterEmployeeListJson = async (req, res) => {
         const { count, rows: empleados } = await Empleados.findAndCountAll({
             where: condiciones,
             include: [{ model: PuntosDeVenta, as: 'sede', attributes: ['idPuntoDeVenta', 'nombreComercial'] }],
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'DESC'], ['idEmpleado', 'ASC']],
             limit: limite,
             offset,
             distinct: true,
@@ -3611,7 +3611,12 @@ const filterProductListJson = async (req, res) => {
         const { count, rows: productosInstancias } = await Productos.findAndCountAll({
             where: condiciones,
             include: [{ association: 'imagenes', required: false }],
-            order: [['createdAt', 'DESC']],
+            // createdAt solo no alcanza como orden: una importación masiva (u otro alta por
+            // lote) deja muchos productos con el mismo segundo exacto — 423 productos de esta
+            // tabla comparten un único valor de createdAt ahora mismo. Sin un desempate único
+            // MySQL no garantiza el mismo orden entre páginas, y un producto puede repetirse
+            // en dos páginas o saltarse una.
+            order: [['createdAt', 'DESC'], ['idProducto', 'ASC']],
             limit: limite,   // <--- VITAL: Aplicar el límite
             offset: offset,  // <--- VITAL: Aplicar el salto de registros
             distinct: true   // Evita conteos duplicados cuando hay joins
@@ -4007,7 +4012,7 @@ const filterSupplierListJson = async (req, res) => {
             include: includeOptions,
             limit,
             offset,
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'DESC'], ['idProveedor', 'ASC']],
             distinct: true // Importante para contar correctamente con includes
         });
 

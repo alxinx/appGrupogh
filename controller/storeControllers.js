@@ -298,7 +298,7 @@ const getPedidosWebListaJSON = async (req, res) => {
         const { count, rows } = await PedidosWeb.findAndCountAll({
             where,
             attributes: ['idPedido', 'numeroPedido', 'nombreCliente', 'apellidoCliente', 'email', 'telefono', 'metodoPago', 'tipoEntrega', 'total', 'estado', 'idFacturaCliente', 'createdAt'],
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'DESC'], ['idPedido', 'ASC']],
             limit: limite,
             offset
         });
@@ -4246,7 +4246,7 @@ const getDetalleDia = async (req, res) => {
                 { model: Clientes, as: 'cliente', attributes: ['primer_nombre', 'primer_apellido', 'razon_social', 'tipo_persona'] },
                 { model: DetallesPagosFactura, as: 'pagos', attributes: ['valor', 'metodoPago'] }
             ],
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'DESC'], ['idFacturaCliente', 'ASC']],
             limit: LIMIT,
             offset
         });

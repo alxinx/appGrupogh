@@ -225,7 +225,7 @@ const obtenerDosificacionesPaginadas = async (req, res) => {
             }],
             limit: limite,
             offset: offset,
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'DESC'], ['idDosificacion', 'ASC']],
             distinct: true
         });
 

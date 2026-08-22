@@ -656,7 +656,7 @@ export const jsonPedidosWeb = async (req, res) => {
         const { rows: pedidos, count: total } = await PedidosWeb.findAndCountAll({
             where,
             include: [{ model: PuntosDeVenta, as: 'puntoRecogida', attributes: ['nombreComercial', 'direccionPrincipal', 'ciudad', 'departamento'], required: false }],
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'DESC'], ['idPedido', 'ASC']],
             limit: LIMITE_PEDIDOS_WEB,
             offset: (pagina - 1) * LIMITE_PEDIDOS_WEB,
             distinct: true
