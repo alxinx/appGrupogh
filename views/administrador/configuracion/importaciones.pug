@@ -1,0 +1,88 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6")
+                                    div(class="flex justify-center md:items-center gap-4")
+                                        div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                            i(class="fi fi-rr-file-spreadsheet text-3xl text-white")
+                                    div(class="flex flex-col gap-1")
+                                        h1.h1 #{subPagina}
+                                        div(class="flex items-center gap-2 text-sm text-gray-500 mt-1")
+                                            span Sube el Excel de productos del proveedor y creá el catálogo
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(href="/admin/configuracion")
+                                        button(class="btn btn-outline flex items-center gap-2")
+                                            i(class="fi fi-rr-arrow-left")
+                                            | Volver
+
+                            form(id="formImportacion" class="col-span-12 grid grid-cols-12 gap-6 items-start mt-4" enctype="multipart/form-data")
+                                input(type="hidden" id="csrfImportaciones" value=csrfToken)
+
+                                //COLUMNA IZQUIERDA — ARCHIVO
+                                div(class="col-span-12 md:col-span-7 cards cardsWhite grid-cols-1 p-6 flex flex-col gap-4")
+                                    div(class="-mx-6 px-6 pb-3 border-b border-gray-100")
+                                        h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
+                                            i.fi-rr-cloud-upload-alt
+                                            | Archivo Excel
+
+                                    div(class="alert alert-info")
+                                        div(class="alert-icon")
+                                            i.fi-rr-info
+                                        div(class="flex-1")
+                                            p.alert-title Formato esperado
+                                            p.alert-text Hoja llamada "CODIGOS", con nombre, SKU, familia, color, precios, categoría y talla en las mismas columnas de siempre.
+
+                                    div(class="relative group mt-1")
+                                        input(type="file" id="archivoExcel" name="archivo" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".xlsx,.xlsm")
+                                        div(id="dropzoneTexto" class="inputUpload")
+                                            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-3 text-purple-500")
+                                                i.fi-rr-file-spreadsheet.text-2xl
+                                            span(class="text-sm font-bold text-gray-600") Sube o arrastrá el Excel
+                                            span(class="text-xs text-gray-400 mt-1") .xlsx o .xlsm — un archivo
+
+                                    div(id="resumenImportacion" class="hidden")
+
+                                //COLUMNA DERECHA — CHECKLIST
+                                div(class="col-span-12 md:col-span-5 cards cardsWhite grid-cols-1 p-6 flex flex-col gap-4")
+                                    div(class="-mx-6 px-6 pb-3 border-b border-gray-100")
+                                        h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
+                                            i.fi-rr-list-check
+                                            | Campos que se pueden dejar vacíos
+
+                                    p(class="text-xs text-gray-400 -mt-2") Nombre, SKU, color y talla son siempre obligatorios — no aparecen acá porque nunca se pueden saltar. Lo que marques abajo se guarda en 0 o vacío si la fila no lo trae; lo que dejes sin marcar bloquea esa fila y queda en el informe.
+
+                                    div(class="flex flex-col gap-3")
+                                        label(class="checkbox-group")
+                                            input(type="checkbox" name="permitirVacio_precioVentaPublicoFinal" value="true" class="checkbox")
+                                            span.checkbox-label Precio público
+                                        label(class="checkbox-group")
+                                            input(type="checkbox" name="permitirVacio_precioVentaMayorista" value="true" class="checkbox")
+                                            span.checkbox-label Precio mayorista
+                                        label(class="checkbox-group")
+                                            input(type="checkbox" name="permitirVacio_precioVentaMayoristaSurtido" value="true" class="checkbox")
+                                            span.checkbox-label Precio mayorista surtido
+                                        label(class="checkbox-group")
+                                            input(type="checkbox" name="permitirVacio_costo" value="true" class="checkbox")
+                                            span.checkbox-label Costo
+                                        label(class="checkbox-group")
+                                            input(type="checkbox" name="permitirVacio_categoria" value="true" class="checkbox")
+                                            span.checkbox-label Categoría / subcategoría
+
+                                div(class="col-span-12")
+                                    button(type="submit" id="btnImportar" class="btn btn-primary w-full" disabled)
+                                        i.fi-rr-disk
+                                        | Importar productos
+
+                    script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+                    script(src="/js/importaciones.js" type="module")

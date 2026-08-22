@@ -25,6 +25,7 @@ import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
 import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
 import { limpiarPrecio, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
+import { generarSlugDe, slugUnico, normalizarSku13, resolverIdFamilia } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col, literal } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
@@ -2975,36 +2976,6 @@ const postNuevaTienda = async (req, res) => {
 
 
 
-/**
- * Devuelve un slug libre. Si el base ya existe en otro producto, numera: -2, -3…
- *
- * El slug es la URL pública del producto y la tienda lo resuelve con findOne. Dos productos
- * con el mismo slug no dan error en ningún lado: simplemente uno de los dos deja de ser
- * alcanzable desde la web, en silencio.
- */
-const slugUnico = async (base, { idProductoActual = null, transaction = null } = {}) => {
-    const limpio = (base || '').trim() || 'producto';
-    let candidato = limpio;
-    let n = 2;
-    // Bucle acotado: con más de 50 homónimos hay un problema de datos, no de nombres.
-    while (n < 50) {
-        const donde = { slug: candidato };
-        if (idProductoActual) donde.idProducto = { [Op.ne]: idProductoActual };
-        const choca = await Productos.findOne({ where: donde, attributes: ['idProducto'], ...(transaction ? { transaction } : {}) });
-        if (!choca) return candidato;
-        candidato = `${limpio}-${n}`;
-        n++;
-    }
-    // Último recurso: sufijo de tiempo. Feo, pero nunca choca ni pierde el producto.
-    return `${limpio}-${Date.now().toString(36)}`;
-};
-
-const normalizarSku13 = (valor) => String(valor || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9-_]/g, '')
-    .slice(0, 13);
-
 const skuUnico13 = async (base, { transaction = null, usados = new Set() } = {}) => {
     const limpio = normalizarSku13(base);
     if (!limpio) return '';
@@ -3021,21 +2992,6 @@ const skuUnico13 = async (base, { transaction = null, usados = new Set() } = {})
     }
     usados.add(candidato);
     return candidato;
-};
-
-// Resuelve el NOMBRE de una familia a su fila en FAMILIA, creándola si no existe.
-// Devuelve null cuando no hay nombre: el producto queda sin agrupar, que es válido.
-// El nombre se normaliza en el modelo, así que dos grafías distintas de lo mismo caen
-// siempre en la misma fila y no se duplican familias por diferencias de tipeo.
-const resolverIdFamilia = async (nombre, transaction = null) => {
-    const limpio = normalizarFamilia(nombre);
-    if (!limpio) return null;
-    const [fila] = await Familia.findOrCreate({
-        where:    { nombreFamilia: limpio },
-        defaults: { nombreFamilia: limpio },
-        ...(transaction ? { transaction } : {})
-    });
-    return fila.idFamilia;
 };
 
 const saveProduct = async (req, res, next) => {
@@ -3071,10 +3027,6 @@ const saveProduct = async (req, res, next) => {
             .trim()
             .toLowerCase()
             .replace(/\b\w/g, c => c.toUpperCase());
-
-        const generarSlugDe = (texto) => texto.toString().toLowerCase().trim()
-            .normalize('NFD').replace(/[̀-ͯ]/g, '')
-            .replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
 
         // 1.1 Si hay más de una combinación talla+color, cada una es un PRODUCTO
         // independiente (su propio SKU, nombre y fotos) — no una variante de un mismo producto.

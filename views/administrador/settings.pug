@@ -26,3 +26,11 @@ block contenedor
                                         button(class="btn btn-outline flex items-center gap-2")
                                             i(class="fi fi-rr-arrow-left")
                                             | Volver
+
+                            //MODULOS DE CONFIGURACION
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4")
+                                a(href="/admin/configuracion/importaciones" class="cards cardsWhite grid-cols-1 p-6 flex flex-col gap-3 hover:bg-gray-50 transition-colors")
+                                    div(class="w-12 h-12 rounded-xl bg-gh-primarySoft flex items-center justify-center text-gh-primaryHover text-2xl")
+                                        i.fi-rr-file-spreadsheet
+                                    h3.h3 Importaciones
+                                    p(class="text-sm text-gray-500") Sube un Excel de productos del proveedor y crealos en el catálogo sin cargarlos uno por uno.

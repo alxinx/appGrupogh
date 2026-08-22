@@ -26,6 +26,9 @@ import { PuntosDeVenta } from "../models/index.js";
 //CONTROLADOR DOSIFICACIOONES:
 import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado, historialPack, imprimirGuiaEmpaque } from '../controller/dosificacionController.js'
 
+//CONTROLADOR IMPORTACIONES:
+import { formularioImportaciones, procesarImportacionExcel } from '../controller/importacionesController.js'
+
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
 import verificarCodigoEmpleadoAdmin from '../middlewares/verificarCodigoEmpleadoAdmin.js';
@@ -63,6 +66,7 @@ import { recibirQr } from '../middlewares/uploadQr.js';
 import qrUploadRateLimit from '../middlewares/qrUploadRateLimit.js';
 import apiRateLimit from '../middlewares/apiRateLimit.js';
 import { subirComprobantesMovimiento } from '../middlewares/uploadComprobantes.js';
+import uploadExcel from '../middlewares/uploadExcel.js';
 
 
 
@@ -204,6 +208,12 @@ routes.post('/api/clientes/:idCliente/credito', pCli('EDIT'), activarCreditoClie
 
 routes.get('/pedidos', pPed('READ'), dashboardOrders);
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
+routes.get('/configuracion/importaciones', pCfg('READ'), formularioImportaciones);
+routes.post('/configuracion/importaciones',
+    pCfg('CREATE'),
+    uploadExcel.single('archivo'),
+    csrfProtection,
+    procesarImportacionExcel);
 
 
 routes.get('/frontend', baseFrondend);
