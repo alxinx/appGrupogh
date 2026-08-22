@@ -4113,17 +4113,31 @@ const filterStoreInventoryJson = async (req, res) => {
             type: Sequelize.QueryTypes.SELECT
         });
 
-        // 3. Get images and availability for each item
-        const processedInventory = await Promise.all(inventory.map(async (item) => {
+        // 3. Get images and availability for each item — una sola consulta para toda la
+        // página (no una por fila): con LIMIT_PER_PAGE alto esto era una query de imagen
+        // por producto suelto en la página, N+1 clásico sobre un listado paginado.
+        const idsSueltos = [...new Set(
+            inventory
+                .filter(item => item.tipoRecord === 'loose' || !item.idPack)
+                .map(item => item.idProducto)
+        )];
+        const imagenesSueltas = idsSueltos.length
+            ? await Imagenes.findAll({
+                  where: { idProducto: { [Op.in]: idsSueltos }, tipo: 'principal' },
+                  attributes: ['idProducto', 'nombreImagen'],
+                  raw: true
+              })
+            : [];
+        const mapaImagen = Object.fromEntries(imagenesSueltas.map(img => [img.idProducto, img.nombreImagen]));
+
+        const processedInventory = inventory.map((item) => {
             let imagenUrl = '/img/avatars/bag.webp';
             let displayProducto = item.codigoEtiqueta || item.nombreProducto;
             let displaySku = item.codigoEtiqueta ? '' : item.sku;
 
             if (item.tipoRecord === 'loose' || !item.idPack) {
-                const img = await Imagenes.findOne({
-                    where: { idProducto: item.idProducto, tipo: 'principal' }
-                });
-                imagenUrl = img ? `${process.env.R2_PUBLIC_URL}/productos/${img.nombreImagen}` : '/img/image-default.webp';
+                const nombreImagen = mapaImagen[item.idProducto];
+                imagenUrl = nombreImagen ? `${process.env.R2_PUBLIC_URL}/productos/${nombreImagen}` : '/img/image-default.webp';
                 displayProducto = item.nombreProducto;
                 displaySku = item.sku;
             }
@@ -4137,7 +4151,7 @@ const filterStoreInventoryJson = async (req, res) => {
                 displaySku,
                 availability
             };
-        }));
+        });
 
         res.json({
             success: true,
@@ -7725,11 +7739,24 @@ const getFacturasPendientesProveedores = async (req, res) => {
             distinct: true
         });
 
-        const result = await Promise.all(facturas.map(async f => {
-            const ultima = await CuentasPorPagar.findOne({
-                where: { idFacturaPro: f.idFacturaPro },
-                order: [['createdAt', 'DESC']]
-            });
+        // El "último abono" de cada factura sale de UNA consulta para toda la página, no
+        // de una por factura: ordenada por idFacturaPro y createdAt DESC, la primera fila
+        // que aparece de cada factura es la más reciente.
+        const facturaIds = facturas.map(f => f.idFacturaPro);
+        const cuentas = facturaIds.length
+            ? await CuentasPorPagar.findAll({
+                  where: { idFacturaPro: { [Op.in]: facturaIds } },
+                  order: [['idFacturaPro', 'ASC'], ['createdAt', 'DESC']],
+                  raw: true
+              })
+            : [];
+        const mapaUltimaCuenta = {};
+        for (const c of cuentas) {
+            if (!(c.idFacturaPro in mapaUltimaCuenta)) mapaUltimaCuenta[c.idFacturaPro] = c;
+        }
+
+        const result = facturas.map(f => {
+            const ultima = mapaUltimaCuenta[f.idFacturaPro];
             return {
                 idFacturaPro:     f.idFacturaPro,
                 nroFactura:       f.nroFactura,
@@ -7739,7 +7766,7 @@ const getFacturasPendientesProveedores = async (req, res) => {
                 proveedor:        f.proveedor?.razonSocial || 'N/A',
                 valorPorPagar:    ultima ? parseFloat(ultima.valorPorPagar) : parseFloat(f.valorTotal)
             };
-        }));
+        });
 
         return res.json({ success: true, facturas: result, total: count, paginaActual: page, totalPaginas: Math.ceil(count / PER_PAGE_FP) });
     } catch (error) {

@@ -219,16 +219,34 @@ async function obtenerTopVentas() {
 // GET /api/web/productos?categoria&q&orden&pagina&limite&talla&color&precioMin&precioMax
 export const getCatalogo = async (req, res) => {
     try {
-        const { categoria, q, orden = 'nombre_asc', pagina = '1', limite = '15', talla, color, precioMin, precioMax } = req.query;
+        const { categoria, subcategorias, q, orden = 'nombre_asc', pagina = '1', limite = '15', talla, color, precioMin, precioMax } = req.query;
         const page  = Math.max(1, parseInt(pagina) || 1);
         const limit = Math.min(60, Math.max(1, parseInt(limite) || 15));
         const offset = (page - 1) * limit;
 
         const where = { activo: true, web: true };
+        // idCategoria es una ruta tipo "padre|hijo" (STRING(50), ver models/Productos.js).
+        // Sin `subcategorias` en la URL se mantiene el comportamiento de siempre: el padre
+        // trae todo lo de abajo. Con el parámetro presente (aunque venga vacío) el filtro de
+        // categorías del catálogo pasó a listar subcategorías por separado, así que solo
+        // entran el padre "suelto" y las subcategorías que sigan marcadas.
         if (categoria) {
-            where[Op.and] = [
-                literal(`(idCategoria = '${String(categoria)}' OR idCategoria LIKE '${String(categoria)}|%')`)
-            ];
+            const catId = String(categoria).replace(/\D/g, '');
+            if (catId) {
+                if (subcategorias !== undefined) {
+                    const subIds = String(subcategorias).split(',').map(s => s.replace(/\D/g, '')).filter(Boolean);
+                    const orConds = [{ idCategoria: catId }];
+                    for (const subId of subIds) {
+                        orConds.push({ idCategoria: `${catId}|${subId}` });
+                        orConds.push({ idCategoria: { [Op.like]: `${catId}|${subId}|%` } });
+                    }
+                    where[Op.and] = [{ [Op.or]: orConds }];
+                } else {
+                    where[Op.and] = [
+                        { [Op.or]: [{ idCategoria: catId }, { idCategoria: { [Op.like]: `${catId}|%` } }] }
+                    ];
+                }
+            }
         }
         if (q) {
             const term = `%${q.trim()}%`;
@@ -418,14 +436,32 @@ export const getCatalogo = async (req, res) => {
 // GET /api/web/filtros — mismos params que getCatalogo para reflejar productos filtrados
 export const getFiltros = async (req, res) => {
     try {
-        const { categoria, q, orden, talla, precioMin, precioMax } = req.query;
+        const { categoria, subcategorias, q, orden, talla, precioMin, precioMax } = req.query;
 
         const conds = ['p.activo = 1', 'p.web = 1'];
         const replacements = [];
 
+        // Mismo criterio que getCatalogo: sin `subcategorias` en la URL, el padre trae todo
+        // lo de abajo; con el parámetro presente, solo el padre "suelto" y las subcategorías
+        // que sigan marcadas. Va con `?` posicionales y ANTES que los demás push() de abajo
+        // para no desalinear el orden de los replacements.
         if (categoria) {
-            const safe = String(categoria).replace(/[^0-9|]/g, '');
-            conds.push(`(p.idCategoria = '${safe}' OR p.idCategoria LIKE '${safe}|%')`);
+            const catId = String(categoria).replace(/\D/g, '');
+            if (catId) {
+                if (subcategorias !== undefined) {
+                    const subIds = String(subcategorias).split(',').map(s => s.replace(/\D/g, '')).filter(Boolean);
+                    const orParts = ['p.idCategoria = ?'];
+                    replacements.push(catId);
+                    for (const subId of subIds) {
+                        orParts.push('p.idCategoria = ?', 'p.idCategoria LIKE ?');
+                        replacements.push(`${catId}|${subId}`, `${catId}|${subId}|%`);
+                    }
+                    conds.push(`(${orParts.join(' OR ')})`);
+                } else {
+                    conds.push('(p.idCategoria = ? OR p.idCategoria LIKE ?)');
+                    replacements.push(catId, `${catId}|%`);
+                }
+            }
         }
         if (q) {
             const term = `%${q.trim()}%`;
