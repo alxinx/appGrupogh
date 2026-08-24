@@ -466,7 +466,9 @@ actualizarEstadoWeb();
                 });
             } else {
                 if (resultado.idsProductos && resultado.idsProductos.length > 1) {
-                    window.open(`/admin/inventario/etiqueta-sku/${resultado.idsProductos[0]}?ids=${resultado.idsProductos.join(',')}`, '_blank');
+                    const enlaceZip = document.createElement('a');
+                    enlaceZip.href = `/admin/inventario/etiqueta-sku/${resultado.idsProductos[0]}?ids=${resultado.idsProductos.join(',')}&format=zip`;
+                    enlaceZip.click();
                 } else if (resultado.idProducto) {
                     window.open(`/admin/inventario/etiqueta-sku/${resultado.idProducto}`, '_blank');
                 }

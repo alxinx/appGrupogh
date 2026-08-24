@@ -8,6 +8,7 @@ import { validationResult } from "express-validator";
 import { uuidV7 } from "../helpers/uuidV7.js";
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
+import { ZipArchive } from 'archiver';
 import sharp from 'sharp';
 import { Upload } from "@aws-sdk/lib-storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -4118,10 +4119,55 @@ const filterStoreInventoryJson = async (req, res) => {
     }
 }
 
+const generarPdfEtiquetaSKU = async (sku, nombre) => {
+    const W = 155.91;
+    const H = 70.87;
+    const mx = 4;
+    const ALTO_TEXTO = 12;
+    const Y_TEXTO = H - mx - ALTO_TEXTO;
+    const ALTO_BARRAS = Y_TEXTO - mx - 2;
+
+    const doc = new PDFDocument({
+        size: [W, H],
+        margins: { top: mx, bottom: mx, left: mx, right: mx },
+        autoFirstPage: false
+    });
+    const partes = [];
+    const pdf = new Promise((resolve, reject) => {
+        doc.on('data', parte => partes.push(parte));
+        doc.on('end', () => resolve(Buffer.concat(partes)));
+        doc.on('error', reject);
+    });
+
+    const buffer = await bwipjs.toBuffer({
+        bcid: 'code128',
+        text: sku,
+        scale: 4,
+        height: 14,
+        includetext: false
+    });
+    doc.addPage({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
+    doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
+    doc.fontSize(10).font('Helvetica-Bold')
+        .text(nombre, mx, Y_TEXTO, { width: W - mx * 2, align: 'center', lineBreak: false, ellipsis: true });
+    doc.end();
+    return pdf;
+};
+
+const nombreArchivoSeguro = (valor, fallback = 'producto') => {
+    const limpio = String(valor || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Za-z0-9_-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80);
+    return limpio || fallback;
+};
+
 // ─── ETIQUETA SKU (PDF 5.5×2.5 cm landscape) ────────────────────────────────
 const imprimirEtiquetaSKU = async (req, res) => {
     const { idProducto } = req.params;
-    const { ids } = req.query;
+    const { ids, format } = req.query;
 
     let etiquetas = []; // [{ sku, nombre }]
 
@@ -4130,17 +4176,23 @@ const imprimirEtiquetaSKU = async (req, res) => {
         const idsLista = ids.split(',').map(s => s.trim()).filter(Boolean);
         const productos = await Productos.findAll({
             where: { idProducto: idsLista },
-            attributes: ['idProducto', 'sku', 'nombreProducto']
+            attributes: ['idProducto', 'sku', 'nombreProducto'],
+            include: [{ model: Familia, as: 'familia', attributes: ['nombreFamilia'] }]
         });
         // Respetamos el orden en que llegaron los ids, no el orden de la consulta
         etiquetas = idsLista
             .map(id => productos.find(p => p.idProducto === id))
             .filter(Boolean)
-            .map(p => ({ sku: p.sku, nombre: p.nombreProducto }));
+            .map(p => ({
+                sku: p.sku,
+                nombre: p.nombreProducto,
+                familia: p.familia?.nombreFamilia
+            }));
     } else {
         const producto = await Productos.findOne({
             where: { idProducto },
-            attributes: ['sku', 'nombreProducto']
+            attributes: ['sku', 'nombreProducto'],
+            include: [{ model: Familia, as: 'familia', attributes: ['nombreFamilia'] }]
         });
         if (!producto?.sku) return res.status(404).send('Producto no encontrado.');
 
@@ -4152,10 +4204,43 @@ const imprimirEtiquetaSKU = async (req, res) => {
         });
         const skusVariantes = variantes.filter(v => v.sku).map(v => v.sku);
         etiquetas = (skusVariantes.length > 0 ? skusVariantes : [producto.sku])
-            .map(sku => ({ sku, nombre: producto.nombreProducto }));
+            .map(sku => ({
+                sku,
+                nombre: producto.nombreProducto,
+                familia: producto.familia?.nombreFamilia
+            }));
     }
 
     if (etiquetas.length === 0) return res.status(404).send('Producto no encontrado.');
+
+    if (format === 'zip') {
+        try {
+            res.setHeader('Content-Type', 'application/zip');
+            const familia = etiquetas.find(etiqueta => etiqueta.familia)?.familia;
+            const nombreZip = `etiquetas_${nombreArchivoSeguro(familia)}.zip`;
+            res.setHeader('Content-Disposition', `attachment; filename="${nombreZip}"`);
+            const zip = new ZipArchive({ zlib: { level: 9 } });
+            zip.on('error', error => res.destroy(error));
+            zip.pipe(res);
+
+            const nombresUsados = new Set();
+            for (const { sku, nombre } of etiquetas) {
+                const base = String(sku).replace(/[^A-Za-z0-9_-]/g, '') || 'etiqueta';
+                let nombreArchivo = `${base}.pdf`;
+                let consecutivo = 2;
+                while (nombresUsados.has(nombreArchivo)) {
+                    nombreArchivo = `${base}_${consecutivo++}.pdf`;
+                }
+                nombresUsados.add(nombreArchivo);
+                zip.append(await generarPdfEtiquetaSKU(sku, nombre), { name: nombreArchivo });
+            }
+            await zip.finalize();
+        } catch (e) {
+            console.error('imprimirEtiquetasSKUZip:', e);
+            if (!res.headersSent) res.status(500).send('Error al generar el ZIP de etiquetas.');
+        }
+        return;
+    }
 
     // 5.5 cm = 155.91 pt (ancho) | 2.5 cm = 70.87 pt (alto)
     const W  = 155.91;
@@ -4183,13 +4268,11 @@ const imprimirEtiquetaSKU = async (req, res) => {
             const buffer = await bwipjs.toBuffer({
                 bcid:        'code128',
                 text:        sku,
-                scale:       2,
-                height:      9,
+                scale:       4,
+                height:      14,
                 includetext: false,
             });
-            // width + height juntos: se estira al área exacta. Un código de barras admite
-            // el estirado vertical — el lector mide el ANCHO de las barras, no su alto.
-            doc.image(buffer, mx, mx, { width: W - mx * 2, height: ALTO_BARRAS });
+            doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
 
             // Nombre del producto centrado, pegado al pie de las barras
             doc.fontSize(10).font('Helvetica-Bold')
