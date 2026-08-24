@@ -4123,7 +4123,7 @@ const generarPdfEtiquetaSKU = async (sku, nombre) => {
     const W = 155.91;
     const H = 70.87;
     const mx = 4;
-    const ALTO_TEXTO = 12;
+    const ALTO_TEXTO = 9;
     const Y_TEXTO = H - mx - ALTO_TEXTO;
     const ALTO_BARRAS = Y_TEXTO - mx - 2;
 
@@ -4148,7 +4148,7 @@ const generarPdfEtiquetaSKU = async (sku, nombre) => {
     });
     doc.addPage({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
     doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
-    doc.fontSize(10).font('Helvetica-Bold')
+    doc.fontSize(7).font('Helvetica-Bold')
         .text(nombre, mx, Y_TEXTO, { width: W - mx * 2, align: 'center', lineBreak: false, ellipsis: true });
     doc.end();
     return pdf;
@@ -4250,7 +4250,7 @@ const imprimirEtiquetaSKU = async (req, res) => {
     // que salga de la proporción del PNG: el ancho del código depende de cuántos
     // caracteres tenga el SKU, así que un SKU largo daba barras más bajas que uno corto
     // y la etiqueta cambiaba de aspecto entre productos.
-    const ALTO_TEXTO   = 12;              // una línea a 10 pt
+    const ALTO_TEXTO   = 9;               // una línea a 7 pt
     const Y_TEXTO      = H - mx - ALTO_TEXTO;
     const ALTO_BARRAS  = Y_TEXTO - mx - 2; // las barras bajan hasta 2 pt antes del nombre
 
@@ -4275,7 +4275,7 @@ const imprimirEtiquetaSKU = async (req, res) => {
             doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
 
             // Nombre del producto centrado, pegado al pie de las barras
-            doc.fontSize(10).font('Helvetica-Bold')
+            doc.fontSize(7).font('Helvetica-Bold')
                .text(nombre, mx, Y_TEXTO, { width: W - mx * 2, align: 'center', lineBreak: false, ellipsis: true });
         }
 
