@@ -245,8 +245,8 @@
 
         const skuInput = document.getElementById('sku');
         const eanInput = document.getElementById('ean');
-            if(skuInput) skuInput.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
-            if(skuInput) skuInput.setAttribute('maxlength', '13');
+        if(skuInput) skuInput.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
+        if(skuInput) skuInput.setAttribute('maxlength', '20');
         if(eanInput) eanInput.addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
 
     });

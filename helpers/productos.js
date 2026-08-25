@@ -41,6 +41,11 @@ export const normalizarSku13 = (valor) => String(valor || '')
     .toUpperCase()
     .replace(/[^A-Z0-9-_]/g, '')
     .slice(0, 13);
+export const normalizarSku20 = (valor) => String(valor || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-_]/g, '')
+    .slice(0, 20);
 
 // Resuelve el NOMBRE de una familia a su fila en FAMILIA, creándola si no existe.
 // Devuelve null cuando no hay nombre: el producto queda sin agrupar, que es válido.
