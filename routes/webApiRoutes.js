@@ -1,7 +1,7 @@
 import express from 'express';
 import apiRateLimit, { escrituraPublicaRateLimit, trackingRateLimit } from '../middlewares/apiRateLimit.js';
 import { recibirComprobante } from '../middlewares/uploadComprobante.js';
-import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, getPaginaBySlug, getPuntosVenta, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi, subirComprobantePagoWeb, sincronizarReservasWeb, demandaCarritoWeb } from '../controller/webApiController.js';
+import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, darDeBajaInteresado, getPaginaBySlug, getPuntosVenta, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi, subirComprobantePagoWeb, sincronizarReservasWeb, demandaCarritoWeb } from '../controller/webApiController.js';
 
 import { listarEntidadesQrPublico, getQrPagoPublico } from '../controller/qrPagoControllers.js';
 
@@ -34,6 +34,7 @@ routes.get('/carrito/demanda',     demandaCarritoWeb);
 routes.get('/pagina/:slug',        getPaginaBySlug);
 routes.get('/puntos-venta',        getPuntosVenta);
 routes.post('/interesado',         escrituraPublicaRateLimit, postInteresado);
+routes.get('/interesado/baja',     darDeBajaInteresado);
 routes.post('/visitante/track',        trackingRateLimit, trackVisita);
 routes.post('/visitante/identificar',  trackingRateLimit, identificarVisitante);
 routes.post('/pedidos',                escrituraPublicaRateLimit, crearPedidoWeb);

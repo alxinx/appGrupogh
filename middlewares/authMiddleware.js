@@ -14,7 +14,12 @@ const rutaProtegida = async (req, res, next)=>{
     try {
        
         const decoded = jwt.verify(token, process.env.APP_PRIVATEKEY);
-        const usuario = await Usuarios.findByPk(decoded.id.id || decoded.id);
+        // Excluye el hash de bcrypt: este usuario queda colgado como req.usuario/res.locals.usuario
+        // en TODA la sesión autenticada (controladores y vistas). Nada de lo que ya pasó por acá
+        // necesita el hash — la contraseña se validó en el login, no en cada request.
+        const usuario = await Usuarios.findByPk(decoded.id.id || decoded.id, {
+            attributes: { exclude: ['password'] }
+        });
         
         if (!usuario){
             return res.redirect('/');

@@ -21,7 +21,7 @@ import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
 
 const R2_BUCKET = process.env.R2_BUCKET_NAME;
 const R2_BASE   = process.env.R2_PUBLIC_URL;
-const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
+const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.co';
 
 async function subirImagenR2(buffer, key, contentType = 'image/webp') {
     await new Upload({ client: s3Client, params: { Bucket: R2_BUCKET, Key: key, Body: buffer, ContentType: contentType } }).done();

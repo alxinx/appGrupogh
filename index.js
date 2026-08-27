@@ -58,6 +58,17 @@ try {
 }
 
 // 1. Middlewares de configuración básica
+//
+// La API pública (/api/web) recibe JSON de un carrito, un formulario de contacto o un
+// tracking de visitante — nunca más de unos KB. Se parsea con un límite propio, chico,
+// ANTES del límite general de 50mb que necesita el panel admin (contenido rico de
+// páginas/secciones, formularios grandes). body-parser no reparsea si `req._body` ya
+// quedó seteado, así que el límite grande de abajo no pisa este ni vuelve a leer el
+// stream — solo aplica a las rutas que no matchean acá. Sin este límite chico, cualquiera
+// podía mandar peticiones con bodies cercanos a 50MB a un endpoint sin sesión: el parseo
+// (CPU + memoria) ocurre igual aunque el rate limit después responda 429.
+app.use('/api/web', express.json({ limit: '256kb' }));
+app.use('/api/web', express.urlencoded({ extended: true, limit: '256kb' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
@@ -137,6 +148,23 @@ app.use((err, req, res, next) => {
                    req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest';
     if (esJson) return res.status(400).json({ success: false, mensaje });
     return res.status(400).send(`<h2>${mensaje} <a href="javascript:history.back()">Volver</a></h2>`);
+});
+
+// 5b. Errores de parseo del body (express.json/urlencoded, vía body-parser)
+// Sin esto, un body más grande que el límite o un JSON mal formado caían en la página de
+// error por defecto de Express: HTML con el stack trace completo y rutas absolutas del
+// servidor — expuesto incluso en /api/web, que es pública y sin sesión.
+app.use((err, req, res, next) => {
+    const tiposBodyParser = ['entity.too.large', 'entity.parse.failed', 'encoding.unsupported'];
+    if (!tiposBodyParser.includes(err?.type)) return next(err);
+
+    const mensajes = {
+        'entity.too.large':     'La solicitud es demasiado grande.',
+        'entity.parse.failed':  'El cuerpo de la solicitud no es JSON válido.',
+        'encoding.unsupported': 'Codificación de la solicitud no soportada.'
+    };
+    console.error(`[body-parser] ${req.method} ${req.url} — ${err.type}: ${err.message}`);
+    return res.status(err.status || 400).json({ success: false, mensaje: mensajes[err.type] || 'Solicitud inválida.' });
 });
 
 // 6. CSRF error handler

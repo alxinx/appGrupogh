@@ -15,8 +15,10 @@ import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import s3Client from '../config/r2.js';
 import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
 import { sincronizarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
+import { idInteresDeTokenBaja } from '../helpers/bajaInteresados.js';
+import { sendOrderConfirmation } from '../helpers/emailSes.js';
 
-const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
+const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.co';
 
 // Tipos de documento aceptados en el checkout web, con el mismo vocabulario que CLIENTES
 // y que el formulario de admin/clientes/nuevo. Una persona jurídica siempre es NIT.
@@ -755,6 +757,33 @@ export const postInteresado = async (req, res) => {
     }
 };
 
+function paginaBaja(mensaje) {
+    return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Grupo GH</title></head>
+<body style="margin:0; padding:40px 20px; font-family: 'Helvetica', Arial, sans-serif; background-color:#f9fafb; color:#334155;">
+    <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:12px; border:1px solid #e5e7eb; padding:40px; text-align:center;">
+        <h1 style="color:#D44289; font-size:20px; margin-top:0;">Grupo GH</h1>
+        <p style="font-size:15px; line-height:1.6;">${mensaje}</p>
+    </div>
+</body>
+</html>`;
+}
+
+// GET /api/web/interesado/baja?token=... — clic desde el correo de "producto disponible".
+// Nunca distingue "token inválido" de "ya estaba dado de baja" con detalle: cualquier caso
+// que no sea éxito responde el mismo mensaje genérico, no hay nada que un atacante pueda
+// aprender probando tokens acá.
+export const darDeBajaInteresado = async (req, res) => {
+    try {
+        const idInteres = idInteresDeTokenBaja(req.query.token);
+        await Interesados.update({ activo: false }, { where: { idInteres, activo: true } });
+        return res.status(200).send(paginaBaja('Listo, no vas a recibir más avisos de este producto.'));
+    } catch (e) {
+        return res.status(400).send(paginaBaja('Este enlace no es válido o ya expiró.'));
+    }
+};
+
 // POST /api/web/visitante/track — registra la visita anónima y, opcionalmente, la vista de un producto.
 export const trackVisita = async (req, res) => {
     try {
@@ -836,7 +865,7 @@ export const crearPedidoWeb = async (req, res) => {
         if (metodoPago === 'qr') {
             entidadQr = await Entidades.findOne({
                 where: { idEntidad: idEntidadPagoQr, qrEnabled: true, qrStatus: 'active' },
-                attributes: ['idEntidad']
+                attributes: ['idEntidad', 'nombreEntidad']
             });
             if (!entidadQr) {
                 return res.status(400).json({ success: false, message: 'El método de pago por QR no está disponible en este momento.' });
@@ -849,6 +878,7 @@ export const crearPedidoWeb = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Hay productos con cantidad inválida.' });
         }
 
+        let puntoRecogida = null;
         if (tipoEntrega === 'domicilio') {
             if (!direccion?.trim() || !ciudad?.trim() || !departamento?.trim()) {
                 return res.status(400).json({ success: false, message: 'Faltan datos de la dirección de envío.' });
@@ -857,8 +887,8 @@ export const crearPedidoWeb = async (req, res) => {
             if (!idPuntoVentaRecogida) {
                 return res.status(400).json({ success: false, message: 'Faltan datos para recoger en tienda.' });
             }
-            const punto = await PuntosDeVenta.findByPk(idPuntoVentaRecogida);
-            if (!punto) return res.status(400).json({ success: false, message: 'El punto de recogida no es válido.' });
+            puntoRecogida = await PuntosDeVenta.findByPk(idPuntoVentaRecogida);
+            if (!puntoRecogida) return res.status(400).json({ success: false, message: 'El punto de recogida no es válido.' });
         }
 
         // ── Identificación para facturación ──────────────────────────────────────
@@ -1014,6 +1044,36 @@ export const crearPedidoWeb = async (req, res) => {
             }
 
             await t.commit();
+
+            // Aviso post-commit, en su propio try que solo loguea (CLAUDE.md §9): si esto
+            // fallara sin este blindaje, el catch de abajo intentaría un rollback sobre una
+            // transacción que ya se comprometió, y la respuesta nunca llegaría al cliente.
+            try {
+                await sendOrderConfirmation({
+                    to: email.trim(),
+                    nombreCliente: `${nombreCliente.trim()} ${apellidoCliente.trim()}`,
+                    numeroPedido,
+                    fecha: pedido.createdAt,
+                    items: detalles.map(d => ({
+                        nombreProducto: productoPorId[d.idProducto]?.nombreProducto || 'Producto',
+                        talla: d.talla,
+                        color: d.color,
+                        cantidad: d.cantidad,
+                        valorUnidad: d.valorUnidad,
+                        subTotal: d.subTotal
+                    })),
+                    metodoPago,
+                    entidadQr,
+                    tipoEntrega,
+                    direccion, apto, ciudad, departamento,
+                    telefono: telefono.trim(),
+                    puntoRecogida,
+                    subtotal, envio: envioCosto, descuento: 0, total
+                });
+            } catch (e) {
+                console.error('[crearPedidoWeb] no se pudo enviar la confirmación por correo:', e.message);
+            }
+
             return res.json({
                 success: true,
                 idPedido: pedido.idPedido,

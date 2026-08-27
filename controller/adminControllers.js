@@ -3288,123 +3288,6 @@ const saveProduct = async (req, res, next) => {
     }
 };
 
-
-
-
-//OLD
-const newProduct = async (req, res, next) => {
-    const errores = validationResult(req);
-
-    if (!errores.isEmpty()) {
-        const errObj = errores.array().reduce((acc, err) => {
-            acc[err.path] = err.msg;
-            return acc;
-        }, {});
-        return res.status(400).json({
-            errores: errObj
-        });
-    }
-
-    try {
-
-        //Trabajo con las categoorias y. subcategorias con las que vienne el porducto, 
-        const { categorias, subcategorias } = req.body
-
-        const todasLasCategorias = [categorias].concat(subcategorias || []);
-        const idCategoriaParaDB = todasLasCategorias.filter(id => id && id !== '').join('|')
-
-        //Sanitizo los valores de los precios y de , (de string a int y borro el punto que me envia desde el frontend)
-        const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
-        const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
-        const descripcionLimpia = sanitizarHTML(req.body.descripcion);
-        const activo = req.body.activo === 'on'; // Esto ya devuelve true o false
-        const web = req.body.web === 'on';
-        //Ingreso todo para que me pueda generar el ID del producto y seguir con lo siguiente! 
-        // 1. Ingreso los datos  necesarios para ingresar el producto y trabajar el ID. 
-
-        const nuevoProducto = await Productos.create({
-            ...req.body,
-            descripcion: descripcionLimpia,
-            precioVentaPublicoFinal: precioVentaPublicoFinal,
-            precioVentaMayorista: precioVentaMayorista,
-            idCategoria: idCategoriaParaDB,
-            activo: activo,
-            web: web,
-            btnName: 'Guardar Producto'
-
-        });
-
-
-        const idProducto = nuevoProducto.idProducto;
-
-        // 2: Ingreso las variaciones del producto. (colores, y tallas)
-        const variacionesSeleccionadas = JSON.parse(req.body.variantes_finales);
-        const variacionesFinales = [];
-        Object.entries(variacionesSeleccionadas).forEach(([talla, color]) => {
-            color.forEach(idColor => {
-                variacionesFinales.push({
-                    idProducto: idProducto,
-                    idAtributos: `${talla}|${idColor}`,
-                    valor: 0,
-                });
-            })
-        })
-        await VariacionesProducto.bulkCreate(variacionesFinales)
-
-
-        // 2. Aquí vendrá la lógica de Sharp para las imágenes (que haremos a continuación)
-        if (req.files && req.files.length > 0) {
-            const uploadPromises = req.files.map(async (file, index) => {
-                // aqui genero  un nombre único para evitar colisiones
-                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`;
-
-                // 1. Procesamiento con Sharp (Optimización)
-                const bufferOptimizado = await sharp(file.buffer)
-                    .resize(1000, 1000, {
-                        fit: 'inside',
-                        withoutEnlargement: true
-                    })
-                    .webp({ quality: 80 })
-                    .toBuffer();
-
-                // 2. Preparar subida a Cloudflare R2
-                const parallelUploads3 = new Upload({
-                    client: s3Client,
-                    params: {
-                        Bucket: process.env.R2_BUCKET_NAME,
-                        Key: `productos/${nombreArchivo}`,
-                        Body: bufferOptimizado,
-                        ContentType: "image/webp",
-                    },
-                });
-
-                // Ejecutar subida
-                await parallelUploads3.done();
-
-                // Retornar objeto para Sequelize (bulkCreate)
-                return {
-                    idProducto: nuevoProducto.idProducto, // Asegúrate de tener el ID del producto creado arriba
-                    nombreImagen: nombreArchivo,
-                    tipo: index === 0 ? 'principal' : 'galeria'
-                };
-            });
-
-            // 3. Esperar a que todas suban y guardar registros en la DB
-            const imagenesData = await Promise.all(uploadPromises);
-            await Imagenes.bulkCreate(imagenesData); // Tu modelo de imágenes de Sequelize
-        }
-        // 3: Imágenes con Sharp y R2
-
-
-
-
-        res.json({ success: true, mensaje: 'Producto guardado con éxito', idProducto: nuevoProducto.idProducto });
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ mensaje: 'Error interno del servidor' });
-    }
-}
-
 //************************[JSON CONTROLLERS] ************************ */
 
 const municipiosJson = async (req, res) => {
@@ -8156,7 +8039,7 @@ export {
     storeInventory,
     storeEmployers,
     storeDocuments,
-    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, newProduct, trasladarProductoAdmin,
+    saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, trasladarProductoAdmin,
     batchBuyOrder, saveBatchOrder,
     dosificar,
     dashboardSupplier,

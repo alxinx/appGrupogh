@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.com';
+const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.co';
 const SOPORTE_EMAIL = process.env.SOPORTE_EMAIL || 'info@grupogh.com';
 const SOPORTE_WHATSAPP = process.env.SOPORTE_WHATSAPP || '573000000000';
 const LINK_INSTAGRAM = process.env.LINK_INSTAGRAM || '#';
