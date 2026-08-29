@@ -88,7 +88,7 @@ const dashboardStores = async (req, res) => {
         idCliente: '0',
         primer_nombre: 'Cliente',
         primer_apellido: 'Genérico',
-        tipo_documento: 'CC',
+        tipoDocumento: 'CC',
         numero_doc: '0000000000'
     };
 
@@ -1393,11 +1393,14 @@ const getMunicipiosStoreJSON = async (req, res) => {
     }
 };
 
+// Mismo set que CLIENTES.tipoDocumento (ENUM).
+const TIPOS_DOC_CLIENTE = ['CC', 'CE', 'TI', 'NIT', 'PP', 'PPT', 'PEP'];
+
 const guardarCliente = async (req, res) => {
     const {
         idCliente: idClienteExistente,
         tipo_persona: tipo_personaRaw,
-        tipo_documento, numero_doc, digito_verif,
+        tipoDocumento, numero_doc, digito_verif,
         razon_social, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
         email, telefono,
         regimen_fiscal, responsabilidad_fiscal,
@@ -1406,11 +1409,14 @@ const guardarCliente = async (req, res) => {
         idDepartamento, nombreDepartamento, idMunicipio, nombreMunicipio, direccion
     } = req.body;
 
-    if (!tipo_documento || !numero_doc) {
+    if (!tipoDocumento || !numero_doc) {
         return res.status(400).json({ success: false, mensaje: 'Tipo y número de documento son requeridos.' });
     }
+    if (!TIPOS_DOC_CLIENTE.includes(tipoDocumento)) {
+        return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido.' });
+    }
 
-    const tipo_persona = tipo_personaRaw || (tipo_documento === 'NIT' ? 'J' : 'N');
+    const tipo_persona = tipo_personaRaw || (tipoDocumento === 'NIT' ? 'J' : 'N');
     const esEmpresa    = tipo_persona === 'J';
     const toBool       = (v) => v === 'true' || v === true;
     const toTitle      = (s) => s ? s.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : null;
@@ -1421,7 +1427,7 @@ const guardarCliente = async (req, res) => {
     try {
         const datosBase = {
             tipo_persona,
-            tipo_documento,
+            tipoDocumento,
             numero_doc:       numero_doc.trim(),
             digito_verif:     digito_verif || null,
             razon_social:     toTitle(razon_social),
@@ -1550,7 +1556,7 @@ const guardarCliente = async (req, res) => {
             success: true,
             idCliente,
             nombre:    nombreDisplay,
-            documento: `${tipo_documento} ${numero_doc.trim()}`
+            documento: `${tipoDocumento} ${numero_doc.trim()}`
         });
     } catch (e) {
         await t.rollback();
@@ -2109,7 +2115,7 @@ const getTirillaPDF = async (req, res) => {
             const nomCli = cli.tipo_persona === 'J'
                 ? (cli.razon_social || '')
                 : [cli.primer_nombre, cli.segundo_nombre, cli.primer_apellido, cli.segundo_apellido].filter(Boolean).join(' ');
-            const docCli = `${cli.tipo_documento || ''} ${cli.numero_doc || ''}${cli.digito_verif ? '-' + cli.digito_verif : ''}`.trim();
+            const docCli = `${cli.tipoDocumento || ''} ${cli.numero_doc || ''}${cli.digito_verif ? '-' + cli.digito_verif : ''}`.trim();
             doc.font('Helvetica-Bold').fontSize(7).text(`Cliente: ${nomCli}`, MARGIN, doc.y, { width: CW });
             doc.font('Helvetica').fontSize(7).text(`Doc: ${docCli}`, MARGIN, doc.y, { width: CW });
             if (cli.telefono) doc.text(`Tel: ${cli.telefono}`, MARGIN, doc.y, { width: CW });

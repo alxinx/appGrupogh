@@ -52,11 +52,13 @@ form#form-nuevo-cliente(method="post" enctype="multipart/form-data" class="col-s
                     div(class="col-span-12 md:col-span-4")
                         label.label Tipo documento *
                             div(class="select-wrapper")
-                                select.field-text(name="tipo_documento" id="tipo_documento_natural")
-                                    option(value="CC" selected= modoEdicion && cliente.tipo_documento === 'CC') Cédula de Ciudadanía
-                                    option(value="CE" selected= modoEdicion && cliente.tipo_documento === 'CE') Cédula de Extranjería
-                                    option(value="TI" selected= modoEdicion && cliente.tipo_documento === 'TI') Tarjeta de Identidad
-                                    option(value="PP" selected= modoEdicion && cliente.tipo_documento === 'PP') Pasaporte
+                                select.field-text(name="tipoDocumento" id="tipo_documento_natural")
+                                    option(value="CC" selected= modoEdicion && cliente.tipoDocumento === 'CC') Cédula de Ciudadanía
+                                    option(value="CE" selected= modoEdicion && cliente.tipoDocumento === 'CE') Cédula de Extranjería
+                                    option(value="TI" selected= modoEdicion && cliente.tipoDocumento === 'TI') Tarjeta de Identidad
+                                    option(value="PP" selected= modoEdicion && cliente.tipoDocumento === 'PP') Pasaporte
+                                    option(value="PPT" selected= modoEdicion && cliente.tipoDocumento === 'PPT') Permiso por Protección Temporal (PPT)
+                                    option(value="PEP" selected= modoEdicion && cliente.tipoDocumento === 'PEP') Permiso Especial de Permanencia (PEP)
                                 span.select-icon
                                     i.fi-rr-chevron-double-down
                     div(class="col-span-12 md:col-span-4")

@@ -40,7 +40,7 @@ const PedidosWeb = db.define('PEDIDOS_WEB', {
     cedula: { type: DataTypes.STRING(20), allowNull: true },
 
     // ── Identificación para facturación ──────────────────────────────────
-    // Mismo vocabulario que CLIENTES (tipo_persona / tipo_documento), para poder resolver
+    // Mismo vocabulario que CLIENTES (tipo_persona / tipoDocumento), para poder resolver
     // o crear el cliente sin traducir valores. allowNull por los pedidos históricos.
     tipoPersona: {
         type: DataTypes.CHAR(1),

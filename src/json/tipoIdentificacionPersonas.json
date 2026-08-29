@@ -18,5 +18,9 @@
   {
     "codigo": "PP",
     "descripcion": "Pasaporte"
+  },
+  {
+    "codigo": "PPT",
+    "descripcion": "Permiso por Protección Temporal (PPT)"
   }
 ]

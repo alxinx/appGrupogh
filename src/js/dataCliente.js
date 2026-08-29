@@ -205,7 +205,7 @@
 
         if (tipoPersona === 'J') {
             fd.set('numero_doc', document.getElementById('numero_doc_empresa')?.value.trim());
-            fd.set('tipo_documento', 'NIT');
+            fd.set('tipoDocumento', 'NIT');
         } else {
             fd.set('numero_doc', document.getElementById('numero_doc_natural')?.value.trim());
         }

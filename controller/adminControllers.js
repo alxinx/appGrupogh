@@ -15,7 +15,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
 import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
@@ -381,7 +381,7 @@ const getFacturasJSON = async (req, res) => {
             include: [
                 {
                     model: Clientes, as: 'cliente',
-                    attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipo_documento', 'numero_doc'],
+                    attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipoDocumento', 'numero_doc'],
                     required: false
                 },
                 {
@@ -414,7 +414,7 @@ const getFacturasJSON = async (req, res) => {
             const nombreCliente = f.idCliente === '0'
                 ? 'Consumidor Final'
                 : (cli?.razon_social || `${cli?.primer_nombre || ''} ${cli?.primer_apellido || ''}`.trim() || 'N/A');
-            const docCliente   = cli ? `${cli.tipo_documento || ''} ${cli.numero_doc || ''}`.trim() : '';
+            const docCliente   = cli ? `${cli.tipoDocumento || ''} ${cli.numero_doc || ''}`.trim() : '';
             const vendedor     = f.vendedor
                 ? `${f.vendedor.PrimerNombre} ${f.vendedor.PrimerApellido}`
                 : 'N/A';
@@ -1510,10 +1510,15 @@ const newCliente = async (req, res) => {
     }
 };
 
+// Mismo vocabulario que CLIENTES.tipoDocumento (ENUM) y que EMPLEADOS.TipoDocumento —
+// NIT queda fuera porque para persona natural nunca se envía (esEmpresa lo fuerza a NIT
+// más abajo), y así el 400 explica bien qué pasó en vez de dejar que la caiga el ENUM.
+const TIPOS_DOC_CLIENTE_NATURAL = ['CC', 'CE', 'TI', 'PP', 'PPT', 'PEP'];
+
 // ─── NUEVO CLIENTE — GUARDAR ──────────────────────────────────────────────────
 const saveCliente = async (req, res) => {
     const {
-        tipo_persona, tipo_documento, numero_doc, digito_verif,
+        tipo_persona, tipoDocumento, numero_doc, digito_verif,
         primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
         razon_social, email, telefono, genero,
         regimen_fiscal, condicion_tributaria,
@@ -1529,6 +1534,8 @@ const saveCliente = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'El primer nombre es requerido.' });
     if (!numero_doc?.trim())
         return res.status(400).json({ success: false, mensaje: 'El número de documento es requerido.' });
+    if (!esEmpresa && tipoDocumento && !TIPOS_DOC_CLIENTE_NATURAL.includes(tipoDocumento))
+        return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido.' });
 
     try {
         // Unicidad de numero_doc (guard previo a la transacción)
@@ -1552,7 +1559,7 @@ const saveCliente = async (req, res) => {
         // 1. Crear cliente
         const cliente = await Clientes.create({
             tipo_persona:     tipo_persona || 'N',
-            tipo_documento:   esEmpresa ? 'NIT' : (tipo_documento || 'CC'),
+            tipoDocumento:   esEmpresa ? 'NIT' : (tipoDocumento || 'CC'),
             numero_doc:       numero_doc.trim(),
             digito_verif:     esEmpresa ? (digito_verif?.trim() || null) : null,
             razon_social:     esEmpresa ? toPascal(razon_social) : null,
@@ -1699,7 +1706,7 @@ const editarClienteForm = async (req, res) => {
 const updateCliente = async (req, res) => {
     const { idCliente } = req.params;
     const {
-        tipo_persona, tipo_documento, numero_doc, digito_verif,
+        tipo_persona, tipoDocumento, numero_doc, digito_verif,
         primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
         razon_social, email, telefono, genero,
         regimen_fiscal, condicion_tributaria,
@@ -1714,6 +1721,8 @@ const updateCliente = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'El primer nombre es requerido.' });
     if (!numero_doc?.trim())
         return res.status(400).json({ success: false, mensaje: 'El número de documento es requerido.' });
+    if (!esEmpresa && tipoDocumento && !TIPOS_DOC_CLIENTE_NATURAL.includes(tipoDocumento))
+        return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido.' });
 
     try {
         const existe = await Clientes.findOne({ where: { numero_doc: numero_doc.trim(), idCliente: { [Op.ne]: idCliente } } });
@@ -1735,7 +1744,7 @@ const updateCliente = async (req, res) => {
 
         await Clientes.update({
             tipo_persona:     tipo_persona || 'N',
-            tipo_documento:   esEmpresa ? 'NIT' : (tipo_documento || 'CC'),
+            tipoDocumento:   esEmpresa ? 'NIT' : (tipoDocumento || 'CC'),
             numero_doc:       numero_doc.trim(),
             digito_verif:     esEmpresa ? (digito_verif?.trim() || null) : null,
             razon_social:     esEmpresa ? toPascal(razon_social) : null,
@@ -1942,7 +1951,7 @@ const getClientePerfil = async (req, res) => {
             Clientes.findOne({
                 where: { idCliente },
                 raw: true,
-                attributes: ['idCliente','tipo_persona','tipo_documento','numero_doc',
+                attributes: ['idCliente','tipo_persona','tipoDocumento','numero_doc',
                              'primer_nombre','primer_apellido','razon_social',
                              'email','telefono','genero','activo','credito','createdAt']
             }),
@@ -2141,23 +2150,67 @@ const _tienePermisoCredito = async (usuario) => {
     return !!permiso;
 };
 
-// ─── ACTIVAR CRÉDITO DE CLIENTE ──────────────────────────────────────────────
-const activarCreditoCliente = async (req, res) => {
+// ─── OTORGAR / SUSPENDER CRÉDITO DE CLIENTE ──────────────────────────────────
+// Las dos acciones comparten todo salvo el sentido del cambio: mismo permiso, mismo
+// código de empleado (lo exige verificarCodigoEmpleadoAdmin antes de llegar acá), y la
+// misma bitácora. El `update` condicionado al estado esperado (CLAUDE.md §9) evita que
+// dos clics a la vez otorguen o suspendan dos veces el mismo crédito.
+const _cambiarCreditoCliente = async (req, res, { credito, accion, mensajeConflicto }) => {
     const { idCliente } = req.params;
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
-            return res.status(403).json({ success: false, mensaje: 'Sin autorización para activar créditos' });
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para otorgar o suspender créditos' });
 
-        const cliente = await Clientes.findByPk(idCliente);
+        const cliente = await Clientes.findByPk(idCliente, { attributes: ['idCliente', 'credito'] });
         if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado' });
+        if (cliente.credito === credito)
+            return res.status(409).json({ success: false, mensaje: mensajeConflicto });
 
-        await cliente.update({ credito: true });
-        return res.json({ success: true });
+        const t = await db.transaction();
+        try {
+            const [afectadas] = await Clientes.update(
+                { credito },
+                { where: { idCliente, credito: !credito }, transaction: t }
+            );
+            if (afectadas === 0) {
+                await t.rollback();
+                return res.status(409).json({ success: false, mensaje: mensajeConflicto });
+            }
+
+            const emp = req.empleadoVerificado;
+            await ClientesCreditoHistorial.create({
+                idCliente,
+                accion,
+                idEmpleado:     emp?.idEmpleado || null,
+                nombreEmpleado: emp?.nombre || null,
+                codigoEmpleado: emp?.codigoEmpleado || null,
+                idUsuario:      req.usuario?.idUsuario || null
+            }, { transaction: t });
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        return res.json({ success: true, credito, empleado: req.empleadoVerificado?.nombre || null });
     } catch (e) {
-        console.error('activarCreditoCliente:', e);
-        return res.status(500).json({ success: false });
+        console.error(`${accion === 'otorgado' ? 'otorgarCreditoCliente' : 'suspenderCreditoCliente'}:`, e);
+        return res.status(500).json({ success: false, mensaje: 'Error al actualizar el crédito.' });
     }
 };
+
+const otorgarCreditoCliente = (req, res) => _cambiarCreditoCliente(req, res, {
+    credito: true,
+    accion: 'otorgado',
+    mensajeConflicto: 'Este cliente ya tiene crédito activo.'
+});
+
+const suspenderCreditoCliente = (req, res) => _cambiarCreditoCliente(req, res, {
+    credito: false,
+    accion: 'suspendido',
+    mensajeConflicto: 'Este cliente ya no tiene crédito activo.'
+});
 
 // ─── LISTA CLIENTES PAGINADA ──────────────────────────────────────────────────
 const filterClientesListJson = async (req, res) => {
@@ -2178,7 +2231,7 @@ const filterClientesListJson = async (req, res) => {
                 SELECT
                     c.idCliente,
                     c.primer_nombre, c.primer_apellido, c.razon_social,
-                    c.tipo_documento, c.numero_doc,
+                    c.tipoDocumento, c.numero_doc,
                     uf.fechaEmision AS ultimaCompra,
                     TRIM(CONCAT(COALESCE(e.PrimerNombre,''), ' ', COALESCE(e.PrimerApellido,''))) AS vendedor
                 FROM CLIENTES c
@@ -4449,7 +4502,7 @@ const actualizarEmpleado = async (req, res) => {
     if (!PrimerNombre?.trim())  errores.PrimerNombre  = 'El primer nombre es requerido';
     if (!PrimerApellido?.trim()) errores.PrimerApellido = 'El primer apellido es requerido';
 
-    const tiposDocValidos = ['CC', 'CE', 'TI', 'NIT', 'PP'];
+    const tiposDocValidos = ['CC', 'CE', 'TI', 'NIT', 'PP', 'PPT'];
     if (!TipoDocumento || !tiposDocValidos.includes(TipoDocumento))
         errores.TipoDocumento = 'Selecciona un tipo de documento válido';
     if (!NumeroDocumento?.trim())
@@ -6016,7 +6069,7 @@ const construirHojaOF = async (wb, { donde, tienda, fechaListado, fFechaLarga, e
             where: dondeOF,
             include: [{
                 model: Clientes, as: 'cliente', required: false,
-                attributes: ['tipo_persona', 'tipo_documento', 'numero_doc', 'digito_verif',
+                attributes: ['tipo_persona', 'tipoDocumento', 'numero_doc', 'digito_verif',
                              'razon_social', 'primer_nombre', 'segundo_nombre',
                              'primer_apellido', 'segundo_apellido', 'email', 'telefono'],
                 include: [
@@ -6067,7 +6120,7 @@ const construirHojaOF = async (wb, { donde, tienda, fechaListado, fFechaLarga, e
                 cli?.razon_social ? tituloLista(cli.razon_social) : '—',
                 nombresPersona ? tituloLista(nombresPersona) : (f.idCliente === '0' ? 'Consumidor Final' : '—'),
                 cli?.tipo_persona === 'J' ? 'Jurídica' : cli?.tipo_persona === 'N' ? 'Natural' : '—',
-                cli?.tipo_documento || '—',
+                cli?.tipoDocumento || '—',
                 cli?.numero_doc     || '—',
                 cli?.digito_verif   || '—',
                 docCompleto,
@@ -6722,7 +6775,7 @@ const exportarFacturasTienda = async (req, res) => {
             const tanda = await FacturaClientes.findAll({
                 where: donde,
                 include: [
-                    { model: Clientes, as: 'cliente', attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipo_documento', 'numero_doc'], required: false },
+                    { model: Clientes, as: 'cliente', attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipoDocumento', 'numero_doc'], required: false },
                     { model: Empleados, as: 'vendedor', attributes: ['PrimerNombre', 'PrimerApellido'], required: false },
                     { model: DetallesFactura, as: 'detalles', attributes: ['cantidad', 'total'], required: false },
                     { model: DetallesPagosFactura, as: 'pagos', attributes: ['metodoPago'], required: false }
@@ -6743,7 +6796,7 @@ const exportarFacturasTienda = async (req, res) => {
                 const cliente  = f.idCliente === '0'
                     ? 'Consumidor Final'
                     : (cli?.razon_social || `${cli?.primer_nombre || ''} ${cli?.primer_apellido || ''}`.trim() || 'N/A');
-                const doc      = cli ? `${cli.tipo_documento || ''} ${cli.numero_doc || ''}`.trim() : '';
+                const doc      = cli ? `${cli.tipoDocumento || ''} ${cli.numero_doc || ''}`.trim() : '';
 
                 if (total > mayor) mayor = total;
 
@@ -7452,7 +7505,7 @@ const getCarteraUrgente = async (req, res) => {
                 c.idCliente,
                 COALESCE(c.razon_social,
                     CONCAT(COALESCE(c.primer_nombre,''), ' ', COALESCE(c.primer_apellido,''))) AS nombreCliente,
-                c.tipo_documento,
+                c.tipoDocumento,
                 c.numero_doc,
                 c.digito_verif,
                 SUM(df_sum.totalFactura)                              AS totalBruto,
@@ -7474,7 +7527,7 @@ const getCarteraUrgente = async (req, res) => {
               AND fc.fechaVencimiento IS NOT NULL
               AND fc.fechaVencimiento < CURDATE()
             GROUP BY c.idCliente, c.razon_social, c.primer_nombre, c.primer_apellido,
-                     c.tipo_documento, c.numero_doc, c.digito_verif
+                     c.tipoDocumento, c.numero_doc, c.digito_verif
             HAVING saldoPendiente > 0
             ORDER BY diasEnMora DESC
             LIMIT 10
@@ -7489,7 +7542,7 @@ const getCarteraUrgente = async (req, res) => {
         const clientes = filas.map(r => ({
             idCliente:      r.idCliente,
             nombre:         r.nombreCliente.trim(),
-            tipoDoc:        r.tipo_documento,
+            tipoDoc:        r.tipoDocumento,
             nroDoc:         r.numero_doc,
             digitoVerif:    r.digito_verif,
             saldoPendiente: Math.round(parseFloat(r.saldoPendiente) || 0),
@@ -8046,7 +8099,7 @@ export {
     newSupplier,
     verProveedor, actualizarProveedor,
     saveSupplier, checkNitSupplier,
-    dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente,
+    dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
 
     dashboardOrders,

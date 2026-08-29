@@ -15,8 +15,8 @@ const registerValidation = [
 
     check('password')
         .trim()
-        .isLength({ min: 8 })
-        .withMessage('La contraseña debe tener mínimo 8 caracteres')
+        .isLength({ min: 6 })
+        .withMessage('La contraseña debe tener mínimo 6 caracteres')
 ]
 
 
@@ -29,8 +29,8 @@ const loginValidation = [
 
     check('password')
         .trim()
-        .isLength({ min: 8 })
-        .withMessage('La contraseña debe tener mínimo 8 caracteres')
+        .isLength({ min: 6 })
+        .withMessage('La contraseña debe tener mínimo 6 caracteres')
 ]
  
 

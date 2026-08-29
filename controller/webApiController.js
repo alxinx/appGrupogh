@@ -22,7 +22,10 @@ const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.co';
 
 // Tipos de documento aceptados en el checkout web, con el mismo vocabulario que CLIENTES
 // y que el formulario de admin/clientes/nuevo. Una persona jurídica siempre es NIT.
-const TIPOS_DOC_NATURAL = ['CC', 'CE', 'TI', 'PP'];
+// Mismo set que CLIENTES.tipoDocumento (ENUM) — faltaba PPT acá, así que un comprador con
+// Permiso por Protección Temporal no podía pasar esta validación aunque el checkout no
+// tuviera ningún otro problema.
+const TIPOS_DOC_NATURAL = ['CC', 'CE', 'TI', 'PP', 'PPT', 'PEP'];
 const TIPOS_DOC_JURIDICA = ['NIT'];
 
 // Texto que ve el comprador cuando su documento ya estaba registrado con otro correo/teléfono.
@@ -921,10 +924,10 @@ export const crearPedidoWeb = async (req, res) => {
         // eso pasa únicamente cuando la pasarela confirma el pago.
         const clienteExistente = await Clientes.findOne({
             where: { numero_doc: cedula.trim() },
-            attributes: ['idCliente', 'tipo_documento', 'email', 'telefono']
+            attributes: ['idCliente', 'tipoDocumento', 'email', 'telefono']
         });
         const datosClienteDifieren = !!clienteExistente && (
-            (clienteExistente.tipo_documento || '') !== tipoDoc ||
+            (clienteExistente.tipoDocumento || '') !== tipoDoc ||
             (clienteExistente.email || '').toLowerCase() !== email.trim().toLowerCase() ||
             (clienteExistente.telefono || '') !== telefono.trim()
         );
@@ -1203,7 +1206,7 @@ export async function resolverClienteDePedido(pedido, t) {
 
     const cliente = await Clientes.create({
         tipo_persona:     esEmpresa ? 'J' : 'N',
-        tipo_documento:   pedido.tipoDocumento || (esEmpresa ? 'NIT' : 'CC'),
+        tipoDocumento:   pedido.tipoDocumento || (esEmpresa ? 'NIT' : 'CC'),
         numero_doc:       numeroDoc,
         digito_verif:     esEmpresa ? (pedido.digitoVerif || null) : null,
         razon_social:     esEmpresa ? aTitulo(pedido.razonSocial) : null,

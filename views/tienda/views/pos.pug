@@ -78,7 +78,7 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
             div(class="space-y-4 mt-4 lg:mt-auto")
                 input(type="hidden" id="idCliente" value=clienteGenerico.idCliente)
                 - const cliNombre = ((clienteGenerico.primer_nombre || '') + ' ' + (clienteGenerico.primer_apellido || '')).trim()
-                - const cliDoc    = (clienteGenerico.tipo_documento || 'CC') + ' ' + (clienteGenerico.numero_doc || '')
+                - const cliDoc    = (clienteGenerico.tipoDocumento || 'CC') + ' ' + (clienteGenerico.numero_doc || '')
                 +tarjetaClienteFidelizado(clienteGenerico.idCliente, cliNombre || 'Cliente Genérico', cliDoc, '/img/avatars/cliente.webp')
                 +resumenFactura(0, 0, 0)
 

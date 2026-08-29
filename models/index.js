@@ -31,6 +31,7 @@ import DetallesPack from './DetallesPack.js'
 
 import Empleados from './Empleados.js'
 import Clientes from './Clientes.js'
+import ClientesCreditoHistorial from './ClientesCreditoHistorial.js'
 import ClientesTributario from './ClientesTributario.js'
 import ClientesUbicacion from './ClientesUbicacion.js'
 import CajaTienda from './CajaTienda.js'
@@ -342,6 +343,12 @@ PedidosWebHistorialEstado.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'p
 PedidosWebHistorialEstado.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 PedidosWebHistorialEstado.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
 
+// ─── Bitácora de otorgar/suspender crédito de un cliente ─────────────────────
+Clientes.hasMany(ClientesCreditoHistorial, { foreignKey: 'idCliente', as: 'historialCredito' });
+ClientesCreditoHistorial.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
+ClientesCreditoHistorial.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
+ClientesCreditoHistorial.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
+
 PedidosWeb.hasMany(DetallesPedidoWeb, { foreignKey: 'idPedido', as: 'detalles' });
 DetallesPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
 DetallesPedidoWeb.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
@@ -364,7 +371,7 @@ export {
   Dosificaciones, Pack, DetallesPack, Stock,
   Traslados, DetalleTraslados, InsidenciaTraslado,
   Imagenes, Documentacion, Empleados,
-  Clientes, ClientesTributario, ClientesUbicacion,
+  Clientes, ClientesTributario, ClientesUbicacion, ClientesCreditoHistorial,
   CajaTienda, Entidades, EntidadesQrHistorial,
   FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura,
   Egresos,

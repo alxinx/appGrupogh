@@ -13,7 +13,7 @@ getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
 getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente,
-getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
+getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
 getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 storeCierresCaja, storeTrasladosTienda,
 getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
@@ -204,7 +204,11 @@ routes.get('/api/clientes/:idCliente/perfil', pCli('READ'),    getClientePerfil)
 routes.get('/api/clientes/:idCliente/historial', pCli('READ'), getClienteHistorial);
 routes.get('/api/clientes/:idCliente/archivos', pCli('READ'),  getClienteArchivos);
 routes.post('/api/clientes/archivos/:idDocumento/eliminar', pCli('DELETE'), eliminarDocumentoCliente);
-routes.post('/api/clientes/:idCliente/credito', pCli('EDIT'), activarCreditoCliente);
+// Ambas exigen código de empleado (quién autoriza) además del permiso de "Autorizacion de
+// creditos" verificado dentro del controlador (si puede). Mismo patrón que
+// /bankentities/traslados/:idTraslado/decidir.
+routes.post('/api/clientes/:idCliente/credito/otorgar',   pCli('EDIT'), verificarCodigoEmpleadoAdmin, otorgarCreditoCliente);
+routes.post('/api/clientes/:idCliente/credito/suspender', pCli('EDIT'), verificarCodigoEmpleadoAdmin, suspenderCreditoCliente);
 
 routes.get('/pedidos', pPed('READ'), dashboardOrders);
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);

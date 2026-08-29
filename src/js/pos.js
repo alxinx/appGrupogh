@@ -1305,10 +1305,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const llenarFormCliente = (cli) => {
         const fill = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
 
-        fill('cli-tipo-doc',   cli.tipo_documento);
+        fill('cli-tipo-doc',   cli.tipoDocumento);
         fill('cli-numero-doc', cli.numero_doc);
 
-        const esEmpresa = cli.tipo_persona === 'J' || cli.tipo_documento === 'NIT';
+        const esEmpresa = cli.tipo_persona === 'J' || cli.tipoDocumento === 'NIT';
         switchTab(esEmpresa ? 'empresa' : 'natural');
 
         if (esEmpresa) {
@@ -1437,7 +1437,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const fd = new FormData();
         fd.append('idCliente',      idCliModal);
         fd.append('tipo_persona',   esEmpresa ? 'J' : 'N');
-        fd.append('tipo_documento', getVal('cli-tipo-doc'));
+        fd.append('tipoDocumento', getVal('cli-tipo-doc'));
         fd.append('numero_doc',     numerDoc);
 
         if (esEmpresa) {

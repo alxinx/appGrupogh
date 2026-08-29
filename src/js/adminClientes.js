@@ -116,7 +116,12 @@
     };
 
     // ─── PANEL: CRÉDITO ──────────────────────────────────────────────────────
+    // El botón es un toggle: con crédito, el mismo botón sirve para suspenderlo — ya no
+    // queda deshabilitado una vez otorgado. Las dos direcciones piden el código del
+    // empleado que autoriza (verificarCodigoEmpleadoAdmin en el servidor) y quedan en
+    // CLIENTES_CREDITO_HISTORIAL.
     let creditoActivo = false;
+    let clienteActivoNombre = '';
 
     const BTN_ACCION_BASE = 'flex flex-col items-center gap-2 py-3 px-1 w-full transition-colors';
     const TILE_BASE       = 'w-9 h-9 rounded-xl flex items-center justify-center';
@@ -129,22 +134,22 @@
         const label = document.getElementById('panel-credito-label');
         if (!btn) return;
 
-        if (credito) {
-            // Ya tiene crédito activado
-            btn.disabled  = true;
-            btn.className = `${BTN_ACCION_BASE} cursor-default`;
-            if (tile)  tile.className = `${TILE_BASE} bg-emerald-50`;
-            if (icon)  icon.className = 'fi fi-rr-badge-check text-sm text-emerald-500 flex items-center justify-center';
-            if (label) { label.textContent = 'Con crédito'; label.className = `${LABEL_BASE} text-emerald-500`; }
-        } else if (!puedeActivar) {
-            // Sin permiso
+        if (!puedeActivar) {
+            // Sin permiso — ni para otorgar ni para suspender
             btn.disabled  = true;
             btn.className = `${BTN_ACCION_BASE} cursor-not-allowed`;
             if (tile)  tile.className = `${TILE_BASE} bg-slate-100`;
             if (icon)  icon.className = 'fi fi-rr-lock text-sm text-slate-300 flex items-center justify-center';
             if (label) { label.textContent = 'Sin permiso'; label.className = `${LABEL_BASE} text-slate-300`; }
+        } else if (credito) {
+            // Con crédito — clic para suspenderlo
+            btn.disabled  = false;
+            btn.className = `${BTN_ACCION_BASE} hover:bg-rose-50 cursor-pointer group`;
+            if (tile)  tile.className = `${TILE_BASE} bg-emerald-50 group-hover:bg-rose-50`;
+            if (icon)  icon.className = 'fi fi-rr-badge-check text-sm text-emerald-500 group-hover:hidden flex items-center justify-center';
+            if (label) { label.textContent = 'Con crédito'; label.className = `${LABEL_BASE} text-emerald-500 group-hover:text-rose-500`; }
         } else {
-            // Puede activar
+            // Sin crédito — clic para otorgarlo
             btn.disabled  = false;
             btn.className = `${BTN_ACCION_BASE} hover:bg-slate-50 cursor-pointer`;
             if (tile)  tile.className = `${TILE_BASE} bg-violet-50`;
@@ -153,35 +158,117 @@
         }
     };
 
-    document.getElementById('panel-btn-credito')?.addEventListener('click', () => {
-        if (creditoActivo) return;
-        const nombreEl = document.getElementById('panel-nombre');
-        const modalNombre = document.getElementById('modal-credito-nombre');
-        if (modalNombre && nombreEl) modalNombre.textContent = `¿Confirmas activar crédito para ${nombreEl.textContent}?`;
-        document.getElementById('modal-credito')?.classList.remove('hidden');
-    });
-
-    window.cerrarModalCredito = () => document.getElementById('modal-credito')?.classList.add('hidden');
-
-    window.confirmarCredito = async () => {
-        const confirmBtn = document.getElementById('modal-credito-confirm');
-        if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Activando...'; }
-        try {
-            const r = await fetch(`/admin/api/clientes/${idClienteActivo}/credito`, { method: 'POST' });
-            const d = await r.json();
-            if (d.success) {
-                creditoActivo = true;
-                actualizarBtnCredito(true, true);
-                cerrarModalCredito();
-            } else {
-                alert(d.mensaje || 'Error al activar crédito');
-            }
-        } catch (_) {
-            alert('Error de conexión');
-        } finally {
-            if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Sí, activar'; }
+    // Mismo patrón que adminPedidoDetalle.js: el backend cierra la sesión tras 5 códigos
+    // de empleado fallidos (verificarCodigoEmpleadoAdmin.js).
+    const manejarRespuestaSensibleCredito = async (data, onOk) => {
+        if (data.success) return onOk(data);
+        if (data.logout) {
+            await Swal.fire({ icon: 'error', title: 'Sesión cerrada', text: data.mensaje });
+            window.location.href = '/';
+            return;
         }
+        Swal.fire({ icon: 'error', title: 'No se pudo completar', text: data.mensaje });
     };
+
+    const csrfToken = () => document.querySelector('[name="_csrf"]')?.value || '';
+
+    // sanea texto de cliente antes de inyectarlo en el html del modal (nombre viene del
+    // propio panel, ya renderizado, pero el modal lo escribe crudo en innerHTML).
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+    // Un solo modal para las dos direcciones — mismo estilo `.gh-conf-*` que
+    // /bankentities/cajas/ (views/components/modalConfirmacion.pug). No usa las
+    // variantes ingreso/egreso a propósito: acá no se mueve plata, es la variante neutra.
+    async function pedirCredito(otorgar) {
+        const nombre = esc(clienteActivoNombre || 'este cliente');
+        const badge  = otorgar ? 'Otorgar crédito' : 'Suspender crédito';
+        const icono  = otorgar ? 'fi-rr-badge-check' : 'fi-rr-lock';
+        const de     = otorgar ? 'Sin crédito' : 'Con crédito';
+        const a      = otorgar ? 'Con crédito' : 'Sin crédito';
+
+        const fila = (etiqueta, valor) => `<div class="gh-conf-fila"><dt>${etiqueta}</dt><dd>${valor}</dd></div>`;
+
+        const { value: codigoEmpleado } = await Swal.fire({
+            html: `
+                <div class="gh-conf-html">
+                    <div class="gh-conf-cabecera">
+                        <span class="gh-conf-badge"><i class="fi ${icono}" style="font-size:.625rem"></i> ${badge}</span>
+                        <p class="gh-conf-monto">${a}</p>
+                        <p class="gh-conf-cuenta">para <strong>${nombre}</strong></p>
+                    </div>
+
+                    <div class="gh-conf-saldo">
+                        <div class="gh-conf-saldo-bloque">
+                            <span class="gh-conf-saldo-label">Estado actual</span>
+                            <span class="gh-conf-saldo-valor">${de}</span>
+                        </div>
+                        <i class="fi fi-rr-arrow-right gh-conf-flecha"></i>
+                        <div class="gh-conf-saldo-bloque gh-conf-saldo-bloque--final">
+                            <span class="gh-conf-saldo-label">Va a quedar</span>
+                            <span class="gh-conf-saldo-valor">${a}</span>
+                        </div>
+                    </div>
+
+                    <dl class="gh-conf-detalle">
+                        ${fila('Cliente', nombre)}
+                        ${fila('Fecha', esc(new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })))}
+                    </dl>
+
+                    <p style="text-align:left; font-size:12px; color:#64748b; margin:1.125rem 1.75rem 4px;">
+                        Código del empleado que autoriza:
+                    </p>
+                </div>`,
+            input: 'password',
+            inputPlaceholder: 'Código de empleado',
+            inputAttributes: { autocomplete: 'off', 'aria-label': 'Código de empleado', style: 'margin: 0 1.75rem; width: calc(100% - 3.5rem);' },
+            inputValidator: (v) => (!v || !v.trim()) && 'Ingresá el código del empleado.',
+            showCancelButton: true,
+            confirmButtonText: otorgar ? 'Otorgar crédito' : 'Suspender crédito',
+            cancelButtonText: 'Volver',
+            focusCancel: true,
+            reverseButtons: true,
+            buttonsStyling: false,
+            width: '30rem',
+            customClass: {
+                popup:         `gh-conf-popup gh-conf--neutro`,
+                htmlContainer: 'gh-conf-html-container',
+                actions:       'gh-conf-acciones',
+                confirmButton: 'gh-conf-btn gh-conf-confirmar',
+                cancelButton:  'gh-conf-btn gh-conf-cancelar'
+            },
+            showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' }
+        });
+        return codigoEmpleado?.trim() || null;
+    }
+
+    document.getElementById('panel-btn-credito')?.addEventListener('click', async () => {
+        const otorgar = !creditoActivo;
+        const codigoEmpleado = await pedirCredito(otorgar);
+        if (!codigoEmpleado) return;
+
+        const ruta = otorgar ? 'otorgar' : 'suspender';
+        try {
+            const r = await fetch(`/admin/api/clientes/${idClienteActivo}/credito/${ruta}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ codigoEmpleado, _csrf: csrfToken() })
+            });
+            const data = await r.json();
+            await manejarRespuestaSensibleCredito(data, async (d) => {
+                creditoActivo = d.credito;
+                actualizarBtnCredito(creditoActivo, true);
+                await Swal.fire({
+                    icon: 'success',
+                    title: otorgar ? 'Crédito otorgado' : 'Crédito suspendido',
+                    text: d.empleado ? `Autorizado por ${d.empleado}.` : undefined,
+                    timer: 2200,
+                    showConfirmButton: false
+                });
+            });
+        } catch (_) {
+            Swal.fire({ icon: 'error', title: 'Error de conexión' });
+        }
+    });
 
     // ─── PANEL: PERFIL ────────────────────────────────────────────────────────
     const cargarPerfil = async (idCliente) => {
@@ -213,7 +300,8 @@
 
             setTexto('panel-iniciales', iniciales.toUpperCase());
             setTexto('panel-nombre', nombre || '—');
-            setTexto('panel-doc', `${cliente.tipo_documento} ${cliente.numero_doc}`);
+            clienteActivoNombre = nombre || 'este cliente';
+            setTexto('panel-doc', `${cliente.tipoDocumento} ${cliente.numero_doc}`);
 
             const desde = fmtMesAnio(cliente.createdAt);
             setTexto('panel-desde', desde ? `Cliente desde ${desde}` : 'Sin fecha de registro');
@@ -416,7 +504,7 @@
             const nombre = c.razon_social
                 ? c.razon_social
                 : `${c.primer_nombre || ''} ${c.primer_apellido || ''}`.trim() || '—';
-            const identificacion = `<span class="text-[10px] text-slate-400 uppercase">${c.tipo_documento}</span> ${c.numero_doc}`;
+            const identificacion = `<span class="text-[10px] text-slate-400 uppercase">${c.tipoDocumento}</span> ${c.numero_doc}`;
             const vendedor = c.vendedor?.trim() || '<span class="text-slate-300 italic text-xs">—</span>';
 
             return `

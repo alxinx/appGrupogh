@@ -166,13 +166,14 @@ mixin modalCliente(departamentos)
               label(for="cli-tipo-doc" class=lbl) Tipo de documento
               div(class="cli-wrap")
                 i(class="fi-rr-id-badge cli-icono")
-                select(id="cli-tipo-doc" name="tipo_documento" class=campo + " cli-con-icono cli-select")
+                select(id="cli-tipo-doc" name="tipoDocumento" class=campo + " cli-con-icono cli-select")
                   option(value="CC") Cédula de Ciudadanía
                   option(value="CE") Cédula de Extranjería
                   option(value="TI") Tarjeta de Identidad
                   option(value="NIT") NIT
                   option(value="PP") Pasaporte
-                  option(value="DE") Doc. Extranjero
+                  option(value="PPT") Permiso por Protección Temporal (PPT)
+                  option(value="PEP") Permiso Especial de Permanencia (PEP)
                 i(class="fi-rr-angle-small-down cli-chevron")
             div
               label(for="cli-numero-doc" class=lbl) N° de documento

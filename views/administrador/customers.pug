@@ -32,5 +32,8 @@ block contenedor
                                 div(class="col-span-12 md:col-span-4 grid grid-cols-1 gap-4")
                                     include ./customers/views/perfilCliente.pug
 
+                input(type="hidden" name="_csrf" value=csrfToken)
+                include ../components/modalConfirmacion
+                script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
                 script(src="/js/paginador.js")
                 script(src="/js/adminClientes.js")
