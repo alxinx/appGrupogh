@@ -71,6 +71,94 @@ window.initMoneyInput = (el) => {
 // Convierte un valor formateado ("78.000") o numérico a entero sin decimales.
 window.parseMoney = (val) => parseInt(String(val).replace(/\D/g, ''), 10) || 0;
 
+// Convierte un <select> largo en buscable: un input de texto encima que filtra una lista,
+// sin tocar el <select> real (mismo name, mismo value — sigue siendo lo que se manda al
+// backend, ningún controlador tiene que cambiar). Pensado para listas donde un <select>
+// plano ya no alcanza para elegir escribiendo (nació con departamento/municipio del
+// formulario de clientes, hasta ~200 filas por departamento desde que se cargó el listado
+// completo del DANE) — global acá a propósito para reusarlo en cualquier formulario nuevo
+// con el mismo problema, en vez de reescribirlo por cada uno.
+//
+// Requiere las clases .select-buscable-* — están en views/components/selectBuscable.pug,
+// hay que incluir ese partial en cualquier vista que llame a esto.
+window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
+    if (!select) return { refresh() {} };
+
+    const wrap = document.createElement('div');
+    wrap.className = 'select-buscable-wrap';
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(select);
+
+    // Hereda las clases del propio <select> (field-text acá, cli-campo cli-con-icono
+    // cli-select en el POS, field-text-error si el campo venía con error de validación,
+    // etc.) en vez de una clase fija — así el input se ve igual que el select que
+    // reemplaza sin importar en qué formulario/sistema visual se use.
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.className = `${select.className} select-buscable-input`.trim();
+    input.placeholder = placeholder;
+    wrap.appendChild(input);
+
+    const lista = document.createElement('ul');
+    lista.className = 'select-buscable-lista hidden';
+    wrap.appendChild(lista);
+
+    const sinTildes = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const opciones  = () => Array.from(select.options).filter(o => o.value !== '');
+
+    // La opción vacía ("Selecciona...") nunca se muestra en el input como si fuera texto
+    // escrito — si no hay nada elegido de verdad, el input queda vacío y el placeholder
+    // hace de prompt.
+    const sync = () => {
+        const opt = select.options[select.selectedIndex];
+        input.value    = (opt && opt.value !== '') ? opt.text : '';
+        input.disabled = select.disabled;
+    };
+
+    const cerrar = () => { lista.classList.add('hidden'); lista.innerHTML = ''; };
+
+    const abrir = (filtro = '') => {
+        if (select.disabled) return;
+        const termino   = sinTildes(filtro.trim());
+        const filtradas = opciones().filter(o => sinTildes(o.text).includes(termino));
+        lista.innerHTML = filtradas.length
+            ? filtradas.map(o => `<li data-value="${o.value}" class="select-buscable-item${o.value === select.value ? ' select-buscable-item--activo' : ''}">${o.text}</li>`).join('')
+            : '<li class="select-buscable-vacio">Sin resultados</li>';
+        lista.classList.remove('hidden');
+    };
+
+    const elegir = (value, text) => {
+        select.value = value;
+        input.value  = text;
+        cerrar();
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    // Clic o foco: siempre se ve la lista completa (no filtrada por lo que ya estaba
+    // escrito), y se selecciona el texto actual para poder sobreescribir tecleando de una.
+    input.addEventListener('focus', () => { input.select(); abrir(''); });
+    input.addEventListener('input', () => abrir(input.value));
+    input.addEventListener('blur', () => {
+        // El timeout deja que el mousedown de la lista se procese antes de cerrar — si el
+        // blur cierra primero, el click nunca llega a disparar.
+        setTimeout(() => {
+            const coincide = opciones().find(o => o.text === input.value);
+            if (!coincide) sync();
+            cerrar();
+        }, 150);
+    });
+    lista.addEventListener('mousedown', (e) => {
+        const li = e.target.closest('li[data-value]');
+        if (!li) return;
+        e.preventDefault();
+        elegir(li.dataset.value, li.textContent);
+    });
+
+    sync();
+    return { refresh: sync };
+};
+
 window.iconoDoc = (fmt) => {
     const f = (fmt || '').toLowerCase();
     if (f === 'pdf')                          return 'fi-rr-file-pdf';

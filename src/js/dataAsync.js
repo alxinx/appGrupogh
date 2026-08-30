@@ -299,14 +299,19 @@
             if (inputIdPdv?.value) cargarDocsTienda();
         }
 
-        // --- 6. MUNICIPIOS (Se mantiene igual) ---
+        // --- 6. MUNICIPIOS (buscables — window.enhanceSelectBuscable, helpers.js) ---
+        window.enhanceSelectBuscable?.(departamentoSelect, { placeholder: 'Escribe o elige un departamento' });
+        const ciudadBuscable = window.enhanceSelectBuscable?.(ciudadSelect, { placeholder: 'Escribe o elige una ciudad' });
+
         if (departamentoSelect && ciudadSelect) {
             departamentoSelect.addEventListener('change', async function(e) {
                 const departamentoId = e.target.value;
                 ciudadSelect.innerHTML = '<option value="">-- Cargando --</option>';
+                ciudadBuscable?.refresh();
                 if (departamentoId === '') {
                     ciudadSelect.innerHTML = '<option value="">-- Seleccione Dpto --</option>';
                     ciudadSelect.disabled = true;
+                    ciudadBuscable?.refresh();
                     return;
                 }
                 try {
@@ -323,6 +328,7 @@
                     });
                     ciudadSelect.disabled = false;
                 } catch (err) { console.error(err); }
+                ciudadBuscable?.refresh();
             });
             if (departamentoSelect.value !== '') departamentoSelect.dispatchEvent(new Event('change'));
         }

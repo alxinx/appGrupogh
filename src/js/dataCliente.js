@@ -124,17 +124,24 @@
     const deptoSelect    = document.getElementById('departamentoSelect');
     const municipioSelect = document.getElementById('municipioSelect');
 
+    // window.enhanceSelectBuscable vive en helpers.js — genérico, no específico de
+    // clientes, para reusarlo en cualquier otro formulario con un <select> largo.
+    window.enhanceSelectBuscable(deptoSelect, { placeholder: 'Escribe o elige un departamento' });
+    const municipioBuscable = window.enhanceSelectBuscable(municipioSelect, { placeholder: 'Escribe o elige un municipio' });
+
     deptoSelect?.addEventListener('change', async function () {
         const id = this.value;
         municipioSelect.innerHTML = '<option value="">Cargando...</option>';
         municipioSelect.disabled = true;
-        if (!id) { municipioSelect.innerHTML = '<option value="">Selecciona el municipio</option>'; return; }
+        municipioBuscable.refresh();
+        if (!id) { municipioSelect.innerHTML = '<option value="">Selecciona el municipio</option>'; municipioBuscable.refresh(); return; }
         try {
             const data = await fetch(`/admin/json/municipios/${id}`).then(r => r.json());
             municipioSelect.innerHTML = '<option value="">Selecciona el municipio</option>' +
                 data.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
             municipioSelect.disabled = false;
         } catch (_) { municipioSelect.innerHTML = '<option value="">Error al cargar</option>'; }
+        municipioBuscable.refresh();
     });
 
     // ─── PREVIEW DOCUMENTOS ───────────────────────────────────────────────────

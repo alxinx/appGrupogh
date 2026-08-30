@@ -199,18 +199,23 @@
         });
     }
 
-    // Lógica original de selectores anidados (Departamento -> Ciudad)
+    // Selectores anidados (Departamento -> Ciudad), buscables (window.enhanceSelectBuscable, helpers.js)
     const departamentoSelect = document.getElementById('departamentoSelect');
     const ciudadSelect = document.getElementById('ciudadSelect');
+
+    window.enhanceSelectBuscable?.(departamentoSelect, { placeholder: 'Escribe o elige un departamento' });
+    const ciudadBuscable = window.enhanceSelectBuscable?.(ciudadSelect, { placeholder: 'Escribe o elige una ciudad' });
 
     if (departamentoSelect && ciudadSelect) {
         departamentoSelect.addEventListener('change', async function (e) {
             const departamentoId = e.target.value;
             ciudadSelect.innerHTML = '<option value="">-- Cargando --</option>';
+            ciudadBuscable?.refresh();
 
             if (departamentoId === '') {
                 ciudadSelect.innerHTML = '<option value="">-- Seleccione Dpto --</option>';
                 ciudadSelect.disabled = true;
+                ciudadBuscable?.refresh();
                 return;
             }
             try {
@@ -229,6 +234,7 @@
                 });
                 ciudadSelect.disabled = false;
             } catch (err) { console.error(err); }
+            ciudadBuscable?.refresh();
         });
 
         if (departamentoSelect.value !== '') {

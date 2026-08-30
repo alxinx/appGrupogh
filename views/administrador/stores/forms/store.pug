@@ -1,4 +1,6 @@
-form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards") 
+include ../../../components/selectBuscable.pug
+
+form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 cards")
     input(type="text", name="_csrf" value = csrfToken)
     input(type="hidden" name="idPuntoDeVenta" value = (dato && dato.idPuntoDeVenta) ? dato.idPuntoDeVenta : "")
     div(class="col-span-12 md:col-span-12")
@@ -93,7 +95,7 @@ form(action="", method="post" class="col-span-12 grid grid-cols-1 md:grid-cols-3
             div
                 label.label Ciudad
                 div(class="select-wrapper")
-                    select(name="ciudad" id="municipio" class = (errores && errores.ciudad) ? "field-text field-text-error" : "field-text")
+                    select(name="ciudad" id="ciudad" class = (errores && errores.ciudad) ? "field-text field-text-error" : "field-text")
                         if ciudades
                             option(value="") -- Seleccione Ciudad --
                             each ciudad in ciudades

@@ -14,6 +14,7 @@ export default {
         productList: '/src/js/productList.js',
         paginador: '/src/js/paginador.js',
         helpers: '/src/js/helpers.js',
+        numeroALetras: '/src/js/numeroALetras.js',
         dataStore: '/src/js/dataStore.js',
         dataSupplier: '/src/js/dataSupplier.js',
         supplierList: '/src/js/supplierList.js',

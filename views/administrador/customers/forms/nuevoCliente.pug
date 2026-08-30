@@ -1,3 +1,8 @@
+//- Departamento/municipio se vuelven buscables por JS (window.enhanceSelectBuscable,
+//- helpers.js): el <select> real sigue mandando idDepartamento/idMunicipio tal cual, esto
+//- solo agrega un input de texto + una lista filtrable encima.
+include ../../../components/selectBuscable.pug
+
 form#form-nuevo-cliente(method="post" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
 
     //- Campos ocultos de modo edición

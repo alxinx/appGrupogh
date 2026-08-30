@@ -32,6 +32,7 @@ import DetallesPack from './DetallesPack.js'
 import Empleados from './Empleados.js'
 import Clientes from './Clientes.js'
 import ClientesCreditoHistorial from './ClientesCreditoHistorial.js'
+import CreditoDisponibleCliente from './CreditoDisponibleCliente.js'
 import ClientesTributario from './ClientesTributario.js'
 import ClientesUbicacion from './ClientesUbicacion.js'
 import CajaTienda from './CajaTienda.js'
@@ -349,6 +350,11 @@ ClientesCreditoHistorial.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cli
 ClientesCreditoHistorial.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 ClientesCreditoHistorial.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
 
+// ─── Cupo de crédito / saldo a favor disponible de un cliente ────────────────
+Clientes.hasMany(CreditoDisponibleCliente, { foreignKey: 'idCliente', as: 'creditosDisponibles' });
+CreditoDisponibleCliente.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
+CreditoDisponibleCliente.belongsTo(Empleados, { foreignKey: 'autorizo', as: 'empleadoAutoriza' });
+
 PedidosWeb.hasMany(DetallesPedidoWeb, { foreignKey: 'idPedido', as: 'detalles' });
 DetallesPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
 DetallesPedidoWeb.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
@@ -371,7 +377,7 @@ export {
   Dosificaciones, Pack, DetallesPack, Stock,
   Traslados, DetalleTraslados, InsidenciaTraslado,
   Imagenes, Documentacion, Empleados,
-  Clientes, ClientesTributario, ClientesUbicacion, ClientesCreditoHistorial,
+  Clientes, ClientesTributario, ClientesUbicacion, ClientesCreditoHistorial, CreditoDisponibleCliente,
   CajaTienda, Entidades, EntidadesQrHistorial,
   FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura,
   Egresos,

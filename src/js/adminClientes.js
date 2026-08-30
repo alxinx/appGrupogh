@@ -176,36 +176,246 @@
     // propio panel, ya renderizado, pero el modal lo escribe crudo en innerHTML).
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
-    // Un solo modal para las dos direcciones — mismo estilo `.gh-conf-*` que
-    // /bankentities/cajas/ (views/components/modalConfirmacion.pug). No usa las
-    // variantes ingreso/egreso a propósito: acá no se mueve plata, es la variante neutra.
-    async function pedirCredito(otorgar) {
-        const nombre = esc(clienteActivoNombre || 'este cliente');
-        const badge  = otorgar ? 'Otorgar crédito' : 'Suspender crédito';
-        const icono  = otorgar ? 'fi-rr-badge-check' : 'fi-rr-lock';
-        const de     = otorgar ? 'Sin crédito' : 'Con crédito';
-        const a      = otorgar ? 'Con crédito' : 'Sin crédito';
+    // Único modal de "otorgar": valor y código de empleado juntos, un solo Swal con dos
+    // campos propios (el `input:` nativo de SweetAlert2 solo da uno). initMoneyInput /
+    // parseMoney (helpers.js) son el mismo formateador de miles que ya usan pos.js y
+    // storeEgresos.js — enlazado en el didOpen porque el input recién existe en el DOM una
+    // vez que el modal se pinta. Confirmar acá NO crea nada todavía: solo recolecta los
+    // datos, para eso está confirmarOtorgarCredito después. `previos` precarga valor y
+    // código cuando se vuelve acá desde el modal de confirmación a corregir algo — no hay
+    // que volver a escribir todo de cero.
+    async function pedirDatosOtorgarCredito(nombreCliente, previos = {}) {
+        const nombre        = esc(nombreCliente || 'este cliente');
+        const valorInicial   = previos.valor ? new Intl.NumberFormat('es-CO').format(previos.valor) : '';
+        const codigoInicial  = previos.codigoEmpleado || '';
 
-        const fila = (etiqueta, valor) => `<div class="gh-conf-fila"><dt>${etiqueta}</dt><dd>${valor}</dd></div>`;
+        // El código se valida contra el servidor apenas se escribe (mismo endpoint y mismo
+        // contador de intentos que verificarCodigoEmpleadoAdmin), no al mandar el formulario:
+        // antes cualquier texto pasaba a la confirmación y recién fallaba al final contra
+        // /credito-disponible. "Continuar" queda deshabilitado hasta que la verificación
+        // responda éxito; cualquier cambio en el campo invalida lo verificado y hay que
+        // esperar la respuesta de nuevo.
+        let empleadoVerificado = null;
 
-        const { value: codigoEmpleado } = await Swal.fire({
+        const debounce = (fn, ms) => {
+            let t;
+            return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+        };
+
+        const setEstadoCodigo = (estado, texto) => {
+            const el = document.getElementById('gh-credito-codigo-estado');
+            if (!el) return;
+            el.style.color  = estado === 'ok' ? '#10b981' : estado === 'error' ? '#f43f5e' : '#94a3b8';
+            el.textContent  = texto;
+        };
+
+        const verificarCodigo = async (codigo) => {
+            empleadoVerificado = null;
+            const btn = Swal.getConfirmButton();
+            if (btn) btn.disabled = true;
+
+            if (!codigo) { setEstadoCodigo('info', ''); return; }
+            setEstadoCodigo('info', 'Verificando código...');
+
+            try {
+                const r = await fetch('/admin/api/clientes/verificar-codigo-credito', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codigoEmpleado: codigo, _csrf: csrfToken() })
+                });
+                const data = await r.json();
+
+                if (data.logout) {
+                    await Swal.fire({ icon: 'error', title: 'Sesión cerrada', text: data.mensaje });
+                    window.location.href = '/';
+                    return;
+                }
+                if (!data.success) {
+                    setEstadoCodigo('error', data.mensaje || 'Código inválido.');
+                    return;
+                }
+
+                empleadoVerificado = data.empleado;
+                setEstadoCodigo('ok', `✓ ${data.empleado?.nombre || 'Empleado verificado'}`);
+                if (btn) btn.disabled = false;
+            } catch (_) {
+                setEstadoCodigo('error', 'No se pudo verificar el código.');
+            }
+        };
+
+        const { value } = await Swal.fire({
             html: `
                 <div class="gh-conf-html">
                     <div class="gh-conf-cabecera">
-                        <span class="gh-conf-badge"><i class="fi ${icono}" style="font-size:.625rem"></i> ${badge}</span>
-                        <p class="gh-conf-monto">${a}</p>
+                        <span class="gh-conf-badge"><i class="fi fi-rr-hand-holding-usd" style="font-size:.625rem"></i> Otorgar crédito</span>
+                        <p class="gh-conf-cuenta">Cupo de crédito para <strong>${nombre}</strong></p>
+                    </div>
+
+                    <div style="padding: 1.25rem 1.75rem 0;">
+                        <label for="gh-input-valor-credito" style="display:block; text-align:left; font-size:12px; font-weight:600; color:#64748b; margin-bottom:8px;">
+                            Valor del crédito a asignar
+                        </label>
+                        <div style="position:relative;">
+                            <span style="position:absolute; left:18px; top:50%; transform:translateY(-50%); font-size:26px; font-weight:800; color:#10b981; pointer-events:none;">$</span>
+                            <input id="gh-input-valor-credito" type="text" inputmode="numeric" placeholder="0" autocomplete="off" value="${esc(valorInicial)}"
+                                   style="width:100%; box-sizing:border-box; padding:16px 16px 16px 42px; font-size:26px; font-weight:800; color:#10b981; border:2px solid #e2e8f0; border-radius:14px; text-align:right; outline:none; transition:border-color .15s;" />
+                        </div>
+                    </div>
+
+                    <p style="text-align:left; font-size:12px; font-weight:600; color:#64748b; margin:1.25rem 1.75rem 8px;">
+                        Código del empleado que autoriza:
+                    </p>
+                    <div style="padding: 0 1.75rem;">
+                        <input id="gh-input-codigo-empleado" type="password" placeholder="Código de empleado" autocomplete="off" value="${esc(codigoInicial)}"
+                               style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; outline:none;" />
+                    </div>
+                    <p id="gh-credito-codigo-estado" style="text-align:left; font-size:11.5px; font-weight:600; margin:6px 1.75rem 0; min-height:14px;"></p>
+                </div>`,
+            didOpen: () => {
+                const inputValor = document.getElementById('gh-input-valor-credito');
+                if (inputValor) {
+                    window.initMoneyInput?.(inputValor);
+                    inputValor.addEventListener('focus', () => { inputValor.style.borderColor = '#10b981'; });
+                    inputValor.addEventListener('blur',  () => { inputValor.style.borderColor = '#e2e8f0'; });
+                    inputValor.focus();
+                    if (valorInicial) inputValor.select();
+                }
+
+                const btn = Swal.getConfirmButton();
+                if (btn) btn.disabled = true;
+
+                const inputCod = document.getElementById('gh-input-codigo-empleado');
+                if (inputCod) {
+                    const verificarDebounced = debounce(() => verificarCodigo(inputCod.value.trim()), 500);
+                    inputCod.addEventListener('input', verificarDebounced);
+                    // Al volver desde el modal de confirmación el código ya venía precargado
+                    // y validado — se re-verifica igual, sin esperar a que lo toquen, para no
+                    // confiar en un estado de hace varios segundos.
+                    if (codigoInicial) verificarCodigo(codigoInicial);
+                }
+            },
+            preConfirm: () => {
+                const inputValor = document.getElementById('gh-input-valor-credito');
+                const inputCod   = document.getElementById('gh-input-codigo-empleado');
+                const valor = window.parseMoney
+                    ? window.parseMoney(inputValor?.value || '')
+                    : parseInt((inputValor?.value || '').replace(/\D/g, ''), 10) || 0;
+                const codigoEmpleado = (inputCod?.value || '').trim();
+
+                if (!valor || valor <= 0) {
+                    Swal.showValidationMessage('Ingresá un valor de crédito mayor a 0.');
+                    return false;
+                }
+                if (!codigoEmpleado) {
+                    Swal.showValidationMessage('Ingresá el código del empleado.');
+                    return false;
+                }
+                if (!empleadoVerificado || empleadoVerificado.codigoEmpleado?.toUpperCase() !== codigoEmpleado.toUpperCase()) {
+                    Swal.showValidationMessage('Esperá a que se verifique el código del empleado.');
+                    return false;
+                }
+                return { valor, codigoEmpleado };
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Continuar',
+            cancelButtonText: 'Cancelar',
+            focusCancel: false,
+            reverseButtons: true,
+            buttonsStyling: false,
+            width: '30rem',
+            customClass: {
+                popup:         'gh-conf-popup gh-conf--neutro',
+                htmlContainer: 'gh-conf-html-container',
+                actions:       'gh-conf-acciones',
+                confirmButton: 'gh-conf-btn gh-conf-confirmar',
+                cancelButton:  'gh-conf-btn gh-conf-cancelar'
+            },
+            showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' }
+        });
+        return value || null;
+    }
+
+    // Segundo modal de "otorgar": recap sin inputs, la última parada antes de escribir en
+    // CREDITO_DISPONIBLE_CLIENTE. Cancelar acá no manda nada al servidor.
+    async function confirmarOtorgarCredito(nombreCliente, valor) {
+        const nombre    = esc(nombreCliente || 'este cliente');
+        const enLetras  = window.valorEnLetras ? esc(window.valorEnLetras(valor).toUpperCase()) : '';
+        const fila = (etiqueta, val) => `<div class="gh-conf-fila"><dt>${etiqueta}</dt><dd>${val}</dd></div>`;
+
+        const { isConfirmed } = await Swal.fire({
+            html: `
+                <div class="gh-conf-html">
+                    <div class="gh-conf-cabecera">
+                        <span class="gh-conf-badge"><i class="fi fi-rr-badge-check" style="font-size:.625rem"></i> Confirmar crédito</span>
+                        <p class="gh-conf-monto">${fmtCOP(valor)}</p>
                         <p class="gh-conf-cuenta">para <strong>${nombre}</strong></p>
                     </div>
 
                     <div class="gh-conf-saldo">
                         <div class="gh-conf-saldo-bloque">
                             <span class="gh-conf-saldo-label">Estado actual</span>
-                            <span class="gh-conf-saldo-valor">${de}</span>
+                            <span class="gh-conf-saldo-valor">Sin crédito</span>
                         </div>
                         <i class="fi fi-rr-arrow-right gh-conf-flecha"></i>
                         <div class="gh-conf-saldo-bloque gh-conf-saldo-bloque--final">
                             <span class="gh-conf-saldo-label">Va a quedar</span>
-                            <span class="gh-conf-saldo-valor">${a}</span>
+                            <span class="gh-conf-saldo-valor">Con crédito</span>
+                        </div>
+                    </div>
+
+                    ${enLetras ? `
+                    <p style="text-align:left; font-size:12.5px; line-height:1.5; color:#334155; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin:0 1.75rem 1.125rem;">
+                        Vas a otorgar un crédito de <strong style="color:#10b981;">${enLetras}</strong> a <strong>${nombre.toUpperCase()}</strong>.
+                    </p>` : ''}
+
+                    <dl class="gh-conf-detalle">
+                        ${fila('Cliente', nombre)}
+                        ${fila('Valor a asignar', fmtCOP(valor))}
+                        ${fila('Fecha', esc(new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })))}
+                    </dl>
+                </div>`,
+            showCancelButton: true,
+            confirmButtonText: 'Otorgar crédito',
+            cancelButtonText: 'Volver',
+            focusCancel: true,
+            reverseButtons: true,
+            buttonsStyling: false,
+            width: '30rem',
+            customClass: {
+                popup:         'gh-conf-popup gh-conf--neutro',
+                htmlContainer: 'gh-conf-html-container',
+                actions:       'gh-conf-acciones',
+                confirmButton: 'gh-conf-btn gh-conf-confirmar',
+                cancelButton:  'gh-conf-btn gh-conf-cancelar'
+            },
+            showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' }
+        });
+        return isConfirmed;
+    }
+
+    // Único modal de "suspender" — sin cambios, no hay valor que pedir.
+    async function pedirCredito() {
+        const nombre = esc(clienteActivoNombre || 'este cliente');
+        const fila = (etiqueta, val) => `<div class="gh-conf-fila"><dt>${etiqueta}</dt><dd>${val}</dd></div>`;
+
+        const { value: codigoEmpleado } = await Swal.fire({
+            html: `
+                <div class="gh-conf-html">
+                    <div class="gh-conf-cabecera">
+                        <span class="gh-conf-badge"><i class="fi fi-rr-lock" style="font-size:.625rem"></i> Suspender crédito</span>
+                        <p class="gh-conf-monto">Sin crédito</p>
+                        <p class="gh-conf-cuenta">para <strong>${nombre}</strong></p>
+                    </div>
+
+                    <div class="gh-conf-saldo">
+                        <div class="gh-conf-saldo-bloque">
+                            <span class="gh-conf-saldo-label">Estado actual</span>
+                            <span class="gh-conf-saldo-valor">Con crédito</span>
+                        </div>
+                        <i class="fi fi-rr-arrow-right gh-conf-flecha"></i>
+                        <div class="gh-conf-saldo-bloque gh-conf-saldo-bloque--final">
+                            <span class="gh-conf-saldo-label">Va a quedar</span>
+                            <span class="gh-conf-saldo-valor">Sin crédito</span>
                         </div>
                     </div>
 
@@ -223,14 +433,14 @@
             inputAttributes: { autocomplete: 'off', 'aria-label': 'Código de empleado', style: 'margin: 0 1.75rem; width: calc(100% - 3.5rem);' },
             inputValidator: (v) => (!v || !v.trim()) && 'Ingresá el código del empleado.',
             showCancelButton: true,
-            confirmButtonText: otorgar ? 'Otorgar crédito' : 'Suspender crédito',
+            confirmButtonText: 'Suspender crédito',
             cancelButtonText: 'Volver',
             focusCancel: true,
             reverseButtons: true,
             buttonsStyling: false,
             width: '30rem',
             customClass: {
-                popup:         `gh-conf-popup gh-conf--neutro`,
+                popup:         'gh-conf-popup gh-conf--neutro',
                 htmlContainer: 'gh-conf-html-container',
                 actions:       'gh-conf-acciones',
                 confirmButton: 'gh-conf-btn gh-conf-confirmar',
@@ -243,25 +453,48 @@
 
     document.getElementById('panel-btn-credito')?.addEventListener('click', async () => {
         const otorgar = !creditoActivo;
-        const codigoEmpleado = await pedirCredito(otorgar);
-        if (!codigoEmpleado) return;
 
-        const ruta = otorgar ? 'otorgar' : 'suspender';
+        let valor = null;
+        let codigoEmpleado = null;
+
+        if (otorgar) {
+            // "Volver" en el modal de confirmación no cancela el flujo — regresa al modal
+            // de datos con lo ya escrito precargado, para corregir sin empezar de cero.
+            let confirmado = false;
+            while (!confirmado) {
+                const datos = await pedirDatosOtorgarCredito(clienteActivoNombre, { valor, codigoEmpleado });
+                if (!datos) return;
+                ({ valor, codigoEmpleado } = datos);
+
+                confirmado = await confirmarOtorgarCredito(clienteActivoNombre, valor);
+            }
+        } else {
+            codigoEmpleado = await pedirCredito();
+            if (!codigoEmpleado) return;
+        }
+
+        const ruta = otorgar ? 'credito-disponible' : 'credito/suspender';
+        const body = otorgar
+            ? { valorCreditoCliente: valor, codigoEmpleado, _csrf: csrfToken() }
+            : { codigoEmpleado, _csrf: csrfToken() };
+
         try {
-            const r = await fetch(`/admin/api/clientes/${idClienteActivo}/credito/${ruta}`, {
+            const r = await fetch(`/admin/api/clientes/${idClienteActivo}/${ruta}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ codigoEmpleado, _csrf: csrfToken() })
+                body: JSON.stringify(body)
             });
             const data = await r.json();
             await manejarRespuestaSensibleCredito(data, async (d) => {
-                creditoActivo = d.credito;
+                creditoActivo = otorgar ? true : false;
                 actualizarBtnCredito(creditoActivo, true);
                 await Swal.fire({
                     icon: 'success',
                     title: otorgar ? 'Crédito otorgado' : 'Crédito suspendido',
-                    text: d.empleado ? `Autorizado por ${d.empleado}.` : undefined,
-                    timer: 2200,
+                    text: otorgar
+                        ? `Cupo de ${fmtCOP(valor)} asignado${d.empleado ? ` · Autorizado por ${d.empleado}` : ''}.`
+                        : (d.empleado ? `Autorizado por ${d.empleado}.` : undefined),
+                    timer: 2600,
                     showConfirmButton: false
                 });
             });

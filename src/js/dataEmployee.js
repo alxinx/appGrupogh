@@ -223,9 +223,12 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         });
     }
 
-    // 6. DEPTO / CIUDAD (Default Antioquia/Medellin)
+    // 6. DEPTO / CIUDAD (Default Antioquia/Medellin) — buscables (window.enhanceSelectBuscable, helpers.js)
     const deptoSelect = document.getElementById('departamentoSelect');
     const ciudadSelect = document.getElementById('ciudadSelect');
+
+    const deptoBuscable  = window.enhanceSelectBuscable?.(deptoSelect, { placeholder: 'Escribe o elige un departamento' });
+    const ciudadBuscable = window.enhanceSelectBuscable?.(ciudadSelect, { placeholder: 'Escribe o elige una ciudad' });
 
     const loadCiudades = async (deptoId, selectedCiudadId = null) => {
         if (!deptoId || !ciudadSelect) return;
@@ -242,6 +245,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             });
             ciudadSelect.disabled = false;
         } catch (err) { console.error(err); }
+        ciudadBuscable?.refresh();
     };
 
     if (deptoSelect) {
@@ -250,6 +254,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         // Si ya hay departamento seleccionado (modo edición), carga sus ciudades manteniendo la ciudad actual
         if (!deptoSelect.value) {
             deptoSelect.value = '05';
+            deptoBuscable?.refresh();
             loadCiudades('05', '05001');
         } else {
             loadCiudades(deptoSelect.value, ciudadSelect?.value || null);

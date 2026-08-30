@@ -15,7 +15,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
 import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
@@ -2211,6 +2211,127 @@ const suspenderCreditoCliente = (req, res) => _cambiarCreditoCliente(req, res, {
     accion: 'suspendido',
     mensajeConflicto: 'Este cliente ya no tiene crédito activo.'
 });
+
+// ─── VERIFICAR CÓDIGO DE EMPLEADO (sin efecto) ───────────────────────────────
+// El modal de "otorgar crédito" necesita validar el código apenas se escribe, antes de
+// dejar avanzar al modal de confirmación — antes cualquier texto pasaba, y recién fallaba
+// al final contra /credito-disponible. verificarCodigoEmpleadoAdmin ya hace toda la
+// verificación real (existe, no está suspendido/despedido, bloqueo de 5 intentos en 15
+// min); acá solo se expone sin ejecutar ninguna acción, y comparte el mismo contador de
+// intentos fallidos que el endpoint real — no es una puerta más barata para probar códigos.
+const verificarCodigoEmpleadoCredito = (req, res) => {
+    res.json({ success: true, empleado: req.empleadoVerificado });
+};
+
+// ─── CAMPOS REQUERIDOS PARA ASIGNAR CRÉDITO ──────────────────────────────────
+// Antes de dejar que un cliente tenga cupo, tiene que estar identificable y ubicable —
+// sin eso no hay a quién cobrarle ni adónde mandar un cobro. Empresa suma razón social,
+// que para persona natural no aplica (el nombre ya sale de primer_nombre/primer_apellido,
+// que numero_doc/tipoDocumento/email/telefono ya cubren igual que a una persona natural).
+const _camposFaltantesParaCredito = (cliente, ubicacion) => {
+    const faltan = [];
+    if (!cliente.email?.trim())        faltan.push('correo electrónico');
+    if (!cliente.telefono?.trim())     faltan.push('celular');
+    if (!cliente.numero_doc?.trim())   faltan.push('número de identificación');
+    if (!cliente.tipoDocumento)        faltan.push('tipo de identificación');
+    if (!ubicacion?.idDepartamento)    faltan.push('departamento');
+    if (!ubicacion?.idMunicipio)       faltan.push('municipio');
+    if (!ubicacion?.direccion?.trim()) faltan.push('dirección');
+    if (cliente.tipo_persona === 'J' && !cliente.razon_social?.trim())
+        faltan.push('razón social');
+    return faltan;
+};
+
+// ─── ASIGNAR CRÉDITO DISPONIBLE A UN CLIENTE ─────────────────────────────────
+// Crea el cupo en CREDITO_DISPONIBLE_CLIENTE. Dos filtros antes de escribir: (1) el mismo
+// permiso "Autorizacion de creditos" que otorgar/suspender crédito (_tienePermisoCredito),
+// y (2) que el cliente tenga los datos mínimos para cobrarle — sin eso un cupo es un
+// número sin nadie detrás. El código de empleado (verificarCodigoEmpleadoAdmin, antes de
+// llegar acá) es quién queda en `autorizo`; no se toma de ningún otro campo del body.
+//
+// Si es el primer cupo del cliente (CLIENTES.credito todavía en false), este endpoint
+// también activa ese permiso general y lo deja en CLIENTES_CREDITO_HISTORIAL con la misma
+// acción 'otorgado' que usa otorgarCreditoCliente — mismo `update` condicionado al estado
+// esperado (CLAUDE.md §9) para que dos asignaciones a la vez no dupliquen la bitácora. Sin
+// esto el botón del panel seguiría mostrando "Sin crédito" después de asignar el primer
+// cupo, porque lee CLIENTES.credito, no esta tabla.
+const asignarCreditoDisponibleCliente = async (req, res) => {
+    const { idCliente } = req.params;
+    const valor = parseFloat(req.body?.valorCreditoCliente);
+
+    if (!Number.isFinite(valor) || valor <= 0)
+        return res.status(400).json({ success: false, mensaje: 'El valor del crédito debe ser mayor a 0.' });
+
+    try {
+        if (!(await _tienePermisoCredito(req.usuario)))
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para asignar créditos.' });
+
+        const cliente = await Clientes.findByPk(idCliente, {
+            attributes: ['idCliente', 'tipo_persona', 'razon_social', 'email', 'telefono', 'numero_doc', 'tipoDocumento', 'credito'],
+            raw: true
+        });
+        if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado.' });
+
+        const ubicacion = await ClientesUbicacion.findOne({
+            where: { idCliente, es_principal: true },
+            attributes: ['idDepartamento', 'idMunicipio', 'direccion'],
+            raw: true
+        });
+
+        const faltantes = _camposFaltantesParaCredito(cliente, ubicacion);
+        if (faltantes.length)
+            return res.status(422).json({
+                success: false,
+                mensaje: `El cliente no tiene los datos completos para asignar crédito. Falta: ${faltantes.join(', ')}.`,
+                faltantes
+            });
+
+        const empleado = req.empleadoVerificado;
+        let credito;
+
+        const t = await db.transaction();
+        try {
+            credito = await CreditoDisponibleCliente.create({
+                idCliente,
+                valorCreditoCliente: valor,
+                creditoDisponible:   valor,
+                tipo:                'Credito',
+                autorizo:            empleado?.idEmpleado || null
+            }, { transaction: t });
+
+            const [afectadas] = await Clientes.update(
+                { credito: true },
+                { where: { idCliente, credito: false }, transaction: t }
+            );
+            if (afectadas > 0) {
+                await ClientesCreditoHistorial.create({
+                    idCliente,
+                    accion:         'otorgado',
+                    idEmpleado:     empleado?.idEmpleado || null,
+                    nombreEmpleado: empleado?.nombre || null,
+                    codigoEmpleado: empleado?.codigoEmpleado || null,
+                    idUsuario:      req.usuario?.idUsuario || null
+                }, { transaction: t });
+            }
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        return res.json({
+            success:              true,
+            idCreditoDisponible:  credito.idCreditoDisponible,
+            valorCreditoCliente:  valor,
+            creditoDisponible:    valor,
+            empleado:             empleado?.nombre || null
+        });
+    } catch (e) {
+        console.error('asignarCreditoDisponibleCliente:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al asignar el crédito.' });
+    }
+};
 
 // ─── LISTA CLIENTES PAGINADA ──────────────────────────────────────────────────
 const filterClientesListJson = async (req, res) => {
@@ -8099,7 +8220,7 @@ export {
     newSupplier,
     verProveedor, actualizarProveedor,
     saveSupplier, checkNitSupplier,
-    dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente,
+    dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
 
     dashboardOrders,

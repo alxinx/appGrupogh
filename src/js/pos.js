@@ -1056,6 +1056,19 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // Sin esto, escribir el NIT en la pestaña de empresa no llegaría a guardarse.
     const ESPEJOS = ['cli-tipo-doc', 'cli-numero-doc', 'cli-departamento', 'cli-municipio', 'cli-direccion'];
 
+    // Departamento y municipio (real + espejo) quedan buscables — window.enhanceSelectBuscable
+    // vive en helpers.js. Se guarda cada `refresh()` porque sincronizarEspejos mueve
+    // `.value`/`.innerHTML` directo sobre el <select>, sin pasar por el input de búsqueda que
+    // lo tapa, así que hay que avisarle a mano que lo que se ve puede haber cambiado.
+    const BUSCABLES = {};
+    ['cli-departamento', 'cli-municipio'].forEach((base) => {
+        const placeholder = base === 'cli-departamento' ? 'Escribe o elige un departamento' : 'Escribe o elige una ciudad';
+        [base, `${base}-espejo`].forEach((elId) => {
+            const el = document.getElementById(elId);
+            if (el) BUSCABLES[elId] = window.enhanceSelectBuscable?.(el, { placeholder });
+        });
+    });
+
     const sincronizarEspejos = (desdeReal = true) => {
         ESPEJOS.forEach((id) => {
             const real   = document.getElementById(id);
@@ -1067,6 +1080,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             const origen = desdeReal ? real : espejo;
             const destino = desdeReal ? espejo : real;
             if (destino.value !== origen.value) destino.value = origen.value;
+            BUSCABLES[id]?.refresh();
+            BUSCABLES[`${id}-espejo`]?.refresh();
         });
     };
 
@@ -1245,6 +1260,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const sel = document.getElementById('cli-municipio');
         if (!sel || !deptoId) return;
         sel.innerHTML = '<option>Cargando...</option>';
+        BUSCABLES['cli-municipio']?.refresh();
         try {
             const resp = await fetch(`/store/json/municipios/${deptoId}`);
             const data = await resp.json();
@@ -1264,6 +1280,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         else {
             const sel = document.getElementById('cli-municipio');
             if (sel) sel.innerHTML = '<option value="">— selecciona un departamento —</option>';
+            BUSCABLES['cli-municipio']?.refresh();
         }
     });
 
@@ -1346,6 +1363,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         if (ub) {
             const deptoSel = document.getElementById('cli-departamento');
             if (deptoSel) deptoSel.value = ub.idDepartamento || '';
+            BUSCABLES['cli-departamento']?.refresh();
             if (ub.idDepartamento) cargarMunicipios(ub.idDepartamento, ub.idMunicipio);
             fill('cli-direccion', ub.direccion);
         }
@@ -1384,8 +1402,13 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         const deptoSel = document.getElementById('cli-departamento');
         if (deptoSel) deptoSel.value = '';
+        BUSCABLES['cli-departamento']?.refresh();
         const munSel = document.getElementById('cli-municipio');
         if (munSel) munSel.innerHTML = '<option value="">Seleccionar...</option>';
+        BUSCABLES['cli-municipio']?.refresh();
+        // El resto de campos (numero_doc, dirección, etc.) todavía se limpia más abajo —
+        // sincronizarEspejos corre al final, en switchTab('natural'), para no copiarle al
+        // espejo un valor que está a punto de borrarse acá mismo.
 
         modalCliente?.querySelectorAll('[name="gran_contribuyente"], [name="autorretenedor"], [name="agente_retencion"], [name="obligado_aduanero"]')
             .forEach(el => { el.checked = false; });

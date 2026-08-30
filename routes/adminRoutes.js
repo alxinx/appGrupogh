@@ -13,7 +13,7 @@ getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
 getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente,
-getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
+getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
 getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 storeCierresCaja, storeTrasladosTienda,
 getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
@@ -209,6 +209,12 @@ routes.post('/api/clientes/archivos/:idDocumento/eliminar', pCli('DELETE'), elim
 // /bankentities/traslados/:idTraslado/decidir.
 routes.post('/api/clientes/:idCliente/credito/otorgar',   pCli('EDIT'), verificarCodigoEmpleadoAdmin, otorgarCreditoCliente);
 routes.post('/api/clientes/:idCliente/credito/suspender', pCli('EDIT'), verificarCodigoEmpleadoAdmin, suspenderCreditoCliente);
+// Asigna el cupo en CREDITO_DISPONIBLE_CLIENTE (valor en plata). Distinto de arriba: eso
+// otorga el permiso general de comprar a crédito, esto fija cuánto.
+routes.post('/api/clientes/:idCliente/credito-disponible', pCli('EDIT'), verificarCodigoEmpleadoAdmin, asignarCreditoDisponibleCliente);
+// Valida el código de empleado sin ejecutar nada — para habilitar "Continuar" en el modal
+// de otorgar crédito antes de dejar pasar al de confirmación.
+routes.post('/api/clientes/verificar-codigo-credito', pCli('EDIT'), verificarCodigoEmpleadoAdmin, verificarCodigoEmpleadoCredito);
 
 routes.get('/pedidos', pPed('READ'), dashboardOrders);
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);

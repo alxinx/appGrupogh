@@ -6,6 +6,7 @@ import {
     Interesados, PaginasWeb, PuntosDeVenta, VisitantesWeb, VisitasProducto,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb, Empleados, Traslados, DetalleTraslados,
     Clientes, ClientesTributario, ClientesUbicacion, Entidades, Familia,
+    Departamentos, Municipios,
 } from '../models/index.js';
 import { getPublicKey, getCheckoutBaseUrl, generarFirmaIntegridad, verificarChecksumWebhook } from '../helpers/wompi.js';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
@@ -727,6 +728,37 @@ export const getPuntosVenta = async (req, res) => {
     }
 };
 
+// GET /api/web/departamentos — para el select de departamento del checkout (envío a
+// domicilio). Mismo listado que ya usa el admin, expuesto acá sin sesión.
+export const getDepartamentosPublico = async (req, res) => {
+    try {
+        const departamentos = await Departamentos.findAll({
+            attributes: ['id', 'nombre'],
+            order: [['nombre', 'ASC']]
+        });
+        return res.json({ departamentos });
+    } catch (e) {
+        console.error('webApi.getDepartamentosPublico:', e);
+        return res.status(500).json({ error: 'Error al obtener departamentos' });
+    }
+};
+
+// GET /api/web/municipios/:idDepartamento — cascada del select de municipio en el
+// checkout, mismo criterio que /admin/json/municipios/:id pero sin sesión.
+export const getMunicipiosPublico = async (req, res) => {
+    try {
+        const municipios = await Municipios.findAll({
+            where: { departamento_id: req.params.idDepartamento },
+            attributes: ['id', 'nombre'],
+            order: [['nombre', 'ASC']]
+        });
+        return res.json({ municipios });
+    } catch (e) {
+        console.error('webApi.getMunicipiosPublico:', e);
+        return res.status(500).json({ error: 'Error al obtener municipios' });
+    }
+};
+
 // POST /api/web/interesado
 export const postInteresado = async (req, res) => {
     try {
@@ -848,7 +880,7 @@ export const crearPedidoWeb = async (req, res) => {
             items, tipoEntrega, cookieId, metodoPago,
             email, telefono, nombreCliente, apellidoCliente, cedula,
             tipoPersona, tipoDocumento, digitoVerif, razonSocial, direccionFacturacion,
-            direccion, apto, ciudad, departamento, notasEntrega,
+            direccion, apto, ciudad, departamento, idDepartamento, idMunicipio, notasEntrega,
             idPuntoVentaRecogida, idEntidadPagoQr
         } = req.body;
 
@@ -881,9 +913,29 @@ export const crearPedidoWeb = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Hay productos con cantidad inválida.' });
         }
 
+        // Ciudad/departamento del envío: si el checkout manda idDepartamento/idMunicipio
+        // (select del DANE) se validan contra la base y el nombre a guardar sale de ahí,
+        // nunca de lo que mande el cliente — mismo criterio que el resto de este endpoint
+        // (precio, stock, entidad QR: todo se revalida en el servidor). Si no los manda
+        // (checkout viejo, todavía en texto libre) se cae al validador anterior.
         let puntoRecogida = null;
+        let ubicacionEnvio = null;
         if (tipoEntrega === 'domicilio') {
-            if (!direccion?.trim() || !ciudad?.trim() || !departamento?.trim()) {
+            if (!direccion?.trim()) {
+                return res.status(400).json({ success: false, message: 'Faltan datos de la dirección de envío.' });
+            }
+            if (idDepartamento && idMunicipio) {
+                const [deptoRow, munRow] = await Promise.all([
+                    Departamentos.findByPk(idDepartamento, { attributes: ['id', 'nombre'] }),
+                    Municipios.findByPk(idMunicipio, { attributes: ['id', 'nombre', 'departamento_id'] })
+                ]);
+                if (!deptoRow || !munRow || munRow.departamento_id !== deptoRow.id) {
+                    return res.status(400).json({ success: false, message: 'Departamento o municipio inválido.' });
+                }
+                ubicacionEnvio = { idDepartamento: deptoRow.id, idMunicipio: munRow.id, departamento: deptoRow.nombre, ciudad: munRow.nombre };
+            } else if (ciudad?.trim() && departamento?.trim()) {
+                ubicacionEnvio = { idDepartamento: null, idMunicipio: null, departamento: departamento.trim(), ciudad: ciudad.trim() };
+            } else {
                 return res.status(400).json({ success: false, message: 'Faltan datos de la dirección de envío.' });
             }
         } else {
@@ -1029,8 +1081,10 @@ export const crearPedidoWeb = async (req, res) => {
                 datosClienteDifieren,
                 direccion: tipoEntrega === 'domicilio' ? direccion.trim() : null,
                 apto: tipoEntrega === 'domicilio' ? (apto?.trim() || null) : null,
-                ciudad: tipoEntrega === 'domicilio' ? ciudad.trim() : null,
-                departamento: tipoEntrega === 'domicilio' ? departamento.trim() : null,
+                ciudad: ubicacionEnvio?.ciudad || null,
+                departamento: ubicacionEnvio?.departamento || null,
+                idDepartamento: ubicacionEnvio?.idDepartamento || null,
+                idMunicipio: ubicacionEnvio?.idMunicipio || null,
                 notasEntrega: tipoEntrega === 'domicilio' ? (notasEntrega?.trim() || null) : null,
                 metodoPago,
                 idEntidadPagoQr: entidadQr?.idEntidad || null,
@@ -1232,12 +1286,15 @@ export async function resolverClienteDePedido(pedido, t) {
         obligado_aduanero:  false
     }, { transaction: t });
 
-    // La ciudad/departamento del checkout son texto libre (no hay selector de DANE en la web),
-    // así que se guardan como nombre y los IDs quedan nulos para que la tienda los normalice.
+    // idDepartamento/idMunicipio vienen del select del DANE del checkout (ver
+    // crearPedidoWeb) cuando el pedido los tiene — pedidos históricos del checkout viejo,
+    // en texto libre sin validar, los dejan en null y solo queda el nombre.
     if (pedido.direccionFacturacion) {
         await ClientesUbicacion.create({
             idCliente:          cliente.idCliente,
             direccion:          pedido.direccionFacturacion,
+            idMunicipio:        pedido.idMunicipio || null,
+            idDepartamento:     pedido.idDepartamento || null,
             nombreMunicipio:    pedido.ciudad || null,
             nombreDepartamento: pedido.departamento || null,
             es_principal:       true
