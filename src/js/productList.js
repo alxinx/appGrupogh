@@ -7,7 +7,12 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const contenedor = document.querySelector('#contenedor-productos');
 
     // Estado local del listado
-    let paginaActual = 1; 
+    let paginaActual = 1;
+
+    // Se incrementa en cada consulta nueva. Sin esto, una respuesta lenta de una
+    // búsqueda vieja puede llegar después de una más nueva y pisar sus resultados
+    // (p. ej. mostrar "No se encontraron productos" aunque el producto exista).
+    let ultimaConsultaId = 0;
 
     const mostrarProductos = (productos) => {
         contenedor.innerHTML = '';
@@ -56,6 +61,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     }
 
     const obtenerProductos = async () => {
+        const consultaId = ++ultimaConsultaId;
         try {
             // Recolectamos filtros + la página actual
             const filtros = {
@@ -71,6 +77,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
             const respuesta = await fetch(url);
             const resultado = await respuesta.json();
+
+            // Ya salió otra consulta más nueva mientras esperábamos esta respuesta: descartarla.
+            if (consultaId !== ultimaConsultaId) return;
 
             if (resultado.success) {
                 mostrarProductos(resultado.productos);

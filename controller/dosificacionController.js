@@ -1040,6 +1040,10 @@ const imprimirGuiaEmpaque = async (req, res) => {
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=guia-empaque-D${prefijoDose}.pdf`);
+        // Sin esto el navegador reutiliza el PDF viejo cacheado en la misma URL y los
+        // ajustes de layout que se hacen en caliente durante desarrollo no se ven hasta
+        // que a alguien se le ocurre forzar el refresh.
+        res.setHeader('Cache-Control', 'no-store');
         doc.pipe(res);
 
         let y = MARGIN;
@@ -1084,9 +1088,10 @@ const imprimirGuiaEmpaque = async (req, res) => {
         // pisando la fila de abajo. Se define una vez: la usan tanto cada tabla de lote
         // como el resumen final, para que las columnas queden alineadas entre secciones.
         const col = {
-            producto: { x: MARGIN + 10, w: 190 },
-            sku:      { x: MARGIN + 210, w: 175 },
-            cantidad: { x: MARGIN + CW - 90, w: 80 }
+            producto:  { x: MARGIN + 10, w: 150 },
+            cantBolsa: { x: MARGIN + 170, w: 85 },
+            sku:       { x: MARGIN + 265, w: 140 },
+            cantidad:  { x: MARGIN + CW - 90, w: 80 }
         };
         for (const lote of lotes) {
             const alturaLote = 36 + ROW_H * (lote.detalles.length + 1 + (lote.esResiduo ? 1 : 0)) + 16;
@@ -1118,31 +1123,38 @@ const imprimirGuiaEmpaque = async (req, res) => {
             // Encabezado de tabla del lote.
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#9ca3af');
             doc.text('PRODUCTO', col.producto.x, y, { width: col.producto.w, lineBreak: false });
+            doc.text('CANT X BOLSA', col.cantBolsa.x, y, { width: col.cantBolsa.w, align: 'center', lineBreak: false });
             doc.text('SKU', col.sku.x, y, { width: col.sku.w, lineBreak: false });
-            doc.text('CANT. / BOLSA', col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+            doc.text('CANTIDAD GLOBAL', col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
             y += 14;
             doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
             y += 6;
 
             doc.fillColor('#111827').font('Helvetica').fontSize(10);
             lote.detalles.forEach((d) => {
+                // Cantidad global de este renglón: unidades por bolsa × bolsas idénticas del lote.
+                const cantidadGlobal = d.cantidad * lote.cantidadBultos;
                 doc.font('Helvetica').fontSize(10).fillColor('#111827')
                     .text(d.nombreProducto, col.producto.x, y, { width: col.producto.w, lineBreak: false, ellipsis: true });
+                doc.font('Helvetica').fontSize(10).fillColor('#111827')
+                    .text(String(d.cantidad), col.cantBolsa.x, y, { width: col.cantBolsa.w, align: 'center', lineBreak: false });
                 doc.font('Helvetica').fontSize(9).fillColor('#6b7280')
                     .text(d.sku, col.sku.x, y, { width: col.sku.w, lineBreak: false, ellipsis: true });
                 doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827')
-                    .text(String(d.cantidad), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+                    .text(String(cantidadGlobal), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+                // Línea separadora de cada renglón, para que no se confundan los productos al leer rápido.
+                doc.moveTo(MARGIN, y + 14).lineTo(MARGIN + CW, y + 14).lineWidth(0.75).strokeColor('#9ca3af').stroke();
                 y += ROW_H;
             });
 
             // El saldo es la única bolsa que no repite capacidad completa — vale la pena
             // marcar cuánto suma en total, para que quede claro que es un remanente chico.
             if (lote.esResiduo) {
-                const totalSaldo = lote.detalles.reduce((acc, d) => acc + d.cantidad, 0);
+                const totalSaldo = lote.detalles.reduce((acc, d) => acc + d.cantidad * lote.cantidadBultos, 0);
                 doc.moveTo(col.cantidad.x - 10, y).lineTo(MARGIN + CW, y).lineWidth(0.5).strokeColor('#f4c9de').stroke();
                 y += 4;
                 doc.font('Helvetica-Bold').fontSize(9).fillColor('#E24C95')
-                    .text('TOTAL SALDO', col.producto.x, y, { width: col.producto.w + col.sku.w, lineBreak: false });
+                    .text('TOTAL SALDO', col.producto.x, y, { width: (col.sku.x + col.sku.w) - col.producto.x, lineBreak: false });
                 doc.text(String(totalSaldo), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
                 y += ROW_H - 4;
             }
@@ -1192,6 +1204,7 @@ const imprimirGuiaEmpaque = async (req, res) => {
                 .text(t.sku, col.sku.x, y, { width: col.sku.w, lineBreak: false, ellipsis: true });
             doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827')
                 .text(String(t.total), col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
+            doc.moveTo(MARGIN, y + 14).lineTo(MARGIN + CW, y + 14).lineWidth(0.75).strokeColor('#9ca3af').stroke();
             y += ROW_H;
         });
 
