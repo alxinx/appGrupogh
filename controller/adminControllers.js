@@ -26,7 +26,7 @@ import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
 import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
 import { limpiarPrecio, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
-import { generarSlugDe, slugUnico, normalizarSku13, normalizarSku20, resolverIdFamilia } from '../helpers/productos.js'
+import { generarSlugDe, slugUnico, normalizarSku13, normalizarSku50, resolverIdFamilia } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col, literal } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
@@ -3158,7 +3158,7 @@ const saveProduct = async (req, res, next) => {
         const datosParaDB = {
             nombreProducto,
             slug: slugLibre,
-            sku: normalizarSku20(req.body.sku),
+            sku: normalizarSku50(req.body.sku),
             ean: req.body.ean,
             idFamilia: idFamiliaParaDB,
             idCategoria: idCategoriaParaDB,
