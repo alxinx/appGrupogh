@@ -86,10 +86,11 @@
 
     // ─── MÉTODOS DE PAGO ─────────────────────────────────────────────────────
     const PM_IDS = {
-        efectivo:  'pm-efectivo',
-        transBill: 'pm-transbill',
-        tCredito:  'pm-tcredito',
-        creditos:  'pm-creditos'
+        efectivo:      'pm-efectivo',
+        transBill:     'pm-transbill',
+        tCredito:      'pm-tcredito',
+        creditos:      'pm-creditos',
+        creditoTienda: 'pm-credito-tienda'
     };
 
     const countUpEl = (el, toValue) => {

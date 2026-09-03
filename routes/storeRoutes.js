@@ -20,6 +20,8 @@ import {
     liberarReservasPos,
     getPosProductoJSON,
     buscarClientePorDoc,
+    getClienteCreditoJSON,
+    validarCreditoTiendaJSON,
     getMunicipiosStoreJSON,
     guardarCliente,
     getEntidadesJSON,
@@ -98,6 +100,8 @@ routes.post('/json/pos/reservas', sincronizarReservasPos);
 routes.delete('/json/pos/reservas', liberarReservasPos);
 routes.get('/json/pos/producto/:idProducto', getPosProductoJSON);
 routes.get('/json/clientes/buscar', buscarClientePorDoc);
+routes.get('/json/clientes/:idCliente/credito', getClienteCreditoJSON);
+routes.post('/json/clientes/:idCliente/credito/validar', validarCreditoTiendaJSON);
 routes.get('/json/municipios/:deptoId', getMunicipiosStoreJSON);
 routes.get('/json/entidades', getEntidadesJSON);
 routes.get('/json/traslados/buscar-sku', buscarProductoPorSKU);

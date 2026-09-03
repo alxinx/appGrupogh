@@ -274,7 +274,9 @@
         docsExistentesEl.innerHTML = archivos.map(a => `
             <li class="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
                 <i class="fi ${iconoFormato(a.formato)} text-base flex-shrink-0"></i>
-                <span class="text-xs text-slate-700 font-medium truncate flex-1">${a.nombreDocumento}</span>
+                <a href="${a.url}" target="_blank" rel="noopener"
+                   class="text-xs text-slate-700 font-medium truncate flex-1 hover:text-pink-500 hover:underline"
+                   title="Ver archivo">${a.nombreDocumento}</a>
                 <span class="text-[10px] text-slate-400 uppercase flex-shrink-0">${a.formato}</span>
                 <button type="button" data-id="${a.idDocumento}" data-nombre="${a.nombreDocumento}"
                         class="btn-eliminar-doc flex-shrink-0 w-6 h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors"

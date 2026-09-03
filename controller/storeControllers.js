@@ -9,7 +9,8 @@ import {
     DetallesPagosFactura, RegimenFacturacion, Egresos,
     CajaTienda, UserPermisos, PermisosAcciones, PermisosRecursos,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb,
-    CajasYBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, MovimientosCajasBancos
+    CajasYBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, MovimientosCajasBancos,
+    CreditoDisponibleCliente
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import { sincronizarReservas, liberarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
@@ -601,9 +602,9 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
         })
     ]);
 
-    let sEfectivo = 0, sMedios = 0, sCredito = 0;
-    const txEfectivo = [], txElectronicos = [], txCredito = [];
-    const facturasEfectivo = new Set(), facturasElectronicos = new Set(), facturasCredito = new Set();
+    let sEfectivo = 0, sMedios = 0, sCredito = 0, sCreditoTienda = 0;
+    const txEfectivo = [], txElectronicos = [], txCredito = [], txCreditoTienda = [];
+    const facturasEfectivo = new Set(), facturasElectronicos = new Set(), facturasCredito = new Set(), facturasCreditoTienda = new Set();
 
     for (const f of facturas) {
         const nroFactura = `${f.prefijo || ''}${f.numeroFactura}`;
@@ -621,6 +622,13 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
                 sCredito += val;
                 txCredito.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: p.entidad?.nombreEntidad || '—', referencia: p.nroReferencia || '—', valor: val });
                 facturasCredito.add(f.idFacturaCliente);
+            } else if (p.metodoPago === 'Credito En Tienda') {
+                // Aparte de sCredito a propósito: acá no entró plata de nadie, es la tienda
+                // financiando al cliente — no se mezcla con Entidad Crediticia (eso sí ya
+                // se cobró vía un tercero).
+                sCreditoTienda += val;
+                txCreditoTienda.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: 'Crédito en Tienda', referencia: p.nroReferencia || '—', valor: val });
+                facturasCreditoTienda.add(f.idFacturaCliente);
             }
         }
     }
@@ -649,14 +657,16 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
     const idFacturas = facturas.map(f => f.idFacturaCliente);
 
     return {
-        sEfectivo, sMedios, sCredito, sEgresos, sVentas: sEfectivo + sMedios + sCredito,
+        sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos,
+        sVentas: sEfectivo + sMedios + sCredito + sCreditoTienda,
         sEgresosEfectivo, sEgresosElectronicos,
         // Lo que debería haber físicamente en el cajón: base + ventas en efectivo −
         // egresos pagados en efectivo. Antes esta cuenta la hacía el vendedor de cabeza.
-        txEfectivo, txElectronicos, txCredito, txEgresos, idFacturas,
+        txEfectivo, txElectronicos, txCredito, txCreditoTienda, txEgresos, idFacturas,
         nFacturasEfectivo:     facturasEfectivo.size,
         nFacturasElectronicos: facturasElectronicos.size,
         nFacturasCredito:      facturasCredito.size,
+        nFacturasCreditoTienda: facturasCreditoTienda.size,
         nFacturasTotal:        facturas.length
     };
 };
@@ -1378,6 +1388,61 @@ const buscarClientePorDoc = async (req, res) => {
     }
 };
 
+// Si el cliente activo del POS tiene crédito propio habilitado, y cuánto le queda
+// disponible — para mostrar (o no) la tarjeta "Crédito en Tienda" en Finalizar Venta y
+// validar el monto que se escriba ahí. Se consulta fresco cada vez que se abre ese modal
+// Y cada vez que se verifica un monto (ver validarCreditoTiendaJSON) — nunca desde un
+// valor guardado en el navegador: el crédito se puede otorgar/suspender desde el admin, o
+// consumirse en otra venta, en cualquier momento de la misma sesión de caja.
+//
+// creditoDisponible es la suma de esa columna en TODAS las filas del cliente en
+// CREDITO_DISPONIBLE_CLIENTE (crédito y saldo a favor juntos — la tabla no separa el uno
+// del otro para este propósito todavía).
+const _creditoDisponibleCliente = async (idCliente) => {
+    const filas = await CreditoDisponibleCliente.findAll({
+        where: { idCliente },
+        attributes: ['creditoDisponible']
+    });
+    return filas.reduce((s, f) => s + (parseFloat(f.creditoDisponible) || 0), 0);
+};
+
+const getClienteCreditoJSON = async (req, res) => {
+    const { idCliente } = req.params;
+    try {
+        const [cliente, creditoDisponible] = await Promise.all([
+            Clientes.findByPk(idCliente, { attributes: ['idCliente', 'credito'] }),
+            _creditoDisponibleCliente(idCliente)
+        ]);
+        return res.json({ credito: !!cliente?.credito, creditoDisponible });
+    } catch (e) {
+        console.error('getClienteCreditoJSON:', e);
+        return res.status(500).json({ credito: false, creditoDisponible: 0 });
+    }
+};
+
+// POST /store/json/clientes/:idCliente/credito/validar — ¿este monto entra en lo que le
+// queda disponible al cliente ahora mismo? Endpoint aparte (y no reusar el GET de arriba)
+// porque el monto lo manda el navegador: si se comparara ahí, un valor manipulado en el
+// body igual pasaría — acá el servidor es quien decide sí o no.
+const validarCreditoTiendaJSON = async (req, res) => {
+    const { idCliente } = req.params;
+    const monto = Math.round(parseFloat(req.body?.monto) || 0);
+    try {
+        if (monto <= 0) return res.json({ success: false, mensaje: 'Monto inválido.' });
+        const creditoDisponible = await _creditoDisponibleCliente(idCliente);
+        const valido = monto <= creditoDisponible;
+        return res.json({
+            success: true,
+            valido,
+            creditoDisponible,
+            mensaje: valido ? null : `Supera el cupo disponible del cliente ($${Math.round(creditoDisponible).toLocaleString('es-CO')}).`
+        });
+    } catch (e) {
+        console.error('validarCreditoTiendaJSON:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al validar el crédito.' });
+    }
+};
+
 const getMunicipiosStoreJSON = async (req, res) => {
     const { deptoId } = req.params;
     try {
@@ -1881,7 +1946,7 @@ const procesarFactura = async (req, res) => {
                 raw: true
             });
             let ventasHoy = 0;
-            const pagosHoy = { Efectivo: 0, Banco: 0, 'Billetera Virtual': 0, 'Entidad Crediticia': 0, 'Tarjeta Credito': 0 };
+            const pagosHoy = { Efectivo: 0, Banco: 0, 'Billetera Virtual': 0, 'Entidad Crediticia': 0, 'Tarjeta Credito': 0, 'Credito En Tienda': 0 };
             if (factHoy.length) {
                 const ids = factHoy.map(f => f.idFacturaCliente);
                 const [detallesRows, pagosRows] = await Promise.all([
@@ -1928,13 +1993,14 @@ const procesarFactura = async (req, res) => {
                         raw: true
                     })
                 ]);
-                const pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0 };
+                const pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0, creditoTienda: 0 };
                 for (const r of globalPagosRows) {
                     const v = Math.round(parseFloat(r.total || 0));
-                    if (r.metodoPago === 'Efectivo')                                           pagosGlobales.efectivo  += v;
-                    else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill += v;
-                    else if (r.metodoPago === 'Tarjeta Credito')                               pagosGlobales.tCredito  += v;
-                    else if (r.metodoPago === 'Entidad Crediticia')                            pagosGlobales.creditos  += v;
+                    if (r.metodoPago === 'Efectivo')                                           pagosGlobales.efectivo     += v;
+                    else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill    += v;
+                    else if (r.metodoPago === 'Tarjeta Credito')                               pagosGlobales.tCredito     += v;
+                    else if (r.metodoPago === 'Entidad Crediticia')                            pagosGlobales.creditos     += v;
+                    else if (r.metodoPago === 'Credito En Tienda')                             pagosGlobales.creditoTienda += v;
                 }
                 broadcast('__ADMIN__', 'global_stats', {
                     ventasGlobalesHoy: Math.round(parseFloat(globalVentasRow[0]?.suma || 0)),
@@ -2410,8 +2476,8 @@ const getCuadreCajaDatos = async (req, res) => {
         ]);
         if (!caja) return res.status(400).json({ success: false, mensaje: 'No hay caja abierta.' });
 
-        const { sEfectivo, sMedios, sCredito, sEgresos, sEgresosEfectivo, sEgresosElectronicos,
-                sVentas, txEfectivo, txElectronicos, txCredito, txEgresos } =
+        const { sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos, sEgresosEfectivo, sEgresosElectronicos,
+                sVentas, txEfectivo, txElectronicos, txCredito, txCreditoTienda, txEgresos } =
             await _calcularTransaccionesCaja(idPdv, new Date(caja.fechaApertura), new Date());
 
         return res.json({
@@ -2423,7 +2489,7 @@ const getCuadreCajaDatos = async (req, res) => {
             },
             totales: {
                 ventas: sVentas, egresos: sEgresos, efectivo: sEfectivo,
-                mediosElectronicos: sMedios, credito: sCredito,
+                mediosElectronicos: sMedios, credito: sCredito, creditoTienda: sCreditoTienda,
                 egresosEfectivo: sEgresosEfectivo, egresosElectronicos: sEgresosElectronicos,
                 // Lo que debería estar físicamente en el cajón. Antes esta cuenta la hacía
                 // el vendedor de cabeza; ahora sale del mismo lugar que todo lo demás.
@@ -2441,6 +2507,7 @@ const getCuadreCajaDatos = async (req, res) => {
             txEfectivo,
             txElectronicos,
             txCredito,
+            txCreditoTienda,
             txEgresos
         });
     } catch (e) {
@@ -2593,7 +2660,7 @@ const cerrarCajaAPI = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
 
-    const { idCajaTienda, codigoEmpleado, operadorEgresos, operadorEfectivo, operadorElectronicos, operadorCredito, operadorBase, nota } = req.body;
+    const { idCajaTienda, codigoEmpleado, operadorEgresos, operadorEfectivo, operadorElectronicos, operadorCredito, operadorCreditoTienda, operadorBase, nota } = req.body;
 
     if (!idCajaTienda) return res.status(400).json({ success: false, mensaje: 'idCajaTienda requerido.' });
 
@@ -2614,14 +2681,19 @@ const cerrarCajaAPI = async (req, res) => {
         const inicio = new Date(caja.fechaApertura);
         const fin    = new Date();
 
-        const { sEfectivo, sMedios, sCredito, sEgresos, sVentas, txElectronicos, txCredito, txEgresos, idFacturas } =
+        const { sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos, sVentas, txElectronicos, txCredito, txCreditoTienda, txEgresos, idFacturas } =
             await _calcularTransaccionesCaja(idPdv, inicio, fin);
 
-        const oEgresos      = Math.round(parseFloat(operadorEgresos)      || 0);
-        const oEfectivo     = Math.round(parseFloat(operadorEfectivo)     || 0);
-        const oElectronicos = Math.round(parseFloat(operadorElectronicos) || 0);
-        const oCredito      = Math.round(parseFloat(operadorCredito)      || 0);
-        const oBase         = Math.round(parseFloat(operadorBase)        || 0);
+        const oEgresos       = Math.round(parseFloat(operadorEgresos)       || 0);
+        const oEfectivo      = Math.round(parseFloat(operadorEfectivo)      || 0);
+        const oElectronicos  = Math.round(parseFloat(operadorElectronicos)  || 0);
+        const oCredito       = Math.round(parseFloat(operadorCredito)       || 0);
+        // Todavía no hay una sección propia en la UI de cuadre para que el operador la
+        // declare (ver storeCuadrarCaja.js) — llega en 0 hasta que se agregue, y
+        // ventasCreditoTiendaRegistrada queda en 0 con ella. sCreditoTienda (lo calculado)
+        // sí queda bien desde ya.
+        const oCreditoTienda = Math.round(parseFloat(operadorCreditoTienda) || 0);
+        const oBase          = Math.round(parseFloat(operadorBase)          || 0);
 
         // El cierre escribe en tres tablas financieras: va en una transacción. Si algo
         // falla a mitad de camino, no puede quedar la factura liquidada con la caja
@@ -2651,11 +2723,13 @@ const cerrarCajaAPI = async (req, res) => {
                 fechaCierre:                    new Date(),
                 cajaMenorRegistrada:            oBase,
                 ventasTotales:                  sVentas,
-                ventasTotalesRegistradas:       oEfectivo + oElectronicos + oCredito,
+                ventasTotalesRegistradas:       oEfectivo + oElectronicos + oCredito + oCreditoTienda,
                 egresosTotales:                 sEgresos,
                 egresosTotalesRegistrados:      oEgresos,
                 ventasCredito:                  sCredito,
                 ventasCreditoRegistradas:       oCredito,
+                ventasCreditoTienda:            sCreditoTienda,
+                ventasCreditoTiendaRegistrada:  oCreditoTienda,
                 ventasEfectivo:                 sEfectivo,
                 ventasEfectivoRegistradas:      oEfectivo,
                 ventasMediosElectronicos:        sMedios,
@@ -2687,9 +2761,9 @@ const cerrarCajaAPI = async (req, res) => {
 };
 
 // ── Helper reutilizable para generar el PDF de cuadre ────────────────────────
-const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronicos, txCredito, txEgresos }) => {
+const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronicos, txCredito, txCreditoTienda, txEgresos }) => {
     const W = 227, MARGIN = 10, CW = W - MARGIN * 2;
-    const estH = 720 + txElectronicos.length * 16 + txCredito.length * 16 + txEgresos.length * 11;
+    const estH = 720 + txElectronicos.length * 16 + txCredito.length * 16 + txCreditoTienda.length * 16 + txEgresos.length * 11;
     const doc = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
     const chunks = [];
     doc.on('data', c => chunks.push(c));
@@ -2800,6 +2874,8 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
     doc.moveDown(0.15);
     filaPuntos('Crédito',             fmt(sums.sCredito), { checkbox: true });
     doc.moveDown(0.15);
+    filaPuntos('Crédito en Tienda',   fmt(sums.sCreditoTienda), { checkbox: true });
+    doc.moveDown(0.15);
     filaPuntos('Medios Electrónicos', fmt(sums.sMedios), { checkbox: true });
     doc.moveDown(0.15);
     filaPuntos('(-) Egresos Totales', fmt(sums.sEgresos));
@@ -2888,6 +2964,9 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
 
     // ── Detalle: ventas a entidades crediticias ─────────────────────────────────
     listaPorEntidad('VENTAS A CRÉDITO', txCredito);
+
+    // ── Detalle: ventas a crédito propio (Crédito en Tienda) ────────────────────
+    listaPorEntidad('VENTAS A CRÉDITO EN TIENDA', txCreditoTienda);
 
     // ── SECCIÓN 6: egresos ───────────────────────────────────────────────────────
     if (txEgresos.length > 0) {
@@ -3037,9 +3116,10 @@ const getCuadrePDF = async (req, res) => {
 
         const buf = await _generarPDFCuadre({
             caja, regimen, municipio,
-            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
+            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sCreditoTienda: datos.sCreditoTienda, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
             txElectronicos: datos.txElectronicos,
             txCredito:      datos.txCredito,
+            txCreditoTienda: datos.txCreditoTienda,
             txEgresos:      datos.txEgresos
         });
         res.setHeader('Content-Type', 'application/pdf');
@@ -4135,13 +4215,14 @@ const getVentasMes = async (req, res) => {
                     })
                 ]);
 
-                let efectivo = 0, electronico = 0, credito = 0;
+                let efectivo = 0, electronico = 0, credito = 0, creditoTienda = 0;
                 for (const f of facturas) {
                     for (const p of f.pagos) {
                         const val = parseFloat(p.valor) || 0;
                         if (p.metodoPago === 'Efectivo') efectivo += val;
                         else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) electronico += val;
                         else if (p.metodoPago === 'Entidad Crediticia') credito += val;
+                        else if (p.metodoPago === 'Credito En Tienda') creditoTienda += val;
                     }
                 }
                 const egrTotal = egresos.reduce((s, e) => s + (parseFloat(e.valorEgreso) || 0), 0);
@@ -4149,13 +4230,13 @@ const getVentasMes = async (req, res) => {
                 resultado.push({
                     fecha, esHoy: true, estadoCaja: 'abierto',
                     efectivo: Math.round(efectivo), electronico: Math.round(electronico),
-                    credito: Math.round(credito), egresos: Math.round(egrTotal),
-                    total: Math.round(efectivo + electronico + credito)
+                    credito: Math.round(credito), creditoTienda: Math.round(creditoTienda), egresos: Math.round(egrTotal),
+                    total: Math.round(efectivo + electronico + credito + creditoTienda)
                 });
             } else {
                 const caja = await CajaTienda.findOne({
                     where: { idPuntoDeVenta: idPdv, fechaApertura: { [Op.between]: [inicio, fin] } },
-                    attributes: ['ventasEfectivo', 'ventasMediosElectronicos', 'ventasCredito', 'egresosTotales', 'ventasTotales', 'estado'],
+                    attributes: ['ventasEfectivo', 'ventasMediosElectronicos', 'ventasCredito', 'ventasCreditoTienda', 'egresosTotales', 'ventasTotales', 'estado'],
                     raw: true
                 });
                 if (caja) {
@@ -4164,6 +4245,7 @@ const getVentasMes = async (req, res) => {
                         efectivo:   Math.round(parseFloat(caja.ventasEfectivo)            || 0),
                         electronico: Math.round(parseFloat(caja.ventasMediosElectronicos) || 0),
                         credito:    Math.round(parseFloat(caja.ventasCredito)             || 0),
+                        creditoTienda: Math.round(parseFloat(caja.ventasCreditoTienda)    || 0),
                         egresos:    Math.round(parseFloat(caja.egresosTotales)            || 0),
                         total:      Math.round(parseFloat(caja.ventasTotales)             || 0)
                     });
@@ -4209,25 +4291,26 @@ const getDetalleDia = async (req, res) => {
                     raw: true
                 })
             ]);
-            let efectivo = 0, electronico = 0, credito = 0;
+            let efectivo = 0, electronico = 0, credito = 0, creditoTienda = 0;
             for (const f of facturas) {
                 for (const p of f.pagos) {
                     const val = parseFloat(p.valor) || 0;
                     if (p.metodoPago === 'Efectivo') efectivo += val;
                     else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(p.metodoPago)) electronico += val;
                     else if (p.metodoPago === 'Entidad Crediticia') credito += val;
+                    else if (p.metodoPago === 'Credito En Tienda') creditoTienda += val;
                 }
             }
             const egrTotal = egresos.reduce((s, e) => s + (parseFloat(e.valorEgreso) || 0), 0);
             resumen = {
                 efectivo: Math.round(efectivo), electronico: Math.round(electronico),
-                credito: Math.round(credito), egresos: Math.round(egrTotal),
-                total: Math.round(efectivo + electronico + credito)
+                credito: Math.round(credito), creditoTienda: Math.round(creditoTienda), egresos: Math.round(egrTotal),
+                total: Math.round(efectivo + electronico + credito + creditoTienda)
             };
         } else {
             const caja = await CajaTienda.findOne({
                 where: { idPuntoDeVenta: idPdv, fechaApertura: { [Op.between]: [inicio, fin] } },
-                attributes: ['idCajaTienda', 'ventasEfectivo', 'ventasMediosElectronicos', 'ventasCredito', 'egresosTotales', 'ventasTotales', 'estado'],
+                attributes: ['idCajaTienda', 'ventasEfectivo', 'ventasMediosElectronicos', 'ventasCredito', 'ventasCreditoTienda', 'egresosTotales', 'ventasTotales', 'estado'],
                 raw: true
             });
             if (caja) {
@@ -4236,6 +4319,7 @@ const getDetalleDia = async (req, res) => {
                     efectivo:    Math.round(parseFloat(caja.ventasEfectivo)            || 0),
                     electronico: Math.round(parseFloat(caja.ventasMediosElectronicos)  || 0),
                     credito:     Math.round(parseFloat(caja.ventasCredito)             || 0),
+                    creditoTienda: Math.round(parseFloat(caja.ventasCreditoTienda)     || 0),
                     egresos:     Math.round(parseFloat(caja.egresosTotales)            || 0),
                     total:       Math.round(parseFloat(caja.ventasTotales)             || 0)
                 };
@@ -4478,6 +4562,8 @@ export {
     buscarPosProducto,
     getPosProductoJSON,
     buscarClientePorDoc,
+    getClienteCreditoJSON,
+    validarCreditoTiendaJSON,
     getMunicipiosStoreJSON,
     guardarCliente,
     getEntidadesJSON,

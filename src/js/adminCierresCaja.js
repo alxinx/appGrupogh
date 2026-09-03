@@ -106,7 +106,8 @@
             'Banco':              'fi-rr-bank',
             'Billetera Virtual':  'fi-rr-smartphone',
             'Tarjeta Credito':    'fi-rr-credit-card',
-            'Entidad Crediticia': 'fi-rr-building'
+            'Entidad Crediticia': 'fi-rr-building',
+            'Credito En Tienda':  'fi-rr-hand-holding-usd'
         };
 
         const cols = Math.min(medios.length, 3);

@@ -30,6 +30,7 @@
     "db:migrar-credito-disponible-cliente": "node ./seed/migracionCreditoDisponibleCliente.js",
     "db:migrar-municipios-colombia": "node ./seed/migracionMunicipiosColombia.js",
     "db:migrar-pedidos-web-dane": "node ./seed/migracionPedidosWebUbicacionDane.js",
+    "db:migrar-credito-en-tienda": "node ./seed/migracionCreditoEnTienda.js",
     "db:migrar-traslado-efectivo": "node ./seed/migracionTrasladoEfectivo.js",
     "db:migrar-traslado-referencia": "node ./seed/migracionTrasladoReferencia.js",
     "db:rellenar-traslado-referencia": "node ./seed/migracionRellenarReferenciaTraslado.js",

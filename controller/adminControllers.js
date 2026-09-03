@@ -40,7 +40,7 @@ import { tituloLista } from '../helpers/textoLista.js';
 dotenv.config();
 
 // ─── CONSTANTES COMPARTIDAS ──────────────────────────────────────────────────
-const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Credito En Tienda'];
 
 // ─── HELPERS INTERNOS ────────────────────────────────────────────────────────
 
@@ -1947,7 +1947,7 @@ const getClientePerfil = async (req, res) => {
         const hace14 = new Date(); hace14.setDate(hace14.getDate() - 14); hace14.setHours(0,0,0,0);
         const hace30 = new Date(); hace30.setDate(hace30.getDate() - 30); hace30.setHours(0,0,0,0);
 
-        const [cliente, ubicacion, statsRows, vendedorRows, vip5, vip3] = await Promise.all([
+        const [cliente, ubicacion, statsRows, vendedorRows, vip5, vip3, creditoExistente] = await Promise.all([
             Clientes.findOne({
                 where: { idCliente },
                 raw: true,
@@ -1993,7 +1993,15 @@ const getClientePerfil = async (req, res) => {
                 INNER JOIN (SELECT idFacturaCliente, SUM(total) AS totalFactura FROM DETALLES_FACTURA GROUP BY idFacturaCliente) df
                     ON df.idFacturaCliente = fc.idFacturaCliente
                 WHERE fc.idCliente = :idCliente AND fc.createdAt >= :hace30 AND df.totalFactura >= 1000000
-            `, { replacements: { idCliente, hace30 }, type: db.QueryTypes.SELECT })
+            `, { replacements: { idCliente, hace30 }, type: db.QueryTypes.SELECT }),
+
+            // La fila tipo='Credito' es única por cliente (nunca se duplica). Si ya existe,
+            // el panel debe reactivar/editar esta misma fila en vez de crear otra.
+            CreditoDisponibleCliente.findOne({
+                where: { idCliente, tipo: 'Credito' },
+                attributes: ['idCreditoDisponible', 'valorCreditoCliente', 'creditoDisponible', 'tiempoCredito'],
+                raw: true
+            })
         ]);
 
         if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado' });
@@ -2016,7 +2024,12 @@ const getClientePerfil = async (req, res) => {
                 vendedor:      vendedorRows[0]?.vendedor?.trim() || null
             },
             esVip,
-            puedeActivarCredito
+            puedeActivarCredito,
+            creditoExistente: creditoExistente ? {
+                valorCreditoCliente: parseFloat(creditoExistente.valorCreditoCliente),
+                creditoDisponible:   parseFloat(creditoExistente.creditoDisponible),
+                tiempoCredito:       creditoExistente.tiempoCredito
+            } : null
         });
     } catch (e) {
         console.error('getClientePerfil:', e);
@@ -2258,9 +2271,12 @@ const _camposFaltantesParaCredito = (cliente, ubicacion) => {
 const asignarCreditoDisponibleCliente = async (req, res) => {
     const { idCliente } = req.params;
     const valor = parseFloat(req.body?.valorCreditoCliente);
+    const tiempoCredito = parseInt(req.body?.tiempoCredito, 10);
 
     if (!Number.isFinite(valor) || valor <= 0)
         return res.status(400).json({ success: false, mensaje: 'El valor del crédito debe ser mayor a 0.' });
+    if (!Number.isInteger(tiempoCredito) || tiempoCredito <= 0)
+        return res.status(400).json({ success: false, mensaje: 'Indicá el plazo máximo (en días) sin abono para este crédito.' });
 
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
@@ -2286,6 +2302,22 @@ const asignarCreditoDisponibleCliente = async (req, res) => {
                 faltantes
             });
 
+        // Un cliente puede tener varias filas tipo 'Saldo a Favor', pero nunca más de una
+        // 'Credito' — esa fila es el cupo del cliente, no una transacción repetible. Crear
+        // una segunda al reactivar (tras suspender) duplicaba el saldo en cualquier suma
+        // sobre esta tabla (ej. validarCreditoTiendaJSON): el cliente parecía tener el cupo
+        // viejo MÁS el nuevo. Reactivar/editar un crédito existente no pasa por acá.
+        const yaTieneCredito = await CreditoDisponibleCliente.findOne({
+            where: { idCliente, tipo: 'Credito' },
+            attributes: ['idCreditoDisponible'],
+            raw: true
+        });
+        if (yaTieneCredito)
+            return res.status(409).json({
+                success: false,
+                mensaje: 'Este cliente ya tiene un crédito asignado. Para reactivarlo, usá el botón de crédito sin volver a ingresar un valor; para cambiar el cupo o el plazo, hay que editarlo directamente.'
+            });
+
         const empleado = req.empleadoVerificado;
         let credito;
 
@@ -2295,6 +2327,7 @@ const asignarCreditoDisponibleCliente = async (req, res) => {
                 idCliente,
                 valorCreditoCliente: valor,
                 creditoDisponible:   valor,
+                tiempoCredito,
                 tipo:                'Credito',
                 autorizo:            empleado?.idEmpleado || null
             }, { transaction: t });
@@ -2325,6 +2358,7 @@ const asignarCreditoDisponibleCliente = async (req, res) => {
             idCreditoDisponible:  credito.idCreditoDisponible,
             valorCreditoCliente:  valor,
             creditoDisponible:    valor,
+            tiempoCredito,
             empleado:             empleado?.nombre || null
         });
     } catch (e) {
@@ -4533,7 +4567,7 @@ const getTiendasStatsHoy = async (req, res) => {
         }
 
         // Totales globales por método de pago
-        let pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0 };
+        let pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0, creditoTienda: 0 };
         if (facturasHoy.length) {
             const factIds = facturasHoy.map(f => f.idFacturaCliente);
             const pagosRows = await DetallesPagosFactura.findAll({
@@ -4544,10 +4578,11 @@ const getTiendasStatsHoy = async (req, res) => {
             });
             for (const r of pagosRows) {
                 const v = Math.round(parseFloat(r.total || 0));
-                if (r.metodoPago === 'Efectivo')                                       pagosGlobales.efectivo  += v;
+                if (r.metodoPago === 'Efectivo')                                       pagosGlobales.efectivo     += v;
                 else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill += v;
-                else if (r.metodoPago === 'Tarjeta Credito')                           pagosGlobales.tCredito  += v;
-                else if (r.metodoPago === 'Entidad Crediticia')                        pagosGlobales.creditos  += v;
+                else if (r.metodoPago === 'Tarjeta Credito')                           pagosGlobales.tCredito     += v;
+                else if (r.metodoPago === 'Entidad Crediticia')                        pagosGlobales.creditos     += v;
+                else if (r.metodoPago === 'Credito En Tienda')                         pagosGlobales.creditoTienda += v;
             }
         }
 
@@ -6700,12 +6735,15 @@ const exportarFacturasTienda = async (req, res) => {
             raw: true, nest: true
         });
 
-        let sEfectivo = 0, sElectronicos = 0, sCredito = 0;
+        let sEfectivo = 0, sElectronicos = 0, sCredito = 0, sCreditoTienda = 0;
         const porEntidad = new Map();
 
         for (const p of pagos) {
             const valor = Math.round(parseFloat(p.valor) || 0);
             if (p.metodoPago === 'Efectivo') { sEfectivo += valor; continue; }
+            // Crédito en Tienda no tiene entidad y no es plata recibida — no entra al
+            // desglose "por entidad" (eso es recaudo real) ni a TOTAL RECAUDADO más abajo.
+            if (p.metodoPago === 'Credito En Tienda') { sCreditoTienda += valor; continue; }
 
             // Sin entidad asociada se cae al método: un datáfono sin entidad configurada
             // igual tiene que aparecer en el desglose, no desaparecer del informe.
@@ -6832,7 +6870,10 @@ const exportarFacturasTienda = async (req, res) => {
             { etiqueta: 'VENTAS EFECTIVO',    valor: sEfectivo,     formato: FORMATO_PESOS, color: XLS.ingresoTinta },
             { etiqueta: 'MEDIOS ELECTRÓNICOS', valor: sElectronicos, formato: FORMATO_PESOS, color: 'FF1D4ED8' },
             { etiqueta: 'CRÉDITO',            valor: sCredito,      formato: FORMATO_PESOS, color: XLS.apagado },
-            { etiqueta: 'TOTAL RECAUDADO',    valor: sEfectivo + sElectronicos + sCredito, formato: FORMATO_PESOS }
+            { etiqueta: 'TOTAL RECAUDADO',    valor: sEfectivo + sElectronicos + sCredito, formato: FORMATO_PESOS },
+            // Aparte del total recaudado a propósito: acá no entró plata, es la tienda
+            // financiando al cliente — ver models/DetallesPagosFactura.js.
+            { etiqueta: 'CRÉDITO EN TIENDA (no recaudado)', valor: sCreditoTienda, formato: FORMATO_PESOS, color: XLS.apagado }
         ]);
 
         // ── Desglose por entidad ─────────────────────────────────────────────
@@ -7495,9 +7536,10 @@ const getAdminCuadrePDF = async (req, res) => {
 
         const buf = await _generarPDFCuadre({
             caja, regimen, municipio,
-            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
+            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sCreditoTienda: datos.sCreditoTienda, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
             txElectronicos: datos.txElectronicos,
             txCredito:      datos.txCredito,
+            txCreditoTienda: datos.txCreditoTienda,
             txEgresos:      datos.txEgresos
         });
         res.setHeader('Content-Type', 'application/pdf');

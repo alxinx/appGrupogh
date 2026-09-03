@@ -44,6 +44,21 @@ const CreditoDisponibleCliente = db.define('CREDITO_DISPONIBLE_CLIENTE', {
             min: { args: [0], msg: 'El crédito disponible no puede ser negativo.' }
         }
     },
+
+    // Días máximos que un desembolso de este cupo (una factura pagada con "Credito En
+    // Tienda") puede quedar sin al menos un abono antes de contar como mora. No es "cuántos
+    // días dura el crédito": cada desembolso corre su propio plazo desde su fecha, y se
+    // evalúa contra abonoClienteCreditos (idFacturaCliente → esa factura puntual) — si el
+    // desembolso más antiguo sigue con saldo > 0 pasado ese plazo, entra en mora aunque
+    // desembolsos más nuevos sigan sin vencer. `null` en filas viejas = sin plazo definido,
+    // no se evalúan hasta que se les asigne uno.
+    tiempoCredito: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        validate: {
+            min: { args: [0], msg: 'El tiempo de crédito no puede ser negativo.' }
+        }
+    },
     tipo: {
         type: DataTypes.ENUM('Credito', 'Saldo a Favor'),
         allowNull: false,
