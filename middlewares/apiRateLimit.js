@@ -14,7 +14,12 @@ dotenv.config();
 // un visitante mirando productos se quedaría sin poder comprar.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ipDe = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
+// Cloudflare pone la IP real del visitante en CF-Connecting-IP y ese header no se puede
+// falsear desde afuera: Cloudflare lo sobreescribe siempre, aunque el cliente lo mande. Con
+// `trust proxy` en 1, req.ip ya debería resolver lo mismo vía X-Forwarded-For, pero
+// CF-Connecting-IP no depende de la cantidad de saltos configurada — queda como fuente
+// primaria y req.ip como respaldo si algún día la app deja de estar detrás de Cloudflare.
+const ipDe = (req) => req.headers['cf-connecting-ip'] || req.ip || req.socket?.remoteAddress || 'unknown';
 
 /**
  * @param {object}  opciones

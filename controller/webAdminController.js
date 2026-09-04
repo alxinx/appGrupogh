@@ -17,7 +17,7 @@ import { mailPedidoCancelado } from '../helpers/mailPedidoCancelado.js';
 import { broadcast } from '../helpers/sseManager.js';
 import { inicioDelDiaBogota } from '../helpers/fechas.js';
 import { wherePorAtender, whereEsperandoAlCliente } from '../helpers/pedidosWeb.js';
-import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
+import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 
 const R2_BUCKET = process.env.R2_BUCKET_NAME;
 const R2_BASE   = process.env.R2_PUBLIC_URL;

@@ -32,7 +32,7 @@ import { tituloLista } from '../helpers/textoLista.js';
 import { prepararVoucher } from '../helpers/voucherTraslado.js';
 import { resumenPendientes, wherePendienteAceptar } from '../helpers/trasladosPendientes.js';
 import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
-import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
+import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';

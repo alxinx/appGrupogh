@@ -10,7 +10,7 @@ import {
 } from '../models/index.js';
 import { getPublicKey, getCheckoutBaseUrl, generarFirmaIntegridad, verificarChecksumWebhook } from '../helpers/wompi.js';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
-import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
+import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 import { Upload } from '@aws-sdk/lib-storage';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import s3Client from '../config/r2.js';
