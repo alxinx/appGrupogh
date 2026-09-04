@@ -1065,7 +1065,7 @@ const imprimirGuiaEmpaque = async (req, res) => {
         // --- RESUMEN ---
         const colW = CW / 4;
         const resumen = [
-            ['Unid. por bolsa', dose.capacidadBolsa],
+            ['Unid. por docena', dose.capacidadBolsa],
             ['Total unidades', Number(dose.totalUnidades).toLocaleString('es-CO')],
             ['Total bultos', totalBultos],
             ['Lotes', lotes.length]
@@ -1104,8 +1104,8 @@ const imprimirGuiaEmpaque = async (req, res) => {
             const colorTexto = lote.esResiduo ? '#E24C95' : '#111827';
             const plural = lote.cantidadBultos > 1;
             const titulo = lote.esResiduo
-                ? `Pack de saldo — arma ${lote.cantidadBultos} bolsa${plural ? 's' : ''} así`
-                : `Lote ${lote.numLote} — arma ${lote.cantidadBultos} bolsa${plural ? 's idénticas' : ''} así`;
+                ? `Pack de saldo —  arma ${lote.cantidadBultos} docena${plural ? 's' : ''} así`
+                : `Paquetes ${lote.numLote} —  arma ${lote.cantidadBultos} docena${plural ? 's idénticas' : ''} así`;
             const rangoEtiquetas = lote.codigoInicio === lote.codigoFin
                 ? `Etiqueta ${lote.codigoInicio}`
                 : `Etiquetas ${lote.codigoInicio} a ${lote.codigoFin}`;
@@ -1123,7 +1123,7 @@ const imprimirGuiaEmpaque = async (req, res) => {
             // Encabezado de tabla del lote.
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#9ca3af');
             doc.text('PRODUCTO', col.producto.x, y, { width: col.producto.w, lineBreak: false });
-            doc.text('CANT X BOLSA', col.cantBolsa.x, y, { width: col.cantBolsa.w, align: 'center', lineBreak: false });
+            doc.text('CANT X DOCENA', col.cantBolsa.x, y, { width: col.cantBolsa.w, align: 'center', lineBreak: false });
             doc.text('SKU', col.sku.x, y, { width: col.sku.w, lineBreak: false });
             doc.text('CANTIDAD GLOBAL', col.cantidad.x, y, { width: col.cantidad.w, align: 'right', lineBreak: false });
             y += 14;
@@ -1217,7 +1217,7 @@ const imprimirGuiaEmpaque = async (req, res) => {
 
         // --- PIE ---
         doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#9ca3af')
-            .text('Verifica cada bolsa contra esta guía antes de sellarla y etiquetarla.', MARGIN, PAGE_H - MARGIN - 12, { width: CW, align: 'center' });
+            .text('Verifica cada docena contra esta guía antes de sellarla y etiquetarla.', MARGIN, PAGE_H - MARGIN - 12, { width: CW, align: 'center' });
 
         doc.end();
     } catch (error) {
