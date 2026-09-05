@@ -86,6 +86,17 @@ const FacturaClientes = db.define('FACTURA_CLIENTES', {
         defaultValue : 'pendiente'
     },
 
+    //Me dice. si esta factura es de credito o no. Si es de credito, el cliente tiene un plazo para pagarla. Si no es de credito, el cliente debe pagarla al momento de la venta.
+    // Esto es importante para el modulo de cuentas por cobrar, ya que si es de credito, se debe crear un registro en la tabla de cuentas por cobrar. Si no es de credito, no se debe crear ningun registro en la tabla de cuentas por cobrar.
+    // Por defecto, las facturas son de contado (no de credito).
+    // Esto es importante para el modulo de cuentas por cobrar, ya que si es de credito, se debe crear un registro en la tabla de cuentas por cobrar. Si no es de credito, no se debe crear ningun registro en la tabla de cuentas por cobrar.
+    // Por defecto, las facturas son de contado (no de credito).
+    credito: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+
     // La factura fue marcada como OF por el punto de venta.
     //
     // Las marcadas salen en su propia hoja del informe de facturación de la tienda, con
@@ -98,10 +109,44 @@ const FacturaClientes = db.define('FACTURA_CLIENTES', {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false
+    }, 
+    // Valor BRUTO de la factura: precio de detal (sin descuento mayorista) de cada línea,
+    // sin impuestos. Es el punto de partida del formato estándar de factura — bruto →
+    // descuento → base gravable → IVA → total —, no el valor ya cobrado.
+    // Invariante: subtotal − descuentoMayorista + totalImpuestos = total (no
+    // subtotal + totalImpuestos = total: ese era el invariante viejo, de cuando subtotal
+    // ya venía neto de descuento).
+    subtotal: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+    defaultValue: 0
+    },
+    totalImpuestos: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0
+    },
+    total: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0
+    },
+
+    // Cuánto se descontó en toda la factura por vender a precio mayorista en vez de
+    // detal, en términos de base gravable (sin IVA) — no del valor con IVA que se cobró
+    // de menos. Sí participa en el invariante de arriba: es lo que separa el subtotal
+    // bruto de la base gravable que realmente se facturó.
+    descuentoMayorista: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0
     }
+
 }, {
     tableName: 'FACTURA_CLIENTES',
     timestamps: true
 });
 
 export default FacturaClientes;
+
+

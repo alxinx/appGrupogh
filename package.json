@@ -45,7 +45,8 @@
     "db:migrar-permisos-admin": "node ./seed/migracionPermisosAdmin.js",
     "db:migrar-movimientos": "node ./seed/migracionMovimientosCaja.js",
     "db:eliminar-cajas": "node ./seed/migracionEliminarCajas.js",
-    "db:migrar-costo": "node ./seed/migracionCostoProducto.js"
+    "db:migrar-costo": "node ./seed/migracionCostoProducto.js",
+    "db:migrar-impuestos-factura": "node ./seed/migracionImpuestosFactura.js"
   },
   "keywords": [
     "contable"

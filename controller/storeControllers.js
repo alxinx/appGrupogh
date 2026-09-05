@@ -99,6 +99,7 @@ const dashboardStores = async (req, res) => {
         currentPath: req.path,
         trasladosPendientes,
         wholesaleMin: parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6,
+        ivaPercent: parseFloat(process.env.IVA) || 0,
         departamentos,
         clienteGenerico,
         cajaMenorDefault: parseFloat(process.env.PETTY_CASH_FOUND) || 0,
@@ -1767,20 +1768,70 @@ const procesarFactura = async (req, res) => {
     // la factura tiene que cuadrar contra el pago que entró. Para una venta de mostrador se
     // calcula normal, con la regla de mayorista.
     const precioWebPorProducto = new Map((detallesWeb || []).map(d => [d.idProducto, parseFloat(d.valorUnidad)]));
-    let   totalOrden      = 0;
+
+    // Los precios del catálogo (precioVentaPublicoFinal / precioVentaMayorista) ya incluyen
+    // IVA — son el precio que paga el cliente. Cada línea se descompone en base + impuesto
+    // a partir de ese valor CON IVA, nunca al revés: Base = ConIva / (1 + IVA%). Si la
+    // variable de entorno no está declarada, IVA_PCT cae en 0 y todo se degrada al
+    // comportamiento anterior (subtotal = total, impuestos = 0) en vez de inventar una tasa.
+    const IVA_PCT  = parseFloat(process.env.IVA) || 0;
+    const IVA_RATE = IVA_PCT / 100;
+    const round2   = (n) => parseFloat(n.toFixed(2));
+
+    let totalOrden          = 0;
+    let subtotalOrden       = 0;
+    let totalImpuestosOrden = 0;
+    let descuentoMayorista  = 0;
     const itemsProcesados = itemsEfectivos.map(it => {
-        const prod    = prodMap.get(it.idProducto);
-        const qty     = parseInt(it.cantidad);
-        const precio  = precioWebPorProducto.has(it.idProducto)
+        const prod   = prodMap.get(it.idProducto);
+        const qty    = parseInt(it.cantidad);
+        const esWeb  = precioWebPorProducto.has(it.idProducto);
+        const precio = esWeb
             ? precioWebPorProducto.get(it.idProducto)
             : (esMayorista ? parseFloat(prod.precioVentaMayorista) : parseFloat(prod.precioVentaPublicoFinal));
-        const subTotal = parseFloat((precio * qty).toFixed(2));
-        totalOrden    += subTotal;
-        return { idProducto: it.idProducto, nombreProducto: prod.nombreProducto, cantidad: qty, valorUnidad: precio, subTotal, total: subTotal };
+
+        const totalLinea    = round2(precio * qty);                       // con IVA incluido: lo que se cobra
+        const baseGravable   = round2(totalLinea / (1 + IVA_RATE));        // sin IVA, ya con el descuento adentro
+        const impuestoLinea  = round2(totalLinea - baseGravable);
+
+        // Subtotal de la factura = valor bruto a precio de detal, sin descuento y sin IVA
+        // (formato estándar de factura: bruto → descuento → base gravable → IVA → total).
+        // No aplica a un pedido web (precio ya fijo, pagado de antes: no hay "precio de
+        // detal" que comparar) ni cuando la orden no calificó como mayorista (ahí el precio
+        // ya es el de detal, y precioDetalLinea === precio da descuento 0).
+        const precioDetalLinea = esWeb ? precio : parseFloat(prod.precioVentaPublicoFinal);
+        const totalDetalLinea  = round2(precioDetalLinea * qty);
+        const baseDetalLinea   = round2(totalDetalLinea / (1 + IVA_RATE));
+        // Descuento en términos de base gravable (sin IVA), no del valor cobrado con IVA
+        // incluido: así Subtotal − Descuento = baseGravable (lo que realmente se cobró sin
+        // IVA), y ese + Impuestos = Total. Con IVA incluido en el descuento esa resta no
+        // cuadraba contra un Subtotal ya sin IVA.
+        const descuentoLinea = round2(baseDetalLinea - baseGravable);
+
+        totalOrden          += totalLinea;
+        subtotalOrden        += baseDetalLinea;
+        totalImpuestosOrden += impuestoLinea;
+        descuentoMayorista   += descuentoLinea;
+
+        return {
+            idProducto: it.idProducto, nombreProducto: prod.nombreProducto, cantidad: qty,
+            valorUnidad: precio, subTotal: baseGravable, porcentajeIva: IVA_PCT,
+            valorImpuesto: impuestoLinea, total: totalLinea
+        };
     });
-    totalOrden = parseFloat(totalOrden.toFixed(2));
+    totalOrden          = round2(totalOrden);
+    subtotalOrden        = round2(subtotalOrden);
+    totalImpuestosOrden = round2(totalImpuestosOrden);
+    descuentoMayorista   = round2(descuentoMayorista);
     const sumaPagos = parseFloat(pagosEfectivos.reduce((s, p) => s + Number(p.valor), 0).toFixed(2));
-    if (Math.abs(sumaPagos - totalOrden) > 1)
+    // Match exacto: el frontend no redondea el efectivo a ninguna denominación, así que
+    // sumaPagos y totalOrden deben coincidir peso a peso. El margen de 0.005 (medio
+    // centavo) es solo para absorber el error binario de punto flotante al sumar varios
+    // renglones — no es una tolerancia de negocio. Antes esto permitía hasta $1 de
+    // diferencia; ahora que FACTURA_CLIENTES.total persiste totalOrden (y el cuadre de
+    // caja sigue sumando DETALLES_PAGOS_FACTURA por su lado), dejar pasar un desfase acá
+    // habría creado dos "totales" distintos para la misma factura.
+    if (Math.abs(sumaPagos - totalOrden) > 0.005)
         return res.status(400).json({ success: false, mensaje: `Suma de pagos ($${sumaPagos}) ≠ total orden ($${totalOrden}).` });
 
     // ── 3. Verificar cliente ──────────────────────────────────────────────────
@@ -1819,6 +1870,10 @@ const procesarFactura = async (req, res) => {
         const nroFactura  = Number(regimen.nroActual) + 1;
 
         // ── 6. Crear factura ──────────────────────────────────────────────────
+        // subtotalOrden, totalImpuestosOrden y descuentoMayorista ya se calcularon en el
+        // paso 2, línea por línea. totalOrden (con IVA incluido) es lo que realmente se
+        // cobró — no se le suma nada acá, porque el IVA ya está adentro de cada precio
+        // unitario, no encima.
         const factura = await FacturaClientes.create({
             idCliente:            idClienteEfectivo.trim(),
             idRegimenFacturacion: regimen.idRegimenFacturacion,
@@ -1831,7 +1886,11 @@ const procesarFactura = async (req, res) => {
             horaEmision:          ahora.toTimeString().slice(0, 8),
             // Marcada OF: sale en la hoja aparte del informe de facturación de la tienda,
             // con los datos tributarios del cliente abiertos en columnas.
-            OF:                   marcarOF
+            OF:                   marcarOF,
+            subtotal:             subtotalOrden,
+            totalImpuestos:       totalImpuestosOrden,
+            total:                totalOrden,
+            descuentoMayorista
         }, { transaction: t });
 
         await RegimenFacturacion.update(
@@ -1857,6 +1916,8 @@ const procesarFactura = async (req, res) => {
                 cantidad:         it.cantidad,
                 valorUnidad:      it.valorUnidad,
                 subTotal:         it.subTotal,
+                porcentajeIva:    it.porcentajeIva,
+                valorImpuesto:    it.valorImpuesto,
                 total:            it.total
             }, { transaction: t });
             detallesCreados.push({ ...it, idDetallesFactura: det.idDetallesFactura });
@@ -1911,16 +1972,20 @@ const procesarFactura = async (req, res) => {
             }
         }
 
-        // ── 10. Impuestos base cero ───────────────────────────────────────────
+        // ── 10. Impuestos por línea (IVA) ─────────────────────────────────────
+        // det.subTotal ya es la base gravable (paso 2) y det.valorImpuesto su IVA — mismo
+        // desglose que queda en DETALLES_FACTURA, solo que acá aparte por línea, tipado
+        // por tipoImpuesto, para dejar espacio a otros impuestos (INC, retenciones) el
+        // día que existan sin tocar DETALLES_FACTURA.
         for (const det of detallesCreados) {
             await DetallesImpuestosFacturaCliente.create({
                 idFacturaCliente:  factura.idFacturaCliente,
                 idDetallesFactura: det.idDetallesFactura,
-                tipoImpuesto:      '0',
-                nombreImpuesto:    null,
-                porcentaje:        0,
+                tipoImpuesto:      'IVA',
+                nombreImpuesto:    'IVA',
+                porcentaje:        det.porcentajeIva,
                 baseGravable:      det.subTotal,
-                valorImpuesto:     0,
+                valorImpuesto:     det.valorImpuesto,
                 retencion:         false
             }, { transaction: t });
         }
@@ -2204,12 +2269,10 @@ const getTirillaPDF = async (req, res) => {
         ], doc.y);
         hr();
 
-        let subtotalFactura = 0;
         for (const det of factura.detalles) {
             const nombre = det.producto?.nombreProducto || det.idProducto;
             const vu     = parseFloat(det.valorUnidad);
             const vtotal = parseFloat(det.total);
-            subtotalFactura += vtotal;
             row([
                 { txt: nombre,         x: MARGIN,            w: c1 },
                 { txt: String(parseInt(det.cantidad)), x: MARGIN + c1, w: c2, align: 'center' },
@@ -2229,10 +2292,17 @@ const getTirillaPDF = async (req, res) => {
             doc.y = Math.max(doc.y, tY + (bold ? 10 : 9));
             doc.moveDown(0.1);
         };
-        totRow('Subtotal:', subtotalFactura);
-        totRow('Total Impuestos:', 0);
+        // Sin fila de "Descuento a mayorista": mostrar el subtotal bruto y el descuento
+        // aparte confundía en la tirilla — el descuento podía coincidir en monto con el
+        // total y parecía que aún faltaba aplicarlo. factura.subtotal es el bruto (precio
+        // de detal, sin IVA) — acá se imprime la base gravable ya neta de descuento
+        // (subtotal − descuentoMayorista), que es lo que realmente se cobró sin IVA:
+        // Subtotal + Impuestos = Total, igual que en el resumen del POS (mixinsPos.pug).
+        const subtotalNeto = parseFloat(factura.subtotal) - parseFloat(factura.descuentoMayorista);
+        totRow('Subtotal:', subtotalNeto);
+        totRow('Total Impuestos:', parseFloat(factura.totalImpuestos));
         doc.moveDown(0.1);
-        totRow('TOTAL A PAGAR:', subtotalFactura, true);
+        totRow('TOTAL A PAGAR:', parseFloat(factura.total), true);
 
         hr();
 

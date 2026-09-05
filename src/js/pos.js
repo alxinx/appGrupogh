@@ -236,6 +236,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // el backend lo reconstruye desde PAGOS_PEDIDO_WEB al facturar. Acá solo se muestra.
     let pagoWebActivo = null;
     const WHOLESALE_MIN = parseInt(document.getElementById('drop-zone')?.dataset.wholesaleMin) || 6;
+    // % de IVA vigente (variable de entorno IVA, inyectada por el servidor) — nunca se
+    // hardcodea acá para que un cambio de tarifa no requiera tocar este archivo.
+    const IVA_PERCENT = parseFloat(document.getElementById('drop-zone')?.dataset.ivaPercent) || 0;
 
     const cartList      = document.getElementById('cart-list');
     const cartCount     = document.getElementById('cart-count');
@@ -750,6 +753,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const precio = getPrecioItem(item);
         const total  = precio * item.cantidad;
         const atMax  = item.cantidad >= item.stock;
+        // Precio real (detal) tachado: solo tiene sentido mostrarlo cuando la orden calificó
+        // como mayorista Y esta línea puntual efectivamente se está cobrando más barato —
+        // mismo criterio que usa el backend para descuentoLinea (storeControllers.js).
+        const tieneDescuento = getModo() === 'mayorista' && item.precioDetal > precio;
         // Sin controles cuando es un pedido web: mostrar botones que no hacen nada
         // confunde más que ayudar. Se ve la cantidad, y ya.
         const bloqueado = !!pedidoWebActivo;
@@ -797,7 +804,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 <div class="flex items-center justify-between mt-4">
                     ${controlesCantidad}
                     <div class="text-right">
-                        <p class="text-[10px] text-gray-400 font-medium leading-none mb-1">Unid: $${fmt(precio)}</p>
+                        <p class="text-[10px] text-gray-400 font-medium leading-none mb-1">
+                            ${tieneDescuento ? `<span class="line-through mr-1">$${fmt(item.precioDetal)}</span>` : ''}Unid: $${fmt(precio)}
+                        </p>
                         <p class="font-bold text-base text-gh-grayText leading-none">$${fmt(total)}</p>
                     </div>
                 </div>
@@ -830,7 +839,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                     <img src="/img/avatars/sadBag.webp" alt="Carrito vacío" class="sad-bag-sigh w-24 h-24 object-contain opacity-70">
                     <p class="text-sm font-medium text-gray-400">La orden está vacía</p>
                 </div>`;
-            renderResumen(0);
+            renderResumen([]);
             return;
         }
 
@@ -850,9 +859,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             span.addEventListener('dblclick', () => editarCantidad(span.dataset.id, span))
         );
 
-        // Resumen
-        const subtotal = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
-        renderResumen(subtotal);
+        // Resumen — se recalcula acá mismo, en el navegador, cada vez que cambia el
+        // carrito (sin ida y vuelta al servidor), para que el cajero vea de una el mismo
+        // desglose que va a quedar en la factura.
+        renderResumen(items);
 
         actualizarScrollHint();
 
@@ -860,11 +870,24 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         sincronizarReservasPos();
     };
 
-    const renderResumen = (subtotal) => {
+    const renderResumen = (items) => {
         const elSub   = document.getElementById('res-subtotal');
+        const elImp   = document.getElementById('res-impuestos');
         const elTotal = document.getElementById('res-total');
+
+        // total: lo que realmente se cobra (precio mayorista o detal, según aplique) —
+        // mismo cálculo que ya usa el modal de pago (calcularSubtotal). El descuento por
+        // mayorista no se muestra acá como línea aparte (confundía: coincidía en monto con
+        // el total y parecía que faltaba aplicarlo) — se ve por ítem, con el precio de
+        // detal tachado (renderItemCarrito). Subtotal es la base gravable de lo realmente
+        // cobrado, ya con el descuento adentro: Subtotal + Impuestos = Total.
+        const total = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
+        const subtotal  = IVA_PERCENT > 0 ? total / (1 + IVA_PERCENT / 100) : total;
+        const impuestos = total - subtotal;
+
         if (elSub)   elSub.textContent   = `$${fmt(subtotal)}`;
-        if (elTotal) elTotal.textContent = `$${fmt(subtotal)}`;
+        if (elImp)   elImp.textContent   = `$${fmt(impuestos)}`;
+        if (elTotal) elTotal.textContent = `$${fmt(total)}`;
     };
 
     // ── Limpiar orden ────────────────────────────────────────────────────────
@@ -2104,10 +2127,15 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         };
 
         // ── Totales ────────────────────────────────────────────────────────────
+        // calcularSubtotal() pese al nombre devuelve el total con IVA incluido (lo que
+        // realmente se cobra) — mismo valor que "total" en renderResumen. Antes este modal
+        // mostraba ese valor como "Subtotal" e "Impuestos" quedaba hardcodeado en 0, sin
+        // relación con el IVA real. Se descompone igual que en el resumen del carrito:
+        // Subtotal (base gravable neta, sin IVA) + Impuestos = Total.
         const actualizarTotalesFV = () => {
-            const subtotal  = calcularSubtotal();
-            const impuestos = 0;
-            const total     = subtotal + impuestos;
+            const total     = calcularSubtotal();
+            const subtotal  = IVA_PERCENT > 0 ? total / (1 + IVA_PERCENT / 100) : total;
+            const impuestos = total - subtotal;
             const elSub  = document.getElementById('fv-subtotal');
             const elImp  = document.getElementById('fv-impuestos');
             const elTot  = document.getElementById('fv-total');
