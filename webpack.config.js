@@ -4,7 +4,6 @@ export default {
     mode: 'production',
     devtool: false,
     entry: {
-        menu: './src/js/menus.js',
         textoLista: './src/js/textoLista.js',
         dataAsync: './src/js/dataAsync.js',
         dropdownBtn: './src/js/dropdownBtn',
@@ -19,7 +18,6 @@ export default {
         dataSupplier: '/src/js/dataSupplier.js',
         supplierList: '/src/js/supplierList.js',
         dataDose : '/src/js/dataDose.js',
-        utils : '/src/js/utils.js',
         dosificador : '/src/js/dosificador.js',
         listadoDose : '/src/js/listadoDose.js',
         doseView : '/src/js/doseView.js',

@@ -3456,7 +3456,7 @@ const postNuevaTienda = async (req, res) => {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
         const activa = req.body.activa ? true : false
 
-        return res.status(201).render('./administrador/stores/nueva', {
+        return res.status(201).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -3485,7 +3485,7 @@ const postNuevaTienda = async (req, res) => {
         const checkTaxId = await PuntosDeVenta.findOne({ where: { taxId: nitBusqueda } });
         if (checkTaxId) {
             const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(200).render('./administrador/stores/nueva', {
+            return res.status(200).render('./administrador/stores/new', {
                 pagina: "Tiendas",
                 subPagina: "Nueva Tienda",
                 csrfToken: req.csrfToken(),
@@ -3515,7 +3515,7 @@ const postNuevaTienda = async (req, res) => {
         });
         if (checkRes) {
             const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(409).render('./administrador/stores/nueva', {
+            return res.status(409).render('./administrador/stores/new', {
                 pagina: "Tiendas",
                 subPagina: "Nueva Tienda",
                 csrfToken: req.csrfToken(),
@@ -3538,7 +3538,7 @@ const postNuevaTienda = async (req, res) => {
 
     if ((nStart > 0 && nEnd === 0) || (nEnd > 0 && nStart === 0)) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -3558,7 +3558,7 @@ const postNuevaTienda = async (req, res) => {
 
     if (nEnd > 0 && nStart >= nEnd) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -3580,7 +3580,7 @@ const postNuevaTienda = async (req, res) => {
 
     if ((dEmision && !dVencimiento) || (!dEmision && dVencimiento)) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -3601,7 +3601,7 @@ const postNuevaTienda = async (req, res) => {
 
     if (dEmision && dVencimiento && dEmision > dVencimiento) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -3671,7 +3671,7 @@ const postNuevaTienda = async (req, res) => {
 
     // 6. RESPUESTA FINAL
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-    return res.render('./administrador/stores/nueva', {
+    return res.render('./administrador/stores/new', {
         pagina: "Tiendas",
         subPagina: "Nueva Tienda",
         csrfToken: req.csrfToken(),
