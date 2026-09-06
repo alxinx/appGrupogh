@@ -10,7 +10,7 @@ import {
     CajaTienda, UserPermisos, PermisosAcciones, PermisosRecursos,
     PedidosWeb, DetallesPedidoWeb, PagosPedidoWeb,
     CajasYBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, MovimientosCajasBancos,
-    CreditoDisponibleCliente
+    CreditoDisponibleCliente, AbonoClienteCreditos
 } from '../models/index.js';
 import { Op, fn, col, literal } from 'sequelize';
 import { sincronizarReservas, liberarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
@@ -577,7 +577,7 @@ const _getCajaAbierta = (idPuntoDeVenta, includes = [], transaction = undefined)
 // con la caja bloqueada y necesita leer dentro de la misma transacción para no evaluar
 // un estado anterior al lock.
 const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendiente', transaction = undefined) => {
-    const [egresosRows, facturas] = await Promise.all([
+    const [egresosRows, facturas, abonosRows] = await Promise.all([
         Egresos.findAll({
             where: { idPuntoDeVenta: idPdv, estado: estadoTx, createdAt: { [Op.between]: [inicio, fin] } },
             attributes: ['idEgreso', 'referencia', 'descripcion', 'valorEgreso', 'metodoPago', 'idEntidad', 'idCajaBanco', 'tipo'],
@@ -599,6 +599,21 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
             attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
             include: [{ model: DetallesPagosFactura, as: 'pagos',
                         include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'] }] }],
+            transaction
+        }),
+        // Abonos a crédito de cliente (views/tienda/clientes/detalle.pug "Abono Global"):
+        // el dinero que un cliente paga hoy para bajar una factura de crédito VIEJA tiene
+        // que entrar al cuadre de HOY igual que una venta — el `createdAt` que manda acá es
+        // el del abono, no el de la factura (que puede ser de hace semanas). Sin `estado`
+        // propio (es un ledger append-only): el filtro por fecha ya basta, y el mismo abono
+        // no puede "cambiar de estado" para dejar de contar según se abra o cierre la caja.
+        AbonoClienteCreditos.findAll({
+            where: { createdAt: { [Op.between]: [inicio, fin] } },
+            attributes: ['idAbonoClienteCredito', 'idFacturaCliente', 'idCliente', 'valorAbono', 'metodoPago', 'nroReferencia', 'loteAbonoGlobal'],
+            include: [
+                { model: FacturaClientes, as: 'factura', attributes: ['prefijo', 'numeroFactura', 'idPuntoDeVenta'], where: { idPuntoDeVenta: idPdv }, required: true },
+                { model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false }
+            ],
             transaction
         })
     ]);
@@ -631,6 +646,37 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
                 txCreditoTienda.push({ idFacturaCliente: f.idFacturaCliente, nroFactura, entidad: 'Crédito en Tienda', referencia: p.nroReferencia || '—', valor: val });
                 facturasCreditoTienda.add(f.idFacturaCliente);
             }
+        }
+    }
+
+    // Abonos a crédito de cliente — mismo criterio de clasificación que arriba, marcados
+    // "(Abono)" para que el operador no los confunda con el pago de una venta nueva al ver
+    // el número de una factura de hace días en el cuadre de hoy. El enlace de la fila no
+    // apunta a la tirilla sino al voucher del abono (idCliente + loteAbonoGlobal) cuando lo
+    // hay: ésa es la prueba real de ESTE ingreso — un "abono global" pudo repartirse entre
+    // varias facturas, y la tirilla de una sola no cuenta la historia completa. Si no vino
+    // de un abono global (loteAbonoGlobal null — el abono a una sola factura desde admin no
+    // arma lote), no hay voucher que mostrar y sí cae de vuelta a la tirilla de esa factura,
+    // que igual ya trae su propia tabla de abonos.
+    for (const a of abonosRows) {
+        const val = Math.round(parseFloat(a.valorAbono) || 0);
+        const nroFactura = `${a.factura?.prefijo || ''}${a.factura?.numeroFactura || ''}`;
+        const base = {
+            idFacturaCliente: a.idFacturaCliente, nroFactura,
+            idCliente: a.idCliente, loteAbonoGlobal: a.loteAbonoGlobal || null
+        };
+        if (a.metodoPago === 'Efectivo') {
+            sEfectivo += val;
+            txEfectivo.push({ ...base, entidad: 'Efectivo (Abono)', referencia: a.nroReferencia || '—', valor: val });
+            facturasEfectivo.add(a.idFacturaCliente);
+        } else if (['Banco', 'Billetera Virtual', 'Tarjeta Credito'].includes(a.metodoPago)) {
+            sMedios += val;
+            txElectronicos.push({ ...base, entidad: `${a.entidad?.nombreEntidad || a.metodoPago} (Abono)`, referencia: a.nroReferencia || '—', valor: val });
+            facturasElectronicos.add(a.idFacturaCliente);
+        } else if (a.metodoPago === 'Entidad Crediticia') {
+            sCredito += val;
+            txCredito.push({ ...base, entidad: `${a.entidad?.nombreEntidad || '—'} (Abono)`, referencia: a.nroReferencia || '—', valor: val });
+            facturasCredito.add(a.idFacturaCliente);
         }
     }
 
@@ -1577,6 +1623,30 @@ const misClienteDetallePage = async (req, res) => {
         });
         const tiempoCredito = creditoDisponible?.tiempoCredito ?? null;
 
+        // Cupo y consumido son globales al cliente (todas las tiendas), no solo esta —
+        // el cupo lo asigna administración una sola vez para el cliente, no por sede.
+        const facturasCreditoGlobal = await db.query(`
+            SELECT fc.total, ult.valorPorPagar AS deudaUltima
+            FROM FACTURA_CLIENTES fc
+            LEFT JOIN (
+                SELECT a1.idFacturaCliente, a1.valorPorPagar
+                FROM ABONO_CLIENTE_CREDITOS a1
+                INNER JOIN (
+                    SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
+                    FROM ABONO_CLIENTE_CREDITOS GROUP BY idFacturaCliente
+                ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
+            ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
+            WHERE fc.idCliente = :idCliente AND fc.credito = 1
+        `, { replacements: { idCliente }, type: db.QueryTypes.SELECT });
+
+        const valorTotalCredito = creditoDisponible ? parseFloat(creditoDisponible.valorCreditoCliente) : 0;
+        const valorConsumido = _round2(facturasCreditoGlobal.reduce((s, r) => {
+            const total = parseFloat(r.total);
+            const deudaActual = r.deudaUltima != null ? parseFloat(r.deudaUltima) : total;
+            return s + (deudaActual > 0 ? deudaActual : 0);
+        }, 0));
+        const pctConsumido = valorTotalCredito > 0 ? Math.min(100, _round2((valorConsumido / valorTotalCredito) * 100)) : 0;
+
         const nombre = cliente.tipo_persona === 'J'
             ? (cliente.razon_social || '')
             : [cliente.primer_nombre, cliente.segundo_nombre, cliente.primer_apellido, cliente.segundo_apellido].filter(Boolean).join(' ');
@@ -1604,11 +1674,373 @@ const misClienteDetallePage = async (req, res) => {
             csrfToken: req.csrfToken(),
             cliente: { idCliente: cliente.idCliente, nombre: nombre || 'Cliente', documento: `${cliente.tipoDocumento || 'CC'} ${cliente.numero_doc || ''}`.trim(), telefono: cliente.telefono },
             facturas: facturasVista,
-            deudaTotal: _round2(facturasVista.reduce((s, f) => s + f.deudaActual, 0))
+            deudaTotal: _round2(facturasVista.reduce((s, f) => s + f.deudaActual, 0)),
+            valorTotalCredito,
+            valorConsumido,
+            pctConsumido
         });
     } catch (e) {
         console.error('misClienteDetallePage:', e);
         return res.redirect('/store/clientes');
+    }
+};
+
+// ─── ABONO GLOBAL DE CRÉDITO (TIENDA) ─────────────────────────────────────────
+// Reparte VARIAS líneas de pago (una factura de crédito puede pagarse con más de una
+// transferencia, y el operador no debería tener que repetir "Abono Global" una vez por
+// cada una) entre las facturas de crédito pendientes de este cliente EN ESTA TIENDA
+// únicamente — mismo criterio FIFO (más antigua primero, y dentro de una misma factura,
+// las líneas de pago se aplican en el orden en que las mandó el operador) que el "abono
+// global" de administración (controller/adminControllers.js `abonoGlobalCliente`, que solo
+// admite una línea), pero acotado por idPuntoDeVenta: un vendedor no debe poder mover el
+// saldo de una factura de otra sede que ni siquiera puede ver en esta página.
+//
+// Mismo set de métodos que pagar una factura en el POS, menos 'Credito En Tienda'
+// (financiar con el propio cupo no aplica a pagar una deuda ya existente) — 'Entidad
+// Crediticia' sí aplica: el cliente puede cancelar su deuda financiándose con un tercero
+// (Addi, Sistecrédito) que le paga a la tienda directamente. Salvo Efectivo, cada línea
+// trae su propia entidad (banco/billetera/tarjeta/financiera), igual que en el POS —así
+// dos transferencias del mismo cliente a bancos distintos quedan cada una con su banco real
+// en la bitácora, no agrupadas bajo un "Banco" genérico.
+const METODOS_ABONO_STORE = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
+const METODOS_ABONO_CON_ENTIDAD = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+
+const abonoGlobalClienteStore = async (req, res) => {
+    const { idCliente } = req.params;
+    const idPuntoDeVenta = req.idPuntoDeVenta;
+    const pagosBody = Array.isArray(req.body?.pagos) ? req.body.pagos : [];
+
+    if (!idPuntoDeVenta)
+        return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
+    if (!pagosBody.length)
+        return res.status(400).json({ success: false, mensaje: 'Agrega al menos un método de pago.' });
+
+    // Mismo candado que procesarFactura: mientras se cuadra la caja del turno, esta tienda
+    // no registra dinero nuevo por ningún canal — un abono que entrara a mitad del conteo
+    // se le anotaría al operador como descuadre aunque la plata sí esté en el cajón.
+    const cajaAbierta = await _getCajaAbierta(idPuntoDeVenta);
+    if (cajaAbierta?.estado === 'auditoria' && !(await _liberarCuadreSiVencio(idPuntoDeVenta, cajaAbierta)))
+        return res.status(409).json({
+            success: false,
+            cajaEnCuadre: true,
+            mensaje: 'La caja está en proceso de cierre. No se pueden registrar abonos hasta que termine el cuadre.'
+        });
+
+    // Whitelist explícita por línea (CLAUDE.md §12) — nunca se pasa el body tal cual.
+    const lineas = [];
+    for (const p of pagosBody) {
+        const valor = parseFloat(p?.valor);
+        const metodoPago = p?.metodoPago;
+        const idEntidad = p?.idEntidad ? parseInt(p.idEntidad) : null;
+        const nroReferencia = typeof p?.nroReferencia === 'string' ? p.nroReferencia.trim() || null : null;
+
+        if (!Number.isFinite(valor) || valor <= 0)
+            return res.status(400).json({ success: false, mensaje: 'Cada línea de pago debe tener un valor mayor a 0.' });
+        if (!METODOS_ABONO_STORE.includes(metodoPago))
+            return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
+        if (METODOS_ABONO_CON_ENTIDAD.includes(metodoPago) && !idEntidad)
+            return res.status(400).json({ success: false, mensaje: `Selecciona la entidad para el método ${metodoPago}.` });
+        // La referencia es lo único que permite conciliar una consignación/transferencia
+        // contra el extracto bancario después — Efectivo no tiene con qué conciliar, así
+        // que es el único método exento. Validado también en el modal, pero un dato
+        // financiero no se confía solo a la validación del cliente.
+        if (metodoPago !== 'Efectivo' && !nroReferencia)
+            return res.status(400).json({ success: false, mensaje: `Falta la referencia del pago por ${metodoPago}.` });
+
+        lineas.push({ valor, metodoPago, idEntidad, nroReferencia });
+    }
+
+    try {
+        const idsEntidad = [...new Set(lineas.filter(l => l.idEntidad).map(l => l.idEntidad))];
+        if (idsEntidad.length) {
+            const entidades = await Entidades.findAll({ where: { idEntidad: idsEntidad }, raw: true });
+            const porId = new Map(entidades.map(e => [e.idEntidad, e]));
+            for (const l of lineas) {
+                if (!l.idEntidad) continue;
+                const ent = porId.get(l.idEntidad);
+                if (!ent || ent.tipoEntidad !== l.metodoPago)
+                    return res.status(400).json({ success: false, mensaje: 'Entidad inválida para el método seleccionado.' });
+            }
+        }
+
+        const valorTotal = _round2(lineas.reduce((s, l) => s + l.valor, 0));
+
+        const rows = await db.query(`
+            SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura, fc.total,
+                   ult.valorPorPagar AS deudaUltima
+            FROM FACTURA_CLIENTES fc
+            LEFT JOIN (
+                SELECT a1.idFacturaCliente, a1.valorPorPagar
+                FROM ABONO_CLIENTE_CREDITOS a1
+                INNER JOIN (
+                    SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
+                    FROM ABONO_CLIENTE_CREDITOS GROUP BY idFacturaCliente
+                ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
+            ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
+            WHERE fc.idCliente = :idCliente AND fc.idPuntoDeVenta = :idPuntoDeVenta
+                  AND fc.credito = 1 AND fc.estado = 'pendiente'
+            ORDER BY fc.fechaEmision ASC
+        `, { replacements: { idCliente, idPuntoDeVenta }, type: db.QueryTypes.SELECT });
+
+        const facturas = rows.map(r => {
+            const total = parseFloat(r.total);
+            const deudaActual = r.deudaUltima != null ? parseFloat(r.deudaUltima) : total;
+            return { idFacturaCliente: r.idFacturaCliente, nroFactura: `${r.prefijo || ''}${r.numeroFactura}`, valorOriginal: total, deudaActual };
+        }).filter(f => f.deudaActual > 0);
+
+        const deudaTotal = _round2(facturas.reduce((s, f) => s + f.deudaActual, 0));
+        if (!facturas.length)
+            return res.status(409).json({ success: false, mensaje: 'Este cliente no tiene facturas de crédito pendientes en esta tienda.' });
+        if (valorTotal > deudaTotal)
+            return res.status(400).json({ success: false, mensaje: `El total de las líneas de pago no puede superar la deuda total en esta tienda (${fmtCOP(deudaTotal)}).` });
+
+        const empleado = req.empleadoVerificado;
+        const loteAbonoGlobal = randomUUID();
+        // idFacturaCliente → total aplicado en este lote (una factura puede recibir trozos
+        // de más de una línea de pago si una transferencia no alcanza a cubrirla completa).
+        const aplicadoPorFactura = new Map();
+        let idxFactura = 0;
+
+        const t = await db.transaction();
+        try {
+            for (const linea of lineas) {
+                let restanteLinea = linea.valor;
+                while (restanteLinea > 0 && idxFactura < facturas.length) {
+                    const f = facturas[idxFactura];
+                    if (f.deudaActual <= 0) { idxFactura++; continue; }
+
+                    const aplicar = _round2(Math.min(restanteLinea, f.deudaActual));
+                    f.deudaActual   = _round2(f.deudaActual - aplicar);
+                    restanteLinea   = _round2(restanteLinea - aplicar);
+
+                    await AbonoClienteCreditos.create({
+                        idFacturaCliente: f.idFacturaCliente, idCliente,
+                        totalFactura: f.valorOriginal,
+                        valorAbono: aplicar, valorPorPagar: f.deudaActual,
+                        metodoPago: linea.metodoPago, idEntidad: linea.idEntidad,
+                        nroReferencia: linea.nroReferencia, loteAbonoGlobal,
+                        idEmpleado:     empleado?.idEmpleado || null,
+                        nombreEmpleado: empleado?.nombre || null,
+                        codigoEmpleado: empleado?.codigoEmpleado || null,
+                        idUsuario:      req.usuario?.idUsuario || null
+                    }, { transaction: t });
+
+                    if (f.deudaActual <= 0) {
+                        await FacturaClientes.update(
+                            { estado: 'liquidada' },
+                            { where: { idFacturaCliente: f.idFacturaCliente, estado: 'pendiente' }, transaction: t }
+                        );
+                        idxFactura++;
+                    }
+
+                    aplicadoPorFactura.set(
+                        f.idFacturaCliente,
+                        _round2((aplicadoPorFactura.get(f.idFacturaCliente) || 0) + aplicar)
+                    );
+                }
+            }
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        const facturasResumen = [...aplicadoPorFactura.entries()].map(([idFacturaCliente, aplicado]) => {
+            const f = facturas.find(x => x.idFacturaCliente === idFacturaCliente);
+            return { idFacturaCliente, nroFactura: f?.nroFactura, aplicado, saldoRestante: f?.deudaActual ?? 0 };
+        });
+
+        return res.json({
+            success: true,
+            mensaje: `Abono de ${fmtCOP(valorTotal)} repartido entre ${facturasResumen.length} factura${facturasResumen.length !== 1 ? 's' : ''}.`,
+            loteAbonoGlobal, deudaTotal, valorTotal, facturas: facturasResumen
+        });
+    } catch (e) {
+        console.error('abonoGlobalClienteStore:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono.' });
+    }
+};
+
+// ─── VOUCHER DE ABONO GLOBAL (PDF) ────────────────────────────────────────────
+// Comprobante del abono en sí (no de una factura puntual): total abonado, deuda antes/
+// después, cómo se pagó, y qué facturas quedaron tocadas — es el "recibo" que certifica la
+// operación completa cuando repartió un solo pago entre varias facturas. Acotado a
+// idPuntoDeVenta igual que el abono que lo generó: no expone lotes de otra tienda.
+const getVoucherAbonoPDF = async (req, res) => {
+    const { idCliente, loteAbonoGlobal } = req.params;
+    const idPuntoDeVenta = req.idPuntoDeVenta;
+    try {
+        if (!idPuntoDeVenta) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta asignado.' });
+
+        const cliente = await Clientes.findByPk(idCliente, { raw: true });
+        if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado.' });
+
+        // MAX(valorPorPagar + valorAbono) / MIN(valorPorPagar) da el saldo antes/después de
+        // la factura dentro de este lote sin depender del orden exacto de inserción: el
+        // saldo por pagar de una factura solo baja mientras se le aplican abonos, así que su
+        // punto más alto es el "antes" y el más bajo el "después", venga en el orden que
+        // venga (útil cuando una misma factura recibe más de una línea del mismo lote).
+        const facturasRows = await db.query(`
+            SELECT a.idFacturaCliente, fc.prefijo, fc.numeroFactura,
+                   SUM(a.valorAbono) AS abonado,
+                   MAX(a.valorPorPagar + a.valorAbono) AS deudaAnterior,
+                   MIN(a.valorPorPagar) AS deudaActual
+            FROM ABONO_CLIENTE_CREDITOS a
+            INNER JOIN FACTURA_CLIENTES fc ON fc.idFacturaCliente = a.idFacturaCliente
+            WHERE a.loteAbonoGlobal = :loteAbonoGlobal AND a.idCliente = :idCliente AND fc.idPuntoDeVenta = :idPuntoDeVenta
+            GROUP BY a.idFacturaCliente
+            ORDER BY fc.fechaEmision ASC
+        `, { replacements: { loteAbonoGlobal, idCliente, idPuntoDeVenta }, type: db.QueryTypes.SELECT });
+
+        if (!facturasRows.length) return res.status(404).json({ success: false, mensaje: 'Abono no encontrado.' });
+
+        // Reagrupa por (método, entidad, referencia): una misma transferencia puede haber
+        // quedado partida en dos filas del ledger si alcanzó para más de una factura — acá
+        // se reconstruye como la única línea de pago que el operador realmente ingresó.
+        const lineasPago = await db.query(`
+            SELECT a.metodoPago, e.nombreEntidad, a.nroReferencia, SUM(a.valorAbono) AS valor
+            FROM ABONO_CLIENTE_CREDITOS a
+            INNER JOIN FACTURA_CLIENTES fc ON fc.idFacturaCliente = a.idFacturaCliente
+            LEFT JOIN ENTIDADES e ON e.idEntidad = a.idEntidad
+            WHERE a.loteAbonoGlobal = :loteAbonoGlobal AND a.idCliente = :idCliente AND fc.idPuntoDeVenta = :idPuntoDeVenta
+            GROUP BY a.metodoPago, a.idEntidad, a.nroReferencia
+        `, { replacements: { loteAbonoGlobal, idCliente, idPuntoDeVenta }, type: db.QueryTypes.SELECT });
+
+        const [metaRows] = [await db.query(`
+            SELECT nombreEmpleado, createdAt
+            FROM ABONO_CLIENTE_CREDITOS
+            WHERE loteAbonoGlobal = :loteAbonoGlobal
+            ORDER BY createdAt ASC LIMIT 1
+        `, { replacements: { loteAbonoGlobal }, type: db.QueryTypes.SELECT })];
+        const nombreEmpleado = metaRows[0]?.nombreEmpleado || 'N/A';
+        const fechaAbono = metaRows[0]?.createdAt ? new Date(metaRows[0].createdAt) : new Date();
+
+        const puntoDeVenta = await PuntosDeVenta.findByPk(idPuntoDeVenta, { raw: true });
+
+        const nombreCliente = cliente.tipo_persona === 'J'
+            ? (cliente.razon_social || '')
+            : [cliente.primer_nombre, cliente.segundo_nombre, cliente.primer_apellido, cliente.segundo_apellido].filter(Boolean).join(' ');
+        const docCliente = `${cliente.tipoDocumento || 'CC'} ${cliente.numero_doc || ''}`.trim();
+
+        const totalAbonado      = _round2(facturasRows.reduce((s, f) => s + parseFloat(f.abonado), 0));
+        const deudaAnteriorTotal = _round2(facturasRows.reduce((s, f) => s + parseFloat(f.deudaAnterior), 0));
+        const deudaActualTotal   = _round2(facturasRows.reduce((s, f) => s + parseFloat(f.deudaActual), 0));
+
+        // ── PDF (mismo formato angosto que la tirilla) ──────────────────────────────
+        const W = 227, MARGIN = 8, CW = W - MARGIN * 2, LOGO_SIZE = 60;
+        const estH = 230 + LOGO_SIZE + facturasRows.length * 20 + lineasPago.length * 16;
+        const doc = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        const pdfEnd = new Promise(r => doc.on('end', r));
+
+        const row = (cols, startY) => {
+            let maxY = startY;
+            for (const { txt, x, w, align, bold, size } of cols) {
+                doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size || 6.5);
+                doc.text(txt, x, startY, { width: w, align: align || 'left', lineBreak: true });
+                if (doc.y > maxY) maxY = doc.y;
+                doc.y = startY;
+            }
+            doc.y = maxY + 1;
+        };
+        const hr = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.5).stroke(); doc.moveDown(0.3); };
+
+        const logoX = MARGIN + (CW - LOGO_SIZE) / 2;
+        doc.image(LOGO_PATH, logoX, MARGIN, { width: LOGO_SIZE, height: LOGO_SIZE });
+        doc.y = MARGIN + LOGO_SIZE + 4;
+
+        doc.font('Helvetica-Bold').fontSize(9).text(puntoDeVenta?.nombreComercial || '', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.font('Helvetica').fontSize(7);
+        if (puntoDeVenta?.direccionPrincipal) doc.text(puntoDeVenta.direccionPrincipal, MARGIN, doc.y, { width: CW, align: 'center' });
+
+        doc.moveDown(0.3); hr();
+
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#047857')
+           .text('COMPROBANTE DE ABONO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.fillColor('#000');
+        doc.font('Helvetica').fontSize(7)
+           .text(`Fecha: ${fechaAbono.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}, ${fechaAbono.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`, MARGIN, doc.y, { width: CW });
+        doc.text(`Recibido por: ${nombreEmpleado}`, MARGIN, doc.y, { width: CW });
+
+        doc.moveDown(0.3); hr();
+
+        doc.font('Helvetica-Bold').fontSize(7).text(`Cliente: ${nombreCliente || 'N/A'}`, MARGIN, doc.y, { width: CW });
+        doc.font('Helvetica').fontSize(7).text(`Doc: ${docCliente}`, MARGIN, doc.y, { width: CW });
+
+        doc.moveDown(0.3); hr();
+
+        const totRow = (label, valor, bold = false, color) => {
+            const tY = doc.y;
+            doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 8 : 7).fillColor(color || '#000');
+            doc.text(label, MARGIN, tY, { width: CW * 0.6 });
+            doc.text(`$${fmtCOP(valor)}`, MARGIN + CW * 0.6, tY, { width: CW * 0.4, align: 'right' });
+            doc.fillColor('#000');
+            doc.y = Math.max(doc.y, tY + (bold ? 11 : 9));
+            doc.moveDown(0.1);
+        };
+        totRow('Deuda anterior:', deudaAnteriorTotal);
+        totRow('Total abonado:', totalAbonado, true, '#047857');
+        totRow('Deuda actual:', deudaActualTotal, true, deudaActualTotal > 0 ? '#BE185D' : '#047857');
+
+        hr();
+
+        doc.font('Helvetica-Bold').fontSize(7).text('MÉTODOS DE PAGO', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.2);
+        const p1 = CW * 0.38, p2 = CW * 0.32, p3 = CW * 0.30;
+        row([
+            { txt: 'Método',     x: MARGIN,        w: p1, bold: true },
+            { txt: 'Referencia', x: MARGIN + p1,    w: p2, bold: true },
+            { txt: 'Valor',      x: MARGIN + p1+p2, w: p3, bold: true, align: 'right' }
+        ], doc.y);
+        for (const l of lineasPago) {
+            const nomEntidad = l.metodoPago === 'Efectivo' ? 'Efectivo' : (l.nombreEntidad || l.metodoPago);
+            row([
+                { txt: nomEntidad,          x: MARGIN,        w: p1 },
+                { txt: l.nroReferencia || '-', x: MARGIN + p1, w: p2 },
+                { txt: `$${fmtCOP(parseFloat(l.valor))}`, x: MARGIN + p1+p2, w: p3, align: 'right' }
+            ], doc.y);
+        }
+
+        hr();
+
+        doc.font('Helvetica-Bold').fontSize(7).text('FACTURAS AFECTADAS', MARGIN, doc.y, { width: CW, align: 'center' });
+        doc.moveDown(0.2);
+        const f1 = CW * 0.22, f2 = CW * 0.26, f3 = CW * 0.26, f4 = CW * 0.26;
+        row([
+            { txt: 'Factura', x: MARGIN,           w: f1, bold: true },
+            { txt: 'Antes',   x: MARGIN + f1,       w: f2, bold: true, align: 'right' },
+            { txt: 'Abonado', x: MARGIN + f1+f2,    w: f3, bold: true, align: 'right' },
+            { txt: 'Ahora',   x: MARGIN + f1+f2+f3, w: f4, bold: true, align: 'right' }
+        ], doc.y);
+        for (const f of facturasRows) {
+            const deudaActual = parseFloat(f.deudaActual);
+            row([
+                { txt: `${f.prefijo || ''}${f.numeroFactura}`,        x: MARGIN,           w: f1 },
+                { txt: `$${fmtCOP(parseFloat(f.deudaAnterior))}`,     x: MARGIN + f1,       w: f2, align: 'right' },
+                { txt: `$${fmtCOP(parseFloat(f.abonado))}`,           x: MARGIN + f1+f2,    w: f3, align: 'right' },
+                { txt: deudaActual > 0 ? `$${fmtCOP(deudaActual)}` : 'PAZ Y SALVO', x: MARGIN + f1+f2+f3, w: f4, align: 'right', bold: deudaActual <= 0 }
+            ], doc.y);
+        }
+
+        hr();
+
+        if (puntoDeVenta?.footerBill) {
+            doc.font('Helvetica').fontSize(6.5).text(puntoDeVenta.footerBill, MARGIN, doc.y, { width: CW, align: 'center' });
+        }
+
+        doc.end();
+        await pdfEnd;
+
+        const buf = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="abono-${loteAbonoGlobal}.pdf"`);
+        res.setHeader('Content-Length', buf.length);
+        return res.send(buf);
+    } catch (e) {
+        console.error('getVoucherAbonoPDF:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al generar el voucher.' });
     }
 };
 
@@ -2329,15 +2761,27 @@ const getTirillaPDF = async (req, res) => {
             });
         }
 
+        // Historial de abonos de ESTA factura — la tirilla de una factura a crédito no solo
+        // certifica la venta, también sirve de comprobante de a cuánto quedó el saldo cada
+        // vez que se reimprime (ej. después de un "Abono Global" desde store/clientes/:id).
+        const abonosFactura = factura.credito
+            ? await AbonoClienteCreditos.findAll({
+                where: { idFacturaCliente: id },
+                include: [{ model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false }],
+                order: [['createdAt', 'ASC']]
+            })
+            : [];
+
         // ── PDF ───────────────────────────────────────────────────────────────
         const W      = 227;
         const MARGIN = 8;
         const CW     = W - MARGIN * 2;
         const LOGO_SIZE = 60;
-        // +55 cuando lleva el sello VENTA WEB, +34 cuando lleva el sello EN CRÉDITO, para
-        // que no se corten esos recuadros al final de la tirilla.
+        // +55 cuando lleva el sello VENTA WEB, +34 cuando lleva el sello EN CRÉDITO, +30 del
+        // título/saldo o sello "PAZ Y SALVO" del bloque de abonos, más 16 por cada abono
+        // listado, para que no se corten esos recuadros al final de la tirilla.
         const estH   = 350 + factura.detalles.length * 24 + pagosFactura.length * 18 + 100 + LOGO_SIZE + 10
-                     + (pedidoWeb ? 55 : 0) + (factura.credito ? 34 : 0);
+                     + (pedidoWeb ? 55 : 0) + (factura.credito ? 34 + 40 + abonosFactura.length * 20 : 0);
 
         const doc    = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
         const chunks = [];
@@ -2520,6 +2964,72 @@ const getTirillaPDF = async (req, res) => {
         }
 
         hr();
+
+        // ── Abonos realizados (facturas a crédito) ────────────────────────────
+        // Historial completo + saldo vigente, y el sello "PAZ Y SALVO" cuando ya no debe
+        // nada — así una reimpresión de la tirilla siempre certifica el estado real de la
+        // deuda, no solo el de la venta original.
+        if (factura.credito) {
+            doc.font('Helvetica-Bold').fontSize(7).text('ABONOS REALIZADOS', MARGIN, doc.y, { width: CW, align: 'center' });
+            doc.moveDown(0.2);
+
+            if (abonosFactura.length) {
+                // Saldo más ancha y con letra más grande a propósito: es el dato que
+                // alguien busca primero al mirar la tirilla de una factura a crédito.
+                const a1 = CW * 0.24, a2 = CW * 0.26, a3 = CW * 0.20, a4 = CW * 0.30;
+                row([
+                    { txt: 'Fecha',    x: MARGIN,             w: a1, bold: true },
+                    { txt: 'Método',   x: MARGIN + a1,        w: a2, bold: true },
+                    { txt: 'Abonado',  x: MARGIN + a1+a2,     w: a3, bold: true, align: 'right' },
+                    { txt: 'Saldo',    x: MARGIN + a1+a2+a3,  w: a4, bold: true, align: 'right' }
+                ], doc.y);
+                for (const ab of abonosFactura) {
+                    const metodoTxt = ab.metodoPago === 'Efectivo' ? 'Efectivo' : (ab.entidad?.nombreEntidad || ab.metodoPago);
+                    const fechaAb = new Date(ab.createdAt);
+                    const fechaTxt = `${fechaAb.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit' })} ${fechaAb.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
+                    row([
+                        { txt: fechaTxt,                                         x: MARGIN, w: a1, size: 6 },
+                        { txt: metodoTxt,                                        x: MARGIN + a1,       w: a2 },
+                        { txt: `$${fmtCOP(parseFloat(ab.valorAbono))}`,          x: MARGIN + a1+a2,    w: a3, align: 'right' },
+                        { txt: `$${fmtCOP(parseFloat(ab.valorPorPagar))}`,       x: MARGIN + a1+a2+a3, w: a4, align: 'right', bold: true, size: 9 }
+                    ], doc.y);
+                }
+            } else {
+                doc.font('Helvetica').fontSize(6.5).text('Sin abonos registrados.', MARGIN, doc.y, { width: CW, align: 'center' });
+            }
+            doc.moveDown(0.3);
+
+            const saldoActual = abonosFactura.length
+                ? parseFloat(abonosFactura[abonosFactura.length - 1].valorPorPagar)
+                : parseFloat(factura.total);
+
+            if (factura.estado === 'liquidada' || saldoActual <= 0) {
+                const altoPaz = 24;
+                const yPaz = doc.y;
+                doc.save();
+                doc.lineWidth(1.4).rect(MARGIN, yPaz, CW, altoPaz).stroke('#047857');
+                doc.font('Helvetica-Bold').fontSize(11).fillColor('#047857')
+                   .text('FACTURA A PAZ Y SALVO', MARGIN, yPaz + 7, { width: CW, align: 'center', lineBreak: false });
+                doc.restore();
+                doc.y = yPaz + altoPaz + 4;
+            } else {
+                // Mismo tratamiento de recuadro que el sello "PAZ Y SALVO" — es el otro
+                // desenlace posible de esta misma pregunta ("¿cuánto queda?"), así que pesa
+                // igual de prominente en la tirilla.
+                const altoSaldo = 30;
+                const ySaldo = doc.y;
+                doc.save();
+                doc.lineWidth(1.4).rect(MARGIN, ySaldo, CW, altoSaldo).stroke('#BE185D');
+                doc.font('Helvetica').fontSize(7).fillColor('#BE185D')
+                   .text('Saldo actual', MARGIN, ySaldo + 4, { width: CW, align: 'center', lineBreak: false });
+                doc.font('Helvetica-Bold').fontSize(15)
+                   .text(`$${fmtCOP(saldoActual)}`, MARGIN, ySaldo + 12, { width: CW, align: 'center', lineBreak: false });
+                doc.restore();
+                doc.y = ySaldo + altoSaldo + 4;
+            }
+
+            hr();
+        }
 
         // Footer punto de venta
         if (pdv?.footerBill) {
@@ -4834,6 +5344,8 @@ export {
     validarCreditoTiendaJSON,
     misClientesPage,
     misClienteDetallePage,
+    abonoGlobalClienteStore,
+    getVoucherAbonoPDF,
     getMunicipiosStoreJSON,
     guardarCliente,
     getEntidadesJSON,

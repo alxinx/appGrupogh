@@ -2717,17 +2717,25 @@ const abonarFactura = async (req, res) => {
     const { idCliente, idFacturaCliente } = req.params;
     const valorAbono   = parseFloat(req.body?.valorAbono);
     const metodoPago   = req.body?.metodoPago;
+    const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
     const nroReferencia = req.body?.nroReferencia?.trim() || null;
-    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Tarjeta Credito', 'Efectivo'];
+    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
 
     if (!Number.isFinite(valorAbono) || valorAbono <= 0)
         return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
     if (!METODOS_VALIDOS.includes(metodoPago))
         return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
+    if (metodoPago === 'Entidad Crediticia' && !idEntidad)
+        return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
 
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
             return res.status(403).json({ success: false, mensaje: 'Sin autorización para registrar abonos.' });
+
+        if (metodoPago === 'Entidad Crediticia') {
+            const entidad = await Entidades.findOne({ where: { idEntidad, tipoEntidad: 'Entidad Crediticia' }, raw: true });
+            if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
+        }
 
         const factura = await FacturaClientes.findOne({ where: { idFacturaCliente, idCliente, credito: true } });
         if (!factura) return res.status(404).json({ success: false, mensaje: 'Factura de crédito no encontrada.' });
@@ -2751,7 +2759,8 @@ const abonarFactura = async (req, res) => {
                 idFacturaCliente, idCliente,
                 totalFactura:  parseFloat(factura.total),
                 valorAbono, valorPorPagar: nuevoSaldo,
-                metodoPago, nroReferencia,
+                metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null,
+                nroReferencia,
                 idEmpleado:     empleado?.idEmpleado || null,
                 nombreEmpleado: empleado?.nombre || null,
                 codigoEmpleado: empleado?.codigoEmpleado || null,
@@ -2790,17 +2799,25 @@ const abonoGlobalCliente = async (req, res) => {
     const { idCliente } = req.params;
     const valorTotal   = parseFloat(req.body?.valorAbono);
     const metodoPago   = req.body?.metodoPago;
+    const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
     const nroReferencia = req.body?.nroReferencia?.trim() || null;
-    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Tarjeta Credito', 'Efectivo'];
+    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
 
     if (!Number.isFinite(valorTotal) || valorTotal <= 0)
         return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
     if (!METODOS_VALIDOS.includes(metodoPago))
         return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
+    if (metodoPago === 'Entidad Crediticia' && !idEntidad)
+        return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
 
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
             return res.status(403).json({ success: false, mensaje: 'Sin autorización para registrar abonos.' });
+
+        if (metodoPago === 'Entidad Crediticia') {
+            const entidad = await Entidades.findOne({ where: { idEntidad, tipoEntidad: 'Entidad Crediticia' }, raw: true });
+            if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
+        }
 
         const facturas = (await _facturasCreditoCliente(idCliente)).filter(f => f.deudaActual > 0);
         const deudaTotal = round2(facturas.reduce((s, f) => s + f.deudaActual, 0));
@@ -2826,7 +2843,8 @@ const abonoGlobalCliente = async (req, res) => {
                     idFacturaCliente: f.idFacturaCliente, idCliente,
                     totalFactura:  f.valorOriginal,
                     valorAbono: aplicar, valorPorPagar: nuevoSaldo,
-                    metodoPago, nroReferencia, loteAbonoGlobal,
+                    metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null,
+                    nroReferencia, loteAbonoGlobal,
                     idEmpleado:     empleado?.idEmpleado || null,
                     nombreEmpleado: empleado?.nombre || null,
                     codigoEmpleado: empleado?.codigoEmpleado || null,

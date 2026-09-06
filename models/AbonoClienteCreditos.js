@@ -52,11 +52,19 @@ const AbonoClienteCreditos = db.define('ABONO_CLIENTE_CREDITOS', {
         allowNull: false,
         validate: { min: { args: [0], msg: 'El saldo por pagar no puede quedar negativo.' } }
     },
-    // Mismo set que DETALLES_PAGOS_FACTURA.metodoPago menos 'Entidad Crediticia' y
-    // 'Credito En Tienda' — esas dos no aplican a pagar una deuda ya existente.
+    // Mismo set que DETALLES_PAGOS_FACTURA.metodoPago menos 'Credito En Tienda' — esa no
+    // aplica a pagar una deuda ya existente (es la tienda misma financiando, no un cobro).
+    // 'Entidad Crediticia' sí aplica: el cliente puede cancelar su deuda financiándose con
+    // un tercero (Addi, Sistecrédito) que le paga a la tienda — ahí `idEntidad` es
+    // obligatorio, igual que en DETALLES_PAGOS_FACTURA.
     metodoPago: {
-        type: DataTypes.ENUM('Banco', 'Billetera Virtual', 'Tarjeta Credito', 'Efectivo'),
+        type: DataTypes.ENUM('Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'),
         allowNull: false
+    },
+    idEntidad: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'ENTIDADES', key: 'idEntidad' }
     },
     nroReferencia: {
         type: DataTypes.STRING(50),

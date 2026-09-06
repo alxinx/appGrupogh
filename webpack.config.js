@@ -48,7 +48,8 @@ export default {
         adminPedidoDetalle  : '/src/js/adminPedidoDetalle.js',
         storePedidosWeb     : '/src/js/storePedidosWeb.js',
         adminAlertas        : '/src/js/adminAlertas.js',
-        importaciones       : '/src/js/importaciones.js'
+        importaciones       : '/src/js/importaciones.js',
+        storeClienteDetalle : '/src/js/storeClienteDetalle.js'
     },
     output: {
         filename: '[name].js',

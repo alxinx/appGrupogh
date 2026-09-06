@@ -24,6 +24,8 @@ import {
     validarCreditoTiendaJSON,
     misClientesPage,
     misClienteDetallePage,
+    abonoGlobalClienteStore,
+    getVoucherAbonoPDF,
     getMunicipiosStoreJSON,
     guardarCliente,
     getEntidadesJSON,
@@ -87,6 +89,18 @@ routes.get('/pedidos-web', csrfProtection, pedidosWebStorePage);
 // seed/migracionPermisoMisClientes.js) igual que esta misma página de Pedidos Web.
 routes.get('/clientes', csrfProtection, misClientesPage);
 routes.get('/clientes/:idCliente', csrfProtection, misClienteDetallePage);
+// Abono global de crédito — mutación real de plata, mismo patrón de seguridad que
+// caja/egresos: código de empleado (verificarCodigoEmpleado) + permiso fino sobre "Caja y
+// ventas". "Mis Clientes" solo gobierna VER a qué clientes/facturas tiene acceso este
+// vendedor (READ, ya exigido para llegar a esta página vía el folder-gate de
+// storeMiddleware.cargarPuntoDeVenta) — un abono no edita al cliente, es un ingreso de
+// dinero como abrir caja o crear un egreso, así que pide el mismo recurso que esos.
+routes.post('/clientes/:idCliente/abono-global',
+    csrfProtection,
+    verificarCodigoEmpleado,
+    verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
+    abonoGlobalClienteStore);
+routes.get('/clientes/:idCliente/abono/:loteAbonoGlobal/voucher', getVoucherAbonoPDF);
 routes.get('/inventario/perfilProducto/:idProducto', csrfProtection, getPerfilProducto);
 
 // SSE (sin CSRF — es GET long-lived)

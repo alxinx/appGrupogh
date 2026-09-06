@@ -371,6 +371,8 @@ Clientes.hasMany(AbonoClienteCreditos, { foreignKey: 'idCliente', as: 'abonosCre
 AbonoClienteCreditos.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
 AbonoClienteCreditos.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 AbonoClienteCreditos.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
+AbonoClienteCreditos.belongsTo(Entidades, { foreignKey: 'idEntidad', as: 'entidad' });
+Entidades.hasMany(AbonoClienteCreditos, { foreignKey: 'idEntidad' });
 
 PedidosWeb.hasMany(DetallesPedidoWeb, { foreignKey: 'idPedido', as: 'detalles' });
 DetallesPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });

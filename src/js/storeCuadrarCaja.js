@@ -114,13 +114,20 @@
     });
 
     // ── Fila de acordeón ────────────────────────────────────────────────────
+    // Un abono global reparte un solo ingreso entre varias facturas — la tirilla de una
+    // sola no cuenta la historia completa de ESE ingreso, así que la fila enlaza al voucher
+    // del abono (idCliente + loteAbonoGlobal) cuando lo hay. Sin lote (abono a una sola
+    // factura desde admin, o una venta normal) sigue enlazando a la tirilla de siempre.
     const buildRow = (tx) => {
         const tr = document.createElement('tr');
         tr.className = 'border-b border-slate-100 hover:bg-slate-50';
+        const urlComprobante = tx.loteAbonoGlobal
+            ? `/store/clientes/${tx.idCliente}/abono/${tx.loteAbonoGlobal}/voucher`
+            : `/store/facturas/${tx.idFacturaCliente}/tirilla`;
         tr.innerHTML = `
             <td class="py-1.5 px-2">
                 <button class="text-pink-500 underline text-xs hover:text-pink-700 font-medium"
-                    onclick="window.open('/store/facturas/${tx.idFacturaCliente}/tirilla','_blank')">
+                    onclick="window.open('${urlComprobante}','_blank')">
                     ${tx.nroFactura}
                 </button>
             </td>

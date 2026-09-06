@@ -48,6 +48,7 @@
     "db:migrar-costo": "node ./seed/migracionCostoProducto.js",
     "db:migrar-impuestos-factura": "node ./seed/migracionImpuestosFactura.js",
     "db:migrar-abono-cliente-creditos": "node ./seed/migracionAbonoClienteCreditos.js",
+    "db:migrar-abono-entidad-crediticia": "node ./seed/migracionAbonoEntidadCrediticia.js",
     "db:migrar-credito-disponible-historial": "node ./seed/migracionCreditoDisponibleClienteHistorial.js",
     "db:migrar-permiso-mis-clientes": "node ./seed/migracionPermisoMisClientes.js"
   },

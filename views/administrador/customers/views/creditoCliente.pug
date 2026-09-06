@@ -42,7 +42,7 @@ block contenedor
 
                                     div(class="flex items-center gap-2")
                                         button(id="btn-abono-global" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-gh-primaryHover bg-gh-primarySoft hover:bg-pink-100 transition-colors")
-                                            i(class="fi fi-rr-hand-holding-usd text-sm")
+                                            i(class="fi fi-rr-hand-holding-usd text-lg")
                                             span HACER ABONO GLOBAL
                                         div(class="relative")
                                             button(id="btn-mas-acciones" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors")
@@ -73,7 +73,7 @@ block contenedor
                                     //- Valor total del crédito
                                     div(class="tarjetaBase border border-violet-100 bg-violet-50/40")
                                         p(class="text-sm font-semibold text-violet-600 mb-1 flex items-center gap-2")
-                                            i.fi-rr-wallet.text-violet-500
+                                            i.fi-rr-wallet.text-violet-500.text-lg
                                             | Valor total del crédito
                                         div(class="flex justify-center items-center mt-1")
                                             h3(class="text-3xl font-bold text-slate-800 text-center")= `$${Math.round(resumen.valorTotalCredito).toLocaleString('es-CO')}`
@@ -81,26 +81,32 @@ block contenedor
                                             i.fi-rr-badge-check
                                             span Cupo autorizado para este cliente
 
-                                    //- Valor consumido del crédito
+                                    //- Valor consumido del crédito — gauge circular en CSS puro
+                                    //- (conic-gradient), mismo patrón que store/clientes/:id.
+                                    - const gaugeColorConsumido = cercaDelLimite ? '#F59E0B' : '#EC5FA3'
                                     div(class=`tarjetaBase border ${cercaDelLimite ? 'border-amber-300 bg-amber-50' : 'border-pink-100 bg-pink-50/40'}`)
                                         p(class=`text-sm font-semibold mb-1 flex items-center gap-2 ${cercaDelLimite ? 'text-amber-600' : 'text-[#EC5FA3]'}`)
-                                            i(class=`fi-rr-shopping-bag ${cercaDelLimite ? 'text-amber-500' : 'text-[#EC5FA3]'}`)
+                                            i(class=`fi-rr-shopping-bag text-lg ${cercaDelLimite ? 'text-amber-500' : 'text-[#EC5FA3]'}`)
                                             | Valor consumido del crédito
                                         div(class="flex justify-center items-center mt-1")
-                                            h3(class="text-3xl font-bold text-slate-800 text-center")= `$${Math.round(resumen.valorConsumido).toLocaleString('es-CO')}`
+                                            div(class="relative w-24 h-24")
+                                                div(class="absolute inset-0 rounded-full" style=`background: conic-gradient(${gaugeColorConsumido} ${Math.min(100, resumen.pctConsumido) * 3.6}deg, #E2E8F0 0deg)`)
+                                                div(class="absolute inset-[7px] rounded-full bg-white flex flex-col items-center justify-center")
+                                                    span(class="text-lg font-bold text-slate-800")= `${resumen.pctConsumido.toFixed(0)}%`
+                                                    span(class="text-[9px] text-slate-400 font-medium leading-none") consumido
                                         if cercaDelLimite
                                             div(class="mt-3 flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-100 p-2 rounded-lg")
                                                 i.fi-rr-triangle-warning
-                                                span= `${resumen.pctConsumido.toFixed(1)}% del cupo — cerca del límite`
+                                                span= `$${Math.round(resumen.valorConsumido).toLocaleString('es-CO')} — cerca del límite`
                                         else
                                             div(class="mt-3 flex items-center gap-2 text-xs font-medium text-pink-700 bg-pink-100 p-2 rounded-lg")
-                                                i.fi-rr-chart-pie-alt
-                                                span= `${resumen.pctConsumido.toFixed(1)}% del cupo utilizado`
+                                                i.fi-rr-chart-pie-alt.text-lg
+                                                span= `$${Math.round(resumen.valorConsumido).toLocaleString('es-CO')} de $${Math.round(resumen.valorTotalCredito).toLocaleString('es-CO')}`
 
                                     //- Frecuencia de abonos
                                     div(class="tarjetaBase border border-blue-100 bg-blue-50/40")
                                         p(class="text-sm font-semibold text-blue-600 mb-1 flex items-center gap-2")
-                                            i.fi-rr-calendar-clock.text-blue-500
+                                            i.fi-rr-calendar-clock.text-blue-500.text-lg
                                             | Frecuencia de abonos
                                         div(class="flex justify-center items-center mt-1")
                                             h3(class="text-3xl font-bold text-slate-800 text-center")= resumen.frecuenciaAbonos
@@ -111,7 +117,7 @@ block contenedor
                                     //- Días desde el último abono
                                     div(class=`tarjetaBase border ${fueraDePlazo ? 'border-rose-300 bg-rose-50' : 'border-amber-100 bg-amber-50/40'}`)
                                         p(class=`text-sm font-semibold mb-1 flex items-center gap-2 ${fueraDePlazo ? 'text-rose-600' : 'text-amber-600'}`)
-                                            i(class=`fi-rr-calendar ${fueraDePlazo ? 'text-rose-500' : 'text-amber-500'}`)
+                                            i(class=`fi-rr-calendar text-lg ${fueraDePlazo ? 'text-rose-500' : 'text-amber-500'}`)
                                             | Días desde el último abono
                                         div(class="flex justify-center items-center mt-1")
                                             h3(class="text-3xl font-bold text-slate-800 text-center")= diasSinAbono === null ? 'Sin abonos' : `${diasSinAbono} día${diasSinAbono !== 1 ? 's' : ''}`
@@ -131,7 +137,7 @@ block contenedor
                                     //- Reputación acumulada — simulado, parámetros de cálculo pendientes.
                                     div(class="tarjetaBase border border-emerald-100 bg-emerald-50/40")
                                         p(class="text-sm font-semibold text-emerald-600 mb-1 flex items-center gap-2")
-                                            i.fi-rr-star.text-emerald-500
+                                            i.fi-rr-star.text-emerald-500.text-lg
                                             | Reputación acumulada
                                         div(class="flex justify-center items-center gap-2 mt-1")
                                             h3(class="text-3xl font-bold text-slate-800 text-center")= resumen.reputacion.etiqueta

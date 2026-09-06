@@ -10,16 +10,11 @@ block contenedor
             main(class="flex-1 overflow-y-auto p-6 pt-5")
 
                 //- ══ HEADER ═════════════════════════════════════════════════
-                div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 mb-6 shadow-sm border border-white/60")
-                    a(href="/store/clientes" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors mb-3")
-                        i(class="fi fi-rr-arrow-left text-xs")
-                        span Volver a Mis Clientes
-
-                    //- Mismo criterio que lista.pug: CLIENTES.telefono no tiene formato único
-                    //- (algunos ya traen el 57 de país, otros solo el celular) — anteponer
-                    //- siempre duplicaba el 57 en los que ya lo traían.
-                    - const waDigitosCrudo = cliente.telefono ? String(cliente.telefono).replace(/\D/g, '') : ''
-                    - const waDigitos = waDigitosCrudo.length === 10 ? `57${waDigitosCrudo}` : waDigitosCrudo
+                //- Mismo patrón que store/inventario/perfilProducto: cabecera con avatar +
+                //- datos a la izquierda, botón "Volver" (.btn.btn-secondary) a la derecha.
+                - const waDigitosCrudo = cliente.telefono ? String(cliente.telefono).replace(/\D/g, '') : ''
+                - const waDigitos = waDigitosCrudo.length === 10 ? `57${waDigitosCrudo}` : waDigitosCrudo
+                div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 mb-6 shadow-sm border border-white/60 flex items-center justify-between gap-4 flex-wrap")
                     div(class="flex items-center gap-5")
                         div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
                             img(src="/img/avatars/cliente.webp" alt="Cliente" class="w-17 h-17 object-contain")
@@ -32,22 +27,73 @@ block contenedor
                                     a(href=`https://api.whatsapp.com/send?phone=${waDigitos}` target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 hover:underline")
                                         i(class="fi fi-brands-whatsapp text-emerald-500")
                                         span= cliente.telefono
+                    a(href="/store/clientes" class="btn btn-secondary flex items-center gap-2 cursor-pointer")
+                        i(class="fi fi-rr-arrow-left text-sm")
+                        | Volver a Mis Clientes
 
-                //- ══ DEUDA TOTAL ════════════════════════════════════════════
-                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6 flex items-center gap-4")
-                    div(class="w-11 h-11 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0")
-                        i(class="fi fi-rr-hand-holding-usd text-rose-500")
-                    div
-                        p(class="text-xs text-slate-400 font-medium") Deuda total en esta tienda
-                        p(class="text-2xl font-bold text-slate-800")= `$${Math.round(deudaTotal).toLocaleString('es-CO')}`
+                //- ══ RESUMEN DEL CLIENTE ════════════════════════════════════════
+                //- Mismo patrón .tarjetaBase que admin/clientes/:id/credito (label con
+                //- ícono arriba, número grande al centro, franja de color abajo).
+                - const cercaDelLimite = pctConsumido >= 80
+                - const consumidoMedio = pctConsumido >= 50
+                - const gaugeColor = cercaDelLimite ? '#F43F5E' : (consumidoMedio ? '#F59E0B' : '#8B5CF6')
+                div(class="mb-6")
+                    h2(class="text-sm font-bold text-slate-500 mb-2 px-1") Resumen del cliente
+                    div(class="grid grid-cols-1 md:grid-cols-3 gap-4")
+                        //- Deuda total en esta tienda
+                        div(class="tarjetaBase border border-rose-100 bg-rose-50/40")
+                            p(class="text-sm font-semibold text-rose-600 mb-1 flex items-center gap-2")
+                                i.fi-rr-hand-holding-usd.text-rose-500.text-lg
+                                | Deuda total
+                            div(class="flex justify-center items-center mt-1")
+                                h3(class="text-3xl font-bold text-slate-800 text-center")= `$${Math.round(deudaTotal).toLocaleString('es-CO')}`
+                            div(class="mt-3 flex items-center gap-2 text-xs font-medium text-rose-700 bg-rose-100 p-2 rounded-lg")
+                                i.fi-rr-store
+                                span En esta tienda
+
+                        //- Valor total del crédito (cupo global del cliente)
+                        div(class="tarjetaBase border border-violet-100 bg-violet-50/40")
+                            p(class="text-sm font-semibold text-violet-600 mb-1 flex items-center gap-2")
+                                i.fi-rr-wallet.text-violet-500.text-lg
+                                | Valor total del crédito
+                            div(class="flex justify-center items-center mt-1")
+                                h3(class="text-3xl font-bold text-slate-800 text-center")= `$${Math.round(valorTotalCredito).toLocaleString('es-CO')}`
+                            div(class="mt-3 flex items-center gap-2 text-xs font-medium text-violet-700 bg-violet-100 p-2 rounded-lg")
+                                i.fi-rr-badge-check
+                                span Cupo autorizado para este cliente
+
+                        //- % consumido del cupo — gauge circular en CSS puro (conic-gradient)
+                        div(class=`tarjetaBase border ${cercaDelLimite ? 'border-rose-300 bg-rose-50' : (consumidoMedio ? 'border-amber-200 bg-amber-50/40' : 'border-violet-100 bg-violet-50/20')}`)
+                            p(class=`text-sm font-semibold mb-1 flex items-center gap-2 ${cercaDelLimite ? 'text-rose-600' : (consumidoMedio ? 'text-amber-600' : 'text-violet-600')}`)
+                                i(class=`fi-rr-chart-pie-alt text-lg ${cercaDelLimite ? 'text-rose-500' : (consumidoMedio ? 'text-amber-500' : 'text-violet-500')}`)
+                                | Cupo consumido
+                            div(class="flex justify-center items-center mt-1")
+                                div(class="relative w-24 h-24")
+                                    div(class="absolute inset-0 rounded-full" style=`background: conic-gradient(${gaugeColor} ${pctConsumido * 3.6}deg, #E2E8F0 0deg)`)
+                                    div(class="absolute inset-[7px] rounded-full bg-white flex flex-col items-center justify-center")
+                                        span(class="text-lg font-bold text-slate-800")= `${pctConsumido.toFixed(0)}%`
+                                        span(class="text-[9px] text-slate-400 font-medium leading-none") consumido
+                            if cercaDelLimite
+                                div(class="mt-3 flex items-center gap-2 text-xs font-bold text-rose-700 bg-rose-100 p-2 rounded-lg")
+                                    i.fi-rr-triangle-warning
+                                    span Cerca del límite de cupo
+                            else
+                                div(class="mt-3 flex items-center gap-2 text-xs font-medium text-violet-700 bg-violet-100 p-2 rounded-lg")
+                                    i.fi-rr-badge-check
+                                    span= `$${Math.round(valorConsumido).toLocaleString('es-CO')} de $${Math.round(valorTotalCredito).toLocaleString('es-CO')}`
 
                 //- ══ TABLA — mismo estilo que "Mis Clientes" / "Estado Actual de
                 //- las tiendas" ═════════════════════════════════════════════
                 div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
-                    h2.h2.text-gh-primaryHover
-                        i.fi-rr-receipt
-                        |  Facturas pendientes
-                    p(class="text-sm text-slate-400") Solo lectura — los abonos y cambios de crédito se gestionan desde administración
+                    div(class="flex items-center justify-between gap-4 flex-wrap")
+                        div
+                            h2.h2.text-gh-primaryHover
+                                i.fi-rr-receipt
+                                |  Facturas pendientes
+                            p(class="text-sm text-slate-400") Los abonos por factura se gestionan desde administración — usa Abono Global para registrar un pago aquí
+                        button#btn-abono-global(type="button" class="btn btn-primary flex items-center gap-2 cursor-pointer flex-shrink-0" disabled=(deudaTotal <= 0))
+                            i.fi.fi-rr-hand-holding-usd
+                            | Abono Global
 
                     div(class="overflow-x-auto pt-4")
                         table(class="w-full text-left text-2xs border-collapse")
@@ -86,3 +132,25 @@ block contenedor
                             | Mostrando
                             span(class="font-bold text-slate-600")= ` ${facturas.length} `
                             | factura#{facturas.length !== 1 ? 's' : ''} pendiente#{facturas.length !== 1 ? 's' : ''}
+
+    //- Datos para storeClienteDetalle.js — deudaTotal es la de ESTA tienda (mismo alcance
+    //- del "abono global" acá: solo reparte entre las facturas que se ven en esta página).
+    script.
+        window.__clienteDetalleStore = {
+            idCliente: !{JSON.stringify(cliente.idCliente)},
+            nombreCliente: !{JSON.stringify(cliente.nombre)},
+            deudaTotal: !{JSON.stringify(deudaTotal)}
+        };
+
+    //- Contenedor de toasts — lo usa storeGlobal.js (showToast) para el aviso de
+    //- "caja en cuadre" y sus demás notificaciones en vivo.
+    div#toast-container(class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none")
+
+    include ../../components/modalConfirmacion
+    script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+    script(src="/js/helpers.js")
+    //- Conecta el SSE de /store/sse — mismo canal que bloquea el POS en vivo cuando la caja
+    //- entra en cuadre (evento "caja_en_cuadre"). storeClienteDetalle.js se conecta a ese
+    //- mismo aviso reutilizando window.__posCajaEnCuadre, el mismo hook que ya usa pos.js.
+    script(src="/js/storeGlobal.js")
+    script(src="/js/storeClienteDetalle.js")
