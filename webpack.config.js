@@ -4,7 +4,6 @@ export default {
     mode: 'production',
     devtool: false,
     entry: {
-        menu: './src/js/menus.js',
         textoLista: './src/js/textoLista.js',
         dataAsync: './src/js/dataAsync.js',
         dropdownBtn: './src/js/dropdownBtn',
@@ -14,11 +13,11 @@ export default {
         productList: '/src/js/productList.js',
         paginador: '/src/js/paginador.js',
         helpers: '/src/js/helpers.js',
+        numeroALetras: '/src/js/numeroALetras.js',
         dataStore: '/src/js/dataStore.js',
         dataSupplier: '/src/js/dataSupplier.js',
         supplierList: '/src/js/supplierList.js',
         dataDose : '/src/js/dataDose.js',
-        utils : '/src/js/utils.js',
         dosificador : '/src/js/dosificador.js',
         listadoDose : '/src/js/listadoDose.js',
         doseView : '/src/js/doseView.js',
@@ -37,6 +36,7 @@ export default {
         adminProductoView   : '/src/js/adminProductoView.js',
         adminDashboard      : '/src/js/adminDashboard.js',
         adminClientes       : '/src/js/adminClientes.js',
+        adminClienteCredito : '/src/js/adminClienteCredito.js',
         dataCliente         : '/src/js/dataCliente.js',
         batchOrder          : '/src/js/batchOrder.js',
         adminCierresCaja    : '/src/js/adminCierresCaja.js',
@@ -46,7 +46,8 @@ export default {
         adminPedidoDetalle  : '/src/js/adminPedidoDetalle.js',
         storePedidosWeb     : '/src/js/storePedidosWeb.js',
         adminAlertas        : '/src/js/adminAlertas.js',
-        importaciones       : '/src/js/importaciones.js'
+        importaciones       : '/src/js/importaciones.js',
+        storeClienteDetalle : '/src/js/storeClienteDetalle.js'
     },
     output: {
         filename: '[name].js',

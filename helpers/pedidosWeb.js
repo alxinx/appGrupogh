@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 // ─────────────────────────────────────────────────────────────────────────────
 // Qué cuenta como "pedido web por atender".
 //
-// Lo usan el badge del menú lateral (middleware/adminMenuMiddleware.js) y la tarjeta
+// Lo usan el badge del menú lateral (middlewares/adminMenuMiddleware.js) y la tarjeta
 // "Pedidos nuevos" del dashboard. Vive acá para que los dos números no puedan
 // desincronizarse: si el criterio cambia, cambia en un solo lugar.
 //

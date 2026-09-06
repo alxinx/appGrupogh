@@ -1,0 +1,255 @@
+extends ../../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            - const nombreCliente = cliente.tipo_persona === 'J' ? (cliente.razon_social || '') : [cliente.primer_nombre, cliente.segundo_nombre, cliente.primer_apellido, cliente.segundo_apellido].filter(Boolean).join(' ')
+                            - const docCliente = `${cliente.tipoDocumento || 'CC'} ${cliente.numero_doc}${cliente.digito_verif ? '-' + cliente.digito_verif : ''}`
+                            - const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+                            - const fCliente = new Date(cliente.createdAt)
+                            - const clienteDesde = `Cliente desde ${MESES[fCliente.getMonth()]} ${fCliente.getFullYear()}`
+
+                            //- ── HEADER ───────────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white rounded-2xl border border-slate-100 shadow-sm p-5")
+                                div(class="flex flex-wrap items-start justify-between gap-4")
+                                    div
+                                        a(href="/admin/clientes" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors mb-3")
+                                            i(class="fi fi-rr-arrow-left text-xs")
+                                            span Volver
+
+                                        div(class="flex items-center gap-3.5")
+                                            div(class="w-14 h-14 rounded-full bg-gradient-to-br from-pink-100 to-purple-200 flex items-center justify-center flex-shrink-0")
+                                                i(class="fi fi-rr-user text-xl text-pink-400")
+                                            div
+                                                div(class="flex items-center gap-2 flex-wrap")
+                                                    h1(class="text-lg font-black text-slate-800")= nombreCliente || 'Cliente'
+                                                    span(class="inline-flex items-center bg-gh-primarySoft text-gh-primaryHover text-[11px] font-bold px-2.5 py-1 rounded-full")= clienteDesde
+                                                p(class="text-xs text-slate-400 font-medium mt-0.5")
+                                                    span= docCliente
+                                                    if vendedor
+                                                        span &nbsp;·&nbsp;
+                                                        span= vendedor
+                                                    if cliente.telefono
+                                                        span &nbsp;·&nbsp;
+                                                        span= cliente.telefono
+
+                                    div(class="flex items-center gap-2")
+                                        button(id="btn-abono-global" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-gh-primaryHover bg-gh-primarySoft hover:bg-pink-100 transition-colors")
+                                            i(class="fi fi-rr-hand-holding-usd text-lg")
+                                            span HACER ABONO GLOBAL
+                                        div(class="relative")
+                                            button(id="btn-mas-acciones" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors")
+                                                span Más acciones
+                                                i(class="fi fi-rr-menu-dots text-xs")
+                                            div(id="menu-mas-acciones" class="hidden absolute right-0 top-[calc(100%+6px)] w-56 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-20")
+                                                button(id="btn-aumentar-credito" class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left")
+                                                    i(class="fi fi-rr-arrow-trend-up text-sm text-emerald-500 w-4")
+                                                    span Aumentar Crédito
+                                                a(href=`/admin/clientes/${cliente.idCliente}/credito/informe` target="_blank" rel="noopener" class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors")
+                                                    i(class="fi fi-rr-file-invoice text-sm text-violet-500 w-4")
+                                                    span Generar Informe (PDF)
+                                                button(id="btn-suspender-credito" class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition-colors text-left")
+                                                    i(class="fi fi-rr-lock text-sm w-4")
+                                                    span Suspender Crédito
+
+                            //- ── RESUMEN DEL CLIENTE ──────────────────────────────────────────
+                            //- Mismo patrón que las tarjetas de stats de Proveedores (.tarjetaBase,
+                            //- views/administrador/supplier/stats/*.pug): label con ícono arriba,
+                            //- número grande al centro, y una franja de color abajo con el dato de
+                            //- contexto — en vez del ícono-en-pastilla + dos líneas chicas de antes.
+                            - const cercaDelLimite = resumen.valorTotalCredito > 0 && resumen.pctConsumido >= 80
+                            - const diasSinAbono   = resumen.diasDesdeUltimoAbono
+                            - const fueraDePlazo    = diasSinAbono !== null && creditoDisponible.tiempoCredito != null && diasSinAbono > creditoDisponible.tiempoCredito
+                            div(class="col-span-12")
+                                h2(class="text-sm font-bold text-slate-500 mb-2 px-1") Resumen del cliente
+                                div(class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4")
+                                    //- Valor total del crédito
+                                    div(class="tarjetaBase border border-violet-100 bg-violet-50/40")
+                                        p(class="text-sm font-semibold text-violet-600 mb-1 flex items-center gap-2")
+                                            i.fi-rr-wallet.text-violet-500.text-lg
+                                            | Valor total del crédito
+                                        div(class="flex justify-center items-center mt-1")
+                                            h3(class="text-3xl font-bold text-slate-800 text-center")= `$${Math.round(resumen.valorTotalCredito).toLocaleString('es-CO')}`
+                                        div(class="mt-3 flex items-center gap-2 text-xs font-medium text-violet-700 bg-violet-100 p-2 rounded-lg")
+                                            i.fi-rr-badge-check
+                                            span Cupo autorizado para este cliente
+
+                                    //- Valor consumido del crédito — gauge circular en CSS puro
+                                    //- (conic-gradient), mismo patrón que store/clientes/:id.
+                                    - const gaugeColorConsumido = cercaDelLimite ? '#F59E0B' : '#EC5FA3'
+                                    div(class=`tarjetaBase border ${cercaDelLimite ? 'border-amber-300 bg-amber-50' : 'border-pink-100 bg-pink-50/40'}`)
+                                        p(class=`text-sm font-semibold mb-1 flex items-center gap-2 ${cercaDelLimite ? 'text-amber-600' : 'text-[#EC5FA3]'}`)
+                                            i(class=`fi-rr-shopping-bag text-lg ${cercaDelLimite ? 'text-amber-500' : 'text-[#EC5FA3]'}`)
+                                            | Valor consumido del crédito
+                                        div(class="flex justify-center items-center mt-1")
+                                            div(class="relative w-24 h-24")
+                                                div(class="absolute inset-0 rounded-full" style=`background: conic-gradient(${gaugeColorConsumido} ${Math.min(100, resumen.pctConsumido) * 3.6}deg, #E2E8F0 0deg)`)
+                                                div(class="absolute inset-[7px] rounded-full bg-white flex flex-col items-center justify-center")
+                                                    span(class="text-lg font-bold text-slate-800")= `${resumen.pctConsumido.toFixed(0)}%`
+                                                    span(class="text-[9px] text-slate-400 font-medium leading-none") consumido
+                                        if cercaDelLimite
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-100 p-2 rounded-lg")
+                                                i.fi-rr-triangle-warning
+                                                span= `$${Math.round(resumen.valorConsumido).toLocaleString('es-CO')} — cerca del límite`
+                                        else
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-medium text-pink-700 bg-pink-100 p-2 rounded-lg")
+                                                i.fi-rr-chart-pie-alt.text-lg
+                                                span= `$${Math.round(resumen.valorConsumido).toLocaleString('es-CO')} de $${Math.round(resumen.valorTotalCredito).toLocaleString('es-CO')}`
+
+                                    //- Frecuencia de abonos
+                                    div(class="tarjetaBase border border-blue-100 bg-blue-50/40")
+                                        p(class="text-sm font-semibold text-blue-600 mb-1 flex items-center gap-2")
+                                            i.fi-rr-calendar-clock.text-blue-500.text-lg
+                                            | Frecuencia de abonos
+                                        div(class="flex justify-center items-center mt-1")
+                                            h3(class="text-3xl font-bold text-slate-800 text-center")= resumen.frecuenciaAbonos
+                                        div(class="mt-3 flex items-center gap-2 text-xs font-medium text-blue-700 bg-blue-100 p-2 rounded-lg")
+                                            i.fi-rr-stats
+                                            span= resumen.frecuenciaAbonos === 'Sin abonos aún' ? 'Aún no hay abonos registrados' : 'Basado en el historial de abonos'
+
+                                    //- Días desde el último abono
+                                    div(class=`tarjetaBase border ${fueraDePlazo ? 'border-rose-300 bg-rose-50' : 'border-amber-100 bg-amber-50/40'}`)
+                                        p(class=`text-sm font-semibold mb-1 flex items-center gap-2 ${fueraDePlazo ? 'text-rose-600' : 'text-amber-600'}`)
+                                            i(class=`fi-rr-calendar text-lg ${fueraDePlazo ? 'text-rose-500' : 'text-amber-500'}`)
+                                            | Días desde el último abono
+                                        div(class="flex justify-center items-center mt-1")
+                                            h3(class="text-3xl font-bold text-slate-800 text-center")= diasSinAbono === null ? 'Sin abonos' : `${diasSinAbono} día${diasSinAbono !== 1 ? 's' : ''}`
+                                        if fueraDePlazo
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-bold text-rose-700 bg-rose-100 p-2 rounded-lg")
+                                                i.fi-rr-triangle-warning
+                                                span Superó el plazo sin abono
+                                        else if diasSinAbono === null
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100 p-2 rounded-lg")
+                                                i.fi-rr-info
+                                                span Sin abonos registrados
+                                        else
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-100 p-2 rounded-lg")
+                                                i.fi-rr-check
+                                                span Dentro del plazo esperado
+
+                                    //- Reputación acumulada — simulado, parámetros de cálculo pendientes.
+                                    div(class="tarjetaBase border border-emerald-100 bg-emerald-50/40")
+                                        p(class="text-sm font-semibold text-emerald-600 mb-1 flex items-center gap-2")
+                                            i.fi-rr-star.text-emerald-500.text-lg
+                                            | Reputación acumulada
+                                        div(class="flex justify-center items-center gap-2 mt-1")
+                                            h3(class="text-3xl font-bold text-slate-800 text-center")= resumen.reputacion.etiqueta
+                                            span(class="text-sm text-slate-400 font-semibold")= `★ ${resumen.reputacion.puntaje.toFixed(1)}/5`
+                                        div(class="mt-3 flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-100 p-2 rounded-lg" title="Cálculo simulado — parámetros pendientes")
+                                            i.fi-rr-info
+                                            span Cálculo simulado — parámetros pendientes
+
+                            //- ── ALERTAS ──────────────────────────────────────────────────────
+                            if alertas.length
+                                div(class="col-span-12")
+                                    h2(class="text-sm font-bold text-slate-500 mb-2 px-1") Alertas importantes
+                                    div(class="grid grid-cols-1 md:grid-cols-2 gap-3")
+                                        each a in alertas
+                                            div(class=`rounded-2xl border p-4 flex items-start gap-3 ${a.prioridad === 'alta' ? 'bg-rose-50 border-rose-100' : 'bg-amber-50 border-amber-100'}`)
+                                                i(class=`fi fi-rr-triangle-warning text-base mt-0.5 ${a.prioridad === 'alta' ? 'text-rose-500' : 'text-amber-500'}`)
+                                                div(class="flex-1 min-w-0")
+                                                    div(class="flex items-center justify-between gap-2")
+                                                        p(class="text-sm font-bold text-slate-800")= a.titulo
+                                                        span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${a.prioridad === 'alta' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`)= a.prioridad === 'alta' ? 'Prioridad alta' : 'Atención'
+                                                    p(class="text-xs text-slate-500 mt-1 leading-relaxed")= a.descripcion
+
+                            //- ── FACTURAS DE CRÉDITO ──────────────────────────────────────────
+                            div(class="col-span-12 bg-white rounded-2xl border border-slate-100 shadow-sm p-4")
+                                h2(class="text-sm font-bold text-slate-500 mb-3") Facturas pendientes
+
+                                div(class="flex flex-wrap items-center justify-between gap-3 mb-4")
+                                    div(class="flex items-center gap-1.5 flex-wrap")
+                                        - const tabs = [['todas','Todas'],['en_mora','En mora'],['pendiente','Pendiente por cancelar'],['pagado','Pagado']]
+                                        each t in tabs
+                                            a(href=`?estado=${t[0]}&buscar=${encodeURIComponent(buscar)}` class=`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${filtroEstado === t[0] ? 'bg-gh-primary text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`)
+                                                span= t[1]
+                                                if contadores[t[0]]
+                                                    span(class=`text-[10px] px-1.5 rounded-full ${filtroEstado === t[0] ? 'bg-white/25' : 'bg-slate-200'}`)= contadores[t[0]]
+
+                                    form(method="GET" class="flex items-center gap-2")
+                                        input(type="hidden" name="estado" value=filtroEstado)
+                                        div(class="relative")
+                                            i(class="fi fi-rr-search text-xs text-slate-300 absolute left-3 top-1/2 -translate-y-1/2")
+                                            input(type="text" name="buscar" value=buscar placeholder="Buscar factura..." class="pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-gh-primary w-44")
+
+                                if !facturas.length
+                                    div(class="text-center py-12")
+                                        i(class="fi fi-rr-receipt text-3xl text-slate-200 mb-2")
+                                        p(class="text-sm text-slate-400 font-medium") No hay facturas para este filtro
+                                else
+                                    div(class="overflow-x-auto -mx-1")
+                                        table(class="w-full text-sm min-w-[820px]")
+                                            thead
+                                                tr(class="text-left text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100")
+                                                    th(class="py-2 px-1") N° Factura
+                                                    th(class="py-2 px-1") Fecha ingreso
+                                                    th(class="py-2 px-1") Días transcurridos
+                                                    th(class="py-2 px-1 text-right") Valor original
+                                                    th(class="py-2 px-1 text-right") Abonado
+                                                    th(class="py-2 px-1 text-right") Deuda actual
+                                                    th(class="py-2 px-1") Estado
+                                                    th(class="py-2 px-1 text-right") Acción
+                                            tbody
+                                                - const ETIQUETAS_ESTADO = { pagado: ['Pagado','table-badge-active'], en_mora: ['En mora','table-badge-low'], pendiente: ['Pendiente','table-badge-pending'] }
+                                                each f in facturas
+                                                    - const [etiquetaEstado, claseEstado] = ETIQUETAS_ESTADO[f.estadoCalculado]
+                                                    tr(class="border-b border-slate-50 hover:bg-slate-50/60 transition-colors")
+                                                        td(class="py-3 px-1 font-bold text-slate-700")= f.nroFactura
+                                                        td(class="py-3 px-1 text-slate-500")= new Date(f.fechaEmision).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                        td(class=`py-3 px-1 font-semibold ${f.estadoCalculado === 'en_mora' ? 'text-rose-500' : 'text-amber-500'}`)= `${f.diasTranscurridos} día${f.diasTranscurridos !== 1 ? 's' : ''}`
+                                                        td(class="py-3 px-1 text-right font-medium text-slate-600")= `$${Math.round(f.valorOriginal).toLocaleString('es-CO')}`
+                                                        td(class="py-3 px-1 text-right font-medium text-emerald-600")= `$${Math.round(f.abonado).toLocaleString('es-CO')}`
+                                                        td(class="py-3 px-1 text-right font-bold text-slate-800")= `$${Math.round(f.deudaActual).toLocaleString('es-CO')}`
+                                                        td(class="py-3 px-1")
+                                                            span(class=`table-badge ${claseEstado}`)
+                                                                span(class="table-badge-dot")
+                                                                span= etiquetaEstado
+                                                        td(class="py-3 px-1")
+                                                            div(class="flex items-center justify-end gap-1")
+                                                                a(href=`/admin/api/factura/${f.idFacturaCliente}/tirilla` target="_blank" rel="noopener" title="Ver factura" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors")
+                                                                    i(class="fi fi-rr-eye text-sm")
+                                                                div(class="relative fila-mas-acciones")
+                                                                    button(class="btn-fila-mas w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" data-id=f.idFacturaCliente data-nro=f.nroFactura data-deuda=f.deudaActual data-estado=f.estadoCalculado)
+                                                                        i(class="fi fi-rr-menu-dots text-sm")
+                                                                    div(class="hidden absolute right-0 top-[calc(100%+4px)] w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-20 menu-fila")
+                                                                        if f.estadoCalculado !== 'pagado'
+                                                                            button(class="btn-abonar-factura w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 text-left" data-id=f.idFacturaCliente data-nro=f.nroFactura data-deuda=f.deudaActual)
+                                                                                i(class="fi fi-rr-coins text-xs text-emerald-500 w-3.5")
+                                                                                span Abonar a esta factura
+                                                                        a(href=`/admin/api/factura/${f.idFacturaCliente}/tirilla` target="_blank" rel="noopener" class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50")
+                                                                            i(class="fi fi-rr-eye text-xs text-slate-400 w-3.5")
+                                                                            span Ver detalle
+
+                                if totalPaginas > 1
+                                    div(class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100")
+                                        p(class="text-xs text-slate-400") Mostrando #{(paginaActual - 1) * 5 + 1} a #{Math.min(paginaActual * 5, totalRegistros)} de #{totalRegistros} facturas
+                                        div(class="flex items-center gap-1")
+                                            - const qs = (p) => `?estado=${filtroEstado}&buscar=${encodeURIComponent(buscar)}&pagina=${p}`
+                                            - const paginas = Array.from({ length: totalPaginas }, (_, i) => i + 1)
+                                            each p in paginas
+                                                a(href=qs(p) class=`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-colors ${paginaActual === p ? 'bg-gh-primary text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`)= p
+
+                //- Datos para adminClienteCredito.js — evita repetir en cada data-attr.
+                //- deudaTotal es la deuda abierta de TODAS las facturas de crédito del cliente
+                //- (resumen.valorConsumido, calculada en el controlador), no solo las de esta
+                //- página — el abono global tiene que validar contra el total real.
+                script.
+                    window.__creditoCliente = {
+                        idCliente: !{JSON.stringify(cliente.idCliente)},
+                        nombreCliente: !{JSON.stringify(nombreCliente || 'este cliente')},
+                        valorCreditoCliente: !{JSON.stringify(resumen.valorTotalCredito)},
+                        deudaTotal: !{JSON.stringify(resumen.valorConsumido)}
+                    };
+
+                include ../../../components/modalConfirmacion
+                script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+                script(src="/js/helpers.js")
+                script(src="/js/numeroALetras.js")
+                script(src="/js/adminClienteCredito.js")

@@ -20,6 +20,12 @@ import {
     liberarReservasPos,
     getPosProductoJSON,
     buscarClientePorDoc,
+    getClienteCreditoJSON,
+    validarCreditoTiendaJSON,
+    misClientesPage,
+    misClienteDetallePage,
+    abonoGlobalClienteStore,
+    getVoucherAbonoPDF,
     getMunicipiosStoreJSON,
     guardarCliente,
     getEntidadesJSON,
@@ -77,6 +83,24 @@ routes.get('/', csrfProtection, dashboardStores);
 routes.get('/traslados/get', csrfProtection, getTraslados);
 routes.get('/inventario/lista', csrfProtection, getInventarioLista);
 routes.get('/pedidos-web', csrfProtection, pedidosWebStorePage);
+// "Mis Clientes" — clientes con facturas pendientes en crédito de esta tienda. Sin
+// "/json/" ni similares en la ruta: así queda cubierta por el chequeo de permiso fino de
+// storeMiddleware.cargarPuntoDeVenta (folder '/clientes', ver
+// seed/migracionPermisoMisClientes.js) igual que esta misma página de Pedidos Web.
+routes.get('/clientes', csrfProtection, misClientesPage);
+routes.get('/clientes/:idCliente', csrfProtection, misClienteDetallePage);
+// Abono global de crédito — mutación real de plata, mismo patrón de seguridad que
+// caja/egresos: código de empleado (verificarCodigoEmpleado) + permiso fino sobre "Caja y
+// ventas". "Mis Clientes" solo gobierna VER a qué clientes/facturas tiene acceso este
+// vendedor (READ, ya exigido para llegar a esta página vía el folder-gate de
+// storeMiddleware.cargarPuntoDeVenta) — un abono no edita al cliente, es un ingreso de
+// dinero como abrir caja o crear un egreso, así que pide el mismo recurso que esos.
+routes.post('/clientes/:idCliente/abono-global',
+    csrfProtection,
+    verificarCodigoEmpleado,
+    verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
+    abonoGlobalClienteStore);
+routes.get('/clientes/:idCliente/abono/:loteAbonoGlobal/voucher', getVoucherAbonoPDF);
 routes.get('/inventario/perfilProducto/:idProducto', csrfProtection, getPerfilProducto);
 
 // SSE (sin CSRF — es GET long-lived)
@@ -98,6 +122,8 @@ routes.post('/json/pos/reservas', sincronizarReservasPos);
 routes.delete('/json/pos/reservas', liberarReservasPos);
 routes.get('/json/pos/producto/:idProducto', getPosProductoJSON);
 routes.get('/json/clientes/buscar', buscarClientePorDoc);
+routes.get('/json/clientes/:idCliente/credito', getClienteCreditoJSON);
+routes.post('/json/clientes/:idCliente/credito/validar', validarCreditoTiendaJSON);
 routes.get('/json/municipios/:deptoId', getMunicipiosStoreJSON);
 routes.get('/json/entidades', getEntidadesJSON);
 routes.get('/json/traslados/buscar-sku', buscarProductoPorSKU);

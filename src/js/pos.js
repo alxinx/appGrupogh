@@ -206,12 +206,23 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             buscarTimer = setTimeout(() => buscarProductos(q), 350);
         });
 
-        // Enter / lector de barras: dispara inmediatamente sin esperar debounce
+        // Enter / lector de barras: dispara inmediatamente sin esperar debounce.
+        //
+        // El campo se vacía ACÁ MISMO, antes de llamar a buscarProductos — no después de
+        // que resuelva. buscarProductos es async (hace un fetch); si el operador vuelve a
+        // pasar la MISMA etiqueta en menos de medio segundo, el segundo lector empieza a
+        // escribir mientras el primer fetch todavía está en el aire, y como el campo seguía
+        // mostrando "COD0001" (el limpiarBusqueda() de más abajo recién corre cuando el
+        // fetch termina), las dos lecturas quedaban pegadas: "COD0001COD0001", una sola
+        // búsqueda que no encuentra nada. Vaciando antes de lanzar el fetch, cada lectura
+        // le escribe a un campo vacío y dispara su propio Enter — dos búsquedas
+        // independientes de "COD0001", cada una agrega la prenda una vez.
         inputCodigo.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter') return;
             e.preventDefault();
             clearTimeout(buscarTimer);
             const q = inputCodigo.value.trim();
+            inputCodigo.value = '';
             if (q) buscarProductos(q);
         });
     }
@@ -225,6 +236,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // el backend lo reconstruye desde PAGOS_PEDIDO_WEB al facturar. Acá solo se muestra.
     let pagoWebActivo = null;
     const WHOLESALE_MIN = parseInt(document.getElementById('drop-zone')?.dataset.wholesaleMin) || 6;
+    // % de IVA vigente (variable de entorno IVA, inyectada por el servidor) — nunca se
+    // hardcodea acá para que un cambio de tarifa no requiera tocar este archivo.
+    const IVA_PERCENT = parseFloat(document.getElementById('drop-zone')?.dataset.ivaPercent) || 0;
 
     const cartList      = document.getElementById('cart-list');
     const cartCount     = document.getElementById('cart-count');
@@ -637,6 +651,24 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         } catch (_) {}
     };
 
+    // Confirmación compartida por updateQty (llega a 0 con el "-") y setQty (se borra el
+    // número o se escribe 0/negativo al editar a mano) — mismo diálogo, un solo lugar.
+    const confirmarEliminarItem = async (idProducto) => {
+        const item = cart.get(idProducto);
+        if (!item) return;
+        const { isConfirmed } = await Swal.fire({
+            title: '¿Eliminar producto?',
+            html: `¿Quitar <strong>${item.nombre}</strong> de la orden?`,
+            icon: 'question',
+            showCancelButton:  true,
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText:  'Cancelar',
+            confirmButtonColor: '#EC5FA3'
+        });
+        if (isConfirmed) cart.delete(idProducto);
+        renderCarrito();
+    };
+
     // ── Actualizar cantidad (+ o -) ──────────────────────────────────────────
     const updateQty = async (idProducto, delta) => {
         if (!cart.has(idProducto)) return;
@@ -649,22 +681,64 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             return;
         }
 
-        if (nueva <= 0) {
-            const { isConfirmed } = await Swal.fire({
-                title: '¿Eliminar producto?',
-                html: `¿Quitar <strong>${item.nombre}</strong> de la orden?`,
-                icon: 'question',
-                showCancelButton:  true,
-                confirmButtonText: 'Sí, eliminar',
-                cancelButtonText:  'Cancelar',
-                confirmButtonColor: '#EC5FA3'
-            });
-            if (isConfirmed) { cart.delete(idProducto); renderCarrito(); }
-            return;
-        }
+        if (nueva <= 0) { await confirmarEliminarItem(idProducto); return; }
 
         item.cantidad = nueva;
         renderCarrito();
+    };
+
+    // ── Cantidad escrita a mano (doble clic sobre el número) ─────────────────
+    // Mismo tope que el "+": nunca más del stock disponible en este punto de venta
+    // (item.stock, que ya trae el catálogo). Si escriben más, se recorta al máximo y se
+    // avisa — no se rechaza en silencio ni se deja pasar.
+    const setQty = async (idProducto, valorTexto) => {
+        if (!cart.has(idProducto)) return;
+        if (bloqueadoPorPedidoWeb('cambiar las cantidades')) { renderCarrito(); return; }
+        const item = cart.get(idProducto);
+        let nueva = parseInt(valorTexto, 10);
+
+        if (!Number.isFinite(nueva)) { renderCarrito(); return; }
+
+        if (nueva > item.stock) {
+            window.showToast?.(`Stock máximo: ${item.stock} unidades`, 'warning');
+            nueva = item.stock;
+        }
+
+        if (nueva <= 0) { await confirmarEliminarItem(idProducto); return; }
+
+        item.cantidad = nueva;
+        renderCarrito();
+    };
+
+    // Cambia el <span> de cantidad por un <input> numérico editable. Se resuelve con
+    // blur/Enter (confirma) o Escape (cancela) — el `confirmado` evita que Enter dispare el
+    // blur y ejecute setQty dos veces.
+    const editarCantidad = (idProducto, spanEl) => {
+        if (!cart.has(idProducto)) return;
+        if (bloqueadoPorPedidoWeb('cambiar las cantidades')) return;
+        const item = cart.get(idProducto);
+
+        const input = document.createElement('input');
+        input.type      = 'number';
+        input.min       = '1';
+        input.max       = String(item.stock);
+        input.value     = item.cantidad;
+        input.className = 'qty-input text-xs font-black w-11 text-center text-gh-grayText border border-gh-primary rounded-lg py-0.5 outline-none';
+        spanEl.replaceWith(input);
+        input.focus();
+        input.select();
+
+        let confirmado = false;
+        const confirmar = () => {
+            if (confirmado) return;
+            confirmado = true;
+            setQty(idProducto, input.value);
+        };
+        input.addEventListener('blur', confirmar);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { confirmado = true; renderCarrito(); }
+        });
     };
 
     // ── Eliminar directo ─────────────────────────────────────────────────────
@@ -679,6 +753,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const precio = getPrecioItem(item);
         const total  = precio * item.cantidad;
         const atMax  = item.cantidad >= item.stock;
+        // Precio real (detal) tachado: solo tiene sentido mostrarlo cuando la orden calificó
+        // como mayorista Y esta línea puntual efectivamente se está cobrando más barato —
+        // mismo criterio que usa el backend para descuentoLinea (storeControllers.js).
+        const tieneDescuento = getModo() === 'mayorista' && item.precioDetal > precio;
         // Sin controles cuando es un pedido web: mostrar botones que no hacen nada
         // confunde más que ayudar. Se ve la cantidad, y ya.
         const bloqueado = !!pedidoWebActivo;
@@ -692,7 +770,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                             data-id="${item.idProducto}">
                         <i class="fi-rr-minus-small"></i>
                     </button>
-                    <span class="text-xs font-black w-5 text-center qty-display text-gh-grayText">${item.cantidad}</span>
+                    <span class="text-xs font-black w-5 text-center qty-display text-gh-grayText cursor-text"
+                          data-id="${item.idProducto}" title="Doble clic para escribir la cantidad">${item.cantidad}</span>
                     <button class="btn-qty-plus flex items-center transition-transform active:scale-90 ${atMax ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-gh-primary cursor-pointer'}"
                             data-id="${item.idProducto}" ${atMax ? 'disabled' : ''}>
                         <i class="fi-rr-plus-small"></i>
@@ -725,7 +804,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 <div class="flex items-center justify-between mt-4">
                     ${controlesCantidad}
                     <div class="text-right">
-                        <p class="text-[10px] text-gray-400 font-medium leading-none mb-1">Unid: $${fmt(precio)}</p>
+                        <p class="text-[10px] text-gray-400 font-medium leading-none mb-1">
+                            ${tieneDescuento ? `<span class="line-through mr-1">$${fmt(item.precioDetal)}</span>` : ''}Unid: $${fmt(precio)}
+                        </p>
                         <p class="font-bold text-base text-gh-grayText leading-none">$${fmt(total)}</p>
                     </div>
                 </div>
@@ -758,7 +839,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                     <img src="/img/avatars/sadBag.webp" alt="Carrito vacío" class="sad-bag-sigh w-24 h-24 object-contain opacity-70">
                     <p class="text-sm font-medium text-gray-400">La orden está vacía</p>
                 </div>`;
-            renderResumen(0);
+            renderResumen([]);
             return;
         }
 
@@ -774,10 +855,14 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         cartList.querySelectorAll('.btn-remove-item').forEach(btn =>
             btn.addEventListener('click', () => removeFromCart(btn.dataset.id))
         );
+        cartList.querySelectorAll('.qty-display').forEach(span =>
+            span.addEventListener('dblclick', () => editarCantidad(span.dataset.id, span))
+        );
 
-        // Resumen
-        const subtotal = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
-        renderResumen(subtotal);
+        // Resumen — se recalcula acá mismo, en el navegador, cada vez que cambia el
+        // carrito (sin ida y vuelta al servidor), para que el cajero vea de una el mismo
+        // desglose que va a quedar en la factura.
+        renderResumen(items);
 
         actualizarScrollHint();
 
@@ -785,11 +870,24 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         sincronizarReservasPos();
     };
 
-    const renderResumen = (subtotal) => {
+    const renderResumen = (items) => {
         const elSub   = document.getElementById('res-subtotal');
+        const elImp   = document.getElementById('res-impuestos');
         const elTotal = document.getElementById('res-total');
+
+        // total: lo que realmente se cobra (precio mayorista o detal, según aplique) —
+        // mismo cálculo que ya usa el modal de pago (calcularSubtotal). El descuento por
+        // mayorista no se muestra acá como línea aparte (confundía: coincidía en monto con
+        // el total y parecía que faltaba aplicarlo) — se ve por ítem, con el precio de
+        // detal tachado (renderItemCarrito). Subtotal es la base gravable de lo realmente
+        // cobrado, ya con el descuento adentro: Subtotal + Impuestos = Total.
+        const total = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
+        const subtotal  = IVA_PERCENT > 0 ? total / (1 + IVA_PERCENT / 100) : total;
+        const impuestos = total - subtotal;
+
         if (elSub)   elSub.textContent   = `$${fmt(subtotal)}`;
-        if (elTotal) elTotal.textContent = `$${fmt(subtotal)}`;
+        if (elImp)   elImp.textContent   = `$${fmt(impuestos)}`;
+        if (elTotal) elTotal.textContent = `$${fmt(total)}`;
     };
 
     // ── Limpiar orden ────────────────────────────────────────────────────────
@@ -1056,6 +1154,19 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // Sin esto, escribir el NIT en la pestaña de empresa no llegaría a guardarse.
     const ESPEJOS = ['cli-tipo-doc', 'cli-numero-doc', 'cli-departamento', 'cli-municipio', 'cli-direccion'];
 
+    // Departamento y municipio (real + espejo) quedan buscables — window.enhanceSelectBuscable
+    // vive en helpers.js. Se guarda cada `refresh()` porque sincronizarEspejos mueve
+    // `.value`/`.innerHTML` directo sobre el <select>, sin pasar por el input de búsqueda que
+    // lo tapa, así que hay que avisarle a mano que lo que se ve puede haber cambiado.
+    const BUSCABLES = {};
+    ['cli-departamento', 'cli-municipio'].forEach((base) => {
+        const placeholder = base === 'cli-departamento' ? 'Escribe o elige un departamento' : 'Escribe o elige una ciudad';
+        [base, `${base}-espejo`].forEach((elId) => {
+            const el = document.getElementById(elId);
+            if (el) BUSCABLES[elId] = window.enhanceSelectBuscable?.(el, { placeholder });
+        });
+    });
+
     const sincronizarEspejos = (desdeReal = true) => {
         ESPEJOS.forEach((id) => {
             const real   = document.getElementById(id);
@@ -1067,6 +1178,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             const origen = desdeReal ? real : espejo;
             const destino = desdeReal ? espejo : real;
             if (destino.value !== origen.value) destino.value = origen.value;
+            BUSCABLES[id]?.refresh();
+            BUSCABLES[`${id}-espejo`]?.refresh();
         });
     };
 
@@ -1245,6 +1358,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const sel = document.getElementById('cli-municipio');
         if (!sel || !deptoId) return;
         sel.innerHTML = '<option>Cargando...</option>';
+        BUSCABLES['cli-municipio']?.refresh();
         try {
             const resp = await fetch(`/store/json/municipios/${deptoId}`);
             const data = await resp.json();
@@ -1264,6 +1378,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         else {
             const sel = document.getElementById('cli-municipio');
             if (sel) sel.innerHTML = '<option value="">— selecciona un departamento —</option>';
+            BUSCABLES['cli-municipio']?.refresh();
         }
     });
 
@@ -1305,10 +1420,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const llenarFormCliente = (cli) => {
         const fill = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
 
-        fill('cli-tipo-doc',   cli.tipo_documento);
+        fill('cli-tipo-doc',   cli.tipoDocumento);
         fill('cli-numero-doc', cli.numero_doc);
 
-        const esEmpresa = cli.tipo_persona === 'J' || cli.tipo_documento === 'NIT';
+        const esEmpresa = cli.tipo_persona === 'J' || cli.tipoDocumento === 'NIT';
         switchTab(esEmpresa ? 'empresa' : 'natural');
 
         if (esEmpresa) {
@@ -1346,6 +1461,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         if (ub) {
             const deptoSel = document.getElementById('cli-departamento');
             if (deptoSel) deptoSel.value = ub.idDepartamento || '';
+            BUSCABLES['cli-departamento']?.refresh();
             if (ub.idDepartamento) cargarMunicipios(ub.idDepartamento, ub.idMunicipio);
             fill('cli-direccion', ub.direccion);
         }
@@ -1384,8 +1500,13 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         const deptoSel = document.getElementById('cli-departamento');
         if (deptoSel) deptoSel.value = '';
+        BUSCABLES['cli-departamento']?.refresh();
         const munSel = document.getElementById('cli-municipio');
         if (munSel) munSel.innerHTML = '<option value="">Seleccionar...</option>';
+        BUSCABLES['cli-municipio']?.refresh();
+        // El resto de campos (numero_doc, dirección, etc.) todavía se limpia más abajo —
+        // sincronizarEspejos corre al final, en switchTab('natural'), para no copiarle al
+        // espejo un valor que está a punto de borrarse acá mismo.
 
         modalCliente?.querySelectorAll('[name="gran_contribuyente"], [name="autorretenedor"], [name="agente_retencion"], [name="obligado_aduanero"]')
             .forEach(el => { el.checked = false; });
@@ -1437,7 +1558,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const fd = new FormData();
         fd.append('idCliente',      idCliModal);
         fd.append('tipo_persona',   esEmpresa ? 'J' : 'N');
-        fd.append('tipo_documento', getVal('cli-tipo-doc'));
+        fd.append('tipoDocumento', getVal('cli-tipo-doc'));
         fd.append('numero_doc',     numerDoc);
 
         if (esEmpresa) {
@@ -1725,9 +1846,23 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         let transferenciasData        = [];
         let tarjetaData               = [];
         let creditoData               = [];
-        const entidadesActivas        = new Map(); // transferencia
-        const entidadesActivasTarjeta = new Map(); // tarjeta
-        const entidadesActivasCredito = new Map(); // credito
+        // Cada fila es su propio pago, no "la fila de esta entidad": dos transferencias
+        // distintas por Nequi (dos recibos, $100.000 entre las dos) son dos filas con la
+        // misma entidad, no una sola. La clave del Map ahora es un id de fila (rowId), y
+        // cada valor guarda también idEntidad — para saber, al quitar una fila, si el chip
+        // se queda sin ninguna y hay que apagarle el resaltado.
+        const entidadesActivas        = new Map(); // transferencia: rowId -> { idEntidad, nombre }
+        const entidadesActivasTarjeta = new Map(); // tarjeta:       rowId -> { idEntidad, nombre }
+        const entidadesActivasCredito = new Map(); // credito:       rowId -> { idEntidad, nombre }
+        let contadorFilaPago = 0;
+
+        // Reactiva/apaga el resaltado de un chip según si le queda alguna fila abierta.
+        const actualizarChipActivo = (grupo, idEntidad, mapa, clases) => {
+            const chip = document.querySelector(`.fv-banco-chip[data-grupo="${grupo}"][data-id="${idEntidad}"]`);
+            if (!chip) return;
+            const activo = [...mapa.values()].some(v => v.idEntidad === idEntidad);
+            clases.forEach(c => chip.classList.toggle(c, activo));
+        };
 
         let empleadoActual   = null; // { idEmpleado, nombre } o null si no validado
         let empleadoTimer    = null;
@@ -1737,15 +1872,141 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         // Formato de miles en campo de efectivo
         window.initMoneyInput?.(document.getElementById('fv-efectivo-monto'));
+        window.initMoneyInput?.(document.getElementById('fv-credito-tienda-monto'));
+
+        // ── Crédito en Tienda: cupo disponible + validación asíncrona ────────────
+        //
+        // El monto que se escriba acá nunca puede superar lo que el cliente tiene
+        // disponible ahora mismo (CREDITO_DISPONIBLE_CLIENTE.creditoDisponible) — si tiene
+        // $1.000.000 de cupo y la factura es de $2.500.000, solo puede cubrir $1.000.000
+        // con este método; el resto va por otro medio de pago. Se verifica contra el
+        // servidor (nunca comparando solo con el número que se cargó al abrir el modal,
+        // que para cuando el cajero termina de escribir ya puede estar viejo — el cupo se
+        // puede consumir en otra venta o cambiar desde el admin en el mismo momento) y
+        // "Procesar Pago" queda apagado mientras la verificación esté pendiente o el monto
+        // no pase.
+        let creditoDisponibleActivo = 0;
+        let creditoTiendaValido     = true;  // true = no bloquea (monto en 0, o ya verificado)
+        let creditoTiendaVerificando = false;
+        let creditoTiendaTimer      = null;
+
+        const pintarEstadoCreditoTienda = (estado, texto) => {
+            const el = document.getElementById('fv-credito-tienda-estado');
+            if (!el) return;
+            el.style.color = estado === 'ok' ? '#059669' : estado === 'error' ? '#e11d48' : '#94a3b8';
+            el.textContent = texto || '';
+        };
+
+        const verificarCreditoTienda = async (monto) => {
+            const idCliente = inputIdCliente?.value?.trim();
+            if (!monto || monto <= 0) {
+                creditoTiendaValido = true;
+                creditoTiendaVerificando = false;
+                pintarEstadoCreditoTienda('info', '');
+                actualizarResumenPagos();
+                return;
+            }
+            creditoTiendaVerificando = true;
+            actualizarResumenPagos(); // deshabilita el botón mientras se confirma
+            pintarEstadoCreditoTienda('info', 'Verificando cupo disponible...');
+            try {
+                // El middleware CSRF global (index.js) protege esta ruta aunque no se la
+                // haya marcado con csrfProtection en storeRoutes.js — sin el token, csurf
+                // la rechaza con EBADCSRFTOKEN, que el handler de index.js devuelve como
+                // "Sesión expirada" (texto engañoso: no es la sesión, es el token que
+                // faltaba en este fetch). Mismo patrón que el resto de pos.js.
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+                          || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
+                const resp = await fetch(`/store/json/clientes/${idCliente}/credito/validar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    body: JSON.stringify({ monto })
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    creditoTiendaValido = false;
+                    pintarEstadoCreditoTienda('error', data.mensaje || 'No se pudo verificar el cupo.');
+                } else {
+                    creditoDisponibleActivo = data.creditoDisponible;
+                    creditoTiendaValido = data.valido;
+                    pintarEstadoCreditoTienda(
+                        data.valido ? 'ok' : 'error',
+                        data.valido ? '✓ Cubierto por el cupo disponible' : data.mensaje
+                    );
+                }
+            } catch (_) {
+                creditoTiendaValido = false;
+                pintarEstadoCreditoTienda('error', 'Error de conexión al verificar el cupo.');
+            } finally {
+                creditoTiendaVerificando = false;
+                actualizarResumenPagos();
+            }
+        };
+
+        // Tope de este campo: lo que falta pagar SIN contar lo que ya haya en él mismo (para
+        // no restarse a sí mismo), topado además por el cupo disponible del cliente — nunca
+        // los dos a la vez, el que sea más chico. checkExcesoMonto (el de los demás campos)
+        // borra el campo entero apenas se pasa del total, que es brutal acá: alguien
+        // escribiendo hacia un cupo de $7.000.000 contra una orden de $56.800 se quedaba sin
+        // poder teclear nada pasado el segundo dígito. Acá se recorta al máximo permitido en
+        // vez de borrar.
+        const otrosMediosDePago = () =>
+            leerMonto('fv-efectivo-monto') + calcularTransferencia() + calcularTarjeta() + calcularCredito();
+        const limiteCreditoTienda = () =>
+            Math.max(0, Math.min(calcularSubtotal() - otrosMediosDePago(), creditoDisponibleActivo));
+
+        document.getElementById('fv-credito-tienda-monto')?.addEventListener('input', (e) => {
+            const limite = limiteCreditoTienda();
+            let monto = leerMonto('fv-credito-tienda-monto');
+            if (monto > limite) {
+                monto = limite;
+                e.target.value = monto > 0 ? new Intl.NumberFormat('es-CO').format(monto) : '';
+            }
+            // No bloquea la escritura: recalcula el resumen ya mismo con lo último válido,
+            // y la verificación fresca llega 400ms después de que el cajero deja de teclear.
+            creditoTiendaValido = monto === 0;
+            actualizarResumenPagos();
+            clearTimeout(creditoTiendaTimer);
+            creditoTiendaTimer = setTimeout(() => verificarCreditoTienda(monto), 400);
+        });
 
         // ── Abrir ──────────────────────────────────────────────────────────────
         // Bloque de solo lectura con el pago que ya cobró la pasarela. Cuando existe, los métodos
         // manuales se ocultan: el cajero no está recibiendo plata, solo emitiendo la factura.
+        // Tarjeta "Crédito en Tienda": solo aparece si el cliente activo tiene crédito
+        // propio habilitado (CLIENTES.credito, distinto de las Entidades Crediticias de
+        // abajo). Se consulta fresco cada vez que se abre este modal — el crédito se puede
+        // otorgar o suspender desde el admin en cualquier momento, en medio de la misma
+        // sesión de caja — en vez de confiar en un estado que pudo quedar viejo.
+        const pintarMetodoCreditoTienda = async () => {
+            const tarjeta = document.getElementById('fv-metodo-credito-tienda');
+            if (!tarjeta) return;
+            const idCliente = inputIdCliente?.value?.trim();
+            if (!idCliente || idCliente === CLIENTE_GENERICO.idCliente) {
+                tarjeta.classList.add('hidden');
+                return;
+            }
+            try {
+                const resp = await fetch(`/store/json/clientes/${idCliente}/credito`);
+                const data = await resp.json();
+                creditoDisponibleActivo = data.creditoDisponible || 0;
+                // CLIENTES.credito puede quedar en true sin que exista ninguna fila en
+                // CREDITO_DISPONIBLE_CLIENTE (dato viejo de antes de esa tabla, o un cliente
+                // al que nunca se le asignó cupo) — sin este segundo chequeo la tarjeta se
+                // mostraba igual, pero cualquier valor se clampaba a $0 y no se podía usar.
+                tarjeta.classList.toggle('hidden', !data.credito || creditoDisponibleActivo <= 0);
+                const elDisp = document.getElementById('fv-credito-tienda-disponible');
+                if (elDisp) elDisp.textContent = `Cupo disponible: $${fmt(creditoDisponibleActivo)}`;
+            } catch (_) {
+                tarjeta.classList.add('hidden');
+            }
+        };
+
         const pintarPagoWeb = () => {
             const caja = document.getElementById('fv-pago-web');
             if (!caja) return;
 
-            const metodosManuales = ['efectivo', 'transferencia', 'tarjeta', 'credito']
+            const metodosManuales = ['efectivo', 'transferencia', 'tarjeta', 'credito', 'credito-tienda']
                 .map(m => document.getElementById(`fv-metodo-${m}`));
 
             if (!pagoWebActivo) {
@@ -1780,8 +2041,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             actualizarTotalesFV();
             // Se espera a cargarEntidades: al terminar vuelve a mostrar las tarjetas de
             // transferencia/tarjeta/crédito, así que pintarPagoWeb tiene que correr después
-            // para poder ocultarlas cuando el pedido ya viene pago.
-            await cargarEntidades();
+            // para poder ocultarlas cuando el pedido ya viene pago. Mismo motivo para
+            // pintarMetodoCreditoTienda: su tarjeta también tiene que estar resuelta antes.
+            await Promise.all([cargarEntidades(), pintarMetodoCreditoTienda()]);
             resetearPagos();
             pintarPagoWeb();
             modalFV.classList.remove('hidden');
@@ -1865,10 +2127,15 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         };
 
         // ── Totales ────────────────────────────────────────────────────────────
+        // calcularSubtotal() pese al nombre devuelve el total con IVA incluido (lo que
+        // realmente se cobra) — mismo valor que "total" en renderResumen. Antes este modal
+        // mostraba ese valor como "Subtotal" e "Impuestos" quedaba hardcodeado en 0, sin
+        // relación con el IVA real. Se descompone igual que en el resumen del carrito:
+        // Subtotal (base gravable neta, sin IVA) + Impuestos = Total.
         const actualizarTotalesFV = () => {
-            const subtotal  = calcularSubtotal();
-            const impuestos = 0;
-            const total     = subtotal + impuestos;
+            const total     = calcularSubtotal();
+            const subtotal  = IVA_PERCENT > 0 ? total / (1 + IVA_PERCENT / 100) : total;
+            const impuestos = total - subtotal;
             const elSub  = document.getElementById('fv-subtotal');
             const elImp  = document.getElementById('fv-impuestos');
             const elTot  = document.getElementById('fv-total');
@@ -2021,140 +2288,169 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         };
 
         // ── Rows por entidad ───────────────────────────────────────────────────
+        // Un clic en el chip SIEMPRE agrega una fila nueva — ya no reemplaza ni bloquea
+        // repetir la misma entidad, para poder registrar dos transferencias distintas por
+        // el mismo banco/billetera. Cada fila tiene su propio botón de quitar.
         const calcularTransferencia = () => {
             let suma = 0;
-            entidadesActivas.forEach((_, id) => {
-                suma += window.parseMoney?.(document.getElementById(`fv-tr-monto-${id}`)?.value) ?? 0;
+            entidadesActivas.forEach((_, rowId) => {
+                suma += window.parseMoney?.(document.getElementById(`fv-tr-monto-${rowId}`)?.value) ?? 0;
             });
             return suma;
         };
 
-        const añadirRowEntidad = (id, nombre) => {
+        const añadirRowEntidad = (idEntidad, nombre) => {
             const contenedor = document.getElementById('fv-transferencia-rows');
-            if (!contenedor || document.getElementById(`fv-tr-row-${id}`)) return;
+            if (!contenedor) return;
+            const rowId = `${idEntidad}-${contadorFilaPago++}`;
+            entidadesActivas.set(rowId, { idEntidad, nombre });
             const row = document.createElement('div');
-            row.id        = `fv-tr-row-${id}`;
+            row.id        = `fv-tr-row-${rowId}`;
             row.className = 'flex gap-2 items-center p-2 bg-white rounded-xl border border-blue-100';
             row.innerHTML = `
                 <span class="text-[10px] font-black text-blue-600 uppercase tracking-wide w-20 flex-shrink-0 truncate">${nombre}</span>
                 <div class="relative flex-[3]">
                     <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm pointer-events-none">$</span>
-                    <input id="fv-tr-monto-${id}" type="text" inputmode="numeric"
+                    <input id="fv-tr-monto-${rowId}" type="text" inputmode="numeric"
                            placeholder="Monto"
                            class="w-full pl-6 pr-2 h-9 bg-gray-50 border border-gray-100 rounded-lg text-right font-black text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-300">
                 </div>
-                <input id="fv-tr-ref-${id}" type="text"
+                <input id="fv-tr-ref-${rowId}" type="text"
                        placeholder="Ref."
-                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-300">`;
+                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-300">
+                <button type="button" data-row="${rowId}" data-grupo="transferencia" class="fv-quitar-fila flex-none w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer">
+                    <i class="fi-rr-cross-small"></i>
+                </button>`;
             contenedor.appendChild(row);
-            window.initMoneyInput?.(document.getElementById(`fv-tr-monto-${id}`));
-            document.getElementById(`fv-tr-monto-${id}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-tr-monto-${id}`); actualizarResumenPagos(); });
-            document.getElementById(`fv-tr-ref-${id}`)?.addEventListener('input', actualizarResumenPagos);
+            window.initMoneyInput?.(document.getElementById(`fv-tr-monto-${rowId}`));
+            document.getElementById(`fv-tr-monto-${rowId}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-tr-monto-${rowId}`); actualizarResumenPagos(); });
+            document.getElementById(`fv-tr-ref-${rowId}`)?.addEventListener('input', actualizarResumenPagos);
             // Pre-rellenar con el restante
-            const montoTr = document.getElementById(`fv-tr-monto-${id}`);
+            const montoTr = document.getElementById(`fv-tr-monto-${rowId}`);
             if (montoTr) { const r = calcularRestante(); if (r > 0) { montoTr.value = fmtMoney(r); actualizarResumenPagos(); } }
         };
 
-        const quitarRowEntidad = (id) => {
-            document.getElementById(`fv-tr-row-${id}`)?.remove();
-            entidadesActivas.delete(id);
+        const quitarRowEntidad = (rowId) => {
+            const info = entidadesActivas.get(rowId);
+            document.getElementById(`fv-tr-row-${rowId}`)?.remove();
+            entidadesActivas.delete(rowId);
+            if (info) actualizarChipActivo('transferencia', info.idEntidad, entidadesActivas, ['border-blue-400', 'text-blue-600', 'bg-blue-50']);
             actualizarResumenPagos();
         };
 
         // ── Rows por tarjeta ───────────────────────────────────────────────────
         const calcularTarjeta = () => {
             let suma = 0;
-            entidadesActivasTarjeta.forEach((_, id) => {
-                suma += window.parseMoney?.(document.getElementById(`fv-ta-monto-${id}`)?.value) ?? 0;
+            entidadesActivasTarjeta.forEach((_, rowId) => {
+                suma += window.parseMoney?.(document.getElementById(`fv-ta-monto-${rowId}`)?.value) ?? 0;
             });
             return suma;
         };
 
-        const añadirRowTarjeta = (id, nombre) => {
+        const añadirRowTarjeta = (idEntidad, nombre) => {
             const contenedor = document.getElementById('fv-tarjeta-rows');
-            if (!contenedor || document.getElementById(`fv-ta-row-${id}`)) return;
+            if (!contenedor) return;
+            const rowId = `${idEntidad}-${contadorFilaPago++}`;
+            entidadesActivasTarjeta.set(rowId, { idEntidad, nombre });
             const row = document.createElement('div');
-            row.id        = `fv-ta-row-${id}`;
+            row.id        = `fv-ta-row-${rowId}`;
             row.className = 'flex gap-2 items-center p-2 bg-white rounded-xl border border-purple-100';
             row.innerHTML = `
                 <span class="text-[10px] font-black text-purple-600 uppercase tracking-wide w-20 flex-shrink-0 truncate">${nombre}</span>
                 <div class="relative flex-[3]">
                     <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm pointer-events-none">$</span>
-                    <input id="fv-ta-monto-${id}" type="text" inputmode="numeric"
+                    <input id="fv-ta-monto-${rowId}" type="text" inputmode="numeric"
                            placeholder="Monto"
                            class="w-full pl-6 pr-2 h-9 bg-gray-50 border border-gray-100 rounded-lg text-right font-black text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-300">
                 </div>
-                <input id="fv-ta-ref-${id}" type="text"
+                <input id="fv-ta-ref-${rowId}" type="text"
                        placeholder="Ref."
-                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-300">`;
+                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-300">
+                <button type="button" data-row="${rowId}" data-grupo="tarjeta" class="fv-quitar-fila flex-none w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer">
+                    <i class="fi-rr-cross-small"></i>
+                </button>`;
             contenedor.appendChild(row);
-            window.initMoneyInput?.(document.getElementById(`fv-ta-monto-${id}`));
-            document.getElementById(`fv-ta-monto-${id}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-ta-monto-${id}`); actualizarResumenPagos(); });
-            document.getElementById(`fv-ta-ref-${id}`)?.addEventListener('input', actualizarResumenPagos);
+            window.initMoneyInput?.(document.getElementById(`fv-ta-monto-${rowId}`));
+            document.getElementById(`fv-ta-monto-${rowId}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-ta-monto-${rowId}`); actualizarResumenPagos(); });
+            document.getElementById(`fv-ta-ref-${rowId}`)?.addEventListener('input', actualizarResumenPagos);
             // Pre-rellenar con el restante
-            const montoTa = document.getElementById(`fv-ta-monto-${id}`);
+            const montoTa = document.getElementById(`fv-ta-monto-${rowId}`);
             if (montoTa) { const r = calcularRestante(); if (r > 0) { montoTa.value = fmtMoney(r); actualizarResumenPagos(); } }
         };
 
-        const quitarRowTarjeta = (id) => {
-            document.getElementById(`fv-ta-row-${id}`)?.remove();
-            entidadesActivasTarjeta.delete(id);
+        const quitarRowTarjeta = (rowId) => {
+            const info = entidadesActivasTarjeta.get(rowId);
+            document.getElementById(`fv-ta-row-${rowId}`)?.remove();
+            entidadesActivasTarjeta.delete(rowId);
+            if (info) actualizarChipActivo('tarjeta', info.idEntidad, entidadesActivasTarjeta, ['border-purple-400', 'text-purple-600', 'bg-purple-50']);
             actualizarResumenPagos();
         };
 
         // ── Rows por entidad crediticia ────────────────────────────────────────
         const calcularCredito = () => {
             let suma = 0;
-            entidadesActivasCredito.forEach((_, id) => {
-                suma += window.parseMoney?.(document.getElementById(`fv-cr-monto-${id}`)?.value) ?? 0;
+            entidadesActivasCredito.forEach((_, rowId) => {
+                suma += window.parseMoney?.(document.getElementById(`fv-cr-monto-${rowId}`)?.value) ?? 0;
             });
             return suma;
         };
 
-        const añadirRowCredito = (id, nombre) => {
+        const añadirRowCredito = (idEntidad, nombre) => {
             const contenedor = document.getElementById('fv-credito-rows');
-            if (!contenedor || document.getElementById(`fv-cr-row-${id}`)) return;
+            if (!contenedor) return;
+            const rowId = `${idEntidad}-${contadorFilaPago++}`;
+            entidadesActivasCredito.set(rowId, { idEntidad, nombre });
             const row = document.createElement('div');
-            row.id        = `fv-cr-row-${id}`;
+            row.id        = `fv-cr-row-${rowId}`;
             row.className = 'flex gap-2 items-center p-2 bg-white rounded-xl border border-orange-100';
             row.innerHTML = `
                 <span class="text-[10px] font-black text-orange-600 uppercase tracking-wide w-20 flex-shrink-0 truncate">${nombre}</span>
                 <div class="relative flex-[3]">
                     <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm pointer-events-none">$</span>
-                    <input id="fv-cr-monto-${id}" type="text" inputmode="numeric"
+                    <input id="fv-cr-monto-${rowId}" type="text" inputmode="numeric"
                            placeholder="Monto"
                            class="w-full pl-6 pr-2 h-9 bg-gray-50 border border-gray-100 rounded-lg text-right font-black text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-300">
                 </div>
-                <input id="fv-cr-ref-${id}" type="text"
+                <input id="fv-cr-ref-${rowId}" type="text"
                        placeholder="Ref."
-                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-300">`;
+                       class="w-28 flex-none h-9 bg-gray-50 border border-gray-100 rounded-lg px-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-300">
+                <button type="button" data-row="${rowId}" data-grupo="credito" class="fv-quitar-fila flex-none w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer">
+                    <i class="fi-rr-cross-small"></i>
+                </button>`;
             contenedor.appendChild(row);
-            window.initMoneyInput?.(document.getElementById(`fv-cr-monto-${id}`));
-            document.getElementById(`fv-cr-monto-${id}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-cr-monto-${id}`); actualizarResumenPagos(); });
-            document.getElementById(`fv-cr-ref-${id}`)?.addEventListener('input', actualizarResumenPagos);
+            window.initMoneyInput?.(document.getElementById(`fv-cr-monto-${rowId}`));
+            document.getElementById(`fv-cr-monto-${rowId}`)?.addEventListener('input', () => { checkExcesoMonto(`fv-cr-monto-${rowId}`); actualizarResumenPagos(); });
+            document.getElementById(`fv-cr-ref-${rowId}`)?.addEventListener('input', actualizarResumenPagos);
             // Pre-rellenar con el restante
-            const montoCr = document.getElementById(`fv-cr-monto-${id}`);
+            const montoCr = document.getElementById(`fv-cr-monto-${rowId}`);
             if (montoCr) { const r = calcularRestante(); if (r > 0) { montoCr.value = fmtMoney(r); actualizarResumenPagos(); } }
         };
 
-        const quitarRowCredito = (id) => {
-            document.getElementById(`fv-cr-row-${id}`)?.remove();
-            entidadesActivasCredito.delete(id);
+        const quitarRowCredito = (rowId) => {
+            const info = entidadesActivasCredito.get(rowId);
+            document.getElementById(`fv-cr-row-${rowId}`)?.remove();
+            entidadesActivasCredito.delete(rowId);
+            if (info) actualizarChipActivo('credito', info.idEntidad, entidadesActivasCredito, ['border-orange-400', 'text-orange-600', 'bg-orange-50']);
             actualizarResumenPagos();
         };
 
         // ── Reset pagos ────────────────────────────────────────────────────────
         const resetearPagos = () => {
             // Cerrar acordeones
-            ['efectivo', 'transferencia', 'tarjeta', 'credito'].forEach(m => {
+            ['efectivo', 'transferencia', 'tarjeta', 'credito', 'credito-tienda'].forEach(m => {
                 document.getElementById(`fv-${m}-body`)?.classList.add('hidden');
                 document.getElementById(`fv-${m}-chevron`)?.classList.remove('rotate-180');
             });
             // Limpiar campos fijos
-            ['fv-efectivo-monto'].forEach(id => {
+            ['fv-efectivo-monto', 'fv-credito-tienda-monto'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = '';
             });
             document.getElementById('fv-efectivo-cambio') && (document.getElementById('fv-efectivo-cambio').textContent = '$0');
+            // Limpiar validación de crédito en tienda — cliente/orden nuevos, nada verificado todavía
+            clearTimeout(creditoTiendaTimer);
+            creditoTiendaValido = true;
+            creditoTiendaVerificando = false;
+            pintarEstadoCreditoTienda('info', '');
             // Limpiar empleado
             empleadoActual = null;
             clearTimeout(empleadoTimer);
@@ -2218,6 +2514,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const calcularRestante = () => Math.max(0,
             calcularSubtotal()
             - leerMonto('fv-efectivo-monto')
+            - leerMonto('fv-credito-tienda-monto')
             - calcularTransferencia()
             - calcularTarjeta()
             - calcularCredito()
@@ -2227,7 +2524,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const checkExcesoMonto = (elId) => {
             const total = calcularSubtotal();
             if (total <= 0) return;
-            const suma = leerMonto('fv-efectivo-monto') + calcularTransferencia() + calcularTarjeta() + calcularCredito();
+            const suma = leerMonto('fv-efectivo-monto') + leerMonto('fv-credito-tienda-monto') + calcularTransferencia() + calcularTarjeta() + calcularCredito();
             if (suma > total) {
                 const el = document.getElementById(elId);
                 if (el) el.value = '';
@@ -2236,21 +2533,37 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         const actualizarResumenPagos = () => {
             const efectivo      = leerMonto('fv-efectivo-monto');
+            const creditoTienda = leerMonto('fv-credito-tienda-monto');
             const transferencia = calcularTransferencia();
             const tarjeta       = calcularTarjeta();
             const credito       = calcularCredito();
             const pagoEnLinea   = pagoWebActivo?.valor || 0;
-            const suma          = efectivo + transferencia + tarjeta + credito + pagoEnLinea;
+            const suma          = efectivo + creditoTienda + transferencia + tarjeta + credito + pagoEnLinea;
             const total         = calcularSubtotal();
 
             const elEf = document.getElementById('fv-resumen-efectivo-val');
+            const elCt = document.getElementById('fv-resumen-credito-tienda-val');
             const elTr = document.getElementById('fv-resumen-transferencia-val');
             const elTa = document.getElementById('fv-resumen-tarjeta-val');
             const elCr = document.getElementById('fv-resumen-credito-val');
             if (elEf) elEf.textContent = `$${fmt(efectivo)}`;
+            if (elCt) elCt.textContent = `$${fmt(creditoTienda)}`;
             if (elTr) elTr.textContent = `$${fmt(transferencia)}`;
             if (elTa) elTa.textContent = `$${fmt(tarjeta)}`;
             if (elCr) elCr.textContent = `$${fmt(credito)}`;
+
+            // Un recuadro solo se ve si tiene plata — cinco cajas en $0 todo el tiempo era
+            // puro ruido visual.
+            const cajas = [
+                ['fv-caja-efectivo',        efectivo],
+                ['fv-caja-credito-tienda',  creditoTienda],
+                ['fv-caja-transferencia',   transferencia],
+                ['fv-caja-tarjeta',         tarjeta],
+                ['fv-caja-credito',         credito]
+            ];
+            cajas.forEach(([id, valor]) => {
+                document.getElementById(id)?.classList.toggle('hidden', valor <= 0);
+            });
 
             // Referencia obligatoria para transferencias, tarjeta y crédito
             const refsOk = [...entidadesActivas.keys()].every(id => {
@@ -2273,22 +2586,25 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             if (!btn) return;
             // `!cajaEnCuadre` va en la misma condición y no en un apagado aparte: cualquier
             // tecleo en un monto vuelve a pasar por acá, y un apagado suelto lo revertiría.
-            const activo = !cajaEnCuadre && total > 0 && suma >= total && refsOk && refsTaOk && refsCrOk && empleadoActual !== null;
+            // `!creditoTiendaVerificando && creditoTiendaValido`: mientras se confirma el
+            // cupo contra el servidor, o si no alcanza, el botón se queda apagado — no
+            // alcanza con que la suma cierre en el navegador.
+            const activo = !cajaEnCuadre && total > 0 && suma >= total && refsOk && refsTaOk && refsCrOk
+                && empleadoActual !== null && !creditoTiendaVerificando && creditoTiendaValido;
             btn.disabled  = !activo;
             btn.className = activo
                 ? 'flex items-center gap-3 px-8 py-3.5 bg-gh-primaryHover text-white rounded-2xl font-bold shadow-lg shadow-gh-primary/30 hover:brightness-110 transition-all active:scale-95 cursor-pointer'
                 : 'flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed';
 
-            // Bloquear chips inactivos si el total ya está cubierto
+            // Bloquear TODOS los chips si el total ya está cubierto — antes solo se
+            // bloqueaban los inactivos (para no impedir ajustar la entidad ya elegida),
+            // pero ahora un clic siempre agrega una fila nueva, activa o no: con la orden
+            // ya cubierta ($300.000 factura, $200.000 efectivo + $50.000 Nequi + $50.000
+            // Nequi), un tercer clic en Nequi (u otra entidad cualquiera) seguía agregando
+            // una fila de más. Quitar una fila con el × de abajo sí sigue libre siempre.
             const totalCubierto = total > 0 && suma >= total;
             document.querySelectorAll('.fv-banco-chip').forEach(chip => {
-                const cid   = chip.dataset.id;
-                const grupo = chip.dataset.grupo;
-                const isActive =
-                    (grupo === 'transferencia' && entidadesActivas.has(cid)) ||
-                    (grupo === 'tarjeta'       && entidadesActivasTarjeta.has(cid)) ||
-                    (grupo === 'credito'       && entidadesActivasCredito.has(cid));
-                const bloquear = totalCubierto && !isActive;
+                const bloquear = totalCubierto;
                 chip.disabled = bloquear;
                 chip.classList.toggle('opacity-40',        bloquear);
                 chip.classList.toggle('cursor-not-allowed', bloquear);
@@ -2329,43 +2645,58 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 }
                 return;
             }
-            if (e.target.closest('#fv-transferencia-header')) { togglePago('transferencia', 'border-blue-200');   return; }
-            if (e.target.closest('#fv-tarjeta-header'))       { togglePago('tarjeta',       'border-purple-200'); return; }
-            if (e.target.closest('#fv-credito-header'))       { togglePago('credito',       'border-orange-200'); return; }
+            if (e.target.closest('#fv-transferencia-header'))   { togglePago('transferencia',   'border-blue-200');   return; }
+            if (e.target.closest('#fv-tarjeta-header'))         { togglePago('tarjeta',         'border-purple-200'); return; }
+            if (e.target.closest('#fv-credito-header'))         { togglePago('credito',         'border-orange-200'); return; }
+            if (e.target.closest('#fv-credito-tienda-header')) {
+                // Al abrir (no al cerrar) se precarga con lo que falta pagar, topado por el
+                // cupo disponible — mismo gesto que las filas de transferencia/tarjeta/
+                // entidad crediticia al agregarse. Si ya tenía algo escrito no se pisa.
+                const bodyEl   = document.getElementById('fv-credito-tienda-body');
+                const abriendo = bodyEl?.classList.contains('hidden');
+                togglePago('credito-tienda', 'border-pink-200');
+                if (abriendo) {
+                    const montoCt = document.getElementById('fv-credito-tienda-monto');
+                    const limite  = limiteCreditoTienda();
+                    if (montoCt && !montoCt.value && limite > 0) {
+                        montoCt.value = new Intl.NumberFormat('es-CO').format(limite);
+                        creditoTiendaValido = false;
+                        actualizarResumenPagos();
+                        clearTimeout(creditoTiendaTimer);
+                        creditoTiendaTimer = setTimeout(() => verificarCreditoTienda(limite), 400);
+                    }
+                }
+                return;
+            }
 
+            // Un clic en el chip agrega otra fila para esa entidad, siempre — ya no
+            // "desactiva" nada; para eso está el botón × de cada fila (más abajo).
             const chip = e.target.closest('.fv-banco-chip');
             if (chip) {
                 const id     = chip.dataset.id;
                 const nombre = chip.dataset.nombre;
                 const grupo  = chip.dataset.grupo;
                 if (grupo === 'tarjeta') {
-                    if (entidadesActivasTarjeta.has(id)) {
-                        chip.classList.remove('border-purple-400', 'text-purple-600', 'bg-purple-50');
-                        quitarRowTarjeta(id);
-                    } else {
-                        chip.classList.add('border-purple-400', 'text-purple-600', 'bg-purple-50');
-                        entidadesActivasTarjeta.set(id, { nombre });
-                        añadirRowTarjeta(id, nombre);
-                    }
+                    chip.classList.add('border-purple-400', 'text-purple-600', 'bg-purple-50');
+                    añadirRowTarjeta(id, nombre);
                 } else if (grupo === 'credito') {
-                    if (entidadesActivasCredito.has(id)) {
-                        chip.classList.remove('border-orange-400', 'text-orange-600', 'bg-orange-50');
-                        quitarRowCredito(id);
-                    } else {
-                        chip.classList.add('border-orange-400', 'text-orange-600', 'bg-orange-50');
-                        entidadesActivasCredito.set(id, { nombre });
-                        añadirRowCredito(id, nombre);
-                    }
+                    chip.classList.add('border-orange-400', 'text-orange-600', 'bg-orange-50');
+                    añadirRowCredito(id, nombre);
                 } else {
-                    if (entidadesActivas.has(id)) {
-                        chip.classList.remove('border-blue-400', 'text-blue-600', 'bg-blue-50');
-                        quitarRowEntidad(id);
-                    } else {
-                        chip.classList.add('border-blue-400', 'text-blue-600', 'bg-blue-50');
-                        entidadesActivas.set(id, { nombre });
-                        añadirRowEntidad(id, nombre);
-                    }
+                    chip.classList.add('border-blue-400', 'text-blue-600', 'bg-blue-50');
+                    añadirRowEntidad(id, nombre);
                 }
+                return;
+            }
+
+            // Botón × de una fila individual (transferencia/tarjeta/entidad crediticia).
+            const btnQuitar = e.target.closest('.fv-quitar-fila');
+            if (btnQuitar) {
+                const rowId = btnQuitar.dataset.row;
+                const grupo = btnQuitar.dataset.grupo;
+                if (grupo === 'tarjeta')       quitarRowTarjeta(rowId);
+                else if (grupo === 'credito')  quitarRowCredito(rowId);
+                else                            quitarRowEntidad(rowId);
                 return;
             }
 
@@ -2409,6 +2740,12 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             // Efectivo
             const montoEf = leerMonto('fv-efectivo-monto');
             if (montoEf > 0) pagosPayload.push({ idEntidad: null, valor: montoEf, nroReferencia: null });
+
+            // Crédito en Tienda — antes se validaba y se mostraba en el resumen de caja
+            // pero nunca se agregaba acá, así que se perdía en silencio: la factura salía
+            // sin este pago y sin marcar credito=true (procesarFactura la deriva de esto).
+            const montoCt = leerMonto('fv-credito-tienda-monto');
+            if (montoCt > 0) pagosPayload.push({ idEntidad: null, valor: montoCt, nroReferencia: null, esCreditoTienda: true });
 
             // Transferencia
             entidadesActivas.forEach((_, id) => {

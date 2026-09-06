@@ -1,0 +1,92 @@
+extends ../../layout/index
+
+block contenedor
+    div(class="fixed inset-0 flex" style="background:#F4E8FF")
+        include ../partials/leftMenu
+
+        div(class="flex-1 flex flex-col min-w-0")
+            include ../../partials/header
+
+            main(class="flex-1 overflow-y-auto p-6 pt-5")
+
+                //- ══ HEADER ═════════════════════════════════════════════════
+                div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 mb-6 flex items-center gap-5 shadow-sm border border-white/60")
+                    div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                        img(src="/img/avatars/clientes.webp" alt="Mis Clientes" class="w-17 h-17 object-contain")
+                    div
+                        h1(class="text-2xl font-bold text-slate-800") Mis Clientes
+                        p(class="text-sm text-slate-400 mt-0.5") Clientes con facturas pendientes en crédito de esta tienda
+
+                //- ══ TABLA — mismo estilo que "Estado Actual de las tiendas"
+                //- (views/administrador/stores/views/listaTiendas.pug): encabezado con
+                //- ícono + título rosa, tabla de bordes finos, badges en píldora con
+                //- punto de color, botón "Ver Mas" y el pie con el conteo. ═══════════
+                div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                    h2.h2.text-gh-primaryHover
+                        i.fi-rr-users-alt
+                        |  Clientes con crédito pendiente
+                    p(class="text-sm text-slate-400") Ordenados de mayor a menor deuda
+
+                    div(class="overflow-x-auto pt-4")
+                        table(class="w-full text-left text-2xs border-collapse")
+                            thead
+                                tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                                    th(class="px-8 py-4 text-center text-gray-600") Cliente & Documento
+                                    th(class="px-2 text-center text-gray-600") Estado
+                                    th(class="px-2 text-center text-gray-600") Facturas Pendientes
+                                    th(class="px-2 text-center text-gray-600") Deuda Total
+                                    th(class="px-8 text-center text-gray-600")
+
+                            tbody(class="divide-y divide-slate-100")
+                                if clientes && clientes.length
+                                    each c in clientes
+                                        tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+                                            //- El teléfono en CLIENTES no tiene un formato único: algunos ya vienen con el
+                                            //- 57 de país (12 dígitos), otros solo el celular (10). Con 10, se antepone;
+                                            //- con cualquier otra longitud (ya trae el 57, o un dato viejo raro), se deja
+                                            //- tal cual — anteponer siempre duplicaba el 57 en los que ya lo traían.
+                                            - const waDigitosCrudo = c.telefono ? String(c.telefono).replace(/\D/g, '') : ''
+                                            - const waDigitos = waDigitosCrudo.length === 10 ? `57${waDigitosCrudo}` : waDigitosCrudo
+                                            td(class="px-8 py-5")
+                                                div(class="flex items-center space-x-3")
+                                                    div
+                                                        p(class="font-bold text-slate-800")= c.nombre
+                                                        p(class="text-xs text-slate-400 flex items-center gap-1.5")
+                                                            span= c.documento
+                                                            if waDigitos
+                                                                span ·
+                                                                a(href=`https://api.whatsapp.com/send?phone=${waDigitos}` target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 hover:underline")
+                                                                    i(class="fi fi-brands-whatsapp text-emerald-500")
+                                                                    span= c.telefono
+
+                                            td(class="px-6 py-5 text-center")
+                                                if c.enMora
+                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-600")
+                                                        span(class="w-1.5 h-1.5 rounded-full bg-rose-500 mr-2")
+                                                        | EN MORA
+                                                else
+                                                    span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-600")
+                                                        span(class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2")
+                                                        | PENDIENTE
+
+                                            td(class="px-6 py-5 text-center")
+                                                p(class="font-bold text-slate-800 tabular-nums")= c.facturasPendientes
+
+                                            td(class="px-6 py-5 text-right")
+                                                p(class="font-bold text-slate-800 tabular-nums")= `$${Math.round(c.deudaTotal).toLocaleString('es-CO')}`
+
+                                            td(class="px-8 py-5 text-center")
+                                                a(href=`/store/clientes/${c.idCliente}` class="btn btn-secondary text-xs")
+                                                    i.fi-rr-eye.text-xs
+                                                    | Ver Mas
+                                else
+                                    tr
+                                        td(colspan="5" class="px-8 py-10 text-center text-slate-400 text-sm")
+                                            i(class="fi fi-rr-check-circle text-2xl text-emerald-400 block mb-2")
+                                            | Ningún cliente de esta tienda tiene facturas pendientes en crédito.
+
+                    div(class="px-8 py-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between")
+                        p(class="text-xs text-slate-400")
+                            | Mostrando
+                            span(class="font-bold text-slate-600")= ` ${totalRegistros} `
+                            | cliente#{totalRegistros !== 1 ? 's' : ''} con crédito pendiente

@@ -12,10 +12,18 @@ const Clientes = db.define('CLIENTES', {
         allowNull: false,
         comment: 'N=Natural, J=Jurídica'
     },
-    tipo_documento: {
-        type: DataTypes.STRING(5),
+    // Mismo set de valores que EMPLEADOS.TipoDocumento (ENUM) salvo PEP — antes era
+    // VARCHAR sin restricción y en snake_case, dos inconsistencias con la tabla que
+    // representa exactamente el mismo dato. Nombre en camelCase (la convención real del
+    // proyecto), no el PascalCase legado de EMPLEADOS. Ver
+    // seed/migracionClientesTipoDocumento.js y seed/migracionClientesPep.js.
+    //
+    // PEP (Permiso Especial de Permanencia) es SOLO de CLIENTES a propósito — EMPLEADOS
+    // no lo lleva.
+    tipoDocumento: {
+        type: DataTypes.ENUM('CC', 'CE', 'TI', 'NIT', 'PP', 'PPT', 'PEP'),
         allowNull: false,
-        comment: 'CC, CE, TI, NIT, PP, etc.'
+        defaultValue: 'CC'
     },
     numero_doc: {
         type: DataTypes.STRING(20),
@@ -70,6 +78,19 @@ const Clientes = db.define('CLIENTES', {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
         allowNull : false
+    },
+    // Cupo de crédito del cliente. Ya existía como columna en la base (decimal(12,2),
+    // default 0) pero nadie la había modelado — ningún controlador la leía ni escribía
+    // por Sequelize. DECIMAL porque es dinero, nunca FLOAT (CLAUDE.md §"Datos
+    // financieros"); se mantiene en (12,2), el tamaño real de la columna, sin migrar a
+    // (15,2) sin que se haya pedido.
+    valorCredito: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0,
+        validate: {
+            min: { args: [0], msg: 'El valor del crédito no puede ser negativo.' }
+        }
     }
 }, {
     tableName: 'CLIENTES',

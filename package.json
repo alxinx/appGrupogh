@@ -24,6 +24,13 @@
     "db:migrar-egreso-traslado": "node ./seed/migracionEgresoTrasladoEfectivo.js",
     "db:migrar-traslado-historial": "node ./seed/migracionTrasladoEfectivoHistorial.js",
     "db:migrar-interesados-activo": "node ./seed/migracionInteresadosActivo.js",
+    "db:migrar-clientes-tipo-doc": "node ./seed/migracionClientesTipoDocumento.js",
+    "db:migrar-clientes-pep": "node ./seed/migracionClientesPep.js",
+    "db:migrar-clientes-credito-historial": "node ./seed/migracionClientesCreditoHistorial.js",
+    "db:migrar-credito-disponible-cliente": "node ./seed/migracionCreditoDisponibleCliente.js",
+    "db:migrar-municipios-colombia": "node ./seed/migracionMunicipiosColombia.js",
+    "db:migrar-pedidos-web-dane": "node ./seed/migracionPedidosWebUbicacionDane.js",
+    "db:migrar-credito-en-tienda": "node ./seed/migracionCreditoEnTienda.js",
     "db:migrar-traslado-efectivo": "node ./seed/migracionTrasladoEfectivo.js",
     "db:migrar-traslado-referencia": "node ./seed/migracionTrasladoReferencia.js",
     "db:rellenar-traslado-referencia": "node ./seed/migracionRellenarReferenciaTraslado.js",
@@ -38,7 +45,12 @@
     "db:migrar-permisos-admin": "node ./seed/migracionPermisosAdmin.js",
     "db:migrar-movimientos": "node ./seed/migracionMovimientosCaja.js",
     "db:eliminar-cajas": "node ./seed/migracionEliminarCajas.js",
-    "db:migrar-costo": "node ./seed/migracionCostoProducto.js"
+    "db:migrar-costo": "node ./seed/migracionCostoProducto.js",
+    "db:migrar-impuestos-factura": "node ./seed/migracionImpuestosFactura.js",
+    "db:migrar-abono-cliente-creditos": "node ./seed/migracionAbonoClienteCreditos.js",
+    "db:migrar-abono-entidad-crediticia": "node ./seed/migracionAbonoEntidadCrediticia.js",
+    "db:migrar-credito-disponible-historial": "node ./seed/migracionCreditoDisponibleClienteHistorial.js",
+    "db:migrar-permiso-mis-clientes": "node ./seed/migracionPermisoMisClientes.js"
   },
   "keywords": [
     "contable"

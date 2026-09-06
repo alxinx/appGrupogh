@@ -166,13 +166,14 @@ mixin modalCliente(departamentos)
               label(for="cli-tipo-doc" class=lbl) Tipo de documento
               div(class="cli-wrap")
                 i(class="fi-rr-id-badge cli-icono")
-                select(id="cli-tipo-doc" name="tipo_documento" class=campo + " cli-con-icono cli-select")
+                select(id="cli-tipo-doc" name="tipoDocumento" class=campo + " cli-con-icono cli-select")
                   option(value="CC") Cédula de Ciudadanía
                   option(value="CE") Cédula de Extranjería
                   option(value="TI") Tarjeta de Identidad
                   option(value="NIT") NIT
                   option(value="PP") Pasaporte
-                  option(value="DE") Doc. Extranjero
+                  option(value="PPT") Permiso por Protección Temporal (PPT)
+                  option(value="PEP") Permiso Especial de Permanencia (PEP)
                 i(class="fi-rr-angle-small-down cli-chevron")
             div
               label(for="cli-numero-doc" class=lbl) N° de documento
@@ -393,9 +394,14 @@ mixin cliUbicacion(departamentos, sufijo)
         input(id=id('cli-direccion') name=esReal ? 'direccion' : null type="text" placeholder="Calle, carrera, manzana, etc." class="cli-campo cli-con-icono")
 
 
-mixin resumenFactura(subtotal, impuestos, descuento)
+mixin resumenFactura(subtotal, impuestos)
 
-  - const total = subtotal + impuestos - descuento
+  //- Sin fila de "Descuento a mayorista": mostrar un subtotal bruto y luego un descuento
+  //- aparte confundía (el descuento coincidía en monto con el total, parecía que aún
+  //- faltaba aplicarlo). El ahorro por mayorista ya se ve por ítem (precio de detal
+  //- tachado en itemCarrito, src/js/pos.js) — acá el subtotal es la base gravable
+  //- realmente cobrada (con el descuento ya adentro), sin IVA: Subtotal + Impuestos = Total.
+  - const total = subtotal + impuestos
 
   div(class="space-y-3 text-sm")
 
@@ -406,10 +412,6 @@ mixin resumenFactura(subtotal, impuestos, descuento)
     div(class="flex justify-between")
       span(class="text-gray-600 font-medium") Impuestos
       span(id="res-impuestos" class="font-semibold text-gray-900") $#{impuestos.toFixed(0)}
-
-    div(class="flex justify-between")
-      span(class="text-gray-600 font-medium") Descuento a mayorista
-      span(id="res-descuento" class="font-semibold text-green-600") -$#{descuento.toFixed(0)}
 
     hr(class="border-gray-200 my-2")
 

@@ -26,5 +26,12 @@ div(class="tarjetaBase")
             i.fi-rr-handshake
             | Créditos
         span#pm-creditos(data-val="0") $0
-   
-        
+
+    //- Crédito en Tienda: cupo propio del cliente (CREDITO_DISPONIBLE_CLIENTE), distinto de
+    //- "Créditos" arriba (esa es Entidad Crediticia, un tercero que ya pagó). Acá no entró
+    //- plata — es la tienda financiando al cliente, un derecho de cobro pendiente.
+    div(class="mt-0.5 flex items-center justify-between text-xs font-medium text-pink-700 bg-pink-100 px-3 py-2 rounded-lg hover:bg-gh-primaryHover hover:text-white transition-colors")
+        div(class="flex items-center gap-2")
+            i.fi-rr-hand-holding-usd
+            | Crédito Tienda
+        span#pm-credito-tienda(data-val="0") $0

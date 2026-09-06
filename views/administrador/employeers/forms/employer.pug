@@ -1,3 +1,5 @@
+include ../../../components/selectBuscable.pug
+
 - var estadosBloqueados = ['suspendido','despedido','vacaciones','enfermedad','licencia','otro']
 - var estaBloqueado = empleado && estadosBloqueados.includes(empleado.estado)
 form(action="", method="post" id="formularioEmpleado" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start" data-empleado-id=empleado ? empleado.idEmpleado : '' data-bloqueado=estaBloqueado ? 'true' : 'false' data-estado-actual=empleado ? empleado.estado : '')
@@ -430,4 +432,5 @@ script.
     window.__PERMISOS_EMPLEADO__ = !{JSON.stringify(typeof permisosEmpleado !== 'undefined' ? permisosEmpleado : [])};
 
 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+script(src="/js/helpers.js")
 script(src="/js/dataEmployee.js")

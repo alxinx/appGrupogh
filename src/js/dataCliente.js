@@ -124,17 +124,24 @@
     const deptoSelect    = document.getElementById('departamentoSelect');
     const municipioSelect = document.getElementById('municipioSelect');
 
+    // window.enhanceSelectBuscable vive en helpers.js — genérico, no específico de
+    // clientes, para reusarlo en cualquier otro formulario con un <select> largo.
+    window.enhanceSelectBuscable(deptoSelect, { placeholder: 'Escribe o elige un departamento' });
+    const municipioBuscable = window.enhanceSelectBuscable(municipioSelect, { placeholder: 'Escribe o elige un municipio' });
+
     deptoSelect?.addEventListener('change', async function () {
         const id = this.value;
         municipioSelect.innerHTML = '<option value="">Cargando...</option>';
         municipioSelect.disabled = true;
-        if (!id) { municipioSelect.innerHTML = '<option value="">Selecciona el municipio</option>'; return; }
+        municipioBuscable.refresh();
+        if (!id) { municipioSelect.innerHTML = '<option value="">Selecciona el municipio</option>'; municipioBuscable.refresh(); return; }
         try {
             const data = await fetch(`/admin/json/municipios/${id}`).then(r => r.json());
             municipioSelect.innerHTML = '<option value="">Selecciona el municipio</option>' +
                 data.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
             municipioSelect.disabled = false;
         } catch (_) { municipioSelect.innerHTML = '<option value="">Error al cargar</option>'; }
+        municipioBuscable.refresh();
     });
 
     // ─── PREVIEW DOCUMENTOS ───────────────────────────────────────────────────
@@ -205,7 +212,7 @@
 
         if (tipoPersona === 'J') {
             fd.set('numero_doc', document.getElementById('numero_doc_empresa')?.value.trim());
-            fd.set('tipo_documento', 'NIT');
+            fd.set('tipoDocumento', 'NIT');
         } else {
             fd.set('numero_doc', document.getElementById('numero_doc_natural')?.value.trim());
         }
@@ -267,7 +274,9 @@
         docsExistentesEl.innerHTML = archivos.map(a => `
             <li class="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
                 <i class="fi ${iconoFormato(a.formato)} text-base flex-shrink-0"></i>
-                <span class="text-xs text-slate-700 font-medium truncate flex-1">${a.nombreDocumento}</span>
+                <a href="${a.url}" target="_blank" rel="noopener"
+                   class="text-xs text-slate-700 font-medium truncate flex-1 hover:text-pink-500 hover:underline"
+                   title="Ver archivo">${a.nombreDocumento}</a>
                 <span class="text-[10px] text-slate-400 uppercase flex-shrink-0">${a.formato}</span>
                 <button type="button" data-id="${a.idDocumento}" data-nombre="${a.nombreDocumento}"
                         class="btn-eliminar-doc flex-shrink-0 w-6 h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors"

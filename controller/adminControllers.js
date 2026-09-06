@@ -15,10 +15,10 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos } from "../models/index.js";
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
-import { invalidarContadoresAdmin } from '../middleware/adminMenuMiddleware.js';
+import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
 import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
@@ -40,7 +40,7 @@ import { tituloLista } from '../helpers/textoLista.js';
 dotenv.config();
 
 // ─── CONSTANTES COMPARTIDAS ──────────────────────────────────────────────────
-const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
+const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Credito En Tienda'];
 
 // ─── HELPERS INTERNOS ────────────────────────────────────────────────────────
 
@@ -381,7 +381,7 @@ const getFacturasJSON = async (req, res) => {
             include: [
                 {
                     model: Clientes, as: 'cliente',
-                    attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipo_documento', 'numero_doc'],
+                    attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipoDocumento', 'numero_doc'],
                     required: false
                 },
                 {
@@ -414,7 +414,7 @@ const getFacturasJSON = async (req, res) => {
             const nombreCliente = f.idCliente === '0'
                 ? 'Consumidor Final'
                 : (cli?.razon_social || `${cli?.primer_nombre || ''} ${cli?.primer_apellido || ''}`.trim() || 'N/A');
-            const docCliente   = cli ? `${cli.tipo_documento || ''} ${cli.numero_doc || ''}`.trim() : '';
+            const docCliente   = cli ? `${cli.tipoDocumento || ''} ${cli.numero_doc || ''}`.trim() : '';
             const vendedor     = f.vendedor
                 ? `${f.vendedor.PrimerNombre} ${f.vendedor.PrimerApellido}`
                 : 'N/A';
@@ -1510,10 +1510,15 @@ const newCliente = async (req, res) => {
     }
 };
 
+// Mismo vocabulario que CLIENTES.tipoDocumento (ENUM) y que EMPLEADOS.TipoDocumento —
+// NIT queda fuera porque para persona natural nunca se envía (esEmpresa lo fuerza a NIT
+// más abajo), y así el 400 explica bien qué pasó en vez de dejar que la caiga el ENUM.
+const TIPOS_DOC_CLIENTE_NATURAL = ['CC', 'CE', 'TI', 'PP', 'PPT', 'PEP'];
+
 // ─── NUEVO CLIENTE — GUARDAR ──────────────────────────────────────────────────
 const saveCliente = async (req, res) => {
     const {
-        tipo_persona, tipo_documento, numero_doc, digito_verif,
+        tipo_persona, tipoDocumento, numero_doc, digito_verif,
         primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
         razon_social, email, telefono, genero,
         regimen_fiscal, condicion_tributaria,
@@ -1529,6 +1534,8 @@ const saveCliente = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'El primer nombre es requerido.' });
     if (!numero_doc?.trim())
         return res.status(400).json({ success: false, mensaje: 'El número de documento es requerido.' });
+    if (!esEmpresa && tipoDocumento && !TIPOS_DOC_CLIENTE_NATURAL.includes(tipoDocumento))
+        return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido.' });
 
     try {
         // Unicidad de numero_doc (guard previo a la transacción)
@@ -1552,7 +1559,7 @@ const saveCliente = async (req, res) => {
         // 1. Crear cliente
         const cliente = await Clientes.create({
             tipo_persona:     tipo_persona || 'N',
-            tipo_documento:   esEmpresa ? 'NIT' : (tipo_documento || 'CC'),
+            tipoDocumento:   esEmpresa ? 'NIT' : (tipoDocumento || 'CC'),
             numero_doc:       numero_doc.trim(),
             digito_verif:     esEmpresa ? (digito_verif?.trim() || null) : null,
             razon_social:     esEmpresa ? toPascal(razon_social) : null,
@@ -1699,7 +1706,7 @@ const editarClienteForm = async (req, res) => {
 const updateCliente = async (req, res) => {
     const { idCliente } = req.params;
     const {
-        tipo_persona, tipo_documento, numero_doc, digito_verif,
+        tipo_persona, tipoDocumento, numero_doc, digito_verif,
         primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
         razon_social, email, telefono, genero,
         regimen_fiscal, condicion_tributaria,
@@ -1714,6 +1721,8 @@ const updateCliente = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'El primer nombre es requerido.' });
     if (!numero_doc?.trim())
         return res.status(400).json({ success: false, mensaje: 'El número de documento es requerido.' });
+    if (!esEmpresa && tipoDocumento && !TIPOS_DOC_CLIENTE_NATURAL.includes(tipoDocumento))
+        return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido.' });
 
     try {
         const existe = await Clientes.findOne({ where: { numero_doc: numero_doc.trim(), idCliente: { [Op.ne]: idCliente } } });
@@ -1735,7 +1744,7 @@ const updateCliente = async (req, res) => {
 
         await Clientes.update({
             tipo_persona:     tipo_persona || 'N',
-            tipo_documento:   esEmpresa ? 'NIT' : (tipo_documento || 'CC'),
+            tipoDocumento:   esEmpresa ? 'NIT' : (tipoDocumento || 'CC'),
             numero_doc:       numero_doc.trim(),
             digito_verif:     esEmpresa ? (digito_verif?.trim() || null) : null,
             razon_social:     esEmpresa ? toPascal(razon_social) : null,
@@ -1938,11 +1947,11 @@ const getClientePerfil = async (req, res) => {
         const hace14 = new Date(); hace14.setDate(hace14.getDate() - 14); hace14.setHours(0,0,0,0);
         const hace30 = new Date(); hace30.setDate(hace30.getDate() - 30); hace30.setHours(0,0,0,0);
 
-        const [cliente, ubicacion, statsRows, vendedorRows, vip5, vip3] = await Promise.all([
+        const [cliente, ubicacion, statsRows, vendedorRows, vip5, vip3, creditoExistente] = await Promise.all([
             Clientes.findOne({
                 where: { idCliente },
                 raw: true,
-                attributes: ['idCliente','tipo_persona','tipo_documento','numero_doc',
+                attributes: ['idCliente','tipo_persona','tipoDocumento','numero_doc',
                              'primer_nombre','primer_apellido','razon_social',
                              'email','telefono','genero','activo','credito','createdAt']
             }),
@@ -1984,7 +1993,15 @@ const getClientePerfil = async (req, res) => {
                 INNER JOIN (SELECT idFacturaCliente, SUM(total) AS totalFactura FROM DETALLES_FACTURA GROUP BY idFacturaCliente) df
                     ON df.idFacturaCliente = fc.idFacturaCliente
                 WHERE fc.idCliente = :idCliente AND fc.createdAt >= :hace30 AND df.totalFactura >= 1000000
-            `, { replacements: { idCliente, hace30 }, type: db.QueryTypes.SELECT })
+            `, { replacements: { idCliente, hace30 }, type: db.QueryTypes.SELECT }),
+
+            // La fila tipo='Credito' es única por cliente (nunca se duplica). Si ya existe,
+            // el panel debe reactivar/editar esta misma fila en vez de crear otra.
+            CreditoDisponibleCliente.findOne({
+                where: { idCliente, tipo: 'Credito' },
+                attributes: ['idCreditoDisponible', 'valorCreditoCliente', 'creditoDisponible', 'tiempoCredito'],
+                raw: true
+            })
         ]);
 
         if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado' });
@@ -2007,7 +2024,12 @@ const getClientePerfil = async (req, res) => {
                 vendedor:      vendedorRows[0]?.vendedor?.trim() || null
             },
             esVip,
-            puedeActivarCredito
+            puedeActivarCredito,
+            creditoExistente: creditoExistente ? {
+                valorCreditoCliente: parseFloat(creditoExistente.valorCreditoCliente),
+                creditoDisponible:   parseFloat(creditoExistente.creditoDisponible),
+                tiempoCredito:       creditoExistente.tiempoCredito
+            } : null
         });
     } catch (e) {
         console.error('getClientePerfil:', e);
@@ -2141,21 +2163,711 @@ const _tienePermisoCredito = async (usuario) => {
     return !!permiso;
 };
 
-// ─── ACTIVAR CRÉDITO DE CLIENTE ──────────────────────────────────────────────
-const activarCreditoCliente = async (req, res) => {
+// ─── OTORGAR / SUSPENDER CRÉDITO DE CLIENTE ──────────────────────────────────
+// Las dos acciones comparten todo salvo el sentido del cambio: mismo permiso, mismo
+// código de empleado (lo exige verificarCodigoEmpleadoAdmin antes de llegar acá), y la
+// misma bitácora. El `update` condicionado al estado esperado (CLAUDE.md §9) evita que
+// dos clics a la vez otorguen o suspendan dos veces el mismo crédito.
+const _cambiarCreditoCliente = async (req, res, { credito, accion, mensajeConflicto }) => {
     const { idCliente } = req.params;
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
-            return res.status(403).json({ success: false, mensaje: 'Sin autorización para activar créditos' });
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para otorgar o suspender créditos' });
 
-        const cliente = await Clientes.findByPk(idCliente);
+        const cliente = await Clientes.findByPk(idCliente, { attributes: ['idCliente', 'credito'] });
         if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado' });
+        if (cliente.credito === credito)
+            return res.status(409).json({ success: false, mensaje: mensajeConflicto });
 
-        await cliente.update({ credito: true });
-        return res.json({ success: true });
+        const t = await db.transaction();
+        try {
+            const [afectadas] = await Clientes.update(
+                { credito },
+                { where: { idCliente, credito: !credito }, transaction: t }
+            );
+            if (afectadas === 0) {
+                await t.rollback();
+                return res.status(409).json({ success: false, mensaje: mensajeConflicto });
+            }
+
+            const emp = req.empleadoVerificado;
+            await ClientesCreditoHistorial.create({
+                idCliente,
+                accion,
+                idEmpleado:     emp?.idEmpleado || null,
+                nombreEmpleado: emp?.nombre || null,
+                codigoEmpleado: emp?.codigoEmpleado || null,
+                idUsuario:      req.usuario?.idUsuario || null
+            }, { transaction: t });
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        return res.json({ success: true, credito, empleado: req.empleadoVerificado?.nombre || null });
     } catch (e) {
-        console.error('activarCreditoCliente:', e);
-        return res.status(500).json({ success: false });
+        console.error(`${accion === 'otorgado' ? 'otorgarCreditoCliente' : 'suspenderCreditoCliente'}:`, e);
+        return res.status(500).json({ success: false, mensaje: 'Error al actualizar el crédito.' });
+    }
+};
+
+const otorgarCreditoCliente = (req, res) => _cambiarCreditoCliente(req, res, {
+    credito: true,
+    accion: 'otorgado',
+    mensajeConflicto: 'Este cliente ya tiene crédito activo.'
+});
+
+const suspenderCreditoCliente = (req, res) => _cambiarCreditoCliente(req, res, {
+    credito: false,
+    accion: 'suspendido',
+    mensajeConflicto: 'Este cliente ya no tiene crédito activo.'
+});
+
+// ─── VERIFICAR CÓDIGO DE EMPLEADO (sin efecto) ───────────────────────────────
+// El modal de "otorgar crédito" necesita validar el código apenas se escribe, antes de
+// dejar avanzar al modal de confirmación — antes cualquier texto pasaba, y recién fallaba
+// al final contra /credito-disponible. verificarCodigoEmpleadoAdmin ya hace toda la
+// verificación real (existe, no está suspendido/despedido, bloqueo de 5 intentos en 15
+// min); acá solo se expone sin ejecutar ninguna acción, y comparte el mismo contador de
+// intentos fallidos que el endpoint real — no es una puerta más barata para probar códigos.
+const verificarCodigoEmpleadoCredito = (req, res) => {
+    res.json({ success: true, empleado: req.empleadoVerificado });
+};
+
+// ─── CAMPOS REQUERIDOS PARA ASIGNAR CRÉDITO ──────────────────────────────────
+// Antes de dejar que un cliente tenga cupo, tiene que estar identificable y ubicable —
+// sin eso no hay a quién cobrarle ni adónde mandar un cobro. Empresa suma razón social,
+// que para persona natural no aplica (el nombre ya sale de primer_nombre/primer_apellido,
+// que numero_doc/tipoDocumento/email/telefono ya cubren igual que a una persona natural).
+const _camposFaltantesParaCredito = (cliente, ubicacion) => {
+    const faltan = [];
+    if (!cliente.email?.trim())        faltan.push('correo electrónico');
+    if (!cliente.telefono?.trim())     faltan.push('celular');
+    if (!cliente.numero_doc?.trim())   faltan.push('número de identificación');
+    if (!cliente.tipoDocumento)        faltan.push('tipo de identificación');
+    if (!ubicacion?.idDepartamento)    faltan.push('departamento');
+    if (!ubicacion?.idMunicipio)       faltan.push('municipio');
+    if (!ubicacion?.direccion?.trim()) faltan.push('dirección');
+    if (cliente.tipo_persona === 'J' && !cliente.razon_social?.trim())
+        faltan.push('razón social');
+    return faltan;
+};
+
+// ─── ASIGNAR CRÉDITO DISPONIBLE A UN CLIENTE ─────────────────────────────────
+// Crea el cupo en CREDITO_DISPONIBLE_CLIENTE. Dos filtros antes de escribir: (1) el mismo
+// permiso "Autorizacion de creditos" que otorgar/suspender crédito (_tienePermisoCredito),
+// y (2) que el cliente tenga los datos mínimos para cobrarle — sin eso un cupo es un
+// número sin nadie detrás. El código de empleado (verificarCodigoEmpleadoAdmin, antes de
+// llegar acá) es quién queda en `autorizo`; no se toma de ningún otro campo del body.
+//
+// Si es el primer cupo del cliente (CLIENTES.credito todavía en false), este endpoint
+// también activa ese permiso general y lo deja en CLIENTES_CREDITO_HISTORIAL con la misma
+// acción 'otorgado' que usa otorgarCreditoCliente — mismo `update` condicionado al estado
+// esperado (CLAUDE.md §9) para que dos asignaciones a la vez no dupliquen la bitácora. Sin
+// esto el botón del panel seguiría mostrando "Sin crédito" después de asignar el primer
+// cupo, porque lee CLIENTES.credito, no esta tabla.
+const asignarCreditoDisponibleCliente = async (req, res) => {
+    const { idCliente } = req.params;
+    const valor = parseFloat(req.body?.valorCreditoCliente);
+    const tiempoCredito = parseInt(req.body?.tiempoCredito, 10);
+
+    if (!Number.isFinite(valor) || valor <= 0)
+        return res.status(400).json({ success: false, mensaje: 'El valor del crédito debe ser mayor a 0.' });
+    if (!Number.isInteger(tiempoCredito) || tiempoCredito <= 0)
+        return res.status(400).json({ success: false, mensaje: 'Indicá el plazo máximo (en días) sin abono para este crédito.' });
+
+    try {
+        if (!(await _tienePermisoCredito(req.usuario)))
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para asignar créditos.' });
+
+        const cliente = await Clientes.findByPk(idCliente, {
+            attributes: ['idCliente', 'tipo_persona', 'razon_social', 'email', 'telefono', 'numero_doc', 'tipoDocumento', 'credito'],
+            raw: true
+        });
+        if (!cliente) return res.status(404).json({ success: false, mensaje: 'Cliente no encontrado.' });
+
+        const ubicacion = await ClientesUbicacion.findOne({
+            where: { idCliente, es_principal: true },
+            attributes: ['idDepartamento', 'idMunicipio', 'direccion'],
+            raw: true
+        });
+
+        const faltantes = _camposFaltantesParaCredito(cliente, ubicacion);
+        if (faltantes.length)
+            return res.status(422).json({
+                success: false,
+                mensaje: `El cliente no tiene los datos completos para asignar crédito. Falta: ${faltantes.join(', ')}.`,
+                faltantes
+            });
+
+        // Un cliente puede tener varias filas tipo 'Saldo a Favor', pero nunca más de una
+        // 'Credito' — esa fila es el cupo del cliente, no una transacción repetible. Crear
+        // una segunda al reactivar (tras suspender) duplicaba el saldo en cualquier suma
+        // sobre esta tabla (ej. validarCreditoTiendaJSON): el cliente parecía tener el cupo
+        // viejo MÁS el nuevo. Reactivar/editar un crédito existente no pasa por acá.
+        const yaTieneCredito = await CreditoDisponibleCliente.findOne({
+            where: { idCliente, tipo: 'Credito' },
+            attributes: ['idCreditoDisponible'],
+            raw: true
+        });
+        if (yaTieneCredito)
+            return res.status(409).json({
+                success: false,
+                mensaje: 'Este cliente ya tiene un crédito asignado. Para reactivarlo, usá el botón de crédito sin volver a ingresar un valor; para cambiar el cupo o el plazo, hay que editarlo directamente.'
+            });
+
+        const empleado = req.empleadoVerificado;
+        let credito;
+
+        const t = await db.transaction();
+        try {
+            credito = await CreditoDisponibleCliente.create({
+                idCliente,
+                valorCreditoCliente: valor,
+                creditoDisponible:   valor,
+                tiempoCredito,
+                tipo:                'Credito',
+                autorizo:            empleado?.idEmpleado || null
+            }, { transaction: t });
+
+            const [afectadas] = await Clientes.update(
+                { credito: true },
+                { where: { idCliente, credito: false }, transaction: t }
+            );
+            if (afectadas > 0) {
+                await ClientesCreditoHistorial.create({
+                    idCliente,
+                    accion:         'otorgado',
+                    idEmpleado:     empleado?.idEmpleado || null,
+                    nombreEmpleado: empleado?.nombre || null,
+                    codigoEmpleado: empleado?.codigoEmpleado || null,
+                    idUsuario:      req.usuario?.idUsuario || null
+                }, { transaction: t });
+            }
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        return res.json({
+            success:              true,
+            idCreditoDisponible:  credito.idCreditoDisponible,
+            valorCreditoCliente:  valor,
+            creditoDisponible:    valor,
+            tiempoCredito,
+            empleado:             empleado?.nombre || null
+        });
+    } catch (e) {
+        console.error('asignarCreditoDisponibleCliente:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al asignar el crédito.' });
+    }
+};
+
+// ─── PANEL DE ESTADO DE CRÉDITO DE UN CLIENTE ────────────────────────────────
+// Trae, para un cliente con cupo activo, sus facturas de crédito (credito=true) con
+// abonado/deuda actual/estado calculados a partir del ledger ABONO_CLIENTE_CREDITOS (la
+// fila más reciente por factura da el saldo — mismo criterio que CUENTAS_POR_PAGAR del
+// lado proveedores). No hay N+1: una sola query trae todas las facturas + su último
+// abono via subquery, y el filtro/búsqueda/paginación de la tabla se resuelve en JS sobre
+// ese resultado, acotado por diseño al idCliente (nunca crece sin límite).
+const _facturasCreditoCliente = async (idCliente) => {
+    const rows = await db.query(`
+        SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura, fc.fechaEmision,
+               fc.total, fc.estado,
+               DATEDIFF(CURDATE(), fc.fechaEmision) AS diasTranscurridos,
+               ult.valorPorPagar AS deudaUltima
+        FROM FACTURA_CLIENTES fc
+        LEFT JOIN (
+            SELECT a1.idFacturaCliente, a1.valorPorPagar
+            FROM ABONO_CLIENTE_CREDITOS a1
+            INNER JOIN (
+                SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
+                FROM ABONO_CLIENTE_CREDITOS
+                GROUP BY idFacturaCliente
+            ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
+        ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
+        WHERE fc.idCliente = :idCliente AND fc.credito = 1
+        ORDER BY fc.fechaEmision ASC
+    `, { replacements: { idCliente }, type: db.QueryTypes.SELECT });
+
+    return rows.map(r => {
+        const total        = parseFloat(r.total);
+        const deudaActual   = r.deudaUltima != null ? parseFloat(r.deudaUltima) : total;
+        const abonado       = round2(total - deudaActual);
+        const diasTranscurridos = parseInt(r.diasTranscurridos);
+        return {
+            idFacturaCliente: r.idFacturaCliente,
+            nroFactura:       `${r.prefijo || ''}${r.numeroFactura}`,
+            fechaEmision:     r.fechaEmision,
+            diasTranscurridos,
+            valorOriginal:    total,
+            abonado,
+            deudaActual,
+            estadoFactura:    r.estado
+        };
+    });
+};
+
+// deudaActual <= 0 → Pagado; si no y pasó el plazo (tiempoCredito, null = sin plazo
+// definido, nunca entra en mora) → En mora; si no → Pendiente.
+const _estadoCreditoFactura = (f, tiempoCredito) => {
+    if (f.deudaActual <= 0) return 'pagado';
+    if (tiempoCredito != null && f.diasTranscurridos > tiempoCredito) return 'en_mora';
+    return 'pendiente';
+};
+
+// Mediana de días entre abonos consecutivos del cliente (todas sus facturas), bucketeada.
+// "Sin abonos aún" con 0 o 1 abono — hace falta al menos dos para medir un intervalo.
+const _frecuenciaAbonos = (fechasAbonosAsc) => {
+    if (fechasAbonosAsc.length < 2) return 'Sin abonos aún';
+    const gaps = [];
+    for (let i = 1; i < fechasAbonosAsc.length; i++) {
+        gaps.push((fechasAbonosAsc[i] - fechasAbonosAsc[i - 1]) / 86400000);
+    }
+    gaps.sort((a, b) => a - b);
+    const mediana = gaps.length % 2
+        ? gaps[(gaps.length - 1) / 2]
+        : (gaps[gaps.length / 2 - 1] + gaps[gaps.length / 2]) / 2;
+    if (mediana <= 9)  return 'Cada semana';
+    if (mediana <= 20) return 'Cada quincena';
+    if (mediana <= 40) return 'Cada mes';
+    return 'Irregular';
+};
+
+const round2 = (n) => parseFloat((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
+
+const dashboardClienteCredito = async (req, res) => {
+    const { idCliente } = req.params;
+    const { pagina = 1, estado = 'todas', buscar = '' } = req.query;
+    const limite = 5;
+
+    try {
+        const cliente = await Clientes.findByPk(idCliente, { raw: true });
+        if (!cliente) return res.redirect('/admin/clientes');
+
+        const creditoDisponible = await CreditoDisponibleCliente.findOne({
+            where: { idCliente, tipo: 'Credito' },
+            raw: true
+        });
+        // Esta página no tiene sentido sin un cupo asignado — el botón que trae acá
+        // (panel-btn-credito en adminClientes.js) solo navega cuando ya hay uno.
+        if (!creditoDisponible) return res.redirect('/admin/clientes');
+
+        const [ubicacionRows, vendedorRows, abonosRows] = await Promise.all([
+            db.query(`
+                SELECT direccion, nombreMunicipio, nombreDepartamento
+                FROM CLIENTES_UBICACION WHERE idCliente = :idCliente AND es_principal = 1 LIMIT 1
+            `, { replacements: { idCliente }, type: db.QueryTypes.SELECT }),
+            db.query(`
+                SELECT TRIM(CONCAT(COALESCE(e.PrimerNombre,''), ' ', COALESCE(e.PrimerApellido,''))) AS vendedor
+                FROM FACTURA_CLIENTES fc
+                LEFT JOIN EMPLEADOS e ON e.idEmpleado = fc.idEmpleado
+                WHERE fc.idCliente = :idCliente AND fc.idEmpleado IS NOT NULL
+                ORDER BY fc.createdAt DESC LIMIT 1
+            `, { replacements: { idCliente }, type: db.QueryTypes.SELECT }),
+            db.query(`
+                SELECT createdAt FROM ABONO_CLIENTE_CREDITOS
+                WHERE idCliente = :idCliente ORDER BY createdAt ASC
+            `, { replacements: { idCliente }, type: db.QueryTypes.SELECT })
+        ]);
+
+        const tiempoCredito = creditoDisponible.tiempoCredito;
+        const facturasTodas = (await _facturasCreditoCliente(idCliente)).map(f => ({
+            ...f,
+            estadoCalculado: _estadoCreditoFactura(f, tiempoCredito)
+        }));
+
+        const valorConsumido = round2(
+            facturasTodas.reduce((s, f) => s + (f.deudaActual > 0 ? f.deudaActual : 0), 0)
+        );
+        const valorTotalCredito = parseFloat(creditoDisponible.valorCreditoCliente);
+        const pctConsumido = valorTotalCredito > 0 ? (valorConsumido / valorTotalCredito) * 100 : 0;
+
+        const fechasAbonos = abonosRows.map(a => new Date(a.createdAt));
+        const diasDesdeUltimoAbono = fechasAbonos.length
+            ? Math.floor((Date.now() - fechasAbonos[fechasAbonos.length - 1].getTime()) / 86400000)
+            : null;
+
+        const alertas = [];
+        if (valorTotalCredito > 0 && pctConsumido >= 80 && facturasTodas.some(f => f.deudaActual > 0)) {
+            alertas.push({
+                tipo: 'cupo',
+                titulo: 'Cerca del límite de cupo',
+                descripcion: `El cliente ha consumido el ${pctConsumido.toFixed(0)}% de su cupo${diasDesdeUltimoAbono === null ? ' y no registra abonos' : ` y su último abono fue hace ${diasDesdeUltimoAbono} día${diasDesdeUltimoAbono !== 1 ? 's' : ''}`}.`,
+                prioridad: 'alta'
+            });
+        }
+        // Simulado — necesita historial de abonos de varios clientes para calibrar qué
+        // cuenta como "variación" respecto al hábito de pago. Parámetros pendientes,
+        // mismo estado que "Reputación acumulada" más abajo.
+        alertas.push({
+            tipo: 'frecuencia_simulada',
+            titulo: 'Variación en frecuencia de abono',
+            descripcion: 'Este indicador todavía usa datos simulados — parámetros de cálculo pendientes.',
+            prioridad: 'atencion'
+        });
+
+        // Filtro + búsqueda + paginación en JS: el conjunto ya está acotado a las facturas
+        // de crédito de este cliente (nunca "todas las facturas del sistema").
+        let facturasFiltradas = facturasTodas.slice().reverse(); // más reciente primero
+        if (estado !== 'todas') facturasFiltradas = facturasFiltradas.filter(f => f.estadoCalculado === estado);
+        const term = buscar.trim().toLowerCase();
+        if (term) facturasFiltradas = facturasFiltradas.filter(f => f.nroFactura.toLowerCase().includes(term));
+
+        const totalRegistros = facturasFiltradas.length;
+        const totalPaginas   = Math.max(1, Math.ceil(totalRegistros / limite));
+        const paginaActual   = Math.min(Math.max(1, parseInt(pagina) || 1), totalPaginas);
+        const facturasPagina = facturasFiltradas.slice((paginaActual - 1) * limite, paginaActual * limite);
+
+        const contadores = {
+            todas:      facturasTodas.length,
+            en_mora:    facturasTodas.filter(f => f.estadoCalculado === 'en_mora').length,
+            pendiente:  facturasTodas.filter(f => f.estadoCalculado === 'pendiente').length,
+            pagado:     facturasTodas.filter(f => f.estadoCalculado === 'pagado').length
+        };
+
+        return res.render('./administrador/customers/views/creditoCliente', {
+            pagina: 'Clientes',
+            subPagina: 'Estado de crédito',
+            csrfToken: req.csrfToken(),
+            currentPath: req.path,
+            cliente,
+            ubicacion: ubicacionRows[0] || null,
+            vendedor: vendedorRows[0]?.vendedor?.trim() || null,
+            creditoDisponible: {
+                idCreditoDisponible: creditoDisponible.idCreditoDisponible,
+                valorCreditoCliente: valorTotalCredito,
+                creditoDisponible:   parseFloat(creditoDisponible.creditoDisponible),
+                tiempoCredito
+            },
+            resumen: {
+                valorTotalCredito,
+                valorConsumido,
+                pctConsumido,
+                frecuenciaAbonos: _frecuenciaAbonos(fechasAbonos),
+                diasDesdeUltimoAbono,
+                // Reputación acumulada — simulado, parámetros de cálculo pendientes.
+                reputacion: { etiqueta: 'Muy buena', puntaje: 4.6 }
+            },
+            alertas,
+            facturas: facturasPagina,
+            contadores,
+            filtroEstado: estado,
+            buscar,
+            paginaActual,
+            totalPaginas,
+            totalRegistros
+        });
+    } catch (e) {
+        console.error('dashboardClienteCredito:', e);
+        return res.redirect('/admin/clientes');
+    }
+};
+
+// ─── INFORME DE CRÉDITO (PDF) ────────────────────────────────────────────────
+const generarInformeCreditoPDF = async (req, res) => {
+    const { idCliente } = req.params;
+    try {
+        const cliente = await Clientes.findByPk(idCliente, { raw: true });
+        const creditoDisponible = await CreditoDisponibleCliente.findOne({ where: { idCliente, tipo: 'Credito' }, raw: true });
+        if (!cliente || !creditoDisponible) return res.status(404).send('Cliente o crédito no encontrado.');
+
+        const facturas = (await _facturasCreditoCliente(idCliente)).map(f => ({
+            ...f,
+            estadoCalculado: _estadoCreditoFactura(f, creditoDisponible.tiempoCredito)
+        }));
+
+        const nombreCliente = cliente.tipo_persona === 'J'
+            ? (cliente.razon_social || '')
+            : [cliente.primer_nombre, cliente.segundo_nombre, cliente.primer_apellido, cliente.segundo_apellido].filter(Boolean).join(' ');
+
+        const W = 595.28, MARGIN = 40, CW = W - MARGIN * 2;
+        const doc = new PDFDocument({ size: 'A4', margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN } });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="informe-credito-${cliente.numero_doc}.pdf"`);
+        doc.pipe(res);
+
+        try { doc.image(LOGO_PATH_ADMIN, MARGIN, MARGIN, { width: 48, height: 48 }); } catch {}
+        doc.font('Helvetica-Bold').fontSize(16).text('Informe de crédito', MARGIN + 60, MARGIN + 8);
+        doc.font('Helvetica').fontSize(9).fillColor('#64748b')
+           .text(`Generado el ${new Date().toLocaleDateString('es-CO')}`, MARGIN + 60, MARGIN + 30);
+        doc.fillColor('#000');
+        doc.y = MARGIN + 60;
+
+        doc.moveDown(1);
+        doc.font('Helvetica-Bold').fontSize(12).text(nombreCliente || 'Cliente');
+        doc.font('Helvetica').fontSize(9).fillColor('#475569')
+           .text(`${cliente.tipoDocumento || 'CC'} ${cliente.numero_doc}`)
+           .text(cliente.telefono ? `Tel: ${cliente.telefono}` : '')
+           .text(cliente.email || '');
+        doc.fillColor('#000');
+
+        doc.moveDown(1);
+        const resumenY = doc.y;
+        doc.font('Helvetica-Bold').fontSize(10).text('Resumen del crédito', MARGIN, resumenY);
+        doc.font('Helvetica').fontSize(9);
+        doc.text(`Cupo total: ${_pesosCO(creditoDisponible.valorCreditoCliente)}`);
+        const consumido = facturas.reduce((s, f) => s + (f.deudaActual > 0 ? f.deudaActual : 0), 0);
+        doc.text(`Consumido: ${_pesosCO(consumido)}`);
+        doc.text(`Plazo por desembolso: ${creditoDisponible.tiempoCredito != null ? creditoDisponible.tiempoCredito + ' días' : 'sin definir'}`);
+
+        doc.moveDown(1);
+        doc.font('Helvetica-Bold').fontSize(10).text('Facturas de crédito');
+        doc.moveDown(0.3);
+
+        const c1 = CW * 0.2, c2 = CW * 0.16, c3 = CW * 0.12, c4 = CW * 0.18, c5 = CW * 0.16, c6 = CW * 0.18;
+        const fila = (y, cols, bold = false) => {
+            doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
+            let x = MARGIN;
+            const anchos = [c1, c2, c3, c4, c5, c6];
+            cols.forEach((txt, i) => {
+                doc.text(String(txt), x, y, { width: anchos[i], align: i === 0 ? 'left' : 'right' });
+                x += anchos[i];
+            });
+        };
+        const ETIQUETAS = { pagado: 'Pagado', en_mora: 'En mora', pendiente: 'Pendiente' };
+
+        let y = doc.y;
+        fila(y, ['Factura', 'Fecha', 'Días', 'Original', 'Abonado', 'Deuda'], true);
+        y += 14;
+        doc.moveTo(MARGIN, y - 2).lineTo(MARGIN + CW, y - 2).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+
+        for (const f of facturas) {
+            if (y > 780) { doc.addPage(); y = MARGIN; }
+            fila(y, [
+                f.nroFactura,
+                new Date(f.fechaEmision).toLocaleDateString('es-CO'),
+                `${f.diasTranscurridos}d`,
+                `${_pesosCO(f.valorOriginal)}`,
+                `${_pesosCO(f.abonado)}`,
+                `${_pesosCO(f.deudaActual)} (${ETIQUETAS[f.estadoCalculado] || f.estadoCalculado})`
+            ]);
+            y += 14;
+        }
+
+        doc.end();
+    } catch (e) {
+        console.error('generarInformeCreditoPDF:', e);
+        if (!res.headersSent) return res.status(500).send('Error al generar el informe.');
+        res.end();
+    }
+};
+
+// ─── AUMENTAR CUPO DE CRÉDITO ─────────────────────────────────────────────────
+// Distinto de asignarCreditoDisponibleCliente (esa es la primera asignación, exige que no
+// exista fila todavía): esto edita el valor de una fila ya existente. El nuevo valor tiene
+// que ser mayor al actual — bajar el cupo es otra decisión, no "aumentar".
+const aumentarCreditoCliente = async (req, res) => {
+    const { idCliente } = req.params;
+    const nuevoValor = parseFloat(req.body?.valorCreditoCliente);
+
+    if (!Number.isFinite(nuevoValor) || nuevoValor <= 0)
+        return res.status(400).json({ success: false, mensaje: 'El nuevo cupo debe ser mayor a 0.' });
+
+    try {
+        if (!(await _tienePermisoCredito(req.usuario)))
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para aumentar créditos.' });
+
+        const credito = await CreditoDisponibleCliente.findOne({ where: { idCliente, tipo: 'Credito' } });
+        if (!credito) return res.status(404).json({ success: false, mensaje: 'Este cliente no tiene un crédito asignado.' });
+
+        const valorAnterior = parseFloat(credito.valorCreditoCliente);
+        if (nuevoValor <= valorAnterior)
+            return res.status(400).json({ success: false, mensaje: `El nuevo cupo debe ser mayor al actual (${_pesosCO(valorAnterior)}).` });
+
+        const empleado = req.empleadoVerificado;
+        const t = await db.transaction();
+        try {
+            const delta = round2(nuevoValor - valorAnterior);
+            await credito.update({
+                valorCreditoCliente: nuevoValor,
+                creditoDisponible:   round2(parseFloat(credito.creditoDisponible) + delta)
+            }, { transaction: t });
+
+            await CreditoDisponibleClienteHistorial.create({
+                idCreditoDisponible: credito.idCreditoDisponible,
+                idCliente,
+                valorAnterior,
+                valorNuevo: nuevoValor,
+                idEmpleado:     empleado?.idEmpleado || null,
+                nombreEmpleado: empleado?.nombre || null,
+                codigoEmpleado: empleado?.codigoEmpleado || null,
+                idUsuario:      req.usuario?.idUsuario || null
+            }, { transaction: t });
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        return res.json({ success: true, valorAnterior, valorNuevo: nuevoValor, empleado: empleado?.nombre || null });
+    } catch (e) {
+        console.error('aumentarCreditoCliente:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al aumentar el crédito.' });
+    }
+};
+
+// ─── ABONAR A UNA FACTURA PUNTUAL ─────────────────────────────────────────────
+const abonarFactura = async (req, res) => {
+    const { idCliente, idFacturaCliente } = req.params;
+    const valorAbono   = parseFloat(req.body?.valorAbono);
+    const metodoPago   = req.body?.metodoPago;
+    const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
+    const nroReferencia = req.body?.nroReferencia?.trim() || null;
+    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
+
+    if (!Number.isFinite(valorAbono) || valorAbono <= 0)
+        return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
+    if (!METODOS_VALIDOS.includes(metodoPago))
+        return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
+    if (metodoPago === 'Entidad Crediticia' && !idEntidad)
+        return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
+
+    try {
+        if (!(await _tienePermisoCredito(req.usuario)))
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para registrar abonos.' });
+
+        if (metodoPago === 'Entidad Crediticia') {
+            const entidad = await Entidades.findOne({ where: { idEntidad, tipoEntidad: 'Entidad Crediticia' }, raw: true });
+            if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
+        }
+
+        const factura = await FacturaClientes.findOne({ where: { idFacturaCliente, idCliente, credito: true } });
+        if (!factura) return res.status(404).json({ success: false, mensaje: 'Factura de crédito no encontrada.' });
+
+        const ultimo = await AbonoClienteCreditos.findOne({
+            where: { idFacturaCliente }, order: [['createdAt', 'DESC']], raw: true
+        });
+        const deudaActual = ultimo ? parseFloat(ultimo.valorPorPagar) : parseFloat(factura.total);
+
+        if (deudaActual <= 0)
+            return res.status(409).json({ success: false, mensaje: 'Esta factura ya está pagada.' });
+        if (valorAbono > deudaActual)
+            return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda actual (${_pesosCO(deudaActual)}).` });
+
+        const nuevoSaldo = round2(deudaActual - valorAbono);
+        const empleado = req.empleadoVerificado;
+
+        const t = await db.transaction();
+        try {
+            const abono = await AbonoClienteCreditos.create({
+                idFacturaCliente, idCliente,
+                totalFactura:  parseFloat(factura.total),
+                valorAbono, valorPorPagar: nuevoSaldo,
+                metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null,
+                nroReferencia,
+                idEmpleado:     empleado?.idEmpleado || null,
+                nombreEmpleado: empleado?.nombre || null,
+                codigoEmpleado: empleado?.codigoEmpleado || null,
+                idUsuario:      req.usuario?.idUsuario || null
+            }, { transaction: t });
+
+            if (nuevoSaldo <= 0)
+                await FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente, estado: 'pendiente' }, transaction: t });
+
+            await t.commit();
+
+            return res.json({
+                success: true,
+                mensaje: nuevoSaldo <= 0 ? 'Factura liquidada.' : 'Abono registrado.',
+                liquidada: nuevoSaldo <= 0,
+                saldoRestante: nuevoSaldo,
+                idAbonoClienteCredito: abono.idAbonoClienteCredito
+            });
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+    } catch (e) {
+        console.error('abonarFactura:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono.' });
+    }
+};
+
+// ─── ABONO GLOBAL (repartido entre varias facturas) ──────────────────────────
+// Reparte un solo pago entre las facturas de crédito abiertas del cliente, de más antigua
+// a más nueva (FIFO por fechaEmision) — la más vieja se completa primero; si el abono no
+// alcanza para todas, la siguiente factura en la fila queda con abono parcial. No admite
+// sobregiro: el valor no puede superar la deuda total del cliente (sin saldo a favor en
+// esta primera versión).
+const abonoGlobalCliente = async (req, res) => {
+    const { idCliente } = req.params;
+    const valorTotal   = parseFloat(req.body?.valorAbono);
+    const metodoPago   = req.body?.metodoPago;
+    const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
+    const nroReferencia = req.body?.nroReferencia?.trim() || null;
+    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
+
+    if (!Number.isFinite(valorTotal) || valorTotal <= 0)
+        return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
+    if (!METODOS_VALIDOS.includes(metodoPago))
+        return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
+    if (metodoPago === 'Entidad Crediticia' && !idEntidad)
+        return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
+
+    try {
+        if (!(await _tienePermisoCredito(req.usuario)))
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para registrar abonos.' });
+
+        if (metodoPago === 'Entidad Crediticia') {
+            const entidad = await Entidades.findOne({ where: { idEntidad, tipoEntidad: 'Entidad Crediticia' }, raw: true });
+            if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
+        }
+
+        const facturas = (await _facturasCreditoCliente(idCliente)).filter(f => f.deudaActual > 0);
+        const deudaTotal = round2(facturas.reduce((s, f) => s + f.deudaActual, 0));
+
+        if (!facturas.length)
+            return res.status(409).json({ success: false, mensaje: 'Este cliente no tiene facturas de crédito pendientes.' });
+        if (valorTotal > deudaTotal)
+            return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda total del cliente (${_pesosCO(deudaTotal)}).` });
+
+        const empleado = req.empleadoVerificado;
+        const loteAbonoGlobal = uuidV7();
+        let restante = valorTotal;
+        const aplicados = [];
+
+        const t = await db.transaction();
+        try {
+            for (const f of facturas) {
+                if (restante <= 0) break;
+                const aplicar = round2(Math.min(restante, f.deudaActual));
+                const nuevoSaldo = round2(f.deudaActual - aplicar);
+
+                await AbonoClienteCreditos.create({
+                    idFacturaCliente: f.idFacturaCliente, idCliente,
+                    totalFactura:  f.valorOriginal,
+                    valorAbono: aplicar, valorPorPagar: nuevoSaldo,
+                    metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null,
+                    nroReferencia, loteAbonoGlobal,
+                    idEmpleado:     empleado?.idEmpleado || null,
+                    nombreEmpleado: empleado?.nombre || null,
+                    codigoEmpleado: empleado?.codigoEmpleado || null,
+                    idUsuario:      req.usuario?.idUsuario || null
+                }, { transaction: t });
+
+                if (nuevoSaldo <= 0)
+                    await FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente: f.idFacturaCliente, estado: 'pendiente' }, transaction: t });
+
+                aplicados.push({ idFacturaCliente: f.idFacturaCliente, nroFactura: f.nroFactura, aplicado: aplicar, saldoRestante: nuevoSaldo });
+                restante = round2(restante - aplicar);
+            }
+
+            await t.commit();
+        } catch (e) {
+            if (!t.finished) await t.rollback().catch(() => {});
+            throw e;
+        }
+
+        return res.json({ success: true, mensaje: `Abono repartido entre ${aplicados.length} factura${aplicados.length !== 1 ? 's' : ''}.`, loteAbonoGlobal, facturas: aplicados });
+    } catch (e) {
+        console.error('abonoGlobalCliente:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono global.' });
     }
 };
 
@@ -2178,7 +2890,7 @@ const filterClientesListJson = async (req, res) => {
                 SELECT
                     c.idCliente,
                     c.primer_nombre, c.primer_apellido, c.razon_social,
-                    c.tipo_documento, c.numero_doc,
+                    c.tipoDocumento, c.numero_doc,
                     uf.fechaEmision AS ultimaCompra,
                     TRIM(CONCAT(COALESCE(e.PrimerNombre,''), ' ', COALESCE(e.PrimerApellido,''))) AS vendedor
                 FROM CLIENTES c
@@ -2744,7 +3456,7 @@ const postNuevaTienda = async (req, res) => {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
         const activa = req.body.activa ? true : false
 
-        return res.status(201).render('./administrador/stores/nueva', {
+        return res.status(201).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -2773,7 +3485,7 @@ const postNuevaTienda = async (req, res) => {
         const checkTaxId = await PuntosDeVenta.findOne({ where: { taxId: nitBusqueda } });
         if (checkTaxId) {
             const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(200).render('./administrador/stores/nueva', {
+            return res.status(200).render('./administrador/stores/new', {
                 pagina: "Tiendas",
                 subPagina: "Nueva Tienda",
                 csrfToken: req.csrfToken(),
@@ -2803,7 +3515,7 @@ const postNuevaTienda = async (req, res) => {
         });
         if (checkRes) {
             const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(409).render('./administrador/stores/nueva', {
+            return res.status(409).render('./administrador/stores/new', {
                 pagina: "Tiendas",
                 subPagina: "Nueva Tienda",
                 csrfToken: req.csrfToken(),
@@ -2826,7 +3538,7 @@ const postNuevaTienda = async (req, res) => {
 
     if ((nStart > 0 && nEnd === 0) || (nEnd > 0 && nStart === 0)) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -2846,7 +3558,7 @@ const postNuevaTienda = async (req, res) => {
 
     if (nEnd > 0 && nStart >= nEnd) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -2868,7 +3580,7 @@ const postNuevaTienda = async (req, res) => {
 
     if ((dEmision && !dVencimiento) || (!dEmision && dVencimiento)) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -2889,7 +3601,7 @@ const postNuevaTienda = async (req, res) => {
 
     if (dEmision && dVencimiento && dEmision > dVencimiento) {
         const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/nueva', {
+        return res.status(409).render('./administrador/stores/new', {
             pagina: "Tiendas",
             subPagina: "Nueva Tienda",
             csrfToken: req.csrfToken(),
@@ -2959,7 +3671,7 @@ const postNuevaTienda = async (req, res) => {
 
     // 6. RESPUESTA FINAL
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-    return res.render('./administrador/stores/nueva', {
+    return res.render('./administrador/stores/new', {
         pagina: "Tiendas",
         subPagina: "Nueva Tienda",
         csrfToken: req.csrfToken(),
@@ -4359,7 +5071,7 @@ const getTiendasStatsHoy = async (req, res) => {
         }
 
         // Totales globales por método de pago
-        let pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0 };
+        let pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0, creditoTienda: 0 };
         if (facturasHoy.length) {
             const factIds = facturasHoy.map(f => f.idFacturaCliente);
             const pagosRows = await DetallesPagosFactura.findAll({
@@ -4370,10 +5082,11 @@ const getTiendasStatsHoy = async (req, res) => {
             });
             for (const r of pagosRows) {
                 const v = Math.round(parseFloat(r.total || 0));
-                if (r.metodoPago === 'Efectivo')                                       pagosGlobales.efectivo  += v;
+                if (r.metodoPago === 'Efectivo')                                       pagosGlobales.efectivo     += v;
                 else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill += v;
-                else if (r.metodoPago === 'Tarjeta Credito')                           pagosGlobales.tCredito  += v;
-                else if (r.metodoPago === 'Entidad Crediticia')                        pagosGlobales.creditos  += v;
+                else if (r.metodoPago === 'Tarjeta Credito')                           pagosGlobales.tCredito     += v;
+                else if (r.metodoPago === 'Entidad Crediticia')                        pagosGlobales.creditos     += v;
+                else if (r.metodoPago === 'Credito En Tienda')                         pagosGlobales.creditoTienda += v;
             }
         }
 
@@ -4449,7 +5162,7 @@ const actualizarEmpleado = async (req, res) => {
     if (!PrimerNombre?.trim())  errores.PrimerNombre  = 'El primer nombre es requerido';
     if (!PrimerApellido?.trim()) errores.PrimerApellido = 'El primer apellido es requerido';
 
-    const tiposDocValidos = ['CC', 'CE', 'TI', 'NIT', 'PP'];
+    const tiposDocValidos = ['CC', 'CE', 'TI', 'NIT', 'PP', 'PPT'];
     if (!TipoDocumento || !tiposDocValidos.includes(TipoDocumento))
         errores.TipoDocumento = 'Selecciona un tipo de documento válido';
     if (!NumeroDocumento?.trim())
@@ -6016,7 +6729,7 @@ const construirHojaOF = async (wb, { donde, tienda, fechaListado, fFechaLarga, e
             where: dondeOF,
             include: [{
                 model: Clientes, as: 'cliente', required: false,
-                attributes: ['tipo_persona', 'tipo_documento', 'numero_doc', 'digito_verif',
+                attributes: ['tipo_persona', 'tipoDocumento', 'numero_doc', 'digito_verif',
                              'razon_social', 'primer_nombre', 'segundo_nombre',
                              'primer_apellido', 'segundo_apellido', 'email', 'telefono'],
                 include: [
@@ -6067,7 +6780,7 @@ const construirHojaOF = async (wb, { donde, tienda, fechaListado, fFechaLarga, e
                 cli?.razon_social ? tituloLista(cli.razon_social) : '—',
                 nombresPersona ? tituloLista(nombresPersona) : (f.idCliente === '0' ? 'Consumidor Final' : '—'),
                 cli?.tipo_persona === 'J' ? 'Jurídica' : cli?.tipo_persona === 'N' ? 'Natural' : '—',
-                cli?.tipo_documento || '—',
+                cli?.tipoDocumento || '—',
                 cli?.numero_doc     || '—',
                 cli?.digito_verif   || '—',
                 docCompleto,
@@ -6526,12 +7239,15 @@ const exportarFacturasTienda = async (req, res) => {
             raw: true, nest: true
         });
 
-        let sEfectivo = 0, sElectronicos = 0, sCredito = 0;
+        let sEfectivo = 0, sElectronicos = 0, sCredito = 0, sCreditoTienda = 0;
         const porEntidad = new Map();
 
         for (const p of pagos) {
             const valor = Math.round(parseFloat(p.valor) || 0);
             if (p.metodoPago === 'Efectivo') { sEfectivo += valor; continue; }
+            // Crédito en Tienda no tiene entidad y no es plata recibida — no entra al
+            // desglose "por entidad" (eso es recaudo real) ni a TOTAL RECAUDADO más abajo.
+            if (p.metodoPago === 'Credito En Tienda') { sCreditoTienda += valor; continue; }
 
             // Sin entidad asociada se cae al método: un datáfono sin entidad configurada
             // igual tiene que aparecer en el desglose, no desaparecer del informe.
@@ -6658,7 +7374,10 @@ const exportarFacturasTienda = async (req, res) => {
             { etiqueta: 'VENTAS EFECTIVO',    valor: sEfectivo,     formato: FORMATO_PESOS, color: XLS.ingresoTinta },
             { etiqueta: 'MEDIOS ELECTRÓNICOS', valor: sElectronicos, formato: FORMATO_PESOS, color: 'FF1D4ED8' },
             { etiqueta: 'CRÉDITO',            valor: sCredito,      formato: FORMATO_PESOS, color: XLS.apagado },
-            { etiqueta: 'TOTAL RECAUDADO',    valor: sEfectivo + sElectronicos + sCredito, formato: FORMATO_PESOS }
+            { etiqueta: 'TOTAL RECAUDADO',    valor: sEfectivo + sElectronicos + sCredito, formato: FORMATO_PESOS },
+            // Aparte del total recaudado a propósito: acá no entró plata, es la tienda
+            // financiando al cliente — ver models/DetallesPagosFactura.js.
+            { etiqueta: 'CRÉDITO EN TIENDA (no recaudado)', valor: sCreditoTienda, formato: FORMATO_PESOS, color: XLS.apagado }
         ]);
 
         // ── Desglose por entidad ─────────────────────────────────────────────
@@ -6722,7 +7441,7 @@ const exportarFacturasTienda = async (req, res) => {
             const tanda = await FacturaClientes.findAll({
                 where: donde,
                 include: [
-                    { model: Clientes, as: 'cliente', attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipo_documento', 'numero_doc'], required: false },
+                    { model: Clientes, as: 'cliente', attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'tipoDocumento', 'numero_doc'], required: false },
                     { model: Empleados, as: 'vendedor', attributes: ['PrimerNombre', 'PrimerApellido'], required: false },
                     { model: DetallesFactura, as: 'detalles', attributes: ['cantidad', 'total'], required: false },
                     { model: DetallesPagosFactura, as: 'pagos', attributes: ['metodoPago'], required: false }
@@ -6743,7 +7462,7 @@ const exportarFacturasTienda = async (req, res) => {
                 const cliente  = f.idCliente === '0'
                     ? 'Consumidor Final'
                     : (cli?.razon_social || `${cli?.primer_nombre || ''} ${cli?.primer_apellido || ''}`.trim() || 'N/A');
-                const doc      = cli ? `${cli.tipo_documento || ''} ${cli.numero_doc || ''}`.trim() : '';
+                const doc      = cli ? `${cli.tipoDocumento || ''} ${cli.numero_doc || ''}`.trim() : '';
 
                 if (total > mayor) mayor = total;
 
@@ -7321,9 +8040,10 @@ const getAdminCuadrePDF = async (req, res) => {
 
         const buf = await _generarPDFCuadre({
             caja, regimen, municipio,
-            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
+            sums:           { sEfectivo: datos.sEfectivo, sMedios: datos.sMedios, sCredito: datos.sCredito, sCreditoTienda: datos.sCreditoTienda, sEgresos: datos.sEgresos, sVentas: datos.sVentas, sEgresosEfectivo: datos.sEgresosEfectivo, sEgresosElectronicos: datos.sEgresosElectronicos },
             txElectronicos: datos.txElectronicos,
             txCredito:      datos.txCredito,
+            txCreditoTienda: datos.txCreditoTienda,
             txEgresos:      datos.txEgresos
         });
         res.setHeader('Content-Type', 'application/pdf');
@@ -7452,7 +8172,7 @@ const getCarteraUrgente = async (req, res) => {
                 c.idCliente,
                 COALESCE(c.razon_social,
                     CONCAT(COALESCE(c.primer_nombre,''), ' ', COALESCE(c.primer_apellido,''))) AS nombreCliente,
-                c.tipo_documento,
+                c.tipoDocumento,
                 c.numero_doc,
                 c.digito_verif,
                 SUM(df_sum.totalFactura)                              AS totalBruto,
@@ -7474,7 +8194,7 @@ const getCarteraUrgente = async (req, res) => {
               AND fc.fechaVencimiento IS NOT NULL
               AND fc.fechaVencimiento < CURDATE()
             GROUP BY c.idCliente, c.razon_social, c.primer_nombre, c.primer_apellido,
-                     c.tipo_documento, c.numero_doc, c.digito_verif
+                     c.tipoDocumento, c.numero_doc, c.digito_verif
             HAVING saldoPendiente > 0
             ORDER BY diasEnMora DESC
             LIMIT 10
@@ -7489,7 +8209,7 @@ const getCarteraUrgente = async (req, res) => {
         const clientes = filas.map(r => ({
             idCliente:      r.idCliente,
             nombre:         r.nombreCliente.trim(),
-            tipoDoc:        r.tipo_documento,
+            tipoDoc:        r.tipoDocumento,
             nroDoc:         r.numero_doc,
             digitoVerif:    r.digito_verif,
             saldoPendiente: Math.round(parseFloat(r.saldoPendiente) || 0),
@@ -8046,7 +8766,8 @@ export {
     newSupplier,
     verProveedor, actualizarProveedor,
     saveSupplier, checkNitSupplier,
-    dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente,
+    dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
+    dashboardClienteCredito, generarInformeCreditoPDF, aumentarCreditoCliente, abonarFactura, abonoGlobalCliente,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
 
     dashboardOrders,

@@ -14,7 +14,7 @@ import permisosAdmin from "./middlewares/permisosAdmin.js"
 import cabecerasSeguridad from "./middlewares/cabecerasSeguridad.js"
 import db from "./config/bd.js";
 import { verificarTrasladosExpirados } from "./controller/storeControllers.js";
-import { cargarContadoresAdmin } from './middleware/adminMenuMiddleware.js';
+import { cargarContadoresAdmin } from './middlewares/adminMenuMiddleware.js';
 import { tituloLista } from './helpers/textoLista.js';
 
 

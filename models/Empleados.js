@@ -17,7 +17,7 @@ const Empleados = db.define('EMPLEADOS', {
         defaultValue: null
     },
     TipoDocumento: {
-        type: DataTypes.ENUM('CC', 'CE', 'TI', 'NIT', 'PP'),
+        type: DataTypes.ENUM('CC', 'CE', 'TI', 'NIT', 'PP', 'PPT'),
         defaultValue: 'CC'
     },
     NumeroDocumento: {

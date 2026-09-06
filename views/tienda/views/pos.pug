@@ -52,7 +52,7 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
     
     
     //- SECCIÓN DERECHA: ESTADO DE COMPRA (4 Columnas)
-    aside(id="drop-zone" data-wholesale-min=wholesaleMin class="col-span-12 lg:col-span-4 flex flex-col min-h-0")
+    aside(id="drop-zone" data-wholesale-min=wholesaleMin data-iva-percent=ivaPercent class="col-span-12 lg:col-span-4 flex flex-col min-h-0")
         div(class="bg-white/40 backdrop-blur-xl p-6 rounded-[1.5rem] border border-white/60 shadow-xl flex flex-col lg:h-full min-h-0 overflow-y-auto lg:overflow-hidden transition-all")
 
             //- Header de la Orden
@@ -78,9 +78,9 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
             div(class="space-y-4 mt-4 lg:mt-auto")
                 input(type="hidden" id="idCliente" value=clienteGenerico.idCliente)
                 - const cliNombre = ((clienteGenerico.primer_nombre || '') + ' ' + (clienteGenerico.primer_apellido || '')).trim()
-                - const cliDoc    = (clienteGenerico.tipo_documento || 'CC') + ' ' + (clienteGenerico.numero_doc || '')
+                - const cliDoc    = (clienteGenerico.tipoDocumento || 'CC') + ' ' + (clienteGenerico.numero_doc || '')
                 +tarjetaClienteFidelizado(clienteGenerico.idCliente, cliNombre || 'Cliente Genérico', cliDoc, '/img/avatars/cliente.webp')
-                +resumenFactura(0, 0, 0)
+                +resumenFactura(0, 0)
 
                 button(id="btn-procesar-factura" class="w-full py-4 bg-gh-primary text-white rounded-2xl font-bold shadow-lg shadow-gh-primary/30 hover:bg-gh-primaryHover transition-all active:scale-95 cursor-pointer")
                     | Procesar Factura

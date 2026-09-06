@@ -40,7 +40,7 @@ const PedidosWeb = db.define('PEDIDOS_WEB', {
     cedula: { type: DataTypes.STRING(20), allowNull: true },
 
     // ── Identificación para facturación ──────────────────────────────────
-    // Mismo vocabulario que CLIENTES (tipo_persona / tipo_documento), para poder resolver
+    // Mismo vocabulario que CLIENTES (tipo_persona / tipoDocumento), para poder resolver
     // o crear el cliente sin traducir valores. allowNull por los pedidos históricos.
     tipoPersona: {
         type: DataTypes.CHAR(1),
@@ -70,8 +70,29 @@ const PedidosWeb = db.define('PEDIDOS_WEB', {
     // ── Envío a domicilio (solo si tipoEntrega = 'domicilio') ───────────
     direccion: { type: DataTypes.STRING(200), allowNull: true },
     apto: { type: DataTypes.STRING(50), allowNull: true },
+    // ciudad/departamento son el nombre — antes texto libre que tipeaba el comprador, ahora
+    // el nombre real de MUNICIPIOS/DEPARTAMENTOS resuelto en el servidor a partir de
+    // idMunicipio/idDepartamento (ver crearPedidoWeb). Quedan como columnas de texto además
+    // de los ids, mismo patrón que CLIENTES_UBICACION (nombreDepartamento + idDepartamento),
+    // para no tener que hacer join solo para mostrar el pedido en el admin. Siguen
+    // aceptando pedidos históricos sin id (checkout viejo, texto libre sin validar contra
+    // el DANE) — por eso los ids son nullable aunque haya ciudad/departamento.
     ciudad: { type: DataTypes.STRING(100), allowNull: true },
     departamento: { type: DataTypes.STRING(100), allowNull: true },
+    idDepartamento: {
+        type: DataTypes.STRING(5),
+        allowNull: true,
+        references: { model: 'DEPARTAMENTOS', key: 'id' },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
+    },
+    idMunicipio: {
+        type: DataTypes.STRING(5),
+        allowNull: true,
+        references: { model: 'MUNICIPIOS', key: 'id' },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
+    },
     notasEntrega: { type: DataTypes.STRING(255), allowNull: true },
 
     // ── Pago ─────────────────────────────────────────────────────────────

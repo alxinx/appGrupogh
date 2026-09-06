@@ -203,6 +203,31 @@ mixin modalFinalizarVenta()
                 span(class="text-xs font-bold text-gray-500") Cambio
                 span(id="fv-efectivo-cambio" class="font-black text-green-600 text-sm") $0
 
+          //- CRÉDITO EN TIENDA — solo visible si el cliente activo tiene crédito propio
+          //- habilitado (CLIENTES.credito), consultado al abrir este modal. Distinto de
+          //- "Entidades Crediticias" de abajo: eso es financiación de un tercero, esto es
+          //- el cupo que la tienda misma le otorgó al cliente. El input de monto es igual
+          //- al de Efectivo (mismo formateo de miles). El monto se valida contra el cupo
+          //- disponible en el servidor (nunca solo en el navegador) cada vez que se
+          //- escribe — lo que falta definir es qué pasa al confirmar la venta (si
+          //- descuenta el cupo, si pide código de empleado, etc.).
+          div(id="fv-metodo-credito-tienda" class="hidden mb-3 bg-gray-50 rounded-[1rem] border-2 border-transparent transition-all")
+            div(id="fv-credito-tienda-header" class="flex items-center justify-between p-4 cursor-pointer select-none")
+              div(class="flex items-center gap-3")
+                div(class="w-9 h-9 rounded-xl bg-pink-100 flex items-center justify-center")
+                  i(class="fi-rr-hand-holding-usd text-pink-600")
+                div
+                  p(class="text-xs font-black text-gray-800 uppercase") Crédito en Tienda
+                  p(id="fv-credito-tienda-disponible" class="text-[10px] text-gray-400 font-medium") Cupo propio del cliente
+              i(id="fv-credito-tienda-chevron" class="fi-rr-angle-small-down text-gray-400 transition-transform duration-200")
+            div(id="fv-credito-tienda-body" class="hidden px-4 pb-4 space-y-2")
+              div(class="flex items-center gap-2")
+                span(class="text-xs text-gray-500 whitespace-nowrap flex-shrink-0") Valor
+                div(class="relative flex-1")
+                  span(class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold pointer-events-none") $
+                  input(id="fv-credito-tienda-monto" type="text" inputmode="numeric" placeholder="0" class="w-full pl-7 pr-3 h-10 bg-white border border-gray-200 rounded-xl text-right font-black text-gray-800 focus:ring-2 focus:ring-pink-400/30 focus:border-pink-300 focus:outline-none")
+              p(id="fv-credito-tienda-estado" class="text-[10.5px] font-semibold min-h-[13px]")
+
           //- TRANSFERENCIA
           div(id="fv-metodo-transferencia" class="hidden mb-3 bg-gray-50 rounded-[1rem] border-2 border-transparent transition-all")
             div(id="fv-transferencia-header" class="flex items-center justify-between p-4 cursor-pointer select-none")
@@ -251,18 +276,22 @@ mixin modalFinalizarVenta()
       //- Footer
       div(class="border-t border-gray-100 flex-shrink-0")
 
-        //- Fila 1: recuadros resumen de pagos
-        div(class="flex gap-3 px-8 pt-4 pb-3")
-          div(class="flex-1 bg-green-50 border border-green-100 rounded-2xl px-4 py-2.5")
+        //- Fila 1: recuadros resumen de pagos — cada uno se oculta solo si su valor es $0
+        //- (actualizarResumenPagos en pos.js), para no llenar la fila de ceros.
+        div(id="fv-resumen-cajas" class="flex gap-3 px-8 pt-4 pb-3")
+          div(id="fv-caja-efectivo" class="hidden flex-1 bg-green-50 border border-green-100 rounded-2xl px-4 py-2.5")
             p(class="text-[10px] font-bold text-green-600 uppercase tracking-wide") Efectivo
             p(id="fv-resumen-efectivo-val" class="font-black text-green-700 text-sm mt-0.5") $0
-          div(class="flex-1 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-2.5")
+          div(id="fv-caja-credito-tienda" class="hidden flex-1 bg-pink-50 border border-pink-100 rounded-2xl px-4 py-2.5")
+            p(class="text-[10px] font-bold text-pink-600 uppercase tracking-wide") Crédito Tienda
+            p(id="fv-resumen-credito-tienda-val" class="font-black text-pink-700 text-sm mt-0.5") $0
+          div(id="fv-caja-transferencia" class="hidden flex-1 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-2.5")
             p(class="text-[10px] font-bold text-blue-600 uppercase tracking-wide") Transferencia
             p(id="fv-resumen-transferencia-val" class="font-black text-blue-700 text-sm mt-0.5") $0
-          div(class="flex-1 bg-purple-50 border border-purple-100 rounded-2xl px-4 py-2.5")
+          div(id="fv-caja-tarjeta" class="hidden flex-1 bg-purple-50 border border-purple-100 rounded-2xl px-4 py-2.5")
             p(class="text-[10px] font-bold text-purple-600 uppercase tracking-wide") Tarjeta
             p(id="fv-resumen-tarjeta-val" class="font-black text-purple-700 text-sm mt-0.5") $0
-          div(class="flex-1 bg-orange-50 border border-orange-100 rounded-2xl px-4 py-2.5")
+          div(id="fv-caja-credito" class="hidden flex-1 bg-orange-50 border border-orange-100 rounded-2xl px-4 py-2.5")
             p(class="text-[10px] font-bold text-orange-600 uppercase tracking-wide") Crédito
             p(id="fv-resumen-credito-val" class="font-black text-orange-700 text-sm mt-0.5") $0
 

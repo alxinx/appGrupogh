@@ -14,6 +14,8 @@
         { id: 'stat-billetera',  bar: 'bar-billetera',  key: 'Billetera Virtual' },
         { id: 'stat-crediticia', bar: 'bar-crediticia', key: 'Entidad Crediticia' },
         { id: 'stat-tarjeta',    bar: 'bar-tarjeta',    key: 'Tarjeta Credito' },
+        // Sin tarjeta ni barra propia todavía (ver el grid fijo de 6 en viewStore.pug) —
+        // solo entra al modal de clic por método, vía CLICKABLES más abajo.
     ];
 
     // ─── ANIMACIÓN COUNT-UP ───────────────────────────────────────────────────

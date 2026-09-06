@@ -88,12 +88,28 @@ const CajaTienda = db.define('CAJA_TIENDA', {
         allowNull: true,
         defaultValue: 0
     },
+    // Ventas por Entidad Crediticia (financiera de terceros — ya cobrado, no está en el
+    // cajón pero sí entró plata al negocio por otro lado).
     ventasCredito: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
         defaultValue: 0
     },
     ventasCreditoRegistradas: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0
+    },
+    // Ventas por Crédito en Tienda (cupo propio del cliente, CREDITO_DISPONIBLE_CLIENTE) —
+    // aparte de ventasCredito a propósito: acá no entró plata de nadie, es la tienda
+    // financiando al cliente. Cuenta para "ventas del día" (la factura sí se emitió) pero
+    // nunca se mezcla con Entidad Crediticia en ningún reporte.
+    ventasCreditoTienda: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0
+    },
+    ventasCreditoTiendaRegistrada: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
         defaultValue: 0

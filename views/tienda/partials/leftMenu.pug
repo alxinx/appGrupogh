@@ -58,6 +58,11 @@ aside(
         i(class="fi fi-rr-bell text-base flex-shrink-0")
         span(class="text-xs font-semibold leading-snug") Pedidos web por despachar
 
+    a(href="/store/clientes" data-folder="/clientes" style=vis('/clientes')
+      class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`)
+      i(class="fi fi-rr-users-alt text-lg")
+      span Mis Clientes
+
     details(class="group" data-folder="/storebehivors" style=vis('/storebehivors'))
       //- El aviso de traslados va en "Caja y ventas" y no en el subítem de Egresos:
       //- el submenú puede estar plegado, y un badge que solo se ve al desplegar no avisa

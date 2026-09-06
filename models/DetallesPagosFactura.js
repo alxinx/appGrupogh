@@ -25,8 +25,15 @@ const DetallesPagosFactura = db.define('DETALLES_PAGOS_FACTURA', {
             key: 'idEntidad'
         }
     },
+    // 'Credito En Tienda' es distinto de 'Entidad Crediticia': esa es una financiera de
+    // terceros que ya le pagó al negocio (Addi, Sistecredito), esto es la tienda misma
+    // financiando al cliente — no entra plata, es un derecho de cobro futuro. idEntidad
+    // se queda null en este caso, igual que en 'Efectivo': no hay una ENTIDADES de por
+    // medio. Ver CLAUDE.md antes de tratarla como si fuera la misma cosa que "Créditos"
+    // en cualquier reporte — el cuadre de caja (storeControllers._calcularTransaccionesCaja)
+    // ya la separa en su propio bucket.
     metodoPago: {
-        type: DataTypes.ENUM('Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'),
+        type: DataTypes.ENUM('Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo', 'Credito En Tienda'),
         allowNull: false
     },
     valor: {

@@ -50,6 +50,7 @@
     const sEfectivo = $('cc-s-efectivo');
     const sMedios   = $('cc-s-medios');
     const sCredito  = $('cc-s-credito');
+    const sCreditoTienda = $('cc-s-creditoTienda');
 
     // Tarjetas de cifra de la fila superior. "Total a entregar" y "Total egresos"
     // también viven en la columna izquierda: son el mismo dato en dos lugares, así que
@@ -65,6 +66,7 @@
     const oEfectivo = $('cc-o-efectivo');
     const oMedios   = $('cc-o-medios');
     const oCredito  = $('cc-o-credito');
+    const oCreditoTienda = $('cc-o-creditoTienda');
 
     const codEmpleado    = $('cc-codigo-empleado');
     const btnCerrar      = $('cc-btn-cerrar');
@@ -101,6 +103,7 @@
     initAcordeon('cc-toggle-efectivo', 'cc-acordeon-efectivo', 'cc-icon-efectivo');
     initAcordeon('cc-toggle-medios',   'cc-acordeon-medios',   'cc-icon-medios');
     initAcordeon('cc-toggle-credito',  'cc-acordeon-credito',  'cc-icon-credito');
+    initAcordeon('cc-toggle-creditoTienda', 'cc-acordeon-creditoTienda', 'cc-icon-creditoTienda');
 
     // "Ver detalle" de la tarjeta de egresos: no duplica la lista, lleva a la única
     // que hay. Si ya está abierta igual hace scroll, que es lo que el operador pidió.
@@ -111,13 +114,20 @@
     });
 
     // ── Fila de acordeón ────────────────────────────────────────────────────
+    // Un abono global reparte un solo ingreso entre varias facturas — la tirilla de una
+    // sola no cuenta la historia completa de ESE ingreso, así que la fila enlaza al voucher
+    // del abono (idCliente + loteAbonoGlobal) cuando lo hay. Sin lote (abono a una sola
+    // factura desde admin, o una venta normal) sigue enlazando a la tirilla de siempre.
     const buildRow = (tx) => {
         const tr = document.createElement('tr');
         tr.className = 'border-b border-slate-100 hover:bg-slate-50';
+        const urlComprobante = tx.loteAbonoGlobal
+            ? `/store/clientes/${tx.idCliente}/abono/${tx.loteAbonoGlobal}/voucher`
+            : `/store/facturas/${tx.idFacturaCliente}/tirilla`;
         tr.innerHTML = `
             <td class="py-1.5 px-2">
                 <button class="text-pink-500 underline text-xs hover:text-pink-700 font-medium"
-                    onclick="window.open('/store/facturas/${tx.idFacturaCliente}/tirilla','_blank')">
+                    onclick="window.open('${urlComprobante}','_blank')">
                     ${tx.nroFactura}
                 </button>
             </td>
@@ -142,6 +152,7 @@
         sEfectivo.textContent = fmt(t.efectivo);
         sMedios.textContent   = fmt(t.mediosElectronicos);
         sCredito.textContent  = fmt(t.credito);
+        sCreditoTienda.textContent = fmt(t.creditoTienda);
 
         if (kEgresos) kEgresos.textContent = fmt(t.egresos);
 
@@ -430,6 +441,14 @@
                 d.txCredito.forEach(tx => tbodyC.appendChild(buildRow(tx)));
             }
 
+            // Acordeón — crédito en tienda
+            const tbodyCT = $('cc-tbody-creditoTienda');
+            if (d.txCreditoTienda.length === 0) {
+                tbodyCT.innerHTML = '<tr><td colspan="4" class="py-2 px-2 text-xs text-slate-400 text-center">Sin transacciones</td></tr>';
+            } else {
+                d.txCreditoTienda.forEach(tx => tbodyCT.appendChild(buildRow(tx)));
+            }
+
             comparar();
         } catch (_) {
             $('cc-apertura-info').textContent = 'Error al cargar datos.';
@@ -448,6 +467,7 @@
             { inp: oEfectivo, sys: dataSistema.totales.efectivo },
             { inp: oMedios,   sys: dataSistema.totales.mediosElectronicos },
             { inp: oCredito,  sys: dataSistema.totales.credito },
+            { inp: oCreditoTienda, sys: dataSistema.totales.creditoTienda },
         ];
         let hayDescuadre = false;
         // Suma con signo, no de valores absolutos: si al operador le sobran $5.000 en el
@@ -496,7 +516,7 @@
     };
 
     // Inputs: formateo en tiempo real + comparación
-    [oBase, oEgresos, oEfectivo, oMedios, oCredito].forEach(inp => {
+    [oBase, oEgresos, oEfectivo, oMedios, oCredito, oCreditoTienda].forEach(inp => {
         inp.addEventListener('keydown', (e) => {
             const ok = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter','Home','End'];
             if (!ok.includes(e.key) && !/^\d$/.test(e.key)) e.preventDefault();
@@ -588,6 +608,7 @@
         const oEf = parse(oEfectivo.value);
         const oM  = parse(oMedios.value);
         const oCr = parse(oCredito.value);
+        const oCrT = parse(oCreditoTienda.value);
         const oB  = parse(oBase.value);
 
         const swalResult = await Swal.fire({
@@ -606,6 +627,7 @@
                         ${buildConfirmRow('Efectivo', dataSistema.totales.efectivo, oEf)}
                         ${buildConfirmRow('Medios Elect.', dataSistema.totales.mediosElectronicos, oM)}
                         ${buildConfirmRow('Crédito', dataSistema.totales.credito, oCr)}
+                        ${buildConfirmRow('Crédito en Tienda', dataSistema.totales.creditoTienda, oCrT)}
                         ${buildConfirmRow('Base', dataSistema.caja.cajaMenor, oB)}
                     </table>
                     <br><em style="font-size:11px;color:#999">Vendedor: ${empleadoNombre || codEmpleado.value.trim().toUpperCase()}</em>
@@ -638,6 +660,7 @@
                     operadorEfectivo:     oEf,
                     operadorElectronicos: oM,
                     operadorCredito:      oCr,
+                    operadorCreditoTienda: oCrT,
                     operadorBase:         oB,
                     nota:                 nota.value.trim() || null
                 })

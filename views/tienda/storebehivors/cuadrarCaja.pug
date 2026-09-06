@@ -199,6 +199,30 @@ block contenedor
                                                     th(class="text-right") Valor
                                             tbody#cc-tbody-credito
 
+                            //- CRÉDITO EN TIENDA (acordeón) — la tienda misma financiando al
+                            //- cliente, no un tercero: no entró plata hoy, igual que "Ventas a
+                            //- crédito", pero aparte a propósito (ver _calcularTransaccionesCaja
+                            //- en storeControllers.js) porque no se debe mezclar con Entidad
+                            //- Crediticia.
+                            div(class="cc-item")
+                                button#cc-toggle-creditoTienda(type="button" class="cc-fila")
+                                    div(class="cc-plato cc-plato--teal")
+                                        i(class="fi fi-rr-hand-holding-usd")
+                                    span(class="cc-label") Crédito en tienda
+                                    i(class="fi fi-rr-info cc-info" title="Facturas pagadas con el cupo de crédito que la tienda le da al cliente. Hoy no entró plata por ellas — se cobran después, con un abono.")
+                                    span#cc-s-creditoTienda(class="cc-valor") —
+                                    i#cc-icon-creditoTienda(class="fi fi-rr-angle-small-down cc-chevron")
+                                div#cc-acordeon-creditoTienda(class="cc-panel hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="cc-tabla")
+                                            thead
+                                                tr
+                                                    th Nro Factura
+                                                    th Entidad
+                                                    th Ref.
+                                                    th(class="text-right") Valor
+                                            tbody#cc-tbody-creditoTienda
+
                             //- TOTAL A ENTREGAR — cierre de la columna
                             //- Es la conclusión de todo lo de arriba: el renglón se destaca
                             //- porque es el único número que el operador se lleva en la mano.
@@ -290,6 +314,18 @@ block contenedor
                                         type="text" inputmode="numeric" placeholder="0"
                                         class="cc-input border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
                                         data-field="credito"
+                                    )
+
+                            div(class="cc-orow")
+                                div(class="cc-plato cc-plato--teal")
+                                    i(class="fi fi-rr-hand-holding-usd")
+                                label(for="cc-o-creditoTienda" class="cc-label") Crédito en tienda
+                                div(class="cc-ocampo")
+                                    span(class="cc-osigno") $
+                                    input#cc-o-creditoTienda(
+                                        type="text" inputmode="numeric" placeholder="0"
+                                        class="cc-input border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-pink-300/40"
+                                        data-field="creditoTienda"
                                     )
 
                         //- Nota — texto libre, así que el campo va debajo del rótulo y no al
@@ -440,6 +476,7 @@ block contenedor
         .cc-plato--lila    { background: #F3E8FF; color: #9333EA; }
         .cc-plato--ambar   { background: #FEF3C7; color: #D97706; }
         .cc-plato--slate   { background: #F1F5F9; color: #64748B; }
+        .cc-plato--teal    { background: #CCFBF1; color: #0D9488; }
 
         .cc-label { font-size: 0.9375rem; font-weight: 500; color: #334155; }
         .cc-valor {

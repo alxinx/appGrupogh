@@ -13,7 +13,7 @@ getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
 getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente,
-getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, activarCreditoCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
+getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, aumentarCreditoCliente, abonarFactura, abonoGlobalCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
 getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 storeCierresCaja, storeTrasladosTienda,
 getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
@@ -204,7 +204,25 @@ routes.get('/api/clientes/:idCliente/perfil', pCli('READ'),    getClientePerfil)
 routes.get('/api/clientes/:idCliente/historial', pCli('READ'), getClienteHistorial);
 routes.get('/api/clientes/:idCliente/archivos', pCli('READ'),  getClienteArchivos);
 routes.post('/api/clientes/archivos/:idDocumento/eliminar', pCli('DELETE'), eliminarDocumentoCliente);
-routes.post('/api/clientes/:idCliente/credito', pCli('EDIT'), activarCreditoCliente);
+// Ambas exigen código de empleado (quién autoriza) además del permiso de "Autorizacion de
+// creditos" verificado dentro del controlador (si puede). Mismo patrón que
+// /bankentities/traslados/:idTraslado/decidir.
+routes.post('/api/clientes/:idCliente/credito/otorgar',   pCli('EDIT'), verificarCodigoEmpleadoAdmin, otorgarCreditoCliente);
+routes.post('/api/clientes/:idCliente/credito/suspender', pCli('EDIT'), verificarCodigoEmpleadoAdmin, suspenderCreditoCliente);
+// Asigna el cupo en CREDITO_DISPONIBLE_CLIENTE (valor en plata). Distinto de arriba: eso
+// otorga el permiso general de comprar a crédito, esto fija cuánto.
+routes.post('/api/clientes/:idCliente/credito-disponible', pCli('EDIT'), verificarCodigoEmpleadoAdmin, asignarCreditoDisponibleCliente);
+// Valida el código de empleado sin ejecutar nada — para habilitar "Continuar" en el modal
+// de otorgar crédito antes de dejar pasar al de confirmación.
+routes.post('/api/clientes/verificar-codigo-credito', pCli('EDIT'), verificarCodigoEmpleadoAdmin, verificarCodigoEmpleadoCredito);
+
+// ── Panel de estado de crédito de un cliente (reemplaza al modal de suspender cuando el
+// cliente ya tiene crédito activo — ver panel-btn-credito en adminClientes.js) ──────────
+routes.get('/clientes/:idCliente/credito', pCli('READ'), dashboardClienteCredito);
+routes.get('/clientes/:idCliente/credito/informe', pCli('READ'), generarInformeCreditoPDF);
+routes.post('/api/clientes/:idCliente/credito/aumentar', pCli('EDIT'), verificarCodigoEmpleadoAdmin, aumentarCreditoCliente);
+routes.post('/api/clientes/:idCliente/facturas/:idFacturaCliente/abonar', pCli('EDIT'), verificarCodigoEmpleadoAdmin, abonarFactura);
+routes.post('/api/clientes/:idCliente/credito/abono-global', pCli('EDIT'), verificarCodigoEmpleadoAdmin, abonoGlobalCliente);
 
 routes.get('/pedidos', pPed('READ'), dashboardOrders);
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
