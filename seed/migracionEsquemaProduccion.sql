@@ -7,6 +7,10 @@
 --   2. BACKUP. MySQL hace COMMIT implícito en cada DDL: no hay rollback.
 --   3. mysql -h HOST -u USER -p BASE < seed/migracionEsquemaProduccion.sql
 --
+-- Las CREATE TABLE son IF NOT EXISTS: si la app ya arrancó con DB_SYNC=true,
+-- Sequelize habrá creado las 4 tablas nuevas (pero NINGUNA columna de las tablas
+-- que ya existían), y este archivo se puede correr igual sin chocar con ellas.
+--
 -- NO usar sync() / DB_SYNC. El orden importa: CREDITO_DISPONIBLE_CLIENTE_HISTORIAL
 -- depende de CREDITO_DISPONIBLE_CLIENTE, y descuentoMayorista va AFTER total.
 --
@@ -86,7 +90,7 @@ ALTER TABLE `PEDIDOS_WEB`
 
 -- ─── 8. CLIENTES_CREDITO_HISTORIAL (nueva) ──────────────────────────────────
 -- Bitácora append-only de otorgar/suspender crédito.
-CREATE TABLE `CLIENTES_CREDITO_HISTORIAL` (
+CREATE TABLE IF NOT EXISTS `CLIENTES_CREDITO_HISTORIAL` (
   `idHistorial`    CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `idCliente`      CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `accion`         ENUM('otorgado','suspendido') NOT NULL,
@@ -107,7 +111,7 @@ CREATE TABLE `CLIENTES_CREDITO_HISTORIAL` (
 
 -- ─── 9. CREDITO_DISPONIBLE_CLIENTE (nueva) ──────────────────────────────────
 -- Cupo de crédito / saldo a favor. PK en UUID v7 (única tabla que se aparta de v4).
-CREATE TABLE `CREDITO_DISPONIBLE_CLIENTE` (
+CREATE TABLE IF NOT EXISTS `CREDITO_DISPONIBLE_CLIENTE` (
   `idCreditoDisponible`  CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `idCliente`            CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `valorCreditoCliente`  DECIMAL(12,2) NOT NULL DEFAULT '0.00',
@@ -126,7 +130,7 @@ CREATE TABLE `CREDITO_DISPONIBLE_CLIENTE` (
 
 -- ─── 10. CREDITO_DISPONIBLE_CLIENTE_HISTORIAL (nueva) ───────────────────────
 -- Bitácora de aumentos de cupo. Depende de la tabla anterior.
-CREATE TABLE `CREDITO_DISPONIBLE_CLIENTE_HISTORIAL` (
+CREATE TABLE IF NOT EXISTS `CREDITO_DISPONIBLE_CLIENTE_HISTORIAL` (
   `idHistorial`          CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `idCreditoDisponible`  CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `idCliente`            CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
@@ -152,7 +156,7 @@ CREATE TABLE `CREDITO_DISPONIBLE_CLIENTE_HISTORIAL` (
 -- Ledger append-only de abonos a facturas de crédito. Ya incluye idEntidad y
 -- 'Entidad Crediticia': en una base que nunca tuvo la tabla NO hace falta correr
 -- después la migración migracionAbonoEntidadCrediticia.
-CREATE TABLE `ABONO_CLIENTE_CREDITOS` (
+CREATE TABLE IF NOT EXISTS `ABONO_CLIENTE_CREDITOS` (
   `idAbonoClienteCredito` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `idFacturaCliente`      CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `idCliente`             CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
