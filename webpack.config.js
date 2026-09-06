@@ -38,6 +38,7 @@ export default {
         adminProductoView   : '/src/js/adminProductoView.js',
         adminDashboard      : '/src/js/adminDashboard.js',
         adminClientes       : '/src/js/adminClientes.js',
+        adminClienteCredito : '/src/js/adminClienteCredito.js',
         dataCliente         : '/src/js/dataCliente.js',
         batchOrder          : '/src/js/batchOrder.js',
         adminCierresCaja    : '/src/js/adminCierresCaja.js',

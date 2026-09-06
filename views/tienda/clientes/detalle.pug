@@ -1,0 +1,88 @@
+extends ../../layout/index
+
+block contenedor
+    div(class="fixed inset-0 flex" style="background:#F4E8FF")
+        include ../partials/leftMenu
+
+        div(class="flex-1 flex flex-col min-w-0")
+            include ../../partials/header
+
+            main(class="flex-1 overflow-y-auto p-6 pt-5")
+
+                //- ══ HEADER ═════════════════════════════════════════════════
+                div(class="bg-white/70 backdrop-blur-md rounded-2xl p-5 mb-6 shadow-sm border border-white/60")
+                    a(href="/store/clientes" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors mb-3")
+                        i(class="fi fi-rr-arrow-left text-xs")
+                        span Volver a Mis Clientes
+
+                    //- Mismo criterio que lista.pug: CLIENTES.telefono no tiene formato único
+                    //- (algunos ya traen el 57 de país, otros solo el celular) — anteponer
+                    //- siempre duplicaba el 57 en los que ya lo traían.
+                    - const waDigitosCrudo = cliente.telefono ? String(cliente.telefono).replace(/\D/g, '') : ''
+                    - const waDigitos = waDigitosCrudo.length === 10 ? `57${waDigitosCrudo}` : waDigitosCrudo
+                    div(class="flex items-center gap-5")
+                        div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                            img(src="/img/avatars/cliente.webp" alt="Cliente" class="w-17 h-17 object-contain")
+                        div
+                            h1(class="text-2xl font-bold text-slate-800")= cliente.nombre
+                            p(class="text-sm text-slate-400 mt-0.5 flex items-center gap-1.5")
+                                span= cliente.documento
+                                if waDigitos
+                                    span ·
+                                    a(href=`https://api.whatsapp.com/send?phone=${waDigitos}` target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 hover:underline")
+                                        i(class="fi fi-brands-whatsapp text-emerald-500")
+                                        span= cliente.telefono
+
+                //- ══ DEUDA TOTAL ════════════════════════════════════════════
+                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6 flex items-center gap-4")
+                    div(class="w-11 h-11 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0")
+                        i(class="fi fi-rr-hand-holding-usd text-rose-500")
+                    div
+                        p(class="text-xs text-slate-400 font-medium") Deuda total en esta tienda
+                        p(class="text-2xl font-bold text-slate-800")= `$${Math.round(deudaTotal).toLocaleString('es-CO')}`
+
+                //- ══ TABLA — mismo estilo que "Mis Clientes" / "Estado Actual de
+                //- las tiendas" ═════════════════════════════════════════════
+                div(class="bg-gray-50 rounded-t-2xl p-3 shadow-sm border border-slate-100 overflow-hidden")
+                    h2.h2.text-gh-primaryHover
+                        i.fi-rr-receipt
+                        |  Facturas pendientes
+                    p(class="text-sm text-slate-400") Solo lectura — los abonos y cambios de crédito se gestionan desde administración
+
+                    div(class="overflow-x-auto pt-4")
+                        table(class="w-full text-left text-2xs border-collapse")
+                            thead
+                                tr(class="border-b border-gh-primaryHover hover:bg-gray-50 text-sm transition-colors")
+                                    th(class="px-8 py-4 text-center text-gray-600") N° Factura
+                                    th(class="px-2 text-center text-gray-600") Fecha
+                                    th(class="px-2 text-center text-gray-600") Días
+                                    th(class="px-2 text-center text-gray-600") Estado
+                                    th(class="px-2 text-center text-gray-600") Valor Original
+                                    th(class="px-2 text-center text-gray-600") Abonado
+                                    th(class="px-8 text-center text-gray-600") Deuda Actual
+
+                            tbody(class="divide-y divide-slate-100")
+                                each f in facturas
+                                    tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+                                        td(class="px-8 py-5")
+                                            p(class="font-bold text-slate-800 text-center")= f.nroFactura
+                                        td(class="px-6 py-5 text-center text-slate-600")= new Date(f.fechaEmision).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                                        td(class=`px-6 py-5 text-center font-semibold ${f.enMora ? 'text-rose-500' : 'text-amber-500'}`)= `${f.diasTranscurridos} día${f.diasTranscurridos !== 1 ? 's' : ''}`
+                                        td(class="px-6 py-5 text-center")
+                                            if f.enMora
+                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-600")
+                                                    span(class="w-1.5 h-1.5 rounded-full bg-rose-500 mr-2")
+                                                    | EN MORA
+                                            else
+                                                span(class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-600")
+                                                    span(class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2")
+                                                    | PENDIENTE
+                                        td(class="px-6 py-5 text-center tabular-nums text-slate-600")= `$${Math.round(f.valorOriginal).toLocaleString('es-CO')}`
+                                        td(class="px-6 py-5 text-center tabular-nums text-emerald-600 font-semibold")= `$${Math.round(f.abonado).toLocaleString('es-CO')}`
+                                        td(class="px-8 py-5 text-center tabular-nums font-bold text-slate-800")= `$${Math.round(f.deudaActual).toLocaleString('es-CO')}`
+
+                    div(class="px-8 py-4 bg-slate-50/30 border-t border-slate-100")
+                        p(class="text-xs text-slate-400")
+                            | Mostrando
+                            span(class="font-bold text-slate-600")= ` ${facturas.length} `
+                            | factura#{facturas.length !== 1 ? 's' : ''} pendiente#{facturas.length !== 1 ? 's' : ''}

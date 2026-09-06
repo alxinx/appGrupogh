@@ -2741,6 +2741,12 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             const montoEf = leerMonto('fv-efectivo-monto');
             if (montoEf > 0) pagosPayload.push({ idEntidad: null, valor: montoEf, nroReferencia: null });
 
+            // Crédito en Tienda — antes se validaba y se mostraba en el resumen de caja
+            // pero nunca se agregaba acá, así que se perdía en silencio: la factura salía
+            // sin este pago y sin marcar credito=true (procesarFactura la deriva de esto).
+            const montoCt = leerMonto('fv-credito-tienda-monto');
+            if (montoCt > 0) pagosPayload.push({ idEntidad: null, valor: montoCt, nroReferencia: null, esCreditoTienda: true });
+
             // Transferencia
             entidadesActivas.forEach((_, id) => {
                 const val = leerMonto(`fv-tr-monto-${id}`);

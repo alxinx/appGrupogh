@@ -656,6 +656,11 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
     const sEgresosEfectivo    = txEgresos.filter(e => e.metodoPago === 'Efectivo').reduce((s, e) => s + e.valor, 0);
     const sEgresosElectronicos = sEgresos - sEgresosEfectivo;
     const idFacturas = facturas.map(f => f.idFacturaCliente);
+    // Aparte, para que cerrarCajaAPI las excluya de "liquidar todo lo del turno": una
+    // venta a Crédito en Tienda no cobró nada hoy, la deuda del cliente sigue viva hasta
+    // que haya un abono real (ver ABONO_CLIENTE_CREDITOS) — cerrar la caja del día no
+    // puede ser lo que la da por pagada.
+    const idFacturasCreditoTienda = [...facturasCreditoTienda];
 
     return {
         sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos,
@@ -663,7 +668,7 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
         sEgresosEfectivo, sEgresosElectronicos,
         // Lo que debería haber físicamente en el cajón: base + ventas en efectivo −
         // egresos pagados en efectivo. Antes esta cuenta la hacía el vendedor de cabeza.
-        txEfectivo, txElectronicos, txCredito, txCreditoTienda, txEgresos, idFacturas,
+        txEfectivo, txElectronicos, txCredito, txCreditoTienda, txEgresos, idFacturas, idFacturasCreditoTienda,
         nFacturasEfectivo:     facturasEfectivo.size,
         nFacturasElectronicos: facturasElectronicos.size,
         nFacturasCredito:      facturasCredito.size,
@@ -1444,6 +1449,169 @@ const validarCreditoTiendaJSON = async (req, res) => {
     }
 };
 
+const _round2 = (n) => parseFloat((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
+
+// ─── MIS CLIENTES (crédito pendiente en esta tienda) ─────────────────────────
+// Página nueva del menú de tienda — protegida igual que Pedidos Web / Caja y ventas: el
+// gate real está en storeMiddleware.cargarPuntoDeVenta (folder '/clientes' en
+// PERMISOS_RECURSOS, ver seed/migracionPermisoMisClientes.js), que corre antes de
+// llegar acá para toda ruta GET bajo /store que no tenga "/json/", "/api/", "/pdf/" o
+// "/sse/" como segmento de ruta — por eso ninguna de las dos rutas de abajo usa esos
+// segmentos: quedar afuera de ese patrón las dejaría sin el chequeo de permiso fino.
+//
+// Todo se filtra por req.idPuntoDeVenta (la tienda del empleado logueado, nunca un
+// parámetro de la URL): un vendedor solo puede ver clientes con deuda en SU tienda, no
+// en las demás — ni por casualidad, ni cambiando el id en la barra de direcciones.
+const misClientesPage = async (req, res) => {
+    try {
+        const idPuntoDeVenta = req.idPuntoDeVenta;
+        if (!idPuntoDeVenta) {
+            return res.render('./tienda/clientes/lista', {
+                pagina: 'Mis Clientes', currentPath: req.path, csrfToken: req.csrfToken(),
+                clientes: [], totalRegistros: 0
+            });
+        }
+
+        const rows = await db.query(`
+            SELECT c.idCliente, c.tipo_persona, c.razon_social,
+                   c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido,
+                   c.tipoDocumento, c.numero_doc, c.telefono,
+                   COUNT(fc.idFacturaCliente)                              AS facturasPendientes,
+                   SUM(COALESCE(ult.valorPorPagar, fc.total))              AS deudaTotal,
+                   MAX(DATEDIFF(CURDATE(), fc.fechaEmision))               AS diasMaxTranscurridos
+            FROM FACTURA_CLIENTES fc
+            INNER JOIN CLIENTES c ON c.idCliente = fc.idCliente
+            LEFT JOIN (
+                SELECT a1.idFacturaCliente, a1.valorPorPagar
+                FROM ABONO_CLIENTE_CREDITOS a1
+                INNER JOIN (
+                    SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
+                    FROM ABONO_CLIENTE_CREDITOS GROUP BY idFacturaCliente
+                ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
+            ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
+            WHERE fc.credito = 1 AND fc.estado = 'pendiente' AND fc.idPuntoDeVenta = :idPuntoDeVenta
+            GROUP BY c.idCliente
+            ORDER BY deudaTotal DESC
+        `, { replacements: { idPuntoDeVenta }, type: db.QueryTypes.SELECT });
+
+        const idsClientes = rows.map(r => r.idCliente);
+        const tiemposCredito = idsClientes.length
+            ? await CreditoDisponibleCliente.findAll({
+                where: { idCliente: idsClientes, tipo: 'Credito' },
+                attributes: ['idCliente', 'tiempoCredito'],
+                raw: true
+            })
+            : [];
+        const tiempoPorCliente = new Map(tiemposCredito.map(t => [t.idCliente, t.tiempoCredito]));
+
+        const clientes = rows.map(r => {
+            const nombre = r.tipo_persona === 'J'
+                ? (r.razon_social || '')
+                : [r.primer_nombre, r.segundo_nombre, r.primer_apellido, r.segundo_apellido].filter(Boolean).join(' ');
+            const tiempoCredito = tiempoPorCliente.get(r.idCliente) ?? null;
+            const diasMax = parseInt(r.diasMaxTranscurridos) || 0;
+            const enMora = tiempoCredito != null && diasMax > tiempoCredito;
+            return {
+                idCliente: r.idCliente,
+                nombre: nombre || 'Cliente',
+                documento: `${r.tipoDocumento || 'CC'} ${r.numero_doc || ''}`.trim(),
+                telefono: r.telefono,
+                facturasPendientes: parseInt(r.facturasPendientes) || 0,
+                deudaTotal: parseFloat(r.deudaTotal) || 0,
+                diasMaxTranscurridos: diasMax,
+                enMora
+            };
+        });
+
+        return res.render('./tienda/clientes/lista', {
+            pagina: 'Mis Clientes',
+            currentPath: req.path,
+            csrfToken: req.csrfToken(),
+            clientes,
+            totalRegistros: clientes.length
+        });
+    } catch (e) {
+        console.error('misClientesPage:', e);
+        return res.render('./tienda/clientes/lista', {
+            pagina: 'Mis Clientes', currentPath: req.path, csrfToken: req.csrfToken(),
+            clientes: [], totalRegistros: 0
+        });
+    }
+};
+
+// Detalle de un cliente puntual — solo si tiene deuda de crédito EN ESTA TIENDA. Sin ese
+// filtro, cambiar el id en la URL dejaría ver la deuda de cualquier cliente del sistema
+// completo, así fuera de otra sede; con él, un 404 genérico es lo único que se puede
+// sacar probando ids al azar (no dice "existe pero no es de tu tienda" vs "no existe").
+const misClienteDetallePage = async (req, res) => {
+    const { idCliente } = req.params;
+    try {
+        const idPuntoDeVenta = req.idPuntoDeVenta;
+        const cliente = await Clientes.findByPk(idCliente, { raw: true });
+        if (!cliente || !idPuntoDeVenta) return res.redirect('/store/clientes');
+
+        const facturas = await db.query(`
+            SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura, fc.fechaEmision, fc.total,
+                   DATEDIFF(CURDATE(), fc.fechaEmision) AS diasTranscurridos,
+                   ult.valorPorPagar AS deudaUltima
+            FROM FACTURA_CLIENTES fc
+            LEFT JOIN (
+                SELECT a1.idFacturaCliente, a1.valorPorPagar
+                FROM ABONO_CLIENTE_CREDITOS a1
+                INNER JOIN (
+                    SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
+                    FROM ABONO_CLIENTE_CREDITOS GROUP BY idFacturaCliente
+                ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
+            ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
+            WHERE fc.idCliente = :idCliente AND fc.idPuntoDeVenta = :idPuntoDeVenta
+                  AND fc.credito = 1 AND fc.estado = 'pendiente'
+            ORDER BY fc.fechaEmision ASC
+        `, { replacements: { idCliente, idPuntoDeVenta }, type: db.QueryTypes.SELECT });
+
+        // Ningún resultado: o el cliente no tiene deuda, o la tiene en otra tienda — en
+        // los dos casos, acá no hay nada que este vendedor deba ver.
+        if (!facturas.length) return res.redirect('/store/clientes');
+
+        const creditoDisponible = await CreditoDisponibleCliente.findOne({
+            where: { idCliente, tipo: 'Credito' }, raw: true
+        });
+        const tiempoCredito = creditoDisponible?.tiempoCredito ?? null;
+
+        const nombre = cliente.tipo_persona === 'J'
+            ? (cliente.razon_social || '')
+            : [cliente.primer_nombre, cliente.segundo_nombre, cliente.primer_apellido, cliente.segundo_apellido].filter(Boolean).join(' ');
+
+        const facturasVista = facturas.map(f => {
+            const total = parseFloat(f.total);
+            const deudaActual = f.deudaUltima != null ? parseFloat(f.deudaUltima) : total;
+            const diasTranscurridos = parseInt(f.diasTranscurridos);
+            const enMora = tiempoCredito != null && diasTranscurridos > tiempoCredito;
+            return {
+                idFacturaCliente: f.idFacturaCliente,
+                nroFactura: `${f.prefijo || ''}${f.numeroFactura}`,
+                fechaEmision: f.fechaEmision,
+                diasTranscurridos,
+                valorOriginal: total,
+                abonado: _round2(total - deudaActual),
+                deudaActual,
+                enMora
+            };
+        });
+
+        return res.render('./tienda/clientes/detalle', {
+            pagina: 'Mis Clientes',
+            currentPath: '/clientes',
+            csrfToken: req.csrfToken(),
+            cliente: { idCliente: cliente.idCliente, nombre: nombre || 'Cliente', documento: `${cliente.tipoDocumento || 'CC'} ${cliente.numero_doc || ''}`.trim(), telefono: cliente.telefono },
+            facturas: facturasVista,
+            deudaTotal: _round2(facturasVista.reduce((s, f) => s + f.deudaActual, 0))
+        });
+    } catch (e) {
+        console.error('misClienteDetallePage:', e);
+        return res.redirect('/store/clientes');
+    }
+};
+
 const getMunicipiosStoreJSON = async (req, res) => {
     const { deptoId } = req.params;
     try {
@@ -1887,6 +2055,10 @@ const procesarFactura = async (req, res) => {
             // Marcada OF: sale en la hoja aparte del informe de facturación de la tienda,
             // con los datos tributarios del cliente abiertos en columnas.
             OF:                   marcarOF,
+            // Marca la factura como de crédito cuando parte (o todo) del pago vino de
+            // "Crédito en Tienda" — es lo que el panel de estado de crédito del cliente usa
+            // para saber qué facturas debe listar como pendientes de abono.
+            credito:              pagosEfectivos.some(p => p.esCreditoTienda),
             subtotal:             subtotalOrden,
             totalImpuestos:       totalImpuestosOrden,
             total:                totalOrden,
@@ -1935,9 +2107,11 @@ const procesarFactura = async (req, res) => {
             ents.forEach(e => entidadesMap.set(e.idEntidad, e.tipoEntidad));
         }
         for (const p of pagosEfectivos) {
-            const metodoPago = p.idEntidad != null
-                ? (entidadesMap.get(Number(p.idEntidad)) || 'Efectivo')
-                : 'Efectivo';
+            const metodoPago = p.esCreditoTienda
+                ? 'Credito En Tienda'
+                : p.idEntidad != null
+                    ? (entidadesMap.get(Number(p.idEntidad)) || 'Efectivo')
+                    : 'Efectivo';
             await DetallesPagosFactura.create({
                 idFacturaCliente: factura.idFacturaCliente,
                 idEntidad:        p.idEntidad != null ? Number(p.idEntidad) : null,
@@ -2160,9 +2334,10 @@ const getTirillaPDF = async (req, res) => {
         const MARGIN = 8;
         const CW     = W - MARGIN * 2;
         const LOGO_SIZE = 60;
-        // +55 cuando lleva el sello VENTA WEB, para que no se corte la tirilla.
+        // +55 cuando lleva el sello VENTA WEB, +34 cuando lleva el sello EN CRÉDITO, para
+        // que no se corten esos recuadros al final de la tirilla.
         const estH   = 350 + factura.detalles.length * 24 + pagosFactura.length * 18 + 100 + LOGO_SIZE + 10
-                     + (pedidoWeb ? 55 : 0);
+                     + (pedidoWeb ? 55 : 0) + (factura.credito ? 34 : 0);
 
         const doc    = new PDFDocument({ size: [W, estH], margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN }, autoFirstPage: true });
         const chunks = [];
@@ -2235,6 +2410,26 @@ const getTirillaPDF = async (req, res) => {
             doc.restore();
 
             doc.y = yCaja + altoCaja + 4;
+        }
+
+        // ── Sello EN CRÉDITO ────────────────────────────────────────────────────
+        // Factura pagada (del todo o en parte) con el cupo de crédito que la tienda le da
+        // al cliente — hoy no entró toda la plata, se cobra después con un abono. Tiene
+        // que saltar a la vista en la tirilla física, no solo quedar en el sistema.
+        if (factura.credito) {
+            doc.moveDown(0.4);
+
+            const altoCredito = 30;
+            const yCredito = doc.y;
+
+            doc.save();
+            doc.lineWidth(1.4).rect(MARGIN, yCredito, CW, altoCredito).stroke('#BE185D');
+
+            doc.font('Helvetica-Bold').fontSize(14).fillColor('#BE185D')
+               .text('EN CRÉDITO', MARGIN, yCredito + 8, { width: CW, align: 'center', lineBreak: false });
+            doc.restore();
+
+            doc.y = yCredito + altoCredito + 4;
         }
 
         doc.moveDown(0.3); hr();
@@ -2751,17 +2946,13 @@ const cerrarCajaAPI = async (req, res) => {
         const inicio = new Date(caja.fechaApertura);
         const fin    = new Date();
 
-        const { sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos, sVentas, txElectronicos, txCredito, txCreditoTienda, txEgresos, idFacturas } =
+        const { sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos, sVentas, txElectronicos, txCredito, txCreditoTienda, txEgresos, idFacturas, idFacturasCreditoTienda } =
             await _calcularTransaccionesCaja(idPdv, inicio, fin);
 
         const oEgresos       = Math.round(parseFloat(operadorEgresos)       || 0);
         const oEfectivo      = Math.round(parseFloat(operadorEfectivo)      || 0);
         const oElectronicos  = Math.round(parseFloat(operadorElectronicos)  || 0);
         const oCredito       = Math.round(parseFloat(operadorCredito)       || 0);
-        // Todavía no hay una sección propia en la UI de cuadre para que el operador la
-        // declare (ver storeCuadrarCaja.js) — llega en 0 hasta que se agregue, y
-        // ventasCreditoTiendaRegistrada queda en 0 con ella. sCreditoTienda (lo calculado)
-        // sí queda bien desde ya.
         const oCreditoTienda = Math.round(parseFloat(operadorCreditoTienda) || 0);
         const oBase          = Math.round(parseFloat(operadorBase)          || 0);
 
@@ -2775,10 +2966,17 @@ const cerrarCajaAPI = async (req, res) => {
             // egresos los dejaba en 'pendiente' y volvían a contarse en el cierre
             // siguiente, inflándolo. Pasa en un día flojo o en una tienda que ese día
             // solo recibió mercancía.
-            if (idFacturas.length > 0) {
+            //
+            // Las facturas de Crédito en Tienda quedan afuera a propósito: cerrar la caja
+            // es un corte de efectivo/medios del turno, no un pago del cliente. Si entraran
+            // acá, cualquier venta a crédito quedaría "liquidada" el mismo día que se hizo
+            // — sin que el cliente haya abonado nada — y desaparecería de Mis Clientes y del
+            // panel de crédito de admin aunque la deuda siga viva.
+            const idFacturasParaLiquidar = idFacturas.filter(id => !idFacturasCreditoTienda.includes(id));
+            if (idFacturasParaLiquidar.length > 0) {
                 await FacturaClientes.update(
                     { estado: 'liquidada' },
-                    { where: { idFacturaCliente: idFacturas }, transaction: t }
+                    { where: { idFacturaCliente: idFacturasParaLiquidar, estado: 'pendiente' }, transaction: t }
                 );
             }
             await Egresos.update(
@@ -4634,6 +4832,8 @@ export {
     buscarClientePorDoc,
     getClienteCreditoJSON,
     validarCreditoTiendaJSON,
+    misClientesPage,
+    misClienteDetallePage,
     getMunicipiosStoreJSON,
     guardarCliente,
     getEntidadesJSON,

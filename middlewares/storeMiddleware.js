@@ -4,7 +4,7 @@ import { Empleados, PuntosDeVenta, CajaTienda, UserPermisos, PermisosRecursos, P
 const API_PATH = /\/(json|sse|pdf|api)\//;
 
 // Prefijos de rutas de página dentro de /store que están protegidas por recursos
-const PAGINAS_PREFIJOS = ['/traslados', '/inventario', '/storebehivors', '/pedidos-web'];
+const PAGINAS_PREFIJOS = ['/traslados', '/inventario', '/storebehivors', '/pedidos-web', '/clientes'];
 
 const esRutaPagina = (path) =>
     path === '/' || PAGINAS_PREFIJOS.some(p => path === p || path.startsWith(p + '/'));

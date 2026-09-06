@@ -22,6 +22,8 @@ import {
     buscarClientePorDoc,
     getClienteCreditoJSON,
     validarCreditoTiendaJSON,
+    misClientesPage,
+    misClienteDetallePage,
     getMunicipiosStoreJSON,
     guardarCliente,
     getEntidadesJSON,
@@ -79,6 +81,12 @@ routes.get('/', csrfProtection, dashboardStores);
 routes.get('/traslados/get', csrfProtection, getTraslados);
 routes.get('/inventario/lista', csrfProtection, getInventarioLista);
 routes.get('/pedidos-web', csrfProtection, pedidosWebStorePage);
+// "Mis Clientes" — clientes con facturas pendientes en crédito de esta tienda. Sin
+// "/json/" ni similares en la ruta: así queda cubierta por el chequeo de permiso fino de
+// storeMiddleware.cargarPuntoDeVenta (folder '/clientes', ver
+// seed/migracionPermisoMisClientes.js) igual que esta misma página de Pedidos Web.
+routes.get('/clientes', csrfProtection, misClientesPage);
+routes.get('/clientes/:idCliente', csrfProtection, misClienteDetallePage);
 routes.get('/inventario/perfilProducto/:idProducto', csrfProtection, getPerfilProducto);
 
 // SSE (sin CSRF — es GET long-lived)

@@ -435,64 +435,6 @@
         return isConfirmed;
     }
 
-    // Único modal de "suspender" — sin cambios, no hay valor que pedir.
-    async function pedirCredito() {
-        const nombre = esc(clienteActivoNombre || 'este cliente');
-        const fila = (etiqueta, val) => `<div class="gh-conf-fila"><dt>${etiqueta}</dt><dd>${val}</dd></div>`;
-
-        const { value: codigoEmpleado } = await Swal.fire({
-            html: `
-                <div class="gh-conf-html">
-                    <div class="gh-conf-cabecera">
-                        <span class="gh-conf-badge"><i class="fi fi-rr-lock" style="font-size:.625rem"></i> Suspender crédito</span>
-                        <p class="gh-conf-monto">Sin crédito</p>
-                        <p class="gh-conf-cuenta">para <strong>${nombre}</strong></p>
-                    </div>
-
-                    <div class="gh-conf-saldo">
-                        <div class="gh-conf-saldo-bloque">
-                            <span class="gh-conf-saldo-label">Estado actual</span>
-                            <span class="gh-conf-saldo-valor">Con crédito</span>
-                        </div>
-                        <i class="fi fi-rr-arrow-right gh-conf-flecha"></i>
-                        <div class="gh-conf-saldo-bloque gh-conf-saldo-bloque--final">
-                            <span class="gh-conf-saldo-label">Va a quedar</span>
-                            <span class="gh-conf-saldo-valor">Sin crédito</span>
-                        </div>
-                    </div>
-
-                    <dl class="gh-conf-detalle">
-                        ${fila('Cliente', nombre)}
-                        ${fila('Fecha', esc(new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })))}
-                    </dl>
-
-                    <p style="text-align:left; font-size:12px; color:#64748b; margin:1.125rem 1.75rem 4px;">
-                        Código del empleado que autoriza:
-                    </p>
-                </div>`,
-            input: 'password',
-            inputPlaceholder: 'Código de empleado',
-            inputAttributes: { autocomplete: 'off', 'aria-label': 'Código de empleado', style: 'margin: 0 1.75rem; width: calc(100% - 3.5rem);' },
-            inputValidator: (v) => (!v || !v.trim()) && 'Ingresá el código del empleado.',
-            showCancelButton: true,
-            confirmButtonText: 'Suspender crédito',
-            cancelButtonText: 'Volver',
-            focusCancel: true,
-            reverseButtons: true,
-            buttonsStyling: false,
-            width: '30rem',
-            customClass: {
-                popup:         'gh-conf-popup gh-conf--neutro',
-                htmlContainer: 'gh-conf-html-container',
-                actions:       'gh-conf-acciones',
-                confirmButton: 'gh-conf-btn gh-conf-confirmar',
-                cancelButton:  'gh-conf-btn gh-conf-cancelar'
-            },
-            showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' }
-        });
-        return codigoEmpleado?.trim() || null;
-    }
-
     // Reactivar un crédito que ya existe (fue suspendido, no eliminado): la fila en
     // CREDITO_DISPONIBLE_CLIENTE nunca se tocó, así que el saldo sigue siendo el que
     // quedó. Solo pide código de empleado — nada de valor ni plazo, para no confundirlo
@@ -546,11 +488,19 @@
     }
 
     document.getElementById('panel-btn-credito')?.addEventListener('click', async () => {
-        const otorgar   = !creditoActivo;
-        // Si ya existe una fila 'Credito' para este cliente (fue suspendida, no borrada),
-        // "otorgar" reactiva esa misma fila en vez de crear otra — ver comentario de
-        // creditoExistente más arriba.
-        const reactivar = otorgar && !!creditoExistente;
+        // Con crédito activo, el botón ya no suspende directo desde acá — navega al panel
+        // de estado de crédito (resumen, facturas pendientes, abonos, más acciones). El
+        // flujo de "otorgar" (cliente sin crédito todavía) sigue igual, más abajo.
+        if (creditoActivo) {
+            window.location.href = `/admin/clientes/${idClienteActivo}/credito`;
+            return;
+        }
+
+        // A partir de acá el cliente nunca tiene crédito activo todavía (ver el return
+        // temprano de arriba) — este handler solo otorga. Si ya existe una fila 'Credito'
+        // para este cliente (fue suspendida, no borrada), "otorgar" reactiva esa misma
+        // fila en vez de crear otra — ver comentario de creditoExistente más arriba.
+        const reactivar = !!creditoExistente;
 
         let valor = null;
         let tiempoCredito = null;
@@ -559,7 +509,7 @@
         if (reactivar) {
             codigoEmpleado = await pedirReactivarCredito(clienteActivoNombre, creditoExistente);
             if (!codigoEmpleado) return;
-        } else if (otorgar) {
+        } else {
             // "Volver" en el modal de confirmación no cancela el flujo — regresa al modal
             // de datos con lo ya escrito precargado, para corregir sin empezar de cero.
             let confirmado = false;
@@ -570,15 +520,12 @@
 
                 confirmado = await confirmarOtorgarCredito(clienteActivoNombre, valor, tiempoCredito);
             }
-        } else {
-            codigoEmpleado = await pedirCredito();
-            if (!codigoEmpleado) return;
         }
 
-        const ruta = reactivar ? 'credito/otorgar' : (otorgar ? 'credito-disponible' : 'credito/suspender');
-        const body = (otorgar && !reactivar)
-            ? { valorCreditoCliente: valor, tiempoCredito, codigoEmpleado, _csrf: csrfToken() }
-            : { codigoEmpleado, _csrf: csrfToken() };
+        const ruta = reactivar ? 'credito/otorgar' : 'credito-disponible';
+        const body = reactivar
+            ? { codigoEmpleado, _csrf: csrfToken() }
+            : { valorCreditoCliente: valor, tiempoCredito, codigoEmpleado, _csrf: csrfToken() };
 
         try {
             const r = await fetch(`/admin/api/clientes/${idClienteActivo}/${ruta}`, {
@@ -588,23 +535,21 @@
             });
             const data = await r.json();
             await manejarRespuestaSensibleCredito(data, async (d) => {
-                creditoActivo = otorgar ? true : false;
+                creditoActivo = true;
                 actualizarBtnCredito(creditoActivo, true);
                 // Sin esto, suspender y volver a otorgar en la misma carga de página (sin
                 // recargar el perfil) seguía viendo creditoExistente=null del primer fetch
                 // y reintentaba crear una fila nueva en vez de reactivar.
-                if (otorgar && !reactivar) {
+                if (!reactivar) {
                     creditoExistente = { valorCreditoCliente: d.valorCreditoCliente, creditoDisponible: d.creditoDisponible, tiempoCredito: d.tiempoCredito };
                 }
                 actualizarCajaCreditoHeader();
                 await Swal.fire({
                     icon: 'success',
-                    title: reactivar ? 'Crédito reactivado' : (otorgar ? 'Crédito otorgado' : 'Crédito suspendido'),
+                    title: reactivar ? 'Crédito reactivado' : 'Crédito otorgado',
                     text: reactivar
                         ? `Saldo de ${fmtCOP(creditoExistente.creditoDisponible)} restaurado${d.empleado ? ` · Autorizado por ${d.empleado}` : ''}.`
-                        : otorgar
-                            ? `Cupo de ${fmtCOP(valor)} asignado${d.empleado ? ` · Autorizado por ${d.empleado}` : ''}.`
-                            : (d.empleado ? `Autorizado por ${d.empleado}.` : undefined),
+                        : `Cupo de ${fmtCOP(valor)} asignado${d.empleado ? ` · Autorizado por ${d.empleado}` : ''}.`,
                     timer: 2600,
                     showConfirmButton: false
                 });
