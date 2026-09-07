@@ -13,6 +13,7 @@ import QRCode from 'qrcode';
 import { broadcast } from '../helpers/sseManager.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
 import { calcularKitting } from '../src/js/dosificador.js';
+import { PORTAL_URL } from '../config/marca.js';
 
 dotenv.config()
 
@@ -763,8 +764,7 @@ const imprimirComprobanteTraslado = async (req, res) => {
         });
 
         // URL pública del comprobante (usada para el QR)
-        const baseUrl = `${process.env.APP_URL}:${process.env.APP_PORT}`;
-        const comprobanteUrl = `${baseUrl}/admin/dosificaciones/comprobante/${idTraslado}`;
+        const comprobanteUrl = `${PORTAL_URL}/admin/dosificaciones/comprobante/${idTraslado}`;
         const qrBuffer = await QRCode.toBuffer(comprobanteUrl, { type: 'png', width: 200, margin: 1 });
 
         // Dimensiones: 80mm = 226.77pt

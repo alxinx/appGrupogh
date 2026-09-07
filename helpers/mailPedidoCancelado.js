@@ -1,19 +1,22 @@
-import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import {
+    COLORES_CORREO, WEB_STORE_URL, LOGO_WEBP_URL, BOX_URL,
+    SOPORTE_EMAIL, WHATSAPP_URL, REDES
+} from '../config/marca.js';
+import { moneyCOP } from './formatMoney.js';
+import { fmtFechaCorta, fmtHora } from './plantillaCorreo.js';
+import { enviarCorreoSes, REMITENTE_COMPRAS } from './emailSes.js';
 dotenv.config();
 
-const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.co';
-const SOPORTE_EMAIL = process.env.SOPORTE_EMAIL || 'info@grupogh.com';
-const SOPORTE_WHATSAPP = process.env.SOPORTE_WHATSAPP || '573000000000';
-const LINK_INSTAGRAM = process.env.LINK_INSTAGRAM || '#';
-const LINK_FACEBOOK = process.env.LINK_FACEBOOK || '#';
-const LINK_TIKTOK = process.env.LINK_TIKTOK || '#';
-
-const COLOR_PRIMARY = '#EC1876';
-const COLOR_PRIMARY_SOFT = '#FDEBF3';
-const COLOR_BG = '#FDF3F8';
-const COLOR_TEXT = '#1f2430';
-const COLOR_MUTED = '#6b7280';
+// Los colores, las URLs y los contactos salen de config/marca.js; el layout (hero,
+// tarjetas de info, tabla de productos, franja de confianza) es propio de este correo y
+// se queda acá. El rosa pasó de #EC1876 al token de marca: era el tercer rosa distinto
+// que convivía en los correos del proyecto.
+const COLOR_PRIMARY = COLORES_CORREO.primary;
+const COLOR_PRIMARY_SOFT = COLORES_CORREO.primarySoft;
+const COLOR_BG = COLORES_CORREO.fondo;
+const COLOR_TEXT = COLORES_CORREO.texto;
+const COLOR_MUTED = COLORES_CORREO.textoSuave;
 
 // Iconos de línea, en primitivas simples (nada de paths largos) — se ven iguales en
 // cualquier cliente moderno de correo y heredan el color de marca en vez de depender
@@ -37,26 +40,6 @@ function icono(nombre, { size = 20, color = COLOR_PRIMARY } = {}) {
     return `<svg ${base}>${formas[nombre] || ''}</svg>`;
 }
 
-function fmtCOP(n) {
-    return `$${Math.round(Number(n) || 0).toLocaleString('es-CO')} COP`;
-}
-
-function fmtFecha(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-// Formato "10:30 AM" — deliberadamente no-locale para que sea igual en cualquier cliente de correo.
-function fmtHora(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    let horas = d.getHours();
-    const minutos = String(d.getMinutes()).padStart(2, '0');
-    const ampm = horas >= 12 ? 'PM' : 'AM';
-    horas = horas % 12 || 12;
-    return `${horas}:${minutos} ${ampm}`;
-}
-
 function itemFilaHtml(it) {
     const linkProducto = it.slug ? `${WEB_STORE_URL}/producto/${it.slug}` : null;
     return `
@@ -73,15 +56,15 @@ function itemFilaHtml(it) {
                     <td valign="top">
                         <p style="margin:0; font-size:14px; font-weight:700; color:${COLOR_TEXT};">${it.nombre}</p>
                         ${linkProducto ? `<a href="${linkProducto}" style="font-size:12px; color:${COLOR_PRIMARY}; text-decoration:none; font-weight:600;">Ver producto en tienda ↗</a>` : ''}
-                        <p class="prod-mobile-meta" style="display:none; margin:4px 0 0; font-size:12px; color:${COLOR_MUTED};">${it.referencia || '—'} · x${Number(it.cantidad)} · ${fmtCOP(it.valorUnidad)} c/u</p>
+                        <p class="prod-mobile-meta" style="display:none; margin:4px 0 0; font-size:12px; color:${COLOR_MUTED};">${it.referencia || '—'} · x${Number(it.cantidad)} · ${moneyCOP(it.valorUnidad)} c/u</p>
                     </td>
                 </tr>
             </table>
         </td>
         <td class="prod-col-ref" style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:13px; color:${COLOR_MUTED}; font-family:monospace;" valign="top">${it.referencia || '—'}</td>
         <td class="prod-col-qty" style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:13px; color:${COLOR_TEXT}; text-align:center;" valign="top">${Number(it.cantidad)}</td>
-        <td class="prod-col-price" style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:13px; color:${COLOR_TEXT}; text-align:right;" valign="top">${fmtCOP(it.valorUnidad)}</td>
-        <td style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:14px; font-weight:700; color:${COLOR_TEXT}; text-align:right;" valign="top">${fmtCOP(it.subTotal)}</td>
+        <td class="prod-col-price" style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:13px; color:${COLOR_TEXT}; text-align:right;" valign="top">${moneyCOP(it.valorUnidad)}</td>
+        <td style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:14px; font-weight:700; color:${COLOR_TEXT}; text-align:right;" valign="top">${moneyCOP(it.subTotal)}</td>
     </tr>`;
 }
 
@@ -147,8 +130,8 @@ export function construirHtmlPedidoCancelado(datos, opts = {}) {
         total, razones, items = []
     } = datos;
 
-    const imgLogo = opts.imgLogo || `${WEB_STORE_URL}/logo.webp`;
-    const imgBox = opts.imgBox || `${WEB_STORE_URL}/box.webp`;
+    const imgLogo = opts.imgLogo || LOGO_WEBP_URL;
+    const imgBox = opts.imgBox || BOX_URL;
     const listaRazones = Array.isArray(razones) ? razones : [razones];
 
     const totalPedido = total ?? items.reduce((s, it) => s + Number(it.subTotal || 0), 0);
@@ -211,9 +194,9 @@ export function construirHtmlPedidoCancelado(datos, opts = {}) {
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${COLOR_BG}; border:1px solid #FBDCEA; border-radius:16px;">
                 <tr>
                     ${infoCardHtml('doc', 'Pedido', `#${numeroPedido}`)}
-                    ${infoCardHtml('calendario', 'Fecha del pedido', `${fmtFecha(fechaPedido)}\n${fmtHora(fechaPedido)}`)}
-                    ${infoCardHtml('calendarioX', 'Fecha de cancelación', `${fmtFecha(fechaCancelacion)}\n${fmtHora(fechaCancelacion)}`)}
-                    ${infoCardHtml('dolar', 'Valor del pedido', fmtCOP(totalPedido))}
+                    ${infoCardHtml('calendario', 'Fecha del pedido', `${fmtFechaCorta(fechaPedido)}\n${fmtHora(fechaPedido)}`)}
+                    ${infoCardHtml('calendarioX', 'Fecha de cancelación', `${fmtFechaCorta(fechaCancelacion)}\n${fmtHora(fechaCancelacion)}`)}
+                    ${infoCardHtml('dolar', 'Valor del pedido', moneyCOP(totalPedido))}
                 </tr>
             </table>
         </td>
@@ -262,7 +245,7 @@ export function construirHtmlPedidoCancelado(datos, opts = {}) {
                         ${items.map(itemFilaHtml).join('')}
                         <tr>
                             <td colspan="4" style="padding:16px 0; text-align:right; font-size:14px; font-weight:700; color:${COLOR_TEXT};">Total del pedido</td>
-                            <td style="padding:16px 0; text-align:right; font-size:16px; font-weight:800; color:${COLOR_PRIMARY};">${fmtCOP(totalPedido)}</td>
+                            <td style="padding:16px 0; text-align:right; font-size:16px; font-weight:800; color:${COLOR_PRIMARY};">${moneyCOP(totalPedido)}</td>
                         </tr>
                     </table>
                 </td></tr>
@@ -287,7 +270,7 @@ export function construirHtmlPedidoCancelado(datos, opts = {}) {
                             </tr></table>
                         </td>
                         <td class="help-btns-cell" align="right" valign="middle">
-                            <a href="https://api.whatsapp.com/send?phone=${SOPORTE_WHATSAPP}" style="display:block; margin-bottom:8px; border:1px solid ${COLOR_PRIMARY}; color:${COLOR_PRIMARY}; font-size:12.5px; font-weight:700; text-decoration:none; padding:9px 16px; border-radius:10px; white-space:nowrap; text-align:center;">${icono('mensaje', { size: 14 })} Escribir por WhatsApp</a>
+                            ${WHATSAPP_URL ? `<a href="${WHATSAPP_URL}" style="display:block; margin-bottom:8px; border:1px solid ${COLOR_PRIMARY}; color:${COLOR_PRIMARY}; font-size:12.5px; font-weight:700; text-decoration:none; padding:9px 16px; border-radius:10px; white-space:nowrap; text-align:center;">${icono('mensaje', { size: 14 })} Escribir por WhatsApp</a>` : ''}
                             <a href="mailto:${SOPORTE_EMAIL}" style="display:block; border:1px solid ${COLOR_PRIMARY}; color:${COLOR_PRIMARY}; font-size:12.5px; font-weight:700; text-decoration:none; padding:9px 16px; border-radius:10px; white-space:nowrap; text-align:center;">${icono('sobre', { size: 14 })} ${SOPORTE_EMAIL}</a>
                         </td>
                     </tr></table>
@@ -317,9 +300,9 @@ export function construirHtmlPedidoCancelado(datos, opts = {}) {
             <p style="margin:0; font-size:13px; font-weight:700; color:${COLOR_PRIMARY};">Grupo GH - Tienda Web</p>
             <p style="margin:0 0 12px; font-size:12px; color:${COLOR_MUTED};">Moda que te representa</p>
             <p style="margin:0 0 16px;">
-                <a href="${LINK_INSTAGRAM}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">Instagram</a>
-                <a href="${LINK_FACEBOOK}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">Facebook</a>
-                <a href="${LINK_TIKTOK}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">TikTok</a>
+                <a href="${REDES.instagram}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">Instagram</a>
+                <a href="${REDES.facebook}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">Facebook</a>
+                <a href="${REDES.tiktok}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">TikTok</a>
             </p>
             <p style="margin:0; font-size:11px; color:#b9b9c2;">© ${new Date().getFullYear()} Grupo GH. Todos los derechos reservados.</p>
             <p style="margin:0; font-size:11px; color:#b9b9c2;">Este correo fue enviado automáticamente, por favor no respondas.</p>
@@ -333,25 +316,20 @@ export function construirHtmlPedidoCancelado(datos, opts = {}) {
 </html>`;
 }
 
+// Sale por SES con el mismo remitente de compras que la confirmación de pedido
+// (helpers/emailSes.js): las dos mitades de la vida de un pedido le llegan al cliente
+// desde la misma dirección. Devuelve true/false y nunca lanza — cuando esto corre, la
+// cancelación ya está escrita en base de datos.
 const mailPedidoCancelado = async (datos) => {
-    const transport = nodemailer.createTransport({
-        host: process.env.MAIL_HOST,
-        port: process.env.MAIL_PORT,
-        auth: {
-            user: process.env.MAIL_USER,
-            pass: process.env.MAIL_PASS
-        }
-    });
-
-    const html = construirHtmlPedidoCancelado(datos);
     const listaRazones = Array.isArray(datos.razones) ? datos.razones : [datos.razones];
 
-    await transport.sendMail({
-        from: process.env.APP_NAME,
-        to: datos.emailCliente,
-        subject: `Tu pedido ${datos.numeroPedido} fue cancelado`,
-        text: `Hola ${datos.nombreCliente}, tu pedido ${datos.numeroPedido} fue cancelado. Motivo: ${listaRazones.join(' / ')}`,
-        html
+    return enviarCorreoSes({
+        remitente: REMITENTE_COMPRAS,
+        destinatario: datos.emailCliente,
+        asunto: `Tu pedido ${datos.numeroPedido} fue cancelado`,
+        texto: `Hola ${datos.nombreCliente}, tu pedido ${datos.numeroPedido} fue cancelado. Motivo: ${listaRazones.join(' / ')}`,
+        html: construirHtmlPedidoCancelado(datos),
+        contexto: 'pedido-cancelado'
     });
 };
 

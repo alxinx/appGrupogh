@@ -66,7 +66,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Verificación de código de empleado en vivo (mismo endpoint que otorgar/suspender
     // crédito en adminClientes.js — solo valida, no ejecuta nada). ─────────────────────
-    const activarVerificacionCodigo = (inputId, estadoId, onVerificado) => {
+    // `puedeConfirmar` es opcional: cuando se pasa, verificar el código ya no alcanza para
+    // habilitar el botón — tiene que decir que sí todo el formulario. Los otros modales de
+    // esta pantalla no lo pasan y siguen funcionando igual que antes.
+    const activarVerificacionCodigo = (inputId, estadoId, onVerificado, puedeConfirmar = null) => {
         const input = document.getElementById(inputId);
         const estado = document.getElementById(estadoId);
         if (!input || !estado) return;
@@ -96,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!data.success) { setEstado('error', data.mensaje || 'Código inválido.'); return; }
                     setEstado('ok', `✓ ${data.empleado?.nombre || 'Empleado verificado'}`);
                     onVerificado(data.empleado);
-                    if (btn) btn.disabled = false;
+                    if (btn) btn.disabled = puedeConfirmar ? !puedeConfirmar() : false;
                 } catch (_) {
                     setEstado('error', 'No se pudo verificar el código.');
                 }
@@ -301,7 +304,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Abonar a una factura puntual / Abono global — comparten el mismo modal de monto +
     // método de pago + código de empleado; solo cambia el título, el tope y el endpoint. ──
-    const pedirAbono = async ({ titulo, icono, tope, nombreDestino }) => {
+    // Cuentas agrupadas como en /admin/bankentities: "Cajas" por un lado, "Bancos y
+    // billeteras" por el otro. El método de pago ya no se pregunta — el backend lo deduce
+    // del tipo de la cuenta elegida.
+    const opcionesCuentas = () => {
+        const cuentas = datos.cuentas || [];
+        if (!cuentas.length) return '<option value="">No hay cajas ni bancos activos</option>';
+
+        const grupo = (etiqueta, tipos) => {
+            const items = cuentas.filter(c => tipos.includes(c.tipo));
+            if (!items.length) return '';
+            return `<optgroup label="${etiqueta}">` + items.map(c =>
+                `<option value="${esc(c.idCajaBanco)}">${esc(c.nombreCajaBanco)}${c.referencia ? ` · ${esc(c.referencia)}` : ''}</option>`
+            ).join('') + '</optgroup>';
+        };
+        return grupo('Cajas', ['caja']) + grupo('Bancos y billeteras', ['banco', 'billetera']);
+    };
+
+    const pedirAbono = async ({ titulo, icono, tope, nombreDestino, descripcionSugerida = '' }) => {
         let empleadoVerificado = null;
         const topeTexto = window.fmtCOP(tope);
 
@@ -319,19 +339,38 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input id="gh-input-valor-abono" type="text" inputmode="numeric" placeholder="0" autocomplete="off"
                                    style="width:100%; box-sizing:border-box; padding:16px 16px 16px 42px; font-size:26px; font-weight:800; color:#10b981; border:2px solid #e2e8f0; border-radius:14px; text-align:right; outline:none;" />
                         </div>
+                        <p id="gh-aviso-tope-abono" style="text-align:right; font-size:11.5px; font-weight:600; color:#f59e0b; margin:6px 0 0; min-height:14px;"></p>
                     </div>
                     <div style="padding: 1.125rem 1.75rem 0;">
-                        <label for="gh-select-metodo-abono" style="display:block; text-align:left; font-size:12px; font-weight:600; color:#64748b; margin-bottom:8px;">Método de pago</label>
-                        <select id="gh-select-metodo-abono" style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; outline:none; background:#fff;">
-                            <option value="Efectivo">Efectivo</option>
-                            <option value="Banco">Banco</option>
-                            <option value="Billetera Virtual">Billetera Virtual</option>
-                            <option value="Tarjeta Credito">Tarjeta Crédito</option>
+                        <label for="gh-select-cuenta-abono" style="display:block; text-align:left; font-size:12px; font-weight:600; color:#64748b; margin-bottom:8px;">¿A qué cuenta entra el dinero? *</label>
+                        <select id="gh-select-cuenta-abono" style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; outline:none; background:#fff;">
+                            ${opcionesCuentas()}
                         </select>
                     </div>
                     <div style="padding: 1.125rem 1.75rem 0;">
-                        <input id="gh-input-referencia-abono" type="text" placeholder="Referencia (opcional)" autocomplete="off"
-                               style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; outline:none;" />
+                        <label for="gh-input-descripcion-abono" style="display:block; text-align:left; font-size:12px; font-weight:600; color:#64748b; margin-bottom:8px;">Descripción</label>
+                        <input id="gh-input-descripcion-abono" type="text" readonly value="${esc(descripcionSugerida)}"
+                               style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #e2e8f0; border-radius:10px; outline:none; background:#f8fafc; color:#64748b; cursor:default;" />
+                    </div>
+                    <div style="padding: 1.125rem 1.75rem 0; display:flex; gap:.75rem;">
+                        <div style="flex:1;">
+                            <label for="gh-input-fecha-abono" style="display:block; text-align:left; font-size:12px; font-weight:600; color:#64748b; margin-bottom:8px;">Fecha</label>
+                            <input id="gh-input-fecha-abono" type="datetime-local" value="${datos.ahora || ''}" max="${datos.ahora || ''}"
+                                   style="width:100%; box-sizing:border-box; padding:11px 12px; font-size:13px; border:1px solid #cbd5e1; border-radius:10px; outline:none;" />
+                        </div>
+                        <div style="flex:1;">
+                            <label for="gh-input-referencia-abono" style="display:block; text-align:left; font-size:12px; font-weight:600; color:#64748b; margin-bottom:8px;">Referencia *</label>
+                            <input id="gh-input-referencia-abono" type="text" maxlength="50" placeholder="Ej: REC-003" autocomplete="off"
+                                   style="width:100%; box-sizing:border-box; padding:11px 12px; font-size:13px; border:1px solid #cbd5e1; border-radius:10px; outline:none;" />
+                        </div>
+                    </div>
+                    <div style="padding: 1.125rem 1.75rem 0;">
+                        <label for="gh-input-comprobantes-abono" style="display:block; text-align:left; font-size:12px; font-weight:600; color:#64748b; margin-bottom:8px;">Comprobante <span style="font-weight:400;color:#94a3b8;">(opcional)</span></label>
+                        <label for="gh-input-comprobantes-abono" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:11px 12px; border:1px solid #cbd5e1; border-radius:10px; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; background:#fff;">
+                            <i class="fi fi-rr-cloud-upload"></i> Subir archivos
+                        </label>
+                        <input id="gh-input-comprobantes-abono" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;" />
+                        <p id="gh-lista-comprobantes-abono" style="text-align:left; font-size:11px; color:#94a3b8; margin:6px 0 0;">PDF, JPG o PNG. Máx. 5MB cada uno, hasta 10 archivos.</p>
                     </div>
                     <p style="text-align:left; font-size:12px; font-weight:600; color:#64748b; margin:1.125rem 1.75rem 8px;">Código del empleado que recibe:</p>
                     <div style="padding: 0 1.75rem;">
@@ -344,7 +383,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 const inputValor = document.getElementById('gh-input-valor-abono');
                 window.initMoneyInput?.(inputValor);
                 inputValor?.focus();
-                activarVerificacionCodigo('gh-input-codigo-abono', 'gh-estado-codigo-abono', (emp) => { empleadoVerificado = emp; });
+
+                // El tope se aplica MIENTRAS se escribe, no solo al confirmar: escribir
+                // 40.000.000 sobre una deuda de 28.700 y enterarse recién al final es
+                // perder el formulario entero. El listener va después de initMoneyInput
+                // para corregir el valor ya formateado por ese.
+                const avisoTope = document.getElementById('gh-aviso-tope-abono');
+                inputValor?.addEventListener('input', () => {
+                    if (window.parseMoney(inputValor.value) <= tope) {
+                        avisoTope.textContent = '';
+                        return;
+                    }
+                    inputValor.value = new Intl.NumberFormat('es-CO').format(tope);
+                    inputValor.setSelectionRange(inputValor.value.length, inputValor.value.length);
+                    avisoTope.textContent = `El máximo es ${topeTexto}.`;
+                });
+                // El botón se habilita solo cuando están los cuatro obligatorios: valor,
+                // cuenta, referencia y empleado verificado. Antes bastaba con verificar el
+                // código y quedaba activo aunque faltara la referencia.
+                const selCuenta = document.getElementById('gh-select-cuenta-abono');
+                const inputRef  = document.getElementById('gh-input-referencia-abono');
+
+                const camposCompletos = () =>
+                    window.parseMoney(inputValor.value) > 0 &&
+                    !!selCuenta.value &&
+                    !!inputRef.value.trim() &&
+                    !!empleadoVerificado;
+
+                const refrescarBoton = () => {
+                    const b = Swal.getConfirmButton();
+                    if (b) b.disabled = !camposCompletos();
+                };
+
+                [inputValor, selCuenta, inputRef].forEach(el => {
+                    el.addEventListener('input', refrescarBoton);
+                    el.addEventListener('change', refrescarBoton);
+                });
+
+                activarVerificacionCodigo(
+                    'gh-input-codigo-abono', 'gh-estado-codigo-abono',
+                    (emp) => { empleadoVerificado = emp; refrescarBoton(); },
+                    camposCompletos
+                );
+
+                // Sin esto no hay forma de saber qué se va a subir (mismo detalle que el
+                // formulario de movimiento de caja/banco).
+                const inputArchivos = document.getElementById('gh-input-comprobantes-abono');
+                const listaArchivos = document.getElementById('gh-lista-comprobantes-abono');
+                inputArchivos?.addEventListener('change', () => {
+                    const n = inputArchivos.files.length;
+                    listaArchivos.textContent = n
+                        ? [...inputArchivos.files].map(f => f.name).join(' · ')
+                        : 'PDF, JPG o PNG. Máx. 5MB cada uno, hasta 10 archivos.';
+                    listaArchivos.style.color = n ? '#059669' : '#94a3b8';
+                });
                 const btn = Swal.getConfirmButton();
                 if (btn) btn.disabled = true;
             },
@@ -361,16 +453,84 @@ document.addEventListener('DOMContentLoaded', () => {
             showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
             preConfirm: () => {
                 const valorAbono = window.parseMoney(document.getElementById('gh-input-valor-abono').value);
-                const metodoPago = document.getElementById('gh-select-metodo-abono').value;
-                const nroReferencia = document.getElementById('gh-input-referencia-abono').value.trim() || null;
+                const idCajaBanco = document.getElementById('gh-select-cuenta-abono').value;
+                const descripcion = document.getElementById('gh-input-descripcion-abono').value.trim();
+                const fecha = document.getElementById('gh-input-fecha-abono').value;
+                const nroReferencia = document.getElementById('gh-input-referencia-abono').value.trim();
                 const codigoEmpleado = document.getElementById('gh-input-codigo-abono').value.trim();
+                const comprobantes = document.getElementById('gh-input-comprobantes-abono').files;
+
                 if (!valorAbono || valorAbono <= 0) { Swal.showValidationMessage('Ingresá un valor de abono mayor a 0.'); return false; }
                 if (valorAbono > tope) { Swal.showValidationMessage(`El abono no puede superar ${topeTexto}.`); return false; }
+                if (!idCajaBanco) { Swal.showValidationMessage('Elegí la caja o el banco que recibe el dinero.'); return false; }
+                if (!nroReferencia) { Swal.showValidationMessage('La referencia es obligatoria.'); return false; }
+                // El servidor la rechaza igual, pero avisar acá evita perder el formulario.
+                if (fecha && new Date(fecha).getTime() > Date.now() + 60000) { Swal.showValidationMessage('La fecha no puede ser futura.'); return false; }
                 if (!codigoEmpleado || !empleadoVerificado) { Swal.showValidationMessage('Verificá el código del empleado.'); return false; }
-                return { valorAbono, metodoPago, nroReferencia, codigoEmpleado };
+
+                return { valorAbono, idCajaBanco, descripcion, fecha, nroReferencia, codigoEmpleado, comprobantes };
             }
         });
         return value || null;
+    };
+
+    // El abono viaja como multipart porque lleva comprobantes, igual que el movimiento
+    // manual de una caja o banco. Un solo armador para los dos envíos de esta pantalla.
+    const cuerpoAbono = (abono) => {
+        const fd = new FormData();
+        fd.append('valorAbono',     abono.valorAbono);
+        fd.append('idCajaBanco',    abono.idCajaBanco);
+        fd.append('descripcion',    abono.descripcion);
+        fd.append('codigoEmpleado', abono.codigoEmpleado);
+        if (abono.fecha)         fd.append('fecha', abono.fecha);
+        fd.append('nroReferencia', abono.nroReferencia);
+        for (const archivo of abono.comprobantes || []) fd.append('comprobantes', archivo);
+        // El _csrf va igual en el body por si algún día la ruta se valida después de
+        // multer, pero el que cuenta es el de la cabecera (ver `cabecerasAbono`).
+        fd.append('_csrf', csrfToken());
+        return fd;
+    };
+
+    // csurf corre GLOBAL en index.js, antes que multer: con multipart, `req.body` todavía
+    // está vacío cuando valida, así que un `_csrf` metido en el FormData no lo ve y
+    // responde EBADCSRFTOKEN. Por eso el token viaja en la cabecera, que csurf sí lee sin
+    // depender del parseo del cuerpo — mismo patrón que el formulario de movimientos de
+    // caja/banco (perfilCajaBanco.pug).
+    const cabecerasAbono = () => ({ 'X-CSRF-Token': csrfToken(), Accept: 'application/json' });
+
+    // Cierre del flujo: confirmación con los DOS comprobantes que deja un abono.
+    //
+    //   · Abono   → lo que el cliente entregó contra su deuda (se le da a él).
+    //   · Ingreso → que esa plata quedó asentada en el libro de la caja o el banco.
+    //
+    // Son documentos distintos y los dos hacen falta: el primero lo firma el cliente, el
+    // segundo es el respaldo contable de la cuenta. Se abren en pestaña nueva porque los
+    // endpoints los sirven inline, listos para imprimir.
+    const confirmarConComprobantes = async ({ titulo, texto, idAbono, idMovimiento }) => {
+        const abrir = (url) => window.open(url, '_blank', 'noopener');
+
+        const r = await Swal.fire({
+            icon: 'success',
+            title: titulo,
+            html: `<p style="margin:0 0 4px;">${esc(texto)}</p>
+                   <p style="font-size:12.5px;color:#94a3b8;margin:0;">Se generaron dos comprobantes.</p>`,
+            showDenyButton: !!idMovimiento,
+            showCancelButton: true,
+            confirmButtonText: 'Comprobante de abono',
+            denyButtonText: 'Comprobante de ingreso',
+            cancelButtonText: 'Cerrar',
+            reverseButtons: true,
+            buttonsStyling: false,
+            customClass: {
+                popup: 'gh-conf-popup', actions: 'gh-conf-acciones',
+                confirmButton: 'gh-conf-btn gh-conf-confirmar',
+                denyButton: 'gh-conf-btn gh-conf-cancelar',
+                cancelButton: 'gh-conf-btn gh-conf-cancelar'
+            }
+        });
+
+        if (r.isConfirmed && idAbono)      abrir(`/admin/api/clientes/abonos/${idAbono}/tirilla`);
+        if (r.isDenied    && idMovimiento) abrir(`/admin/bankentities/movimientos/${idMovimiento}/tirilla`);
     };
 
     document.querySelectorAll('.btn-abonar-factura').forEach(btn => {
@@ -379,18 +539,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const nroFactura = btn.dataset.nro;
             const deuda = parseFloat(btn.dataset.deuda);
 
-            const abono = await pedirAbono({ titulo: `Abonar a ${nroFactura}`, icono: 'fi-rr-coins', tope: deuda, nombreDestino: nroFactura });
+            const abono = await pedirAbono({
+                titulo: `Abonar a ${nroFactura}`, icono: 'fi-rr-coins', tope: deuda, nombreDestino: nroFactura,
+                descripcionSugerida: `Abono factura ${nroFactura} — ${datos.nombreCliente}`
+            });
             if (!abono) return;
 
             try {
+                // Sin Content-Type a mano: el navegador tiene que ponerle el boundary.
                 const r = await fetch(`/admin/api/clientes/${datos.idCliente}/facturas/${idFacturaCliente}/abonar`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...abono, _csrf: csrfToken() })
+                    headers: cabecerasAbono(),
+                    body: cuerpoAbono(abono)
                 });
                 const data = await r.json();
                 if (!data.success) return mostrarError(data.mensaje);
-                await Swal.fire({ icon: 'success', title: data.liquidada ? 'Factura liquidada' : 'Abono registrado', text: data.liquidada ? undefined : `Saldo restante: ${window.fmtCOP(data.saldoRestante)}.`, timer: 2400, showConfirmButton: false });
+                await confirmarConComprobantes({
+                    titulo: data.liquidada ? 'Factura liquidada' : 'Abono registrado',
+                    texto: data.liquidada
+                        ? `${nroFactura} quedó sin saldo pendiente.`
+                        : `Saldo restante: ${window.fmtCOP(data.saldoRestante)}.`,
+                    idAbono: data.idAbonoClienteCredito,
+                    idMovimiento: data.idMovimientoCuenta
+                });
                 recargar();
             } catch (_) {
                 mostrarError('Error de conexión.');
@@ -402,18 +573,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!datos.deudaTotal || datos.deudaTotal <= 0) {
             return Swal.fire({ icon: 'info', title: 'Sin deuda pendiente', text: 'Este cliente no tiene facturas de crédito pendientes.', confirmButtonColor: '#EC5FA3' });
         }
-        const abono = await pedirAbono({ titulo: 'Abono global', icono: 'fi-rr-hand-holding-usd', tope: datos.deudaTotal, nombreDestino: datos.nombreCliente });
+        const abono = await pedirAbono({
+            titulo: 'Abono global', icono: 'fi-rr-hand-holding-usd', tope: datos.deudaTotal, nombreDestino: datos.nombreCliente,
+            descripcionSugerida: `Abono global — ${datos.nombreCliente}`
+        });
         if (!abono) return;
 
         try {
             const r = await fetch(`/admin/api/clientes/${datos.idCliente}/credito/abono-global`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...abono, _csrf: csrfToken() })
+                headers: cabecerasAbono(),
+                body: cuerpoAbono(abono)
             });
             const data = await r.json();
             if (!data.success) return mostrarError(data.mensaje);
-            await Swal.fire({ icon: 'success', title: 'Abono global registrado', text: data.mensaje, timer: 2600, showConfirmButton: false });
+            await confirmarConComprobantes({
+                titulo: 'Abono global registrado',
+                texto: data.mensaje,
+                idAbono: data.loteAbonoGlobal,
+                idMovimiento: data.idMovimientoCuenta
+            });
             recargar();
         } catch (_) {
             mostrarError('Error de conexión.');

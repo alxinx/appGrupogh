@@ -18,8 +18,9 @@ import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
 import { sincronizarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
 import { idInteresDeTokenBaja } from '../helpers/bajaInteresados.js';
 import { sendOrderConfirmation } from '../helpers/emailSes.js';
+import { WEB_STORE_URL, SOPORTE_EMAIL, SOPORTE_WHATSAPP } from '../config/marca.js';
 
-const WEB_STORE_URL = process.env.WEB_STORE_URL || 'https://www.grupogh.co';
+
 
 // Tipos de documento aceptados en el checkout web, con el mismo vocabulario que CLIENTES
 // y que el formulario de admin/clientes/nuevo. Una persona jurídica siempre es NIT.
@@ -32,7 +33,7 @@ const TIPOS_DOC_JURIDICA = ['NIT'];
 // Texto que ve el comprador cuando su documento ya estaba registrado con otro correo/teléfono.
 // Los datos de CLIENTES mandan; el comprador no puede cambiarlos desde la web.
 function mensajeDatosDifieren() {
-    const contacto = process.env.SOPORTE_WHATSAPP || process.env.SOPORTE_EMAIL;
+    const contacto = SOPORTE_WHATSAPP || SOPORTE_EMAIL;
     return `Este documento ya estaba registrado con nosotros, pero con un correo o teléfono diferente al que ingresaste. Tu pedido se procesó con los datos que ya teníamos registrados. Si necesitás actualizarlos, comunicate con la tienda${contacto ? ` al ${contacto}` : ''}.`;
 }
 
@@ -44,6 +45,13 @@ async function upsertVisitante(cookieId, datos) {
 }
 
 const R2 = () => `${process.env.R2_PUBLIC_URL}/productos/`;
+
+// Foto de portada de un producto, como URL absoluta de R2. Prefiere la marcada como
+// 'principal' y cae en la primera de la galería; null si el producto no tiene ninguna.
+const imagenPrincipal = (producto) => {
+    const img = producto?.imagenes?.find(i => i.tipo === 'principal') || producto?.imagenes?.[0];
+    return img ? `${R2()}${img.nombreImagen}` : null;
+};
 
 // Stock vendible desde la web: solo puntos de venta físicos + el punto "web" dedicado.
 // Bodega (reserva/no lista para despacho) y Tránsito (mercancía en camino) no cuentan.
@@ -987,7 +995,10 @@ export const crearPedidoWeb = async (req, res) => {
         // Productos reales (nunca confiar en nombre/precio que venga del cliente)
         const idsProductos = [...new Set(items.map(i => i.idProducto))];
         const productos = await Productos.findAll({
-            where: { idProducto: { [Op.in]: idsProductos }, activo: true, web: true }
+            where: { idProducto: { [Op.in]: idsProductos }, activo: true, web: true },
+            // La imagen viaja en el mismo query (no una consulta por línea) porque el
+            // correo de confirmación muestra la foto de cada producto.
+            include: [{ model: Imagenes, as: 'imagenes', attributes: ['nombreImagen', 'tipo'], required: false }]
         });
         const productoPorId = Object.fromEntries(productos.map(p => [p.idProducto, p]));
         const faltante = items.find(i => !productoPorId[i.idProducto]);
@@ -1113,6 +1124,7 @@ export const crearPedidoWeb = async (req, res) => {
                     fecha: pedido.createdAt,
                     items: detalles.map(d => ({
                         nombreProducto: productoPorId[d.idProducto]?.nombreProducto || 'Producto',
+                        imagen: imagenPrincipal(productoPorId[d.idProducto]),
                         talla: d.talla,
                         color: d.color,
                         cantidad: d.cantidad,

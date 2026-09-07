@@ -51,7 +51,8 @@
     "db:migrar-abono-entidad-crediticia": "node ./seed/migracionAbonoEntidadCrediticia.js",
     "db:migrar-unico-credito-disponible": "node ./seed/migracionUnicoCreditoDisponibleCliente.js",
     "db:migrar-credito-disponible-historial": "node ./seed/migracionCreditoDisponibleClienteHistorial.js",
-    "db:migrar-permiso-mis-clientes": "node ./seed/migracionPermisoMisClientes.js"
+    "db:migrar-permiso-mis-clientes": "node ./seed/migracionPermisoMisClientes.js",
+    "db:migrar-abono-caja-banco": "node ./seed/migracionAbonoCajaBanco.js"
   },
   "keywords": [
     "contable"

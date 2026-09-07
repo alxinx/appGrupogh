@@ -39,6 +39,7 @@ import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
 import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
 import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, pagosATransBucket, creditoClienteResumen, METODOS_ABONO, METODOS_ABONO_CON_ENTIDAD } from '../helpers/abonosCredito.js';
 import { round2 as _round2 } from '../helpers/formatMoney.js';
+import { PORTAL_URL } from '../config/marca.js';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
 
@@ -3455,8 +3456,7 @@ const _generarPDFCuadre = async ({ caja, regimen, municipio, sums, txElectronico
     const pdfEnd = new Promise(r => doc.on('end', r));
 
     // URL de verificación pública del cierre (misma lógica que el QR de comprobante de traslados)
-    const baseUrl         = `${process.env.APP_URL}:${process.env.APP_PORT}`;
-    const verificacionUrl = `${baseUrl}/store/storebehivors/caja/${caja.idCajaTienda}/pdf`;
+    const verificacionUrl = `${PORTAL_URL}/store/storebehivors/caja/${caja.idCajaTienda}/pdf`;
     const qrBuffer         = await QRCode.toBuffer(verificacionUrl, { type: 'png', width: 200, margin: 1 });
 
     const hr  = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.3).stroke(); doc.moveDown(0.3); };
