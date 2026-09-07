@@ -104,8 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // ── Aumentar Crédito ──────────────────────────────────────────────────────────────
-    document.getElementById('btn-aumentar-credito')?.addEventListener('click', async () => {
+    // ── Modificar Crédito (aumentar o disminuir) ────────────────────────────────────────
+    document.getElementById('btn-modificar-credito')?.addEventListener('click', async () => {
         let empleadoVerificado = null;
         const nombre = esc(datos.nombreCliente);
         const cupoActual = window.fmtCOP(datos.valorCreditoCliente);
@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             html: `
                 <div class="gh-conf-html">
                     <div class="gh-conf-cabecera gh-conf--neutro-cabecera" style="background:#F1F5F9;">
-                        <span class="gh-conf-badge" style="background:#E2E8F0;color:#334155;"><i class="fi fi-rr-arrow-trend-up" style="font-size:.625rem"></i> Aumentar crédito</span>
+                        <span class="gh-conf-badge" style="background:#E2E8F0;color:#334155;"><i class="fi fi-rr-pencil" style="font-size:.625rem"></i> Modificar crédito</span>
                         <p class="gh-conf-cuenta" style="color:#475569;margin-top:.5rem;">Cupo actual de <strong>${nombre}</strong>: ${cupoActual}</p>
                     </div>
                     <div style="padding: 1.25rem 1.75rem 0;">
@@ -122,9 +122,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             Nuevo valor del cupo
                         </label>
                         <div style="position:relative;">
-                            <span style="position:absolute; left:18px; top:50%; transform:translateY(-50%); font-size:26px; font-weight:800; color:#10b981; pointer-events:none;">$</span>
+                            <span style="position:absolute; left:18px; top:50%; transform:translateY(-50%); font-size:26px; font-weight:800; color:#334155; pointer-events:none;">$</span>
                             <input id="gh-input-nuevo-cupo" type="text" inputmode="numeric" placeholder="0" autocomplete="off"
-                                   style="width:100%; box-sizing:border-box; padding:16px 16px 16px 42px; font-size:26px; font-weight:800; color:#10b981; border:2px solid #e2e8f0; border-radius:14px; text-align:right; outline:none;" />
+                                   style="width:100%; box-sizing:border-box; padding:16px 16px 16px 42px; font-size:26px; font-weight:800; color:#334155; border:2px solid #e2e8f0; border-radius:14px; text-align:right; outline:none;" />
                         </div>
                     </div>
                     <p style="text-align:left; font-size:12px; font-weight:600; color:#64748b; margin:1.25rem 1.75rem 8px;">
@@ -158,8 +158,12 @@ document.addEventListener('DOMContentLoaded', () => {
             preConfirm: () => {
                 const nuevoValor = window.parseMoney(document.getElementById('gh-input-nuevo-cupo').value);
                 const codigoEmpleado = document.getElementById('gh-input-codigo-aumentar').value.trim();
-                if (!nuevoValor || nuevoValor <= datos.valorCreditoCliente) {
-                    Swal.showValidationMessage(`El nuevo cupo debe ser mayor al actual (${cupoActual}).`);
+                if (!nuevoValor || nuevoValor <= 0) {
+                    Swal.showValidationMessage('Ingresá un valor mayor a 0.');
+                    return false;
+                }
+                if (nuevoValor === datos.valorCreditoCliente) {
+                    Swal.showValidationMessage(`Ese ya es el cupo actual (${cupoActual}) — cambiá el valor para modificarlo.`);
                     return false;
                 }
                 if (!codigoEmpleado || !empleadoVerificado) {
@@ -171,14 +175,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (!value) return;
 
+        // El modal de confirmación cambia de tono según la dirección: aumentar es una
+        // acción normal (verde, como un ingreso), disminuir es una advertencia real —
+        // le está bajando la capacidad de compra a crédito a alguien que ya la tenía.
+        const esAumento = value.nuevoValor > datos.valorCreditoCliente;
+        const delta = Math.abs(value.nuevoValor - datos.valorCreditoCliente);
         const enLetras = window.valorEnLetras ? esc(window.valorEnLetras(value.nuevoValor).toUpperCase()) : '';
+
         const { isConfirmed } = await Swal.fire({
             html: `
                 <div class="gh-conf-html">
                     <div class="gh-conf-cabecera">
-                        <span class="gh-conf-badge"><i class="fi fi-rr-badge-check" style="font-size:.625rem"></i> Confirmar aumento</span>
-                        <p class="gh-conf-monto">${window.fmtCOP(value.nuevoValor)}</p>
-                        <p class="gh-conf-cuenta">nuevo cupo de <strong>${nombre}</strong></p>
+                        <span class="gh-conf-badge"><i class="fi ${esAumento ? 'fi-rr-arrow-trend-up' : 'fi-rr-triangle-warning'}" style="font-size:.625rem"></i> ${esAumento ? 'Vas a aumentar el crédito' : 'Vas a disminuir el crédito'}</span>
+                        <p class="gh-conf-monto">${esAumento ? '+' : '−'} ${window.fmtCOP(delta)}</p>
+                        <p class="gh-conf-cuenta">${esAumento ? 'de aumento para' : 'de disminución para'} <strong>${nombre}</strong></p>
                     </div>
                     <div class="gh-conf-saldo">
                         <div class="gh-conf-saldo-bloque">
@@ -191,17 +201,18 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="gh-conf-saldo-valor">${window.fmtCOP(value.nuevoValor)}</span>
                         </div>
                     </div>
-                    ${enLetras ? `<p style="text-align:left; font-size:12.5px; line-height:1.5; color:#334155; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin:1.125rem 1.75rem;">El nuevo cupo queda en <strong style="color:#10b981;">${enLetras}</strong>.</p>` : ''}
+                    ${enLetras ? `<p style="text-align:left; font-size:12.5px; line-height:1.5; color:#334155; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin:1.125rem 1.75rem;">El nuevo cupo queda en <strong style="color:${esAumento ? '#047857' : '#BE123C'};">${enLetras}</strong>.</p>` : ''}
+                    ${esAumento ? '' : `<p class="gh-conf-aviso" style="margin:1.125rem 1.75rem 0;"><i class="fi fi-rr-triangle-warning"></i><span>Le estás bajando el cupo a un cliente que ya lo tenía asignado — si ya consumió más de lo que va a quedar, su disponible baja a $0 hasta que abone.</span></p>`}
                 </div>`,
             showCancelButton: true,
-            confirmButtonText: 'Aumentar crédito',
+            confirmButtonText: esAumento ? 'Aumentar crédito' : 'Disminuir crédito',
             cancelButtonText: 'Volver',
             focusCancel: true,
             reverseButtons: true,
             buttonsStyling: false,
             width: '30rem',
             customClass: {
-                popup: 'gh-conf-popup gh-conf--neutro', htmlContainer: 'gh-conf-html-container',
+                popup: `gh-conf-popup ${esAumento ? 'gh-conf--ingreso' : 'gh-conf--egreso'}`, htmlContainer: 'gh-conf-html-container',
                 actions: 'gh-conf-acciones', confirmButton: 'gh-conf-btn gh-conf-confirmar', cancelButton: 'gh-conf-btn gh-conf-cancelar'
             },
             showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' }
@@ -209,14 +220,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isConfirmed) return;
 
         try {
-            const r = await fetch(`/admin/api/clientes/${datos.idCliente}/credito/aumentar`, {
+            const r = await fetch(`/admin/api/clientes/${datos.idCliente}/credito/modificar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ valorCreditoCliente: value.nuevoValor, codigoEmpleado: value.codigoEmpleado, _csrf: csrfToken() })
             });
             const data = await r.json();
             if (!data.success) return mostrarError(data.mensaje);
-            await Swal.fire({ icon: 'success', title: 'Crédito aumentado', text: `Nuevo cupo: ${window.fmtCOP(value.nuevoValor)}.`, timer: 2200, showConfirmButton: false });
+            await Swal.fire({
+                icon: 'success',
+                title: esAumento ? 'Crédito aumentado' : 'Crédito disminuido',
+                text: `Nuevo cupo: ${window.fmtCOP(value.nuevoValor)}.`,
+                timer: 2200, showConfirmButton: false
+            });
             recargar();
         } catch (_) {
             mostrarError('Error de conexión.');

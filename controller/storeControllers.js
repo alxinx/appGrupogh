@@ -37,6 +37,8 @@ import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
 import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
+import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, pagosATransBucket, creditoClienteResumen, METODOS_ABONO, METODOS_ABONO_CON_ENTIDAD } from '../helpers/abonosCredito.js';
+import { round2 as _round2 } from '../helpers/formatMoney.js';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
 
@@ -607,15 +609,7 @@ const _calcularTransaccionesCaja = async (idPdv, inicio, fin, estadoTx = 'pendie
         // el del abono, no el de la factura (que puede ser de hace semanas). Sin `estado`
         // propio (es un ledger append-only): el filtro por fecha ya basta, y el mismo abono
         // no puede "cambiar de estado" para dejar de contar según se abra o cierre la caja.
-        AbonoClienteCreditos.findAll({
-            where: { createdAt: { [Op.between]: [inicio, fin] } },
-            attributes: ['idAbonoClienteCredito', 'idFacturaCliente', 'idCliente', 'valorAbono', 'metodoPago', 'nroReferencia', 'loteAbonoGlobal'],
-            include: [
-                { model: FacturaClientes, as: 'factura', attributes: ['prefijo', 'numeroFactura', 'idPuntoDeVenta'], where: { idPuntoDeVenta: idPdv }, required: true },
-                { model: Entidades, as: 'entidad', attributes: ['nombreEntidad'], required: false }
-            ],
-            transaction
-        })
+        buscarAbonosPeriodo({ idPuntoDeVenta: idPdv, desde: inicio, hasta: fin, transaction })
     ]);
 
     let sEfectivo = 0, sMedios = 0, sCredito = 0, sCreditoTienda = 0;
@@ -1450,22 +1444,16 @@ const buscarClientePorDoc = async (req, res) => {
 // creditoDisponible es la suma de esa columna en TODAS las filas del cliente en
 // CREDITO_DISPONIBLE_CLIENTE (crédito y saldo a favor juntos — la tabla no separa el uno
 // del otro para este propósito todavía).
-const _creditoDisponibleCliente = async (idCliente) => {
-    const filas = await CreditoDisponibleCliente.findAll({
-        where: { idCliente },
-        attributes: ['creditoDisponible']
-    });
-    return filas.reduce((s, f) => s + (parseFloat(f.creditoDisponible) || 0), 0);
-};
-
+// El disponible real es cupo asignado MENOS lo que el cliente ya debe en facturas de
+// crédito abiertas (helpers/abonosCredito.js `creditoClienteResumen`) — antes esto sumaba
+// directo la columna CREDITO_DISPONIBLE_CLIENTE.creditoDisponible, que nunca se decrementa
+// al vender: un cliente con $180.900 ya debiendo pasaba igual el chequeo de un nuevo
+// "Crédito en Tienda" por el cupo COMPLETO, como si no debiera nada.
 const getClienteCreditoJSON = async (req, res) => {
     const { idCliente } = req.params;
     try {
-        const [cliente, creditoDisponible] = await Promise.all([
-            Clientes.findByPk(idCliente, { attributes: ['idCliente', 'credito'] }),
-            _creditoDisponibleCliente(idCliente)
-        ]);
-        return res.json({ credito: !!cliente?.credito, creditoDisponible });
+        const resumen = await creditoClienteResumen(idCliente);
+        return res.json({ credito: resumen.habilitado, creditoDisponible: resumen.disponible });
     } catch (e) {
         console.error('getClienteCreditoJSON:', e);
         return res.status(500).json({ credito: false, creditoDisponible: 0 });
@@ -1475,13 +1463,15 @@ const getClienteCreditoJSON = async (req, res) => {
 // POST /store/json/clientes/:idCliente/credito/validar — ¿este monto entra en lo que le
 // queda disponible al cliente ahora mismo? Endpoint aparte (y no reusar el GET de arriba)
 // porque el monto lo manda el navegador: si se comparara ahí, un valor manipulado en el
-// body igual pasaría — acá el servidor es quien decide sí o no.
+// body igual pasaría — acá el servidor es quien decide sí o no. Esto sigue siendo solo el
+// aviso EN VIVO mientras el operador escribe (sin lock, lectura simple): el candado real
+// que de verdad impide vender de más está en `procesarFactura`.
 const validarCreditoTiendaJSON = async (req, res) => {
     const { idCliente } = req.params;
     const monto = Math.round(parseFloat(req.body?.monto) || 0);
     try {
         if (monto <= 0) return res.json({ success: false, mensaje: 'Monto inválido.' });
-        const creditoDisponible = await _creditoDisponibleCliente(idCliente);
+        const { disponible: creditoDisponible } = await creditoClienteResumen(idCliente);
         const valido = monto <= creditoDisponible;
         return res.json({
             success: true,
@@ -1494,8 +1484,6 @@ const validarCreditoTiendaJSON = async (req, res) => {
         return res.status(500).json({ success: false, mensaje: 'Error al validar el crédito.' });
     }
 };
-
-const _round2 = (n) => parseFloat((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
 
 // ─── MIS CLIENTES (crédito pendiente en esta tienda) ─────────────────────────
 // Página nueva del menú de tienda — protegida igual que Pedidos Web / Caja y ventas: el
@@ -1623,28 +1611,11 @@ const misClienteDetallePage = async (req, res) => {
         });
         const tiempoCredito = creditoDisponible?.tiempoCredito ?? null;
 
-        // Cupo y consumido son globales al cliente (todas las tiendas), no solo esta —
-        // el cupo lo asigna administración una sola vez para el cliente, no por sede.
-        const facturasCreditoGlobal = await db.query(`
-            SELECT fc.total, ult.valorPorPagar AS deudaUltima
-            FROM FACTURA_CLIENTES fc
-            LEFT JOIN (
-                SELECT a1.idFacturaCliente, a1.valorPorPagar
-                FROM ABONO_CLIENTE_CREDITOS a1
-                INNER JOIN (
-                    SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
-                    FROM ABONO_CLIENTE_CREDITOS GROUP BY idFacturaCliente
-                ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
-            ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
-            WHERE fc.idCliente = :idCliente AND fc.credito = 1
-        `, { replacements: { idCliente }, type: db.QueryTypes.SELECT });
-
-        const valorTotalCredito = creditoDisponible ? parseFloat(creditoDisponible.valorCreditoCliente) : 0;
-        const valorConsumido = _round2(facturasCreditoGlobal.reduce((s, r) => {
-            const total = parseFloat(r.total);
-            const deudaActual = r.deudaUltima != null ? parseFloat(r.deudaUltima) : total;
-            return s + (deudaActual > 0 ? deudaActual : 0);
-        }, 0));
+        // Cupo y consumido son globales al cliente (todas las tiendas), no solo esta — el
+        // cupo lo asigna administración una sola vez para el cliente, no por sede (helpers/
+        // abonosCredito.js `creditoClienteResumen`, misma consulta que ya usaba el panel de
+        // admin).
+        const { cupoTotal: valorTotalCredito, consumido: valorConsumido } = await creditoClienteResumen(idCliente);
         const pctConsumido = valorTotalCredito > 0 ? Math.min(100, _round2((valorConsumido / valorTotalCredito) * 100)) : 0;
 
         const nombre = cliente.tipo_persona === 'J'
@@ -1702,9 +1673,6 @@ const misClienteDetallePage = async (req, res) => {
 // trae su propia entidad (banco/billetera/tarjeta/financiera), igual que en el POS —así
 // dos transferencias del mismo cliente a bancos distintos quedan cada una con su banco real
 // en la bitácora, no agrupadas bajo un "Banco" genérico.
-const METODOS_ABONO_STORE = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
-const METODOS_ABONO_CON_ENTIDAD = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
-
 const abonoGlobalClienteStore = async (req, res) => {
     const { idCliente } = req.params;
     const idPuntoDeVenta = req.idPuntoDeVenta;
@@ -1736,7 +1704,7 @@ const abonoGlobalClienteStore = async (req, res) => {
 
         if (!Number.isFinite(valor) || valor <= 0)
             return res.status(400).json({ success: false, mensaje: 'Cada línea de pago debe tener un valor mayor a 0.' });
-        if (!METODOS_ABONO_STORE.includes(metodoPago))
+        if (!METODOS_ABONO.includes(metodoPago))
             return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
         if (METODOS_ABONO_CON_ENTIDAD.includes(metodoPago) && !idEntidad)
             return res.status(400).json({ success: false, mensaje: `Selecciona la entidad para el método ${metodoPago}.` });
@@ -1764,97 +1732,44 @@ const abonoGlobalClienteStore = async (req, res) => {
         }
 
         const valorTotal = _round2(lineas.reduce((s, l) => s + l.valor, 0));
-
-        const rows = await db.query(`
-            SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura, fc.total,
-                   ult.valorPorPagar AS deudaUltima
-            FROM FACTURA_CLIENTES fc
-            LEFT JOIN (
-                SELECT a1.idFacturaCliente, a1.valorPorPagar
-                FROM ABONO_CLIENTE_CREDITOS a1
-                INNER JOIN (
-                    SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
-                    FROM ABONO_CLIENTE_CREDITOS GROUP BY idFacturaCliente
-                ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
-            ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
-            WHERE fc.idCliente = :idCliente AND fc.idPuntoDeVenta = :idPuntoDeVenta
-                  AND fc.credito = 1 AND fc.estado = 'pendiente'
-            ORDER BY fc.fechaEmision ASC
-        `, { replacements: { idCliente, idPuntoDeVenta }, type: db.QueryTypes.SELECT });
-
-        const facturas = rows.map(r => {
-            const total = parseFloat(r.total);
-            const deudaActual = r.deudaUltima != null ? parseFloat(r.deudaUltima) : total;
-            return { idFacturaCliente: r.idFacturaCliente, nroFactura: `${r.prefijo || ''}${r.numeroFactura}`, valorOriginal: total, deudaActual };
-        }).filter(f => f.deudaActual > 0);
-
-        const deudaTotal = _round2(facturas.reduce((s, f) => s + f.deudaActual, 0));
-        if (!facturas.length)
-            return res.status(409).json({ success: false, mensaje: 'Este cliente no tiene facturas de crédito pendientes en esta tienda.' });
-        if (valorTotal > deudaTotal)
-            return res.status(400).json({ success: false, mensaje: `El total de las líneas de pago no puede superar la deuda total en esta tienda (${fmtCOP(deudaTotal)}).` });
-
         const empleado = req.empleadoVerificado;
         const loteAbonoGlobal = randomUUID();
-        // idFacturaCliente → total aplicado en este lote (una factura puede recibir trozos
-        // de más de una línea de pago si una transferencia no alcanza a cubrirla completa).
-        const aplicadoPorFactura = new Map();
-        let idxFactura = 0;
 
+        // El SELECT ... FOR UPDATE va DENTRO de la transacción, antes de calcular nada: dos
+        // abonos casi simultáneos sobre el mismo cliente serializan acá — el segundo espera
+        // a que el primero confirme y recién ahí lee el saldo real, en vez de que los dos
+        // lean la misma foto vieja y terminen en un interbloqueo de MySQL (comprobado en
+        // simulación: sin este lock, uno de los dos abonos fallaba con un 500 genérico).
         const t = await db.transaction();
+        let resumen, deudaTotal;
         try {
-            for (const linea of lineas) {
-                let restanteLinea = linea.valor;
-                while (restanteLinea > 0 && idxFactura < facturas.length) {
-                    const f = facturas[idxFactura];
-                    if (f.deudaActual <= 0) { idxFactura++; continue; }
+            const facturas = (await bloquearFacturasCreditoCliente({ idCliente, idPuntoDeVenta, transaction: t }))
+                .filter(f => f.deudaActual > 0);
+            deudaTotal = _round2(facturas.reduce((s, f) => s + f.deudaActual, 0));
 
-                    const aplicar = _round2(Math.min(restanteLinea, f.deudaActual));
-                    f.deudaActual   = _round2(f.deudaActual - aplicar);
-                    restanteLinea   = _round2(restanteLinea - aplicar);
-
-                    await AbonoClienteCreditos.create({
-                        idFacturaCliente: f.idFacturaCliente, idCliente,
-                        totalFactura: f.valorOriginal,
-                        valorAbono: aplicar, valorPorPagar: f.deudaActual,
-                        metodoPago: linea.metodoPago, idEntidad: linea.idEntidad,
-                        nroReferencia: linea.nroReferencia, loteAbonoGlobal,
-                        idEmpleado:     empleado?.idEmpleado || null,
-                        nombreEmpleado: empleado?.nombre || null,
-                        codigoEmpleado: empleado?.codigoEmpleado || null,
-                        idUsuario:      req.usuario?.idUsuario || null
-                    }, { transaction: t });
-
-                    if (f.deudaActual <= 0) {
-                        await FacturaClientes.update(
-                            { estado: 'liquidada' },
-                            { where: { idFacturaCliente: f.idFacturaCliente, estado: 'pendiente' }, transaction: t }
-                        );
-                        idxFactura++;
-                    }
-
-                    aplicadoPorFactura.set(
-                        f.idFacturaCliente,
-                        _round2((aplicadoPorFactura.get(f.idFacturaCliente) || 0) + aplicar)
-                    );
-                }
+            if (!facturas.length) {
+                await t.rollback();
+                return res.status(409).json({ success: false, mensaje: 'Este cliente no tiene facturas de crédito pendientes en esta tienda.' });
+            }
+            if (valorTotal > deudaTotal) {
+                await t.rollback();
+                return res.status(400).json({ success: false, mensaje: `El total de las líneas de pago no puede superar la deuda total en esta tienda (${fmtCOP(deudaTotal)}).` });
             }
 
+            ({ resumen } = await aplicarAbonoFIFO({
+                lineas, facturas, loteAbonoGlobal,
+                empleado, idUsuario: req.usuario?.idUsuario || null, transaction: t
+            }));
             await t.commit();
         } catch (e) {
             if (!t.finished) await t.rollback().catch(() => {});
             throw e;
         }
 
-        const facturasResumen = [...aplicadoPorFactura.entries()].map(([idFacturaCliente, aplicado]) => {
-            const f = facturas.find(x => x.idFacturaCliente === idFacturaCliente);
-            return { idFacturaCliente, nroFactura: f?.nroFactura, aplicado, saldoRestante: f?.deudaActual ?? 0 };
-        });
-
         return res.json({
             success: true,
-            mensaje: `Abono de ${fmtCOP(valorTotal)} repartido entre ${facturasResumen.length} factura${facturasResumen.length !== 1 ? 's' : ''}.`,
-            loteAbonoGlobal, deudaTotal, valorTotal, facturas: facturasResumen
+            mensaje: `Abono de ${fmtCOP(valorTotal)} repartido entre ${resumen.length} factura${resumen.length !== 1 ? 's' : ''}.`,
+            loteAbonoGlobal, deudaTotal, valorTotal, facturas: resumen
         });
     } catch (e) {
         console.error('abonoGlobalClienteStore:', e);
@@ -2376,7 +2291,6 @@ const procesarFactura = async (req, res) => {
     // comportamiento anterior (subtotal = total, impuestos = 0) en vez de inventar una tasa.
     const IVA_PCT  = parseFloat(process.env.IVA) || 0;
     const IVA_RATE = IVA_PCT / 100;
-    const round2   = (n) => parseFloat(n.toFixed(2));
 
     let totalOrden          = 0;
     let subtotalOrden       = 0;
@@ -2390,9 +2304,9 @@ const procesarFactura = async (req, res) => {
             ? precioWebPorProducto.get(it.idProducto)
             : (esMayorista ? parseFloat(prod.precioVentaMayorista) : parseFloat(prod.precioVentaPublicoFinal));
 
-        const totalLinea    = round2(precio * qty);                       // con IVA incluido: lo que se cobra
-        const baseGravable   = round2(totalLinea / (1 + IVA_RATE));        // sin IVA, ya con el descuento adentro
-        const impuestoLinea  = round2(totalLinea - baseGravable);
+        const totalLinea    = _round2(precio * qty);                       // con IVA incluido: lo que se cobra
+        const baseGravable   = _round2(totalLinea / (1 + IVA_RATE));        // sin IVA, ya con el descuento adentro
+        const impuestoLinea  = _round2(totalLinea - baseGravable);
 
         // Subtotal de la factura = valor bruto a precio de detal, sin descuento y sin IVA
         // (formato estándar de factura: bruto → descuento → base gravable → IVA → total).
@@ -2400,13 +2314,13 @@ const procesarFactura = async (req, res) => {
         // detal" que comparar) ni cuando la orden no calificó como mayorista (ahí el precio
         // ya es el de detal, y precioDetalLinea === precio da descuento 0).
         const precioDetalLinea = esWeb ? precio : parseFloat(prod.precioVentaPublicoFinal);
-        const totalDetalLinea  = round2(precioDetalLinea * qty);
-        const baseDetalLinea   = round2(totalDetalLinea / (1 + IVA_RATE));
+        const totalDetalLinea  = _round2(precioDetalLinea * qty);
+        const baseDetalLinea   = _round2(totalDetalLinea / (1 + IVA_RATE));
         // Descuento en términos de base gravable (sin IVA), no del valor cobrado con IVA
         // incluido: así Subtotal − Descuento = baseGravable (lo que realmente se cobró sin
         // IVA), y ese + Impuestos = Total. Con IVA incluido en el descuento esa resta no
         // cuadraba contra un Subtotal ya sin IVA.
-        const descuentoLinea = round2(baseDetalLinea - baseGravable);
+        const descuentoLinea = _round2(baseDetalLinea - baseGravable);
 
         totalOrden          += totalLinea;
         subtotalOrden        += baseDetalLinea;
@@ -2419,10 +2333,10 @@ const procesarFactura = async (req, res) => {
             valorImpuesto: impuestoLinea, total: totalLinea
         };
     });
-    totalOrden          = round2(totalOrden);
-    subtotalOrden        = round2(subtotalOrden);
-    totalImpuestosOrden = round2(totalImpuestosOrden);
-    descuentoMayorista   = round2(descuentoMayorista);
+    totalOrden          = _round2(totalOrden);
+    subtotalOrden        = _round2(subtotalOrden);
+    totalImpuestosOrden = _round2(totalImpuestosOrden);
+    descuentoMayorista   = _round2(descuentoMayorista);
     const sumaPagos = parseFloat(pagosEfectivos.reduce((s, p) => s + Number(p.valor), 0).toFixed(2));
     // Match exacto: el frontend no redondea el efectivo a ninguna denominación, así que
     // sumaPagos y totalOrden deben coincidir peso a peso. El margen de 0.005 (medio
@@ -2466,8 +2380,52 @@ const procesarFactura = async (req, res) => {
     // ── Transacción ───────────────────────────────────────────────────────────
     const t = await db.transaction();
     try {
+        // ── 5.5 "Crédito en Tienda": el servidor es quien decide, no el navegador ──────
+        // validarCreditoTiendaJSON (arriba) es solo el aviso en vivo mientras el operador
+        // escribe — nada impedía mandar procesarFactura directo con esCreditoTienda:true y
+        // cualquier monto, para cualquier cliente, sin pasar por ahí (comprobado: una venta
+        // de $21.000 a "Crédito en Tienda" para un cliente con CLIENTES.credito=false pasó
+        // sin ningún rechazo). El candado real va acá, dentro de la transacción: bloquea
+        // (FOR UPDATE) la fila de cupo del cliente para que dos ventas a crédito casi
+        // simultáneas no calculen el mismo disponible viejo y las dos pasen aunque juntas
+        // superen el cupo — mismo patrón que ya usan los abonos
+        // (helpers/abonosCredito.js `creditoClienteResumen`/`bloquearFacturasCreditoCliente`).
+        const totalCreditoTienda = pagosEfectivos
+            .filter(p => p.esCreditoTienda)
+            .reduce((s, p) => s + Number(p.valor), 0);
+        if (totalCreditoTienda > 0) {
+            const resumenCredito = await creditoClienteResumen(idClienteEfectivo.trim(), t);
+            if (!resumenCredito.habilitado || !resumenCredito.tieneCupo) {
+                await t.rollback();
+                return res.status(403).json({ success: false, mensaje: 'Este cliente no tiene crédito habilitado.' });
+            }
+            if (totalCreditoTienda > resumenCredito.disponible) {
+                await t.rollback();
+                return res.status(400).json({
+                    success: false,
+                    mensaje: `El monto a crédito ($${fmtCOP(totalCreditoTienda)}) supera el cupo disponible del cliente ($${fmtCOP(resumenCredito.disponible)}).`
+                });
+            }
+        }
+
+        // El número de factura se calcula y se bloquea DENTRO de la transacción — antes se
+        // leía `regimen.nroActual` de la consulta de más arriba (fuera de cualquier lock) y
+        // dos ventas casi simultáneas calculaban el mismo "siguiente número", creando dos
+        // facturas con el mismo numeroFactura (comprobado en la misma simulación que probó
+        // la concurrencia del cupo de crédito: dos ventas en paralelo terminaron las dos con
+        // numeroFactura 64). El lock serializa la asignación del número: la segunda espera
+        // a que la primera confirme y recién ahí lee el nroActual ya actualizado.
+        const regimenLock = await RegimenFacturacion.findOne({
+            where: { idRegimenFacturacion: regimen.idRegimenFacturacion },
+            lock: t.LOCK.UPDATE, transaction: t
+        });
+        if (BigInt(regimenLock.nroActual) >= BigInt(regimenLock.nroFin)) {
+            await t.rollback();
+            return res.status(400).json({ success: false, mensaje: 'Resolución de facturación agotada.' });
+        }
+
         const ahora       = new Date();
-        const nroFactura  = Number(regimen.nroActual) + 1;
+        const nroFactura  = Number(regimenLock.nroActual) + 1;
 
         // ── 6. Crear factura ──────────────────────────────────────────────────
         // subtotalOrden, totalImpuestosOrden y descuentoMayorista ya se calcularon en el
@@ -2608,76 +2566,25 @@ const procesarFactura = async (req, res) => {
             console.error('[procesarFactura] reconciliación de carritos:', e.message);
         }
 
-        // Notificar admin con ventas y desglose de pagos del día para este PDV
+        // Notificar admin con ventas y desglose de pagos del día para este PDV — mismo
+        // helper que usan los tableros de admin (helpers/abonosCredito.js
+        // `ventasYPagosPeriodo`), así que ya incluye los abonos a crédito recibidos hoy.
+        // Antes este broadcast tenía su propia copia sin abonos: cada venta nueva volvía a
+        // pisar el dashboard en vivo del admin con un número que no los contaba, deshaciendo
+        // el fix del lado de lectura.
         try {
             const hoyStart = new Date(); hoyStart.setHours(0, 0, 0, 0);
-            const factHoy = await FacturaClientes.findAll({
-                attributes: ['idFacturaCliente'],
-                where: { idPuntoDeVenta, createdAt: { [Op.gte]: hoyStart } },
-                raw: true
-            });
-            let ventasHoy = 0;
-            const pagosHoy = { Efectivo: 0, Banco: 0, 'Billetera Virtual': 0, 'Entidad Crediticia': 0, 'Tarjeta Credito': 0, 'Credito En Tienda': 0 };
-            if (factHoy.length) {
-                const ids = factHoy.map(f => f.idFacturaCliente);
-                const [detallesRows, pagosRows] = await Promise.all([
-                    DetallesFactura.findAll({
-                        attributes: [[fn('SUM', col('total')), 'suma']],
-                        where: { idFacturaCliente: { [Op.in]: ids } },
-                        raw: true
-                    }),
-                    DetallesPagosFactura.findAll({
-                        attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
-                        where: { idFacturaCliente: { [Op.in]: ids } },
-                        group: ['metodoPago'],
-                        raw: true
-                    })
-                ]);
-                ventasHoy = parseFloat(detallesRows[0]?.suma || 0);
-                for (const r of pagosRows) {
-                    if (Object.prototype.hasOwnProperty.call(pagosHoy, r.metodoPago)) {
-                        pagosHoy[r.metodoPago] = parseFloat(r.total || 0);
-                    }
-                }
-            }
+
+            const { ventas: ventasHoy, pagos: pagosHoy } = await ventasYPagosPeriodo({ idPuntoDeVenta, desde: hoyStart });
             broadcast('__ADMIN__', 'store_stats', { idPuntoDeVenta, ventasHoy });
             broadcast('__ADMIN__', 'store_stats_detail', { idPuntoDeVenta, ventasHoy, pagos: pagosHoy });
 
             // Global: ventas + métodos de pago de todas las tiendas hoy
-            const todasFacturasHoy = await FacturaClientes.findAll({
-                attributes: ['idFacturaCliente'],
-                where: { createdAt: { [Op.gte]: hoyStart } },
-                raw: true
+            const { ventas: ventasGlobalesHoy, pagos: pagosGlobalesCompletos } = await ventasYPagosPeriodo({ desde: hoyStart });
+            broadcast('__ADMIN__', 'global_stats', {
+                ventasGlobalesHoy: Math.round(ventasGlobalesHoy),
+                pagosGlobales: pagosATransBucket(pagosGlobalesCompletos)
             });
-            if (todasFacturasHoy.length) {
-                const todosIds = todasFacturasHoy.map(f => f.idFacturaCliente);
-                const [globalVentasRow, globalPagosRows] = await Promise.all([
-                    DetallesFactura.findAll({
-                        attributes: [[fn('SUM', col('total')), 'suma']],
-                        where: { idFacturaCliente: { [Op.in]: todosIds } },
-                        raw: true
-                    }),
-                    DetallesPagosFactura.findAll({
-                        attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
-                        where: { idFacturaCliente: { [Op.in]: todosIds } },
-                        group: ['metodoPago'],
-                        raw: true
-                    })
-                ]);
-                const pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0, creditoTienda: 0 };
-                for (const r of globalPagosRows) {
-                    const v = Math.round(parseFloat(r.total || 0));
-                    if (r.metodoPago === 'Efectivo')                                           pagosGlobales.efectivo     += v;
-                    else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill    += v;
-                    else if (r.metodoPago === 'Tarjeta Credito')                               pagosGlobales.tCredito     += v;
-                    else if (r.metodoPago === 'Entidad Crediticia')                            pagosGlobales.creditos     += v;
-                    else if (r.metodoPago === 'Credito En Tienda')                             pagosGlobales.creditoTienda += v;
-                }
-                broadcast('__ADMIN__', 'global_stats', {
-                    ventasGlobalesHoy: Math.round(parseFloat(globalVentasRow[0]?.suma || 0)),
-                    pagosGlobales
-                });
-            }
         } catch (_) {}
 
         // Descuento atómico de cupo extemporáneo

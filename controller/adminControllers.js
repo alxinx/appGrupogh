@@ -35,12 +35,11 @@ import { crearConCodigo } from '../helpers/secuencias.js';
 import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
 import ExcelJS from 'exceljs';
 import { tituloLista } from '../helpers/textoLista.js';
+import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, bucketPagosVacio, acumularEnBucketPagos, facturasCreditoCliente, creditoClienteResumen, METODOS_ABONO, METODOS_PAGO } from '../helpers/abonosCredito.js';
+import { round2 } from '../helpers/formatMoney.js';
 
 
 dotenv.config();
-
-// ─── CONSTANTES COMPARTIDAS ──────────────────────────────────────────────────
-const METODOS_PAGO = ['Efectivo', 'Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Credito En Tienda'];
 
 // ─── HELPERS INTERNOS ────────────────────────────────────────────────────────
 
@@ -67,36 +66,11 @@ const _getRangoCaja = async (idCajaTienda, idPuntoDeVenta) => {
 };
 
 // Calcula ventas y desglose de pagos de un PDV en un rango. Retorna { ventas, pagos, totalFacturas }.
-const _getVentasPeriodo = async (idPuntoDeVenta, desde, hasta = null) => {
-    const whereFactura = { idPuntoDeVenta, createdAt: hasta ? { [Op.between]: [desde, hasta] } : { [Op.gte]: desde } };
-    const facturas = await FacturaClientes.findAll({ attributes: ['idFacturaCliente'], where: whereFactura, raw: true });
-
-    const pagos = Object.fromEntries(METODOS_PAGO.map(m => [m, 0]));
-    let ventas = 0;
-
-    if (facturas.length) {
-        const ids = facturas.map(f => f.idFacturaCliente);
-        const [detallesRows, pagosRows] = await Promise.all([
-            DetallesFactura.findAll({
-                attributes: [[fn('SUM', col('total')), 'suma']],
-                where: { idFacturaCliente: { [Op.in]: ids } }, raw: true
-            }),
-            DetallesPagosFactura.findAll({
-                attributes: ['metodoPago', [fn('SUM', col('valor')), 'total']],
-                where: { idFacturaCliente: { [Op.in]: ids } },
-                group: ['metodoPago'], raw: true
-            })
-        ]);
-        ventas = parseFloat(detallesRows[0]?.suma || 0);
-        for (const r of pagosRows) {
-            if (Object.prototype.hasOwnProperty.call(pagos, r.metodoPago))
-                pagos[r.metodoPago] = parseFloat(r.total || 0);
-        }
-    }
-
-    return { ventas, pagos, totalFacturas: facturas.length };
-};
-
+// "ventas" es solo lo facturado en el rango (no cambia); "pagos" sí suma los abonos a
+// crédito de cliente recibidos en el rango vía helpers/abonosCredito.js — la factura que
+// pagan puede ser de otro día, así que no se puede encontrar filtrando solo por
+// FACTURA_CLIENTES.createdAt (mismo helper que usa el cuadre de caja de tienda en
+// storeControllers.js `_calcularTransaccionesCaja`, para no repetir esta consulta).
 //************************[GET CONTROLLERS] ************************ */
 
 //PRINCIPAL ADMINISTRADOR
@@ -2362,54 +2336,19 @@ const asignarCreditoDisponibleCliente = async (req, res) => {
             empleado:             empleado?.nombre || null
         });
     } catch (e) {
+        // El chequeo `yaTieneCredito` de arriba es "leer y luego crear": dos peticiones casi
+        // simultáneas (doble clic, dos pestañas) pueden las dos pasar esa lectura antes de
+        // que cualquiera cree su fila. El índice único de la migración
+        // seed/migracionUnicoCreditoDisponibleCliente.js es el candado real —esto solo
+        // convierte ese rechazo en el mismo mensaje amigable de siempre, no en un 500.
+        if (e.name === 'SequelizeUniqueConstraintError')
+            return res.status(409).json({
+                success: false,
+                mensaje: 'Este cliente ya tiene un crédito asignado. Para reactivarlo, usá el botón de crédito sin volver a ingresar un valor; para cambiar el cupo o el plazo, hay que editarlo directamente.'
+            });
         console.error('asignarCreditoDisponibleCliente:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al asignar el crédito.' });
     }
-};
-
-// ─── PANEL DE ESTADO DE CRÉDITO DE UN CLIENTE ────────────────────────────────
-// Trae, para un cliente con cupo activo, sus facturas de crédito (credito=true) con
-// abonado/deuda actual/estado calculados a partir del ledger ABONO_CLIENTE_CREDITOS (la
-// fila más reciente por factura da el saldo — mismo criterio que CUENTAS_POR_PAGAR del
-// lado proveedores). No hay N+1: una sola query trae todas las facturas + su último
-// abono via subquery, y el filtro/búsqueda/paginación de la tabla se resuelve en JS sobre
-// ese resultado, acotado por diseño al idCliente (nunca crece sin límite).
-const _facturasCreditoCliente = async (idCliente) => {
-    const rows = await db.query(`
-        SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura, fc.fechaEmision,
-               fc.total, fc.estado,
-               DATEDIFF(CURDATE(), fc.fechaEmision) AS diasTranscurridos,
-               ult.valorPorPagar AS deudaUltima
-        FROM FACTURA_CLIENTES fc
-        LEFT JOIN (
-            SELECT a1.idFacturaCliente, a1.valorPorPagar
-            FROM ABONO_CLIENTE_CREDITOS a1
-            INNER JOIN (
-                SELECT idFacturaCliente, MAX(createdAt) AS maxFecha
-                FROM ABONO_CLIENTE_CREDITOS
-                GROUP BY idFacturaCliente
-            ) a2 ON a2.idFacturaCliente = a1.idFacturaCliente AND a2.maxFecha = a1.createdAt
-        ) ult ON ult.idFacturaCliente = fc.idFacturaCliente
-        WHERE fc.idCliente = :idCliente AND fc.credito = 1
-        ORDER BY fc.fechaEmision ASC
-    `, { replacements: { idCliente }, type: db.QueryTypes.SELECT });
-
-    return rows.map(r => {
-        const total        = parseFloat(r.total);
-        const deudaActual   = r.deudaUltima != null ? parseFloat(r.deudaUltima) : total;
-        const abonado       = round2(total - deudaActual);
-        const diasTranscurridos = parseInt(r.diasTranscurridos);
-        return {
-            idFacturaCliente: r.idFacturaCliente,
-            nroFactura:       `${r.prefijo || ''}${r.numeroFactura}`,
-            fechaEmision:     r.fechaEmision,
-            diasTranscurridos,
-            valorOriginal:    total,
-            abonado,
-            deudaActual,
-            estadoFactura:    r.estado
-        };
-    });
 };
 
 // deudaActual <= 0 → Pagado; si no y pasó el plazo (tiempoCredito, null = sin plazo
@@ -2438,7 +2377,30 @@ const _frecuenciaAbonos = (fechasAbonosAsc) => {
     return 'Irregular';
 };
 
-const round2 = (n) => parseFloat((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
+// Reputación acumulada: qué fracción de las facturas de crédito históricas del cliente NO
+// está en mora ahora mismo (`estadoCalculado` ya trae 'pagado'/'en_mora'/'pendiente' vía
+// `_estadoCreditoFactura`). Reemplaza el valor fijo simulado ("Muy buena", 4.6) que había
+// antes de tener suficiente historial de crédito para calibrar algo mejor.
+//
+// Limitación real, documentada a propósito: usa el estado ACTUAL de cada factura, no un
+// historial de mora. Una factura que estuvo en mora y ya se pagó por completo cuenta como
+// 'pagado' (neutral/bien) — no queda registrada la fecha exacta en que salió de mora, así
+// que no se puede reconstruir ese episodio pasado con los datos que hoy se guardan.
+const _calcularReputacion = (facturasTodas) => {
+    if (!facturasTodas.length) return { etiqueta: 'Sin historial', puntaje: null };
+
+    const enMora = facturasTodas.filter(f => f.estadoCalculado === 'en_mora').length;
+    const puntaje = round2(Math.max(1, 5 - 4 * (enMora / facturasTodas.length)));
+
+    let etiqueta;
+    if (puntaje >= 4.5) etiqueta = 'Excelente';
+    else if (puntaje >= 3.5) etiqueta = 'Muy buena';
+    else if (puntaje >= 2.5) etiqueta = 'Buena';
+    else if (puntaje >= 1.5) etiqueta = 'Regular';
+    else etiqueta = 'Baja';
+
+    return { etiqueta, puntaje };
+};
 
 const dashboardClienteCredito = async (req, res) => {
     const { idCliente } = req.params;
@@ -2476,7 +2438,7 @@ const dashboardClienteCredito = async (req, res) => {
         ]);
 
         const tiempoCredito = creditoDisponible.tiempoCredito;
-        const facturasTodas = (await _facturasCreditoCliente(idCliente)).map(f => ({
+        const facturasTodas = (await facturasCreditoCliente(idCliente)).map(f => ({
             ...f,
             estadoCalculado: _estadoCreditoFactura(f, tiempoCredito)
         }));
@@ -2502,8 +2464,8 @@ const dashboardClienteCredito = async (req, res) => {
             });
         }
         // Simulado — necesita historial de abonos de varios clientes para calibrar qué
-        // cuenta como "variación" respecto al hábito de pago. Parámetros pendientes,
-        // mismo estado que "Reputación acumulada" más abajo.
+        // cuenta como "variación" respecto al hábito de pago. Parámetros pendientes
+        // (a diferencia de "Reputación acumulada" más abajo, que ya se calcula real).
         alertas.push({
             tipo: 'frecuencia_simulada',
             titulo: 'Variación en frecuencia de abono',
@@ -2550,8 +2512,7 @@ const dashboardClienteCredito = async (req, res) => {
                 pctConsumido,
                 frecuenciaAbonos: _frecuenciaAbonos(fechasAbonos),
                 diasDesdeUltimoAbono,
-                // Reputación acumulada — simulado, parámetros de cálculo pendientes.
-                reputacion: { etiqueta: 'Muy buena', puntaje: 4.6 }
+                reputacion: _calcularReputacion(facturasTodas)
             },
             alertas,
             facturas: facturasPagina,
@@ -2576,7 +2537,7 @@ const generarInformeCreditoPDF = async (req, res) => {
         const creditoDisponible = await CreditoDisponibleCliente.findOne({ where: { idCliente, tipo: 'Credito' }, raw: true });
         if (!cliente || !creditoDisponible) return res.status(404).send('Cliente o crédito no encontrado.');
 
-        const facturas = (await _facturasCreditoCliente(idCliente)).map(f => ({
+        const facturas = (await facturasCreditoCliente(idCliente)).map(f => ({
             ...f,
             estadoCalculado: _estadoCreditoFactura(f, creditoDisponible.tiempoCredito)
         }));
@@ -2661,7 +2622,14 @@ const generarInformeCreditoPDF = async (req, res) => {
 // Distinto de asignarCreditoDisponibleCliente (esa es la primera asignación, exige que no
 // exista fila todavía): esto edita el valor de una fila ya existente. El nuevo valor tiene
 // que ser mayor al actual — bajar el cupo es otra decisión, no "aumentar".
-const aumentarCreditoCliente = async (req, res) => {
+// Aumentar O disminuir el cupo asignado — antes solo admitía aumentar (nuevoValor tenía
+// que ser mayor al actual). El único piso real es > 0: para dejar al cliente sin cupo
+// existe "Suspender Crédito", que es una acción distinta (apaga CLIENTES.credito del
+// todo, no solo baja el número). No se bloquea bajar el cupo por debajo de lo ya
+// consumido — el disponible real (helpers/abonosCredito.js `creditoClienteResumen`) ya
+// se calcula como max(0, cupo − consumido), así que solo deja el disponible en $0 hasta
+// que el cliente abone, en vez de romper nada.
+const modificarCreditoCliente = async (req, res) => {
     const { idCliente } = req.params;
     const nuevoValor = parseFloat(req.body?.valorCreditoCliente);
 
@@ -2670,14 +2638,14 @@ const aumentarCreditoCliente = async (req, res) => {
 
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
-            return res.status(403).json({ success: false, mensaje: 'Sin autorización para aumentar créditos.' });
+            return res.status(403).json({ success: false, mensaje: 'Sin autorización para modificar créditos.' });
 
         const credito = await CreditoDisponibleCliente.findOne({ where: { idCliente, tipo: 'Credito' } });
         if (!credito) return res.status(404).json({ success: false, mensaje: 'Este cliente no tiene un crédito asignado.' });
 
         const valorAnterior = parseFloat(credito.valorCreditoCliente);
-        if (nuevoValor <= valorAnterior)
-            return res.status(400).json({ success: false, mensaje: `El nuevo cupo debe ser mayor al actual (${_pesosCO(valorAnterior)}).` });
+        if (nuevoValor === valorAnterior)
+            return res.status(400).json({ success: false, mensaje: 'El nuevo cupo es igual al actual — no hay nada que modificar.' });
 
         const empleado = req.empleadoVerificado;
         const t = await db.transaction();
@@ -2707,7 +2675,7 @@ const aumentarCreditoCliente = async (req, res) => {
 
         return res.json({ success: true, valorAnterior, valorNuevo: nuevoValor, empleado: empleado?.nombre || null });
     } catch (e) {
-        console.error('aumentarCreditoCliente:', e);
+        console.error('modificarCreditoCliente:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al aumentar el crédito.' });
     }
 };
@@ -2719,11 +2687,10 @@ const abonarFactura = async (req, res) => {
     const metodoPago   = req.body?.metodoPago;
     const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
     const nroReferencia = req.body?.nroReferencia?.trim() || null;
-    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
 
     if (!Number.isFinite(valorAbono) || valorAbono <= 0)
         return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
-    if (!METODOS_VALIDOS.includes(metodoPago))
+    if (!METODOS_ABONO.includes(metodoPago))
         return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
     if (metodoPago === 'Entidad Crediticia' && !idEntidad)
         return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
@@ -2737,47 +2704,44 @@ const abonarFactura = async (req, res) => {
             if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
         }
 
-        const factura = await FacturaClientes.findOne({ where: { idFacturaCliente, idCliente, credito: true } });
-        if (!factura) return res.status(404).json({ success: false, mensaje: 'Factura de crédito no encontrada.' });
-
-        const ultimo = await AbonoClienteCreditos.findOne({
-            where: { idFacturaCliente }, order: [['createdAt', 'DESC']], raw: true
-        });
-        const deudaActual = ultimo ? parseFloat(ultimo.valorPorPagar) : parseFloat(factura.total);
-
-        if (deudaActual <= 0)
-            return res.status(409).json({ success: false, mensaje: 'Esta factura ya está pagada.' });
-        if (valorAbono > deudaActual)
-            return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda actual (${_pesosCO(deudaActual)}).` });
-
-        const nuevoSaldo = round2(deudaActual - valorAbono);
         const empleado = req.empleadoVerificado;
+        const linea = { valor: valorAbono, metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null, nroReferencia };
 
+        // El SELECT ... FOR UPDATE va DENTRO de la transacción: dos abonos casi simultáneos
+        // sobre la misma factura serializan acá (el segundo espera a que el primero
+        // confirme) en vez de que los dos lean el mismo saldo viejo y MySQL termine
+        // matando una transacción con un interbloqueo — ver helpers/abonosCredito.js
+        // `bloquearFacturasCreditoCliente`.
         const t = await db.transaction();
         try {
-            const abono = await AbonoClienteCreditos.create({
-                idFacturaCliente, idCliente,
-                totalFactura:  parseFloat(factura.total),
-                valorAbono, valorPorPagar: nuevoSaldo,
-                metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null,
-                nroReferencia,
-                idEmpleado:     empleado?.idEmpleado || null,
-                nombreEmpleado: empleado?.nombre || null,
-                codigoEmpleado: empleado?.codigoEmpleado || null,
-                idUsuario:      req.usuario?.idUsuario || null
-            }, { transaction: t });
+            const facturas = await bloquearFacturasCreditoCliente({ idCliente, idFacturaCliente, transaction: t });
+            if (!facturas.length) {
+                await t.rollback();
+                return res.status(404).json({ success: false, mensaje: 'Factura de crédito no encontrada.' });
+            }
+            const facturaFIFO = facturas[0];
+            if (facturaFIFO.deudaActual <= 0) {
+                await t.rollback();
+                return res.status(409).json({ success: false, mensaje: 'Esta factura ya está pagada.' });
+            }
+            if (valorAbono > facturaFIFO.deudaActual) {
+                await t.rollback();
+                return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda actual (${_pesosCO(facturaFIFO.deudaActual)}).` });
+            }
 
-            if (nuevoSaldo <= 0)
-                await FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente, estado: 'pendiente' }, transaction: t });
-
+            const { abonosCreados } = await aplicarAbonoFIFO({
+                lineas: [linea], facturas: [facturaFIFO],
+                empleado, idUsuario: req.usuario?.idUsuario || null, transaction: t
+            });
             await t.commit();
 
+            const nuevoSaldo = facturaFIFO.deudaActual;
             return res.json({
                 success: true,
                 mensaje: nuevoSaldo <= 0 ? 'Factura liquidada.' : 'Abono registrado.',
                 liquidada: nuevoSaldo <= 0,
                 saldoRestante: nuevoSaldo,
-                idAbonoClienteCredito: abono.idAbonoClienteCredito
+                idAbonoClienteCredito: abonosCreados[0]?.idAbonoClienteCredito
             });
         } catch (e) {
             if (!t.finished) await t.rollback().catch(() => {});
@@ -2801,11 +2765,10 @@ const abonoGlobalCliente = async (req, res) => {
     const metodoPago   = req.body?.metodoPago;
     const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
     const nroReferencia = req.body?.nroReferencia?.trim() || null;
-    const METODOS_VALIDOS = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito', 'Efectivo'];
 
     if (!Number.isFinite(valorTotal) || valorTotal <= 0)
         return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
-    if (!METODOS_VALIDOS.includes(metodoPago))
+    if (!METODOS_ABONO.includes(metodoPago))
         return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
     if (metodoPago === 'Entidad Crediticia' && !idEntidad)
         return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
@@ -2819,52 +2782,44 @@ const abonoGlobalCliente = async (req, res) => {
             if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
         }
 
-        const facturas = (await _facturasCreditoCliente(idCliente)).filter(f => f.deudaActual > 0);
-        const deudaTotal = round2(facturas.reduce((s, f) => s + f.deudaActual, 0));
-
-        if (!facturas.length)
-            return res.status(409).json({ success: false, mensaje: 'Este cliente no tiene facturas de crédito pendientes.' });
-        if (valorTotal > deudaTotal)
-            return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda total del cliente (${_pesosCO(deudaTotal)}).` });
-
         const empleado = req.empleadoVerificado;
         const loteAbonoGlobal = uuidV7();
-        let restante = valorTotal;
-        const aplicados = [];
+        const linea = { valor: valorTotal, metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null, nroReferencia };
 
+        // El SELECT ... FOR UPDATE va DENTRO de la transacción: dos abonos globales casi
+        // simultáneos sobre el mismo cliente serializan acá (el segundo espera a que el
+        // primero confirme) en vez de que los dos lean el mismo saldo viejo y MySQL termine
+        // matando una transacción con un interbloqueo — ver helpers/abonosCredito.js
+        // `bloquearFacturasCreditoCliente`. Reemplaza a `_facturasCreditoCliente` acá
+        // porque esa lee sin lock (sigue siendo la correcta para las pantallas de solo
+        // lectura, dashboardClienteCredito/generarInformeCreditoPDF).
         const t = await db.transaction();
+        let resumen, deudaTotal;
         try {
-            for (const f of facturas) {
-                if (restante <= 0) break;
-                const aplicar = round2(Math.min(restante, f.deudaActual));
-                const nuevoSaldo = round2(f.deudaActual - aplicar);
+            const facturas = (await bloquearFacturasCreditoCliente({ idCliente, transaction: t }))
+                .filter(f => f.deudaActual > 0);
+            deudaTotal = round2(facturas.reduce((s, f) => s + f.deudaActual, 0));
 
-                await AbonoClienteCreditos.create({
-                    idFacturaCliente: f.idFacturaCliente, idCliente,
-                    totalFactura:  f.valorOriginal,
-                    valorAbono: aplicar, valorPorPagar: nuevoSaldo,
-                    metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null,
-                    nroReferencia, loteAbonoGlobal,
-                    idEmpleado:     empleado?.idEmpleado || null,
-                    nombreEmpleado: empleado?.nombre || null,
-                    codigoEmpleado: empleado?.codigoEmpleado || null,
-                    idUsuario:      req.usuario?.idUsuario || null
-                }, { transaction: t });
-
-                if (nuevoSaldo <= 0)
-                    await FacturaClientes.update({ estado: 'liquidada' }, { where: { idFacturaCliente: f.idFacturaCliente, estado: 'pendiente' }, transaction: t });
-
-                aplicados.push({ idFacturaCliente: f.idFacturaCliente, nroFactura: f.nroFactura, aplicado: aplicar, saldoRestante: nuevoSaldo });
-                restante = round2(restante - aplicar);
+            if (!facturas.length) {
+                await t.rollback();
+                return res.status(409).json({ success: false, mensaje: 'Este cliente no tiene facturas de crédito pendientes.' });
+            }
+            if (valorTotal > deudaTotal) {
+                await t.rollback();
+                return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda total del cliente (${_pesosCO(deudaTotal)}).` });
             }
 
+            ({ resumen } = await aplicarAbonoFIFO({
+                lineas: [linea], facturas, loteAbonoGlobal,
+                empleado, idUsuario: req.usuario?.idUsuario || null, transaction: t
+            }));
             await t.commit();
         } catch (e) {
             if (!t.finished) await t.rollback().catch(() => {});
             throw e;
         }
 
-        return res.json({ success: true, mensaje: `Abono repartido entre ${aplicados.length} factura${aplicados.length !== 1 ? 's' : ''}.`, loteAbonoGlobal, facturas: aplicados });
+        return res.json({ success: true, mensaje: `Abono repartido entre ${resumen.length} factura${resumen.length !== 1 ? 's' : ''}.`, loteAbonoGlobal, facturas: resumen });
     } catch (e) {
         console.error('abonoGlobalCliente:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono global.' });
@@ -4896,7 +4851,7 @@ const getTiendaStatsHoyDetalle = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
     try {
         const { inicio } = _hoyRango();
-        const { ventas: ventasHoy, pagos } = await _getVentasPeriodo(idPuntoDeVenta, inicio);
+        const { ventas: ventasHoy, pagos } = await ventasYPagosPeriodo({ idPuntoDeVenta, desde: inicio });
         return res.json({ success: true, ventasHoy, pagos });
     } catch (e) {
         console.error('getTiendaStatsHoyDetalle:', e);
@@ -4919,27 +4874,44 @@ const getPagosHoyPorMetodo = async (req, res) => {
             raw: true
         });
 
-        if (!facturasHoy.length) return res.json({ success: true, movimientos: [], total: 0 });
+        let movimientos = [];
+        if (facturasHoy.length) {
+            const ids = facturasHoy.map(f => f.idFacturaCliente);
+            const facturaMap = Object.fromEntries(facturasHoy.map(f => [f.idFacturaCliente, f]));
 
-        const ids = facturasHoy.map(f => f.idFacturaCliente);
-        const facturaMap = Object.fromEntries(facturasHoy.map(f => [f.idFacturaCliente, f]));
+            const pagos = await DetallesPagosFactura.findAll({
+                attributes: ['idFacturaCliente', 'valor', 'nroReferencia'],
+                where: { idFacturaCliente: { [Op.in]: ids }, metodoPago: metodo },
+                order: [['create_at', 'ASC']],
+                raw: true
+            });
 
-        const pagos = await DetallesPagosFactura.findAll({
-            attributes: ['idFacturaCliente', 'valor', 'nroReferencia'],
-            where: { idFacturaCliente: { [Op.in]: ids }, metodoPago: metodo },
-            order: [['create_at', 'ASC']],
-            raw: true
-        });
+            movimientos = pagos.map(p => {
+                const f = facturaMap[p.idFacturaCliente] || {};
+                return {
+                    nroFactura: `${f.prefijo || ''}${f.numeroFactura || '—'}`,
+                    hora: f.horaEmision || '—',
+                    valor: parseFloat(p.valor),
+                    referencia: p.nroReferencia || '—'
+                };
+            });
+        }
 
-        const movimientos = pagos.map(p => {
-            const f = facturaMap[p.idFacturaCliente] || {};
-            return {
-                nroFactura: `${f.prefijo || ''}${f.numeroFactura || '—'}`,
-                hora: f.horaEmision || '—',
-                valor: parseFloat(p.valor),
-                referencia: p.nroReferencia || '—'
-            };
-        });
+        // Abonos a crédito de cliente recibidos hoy por este método (helpers/
+        // abonosCredito.js) — la factura que pagan no tiene por qué ser de hoy, así que no
+        // se puede depender de `facturasHoy` para encontrarlos (antes de esto, un abono
+        // desaparecía por completo de este desglose; con solo un abono y ninguna factura
+        // nueva, la función ni siquiera llegaba a buscarlos: cortaba con movimientos: []
+        // apenas facturasHoy salía vacío).
+        const abonosHoy = await buscarAbonosPeriodo({ idPuntoDeVenta, metodoPago: metodo, desde: hoy });
+        for (const a of abonosHoy) {
+            movimientos.push({
+                nroFactura: `${a.factura?.prefijo || ''}${a.factura?.numeroFactura || '—'} (Abono)`,
+                hora: new Date(a.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+                valor: parseFloat(a.valorAbono),
+                referencia: a.nroReferencia || '—'
+            });
+        }
 
         const total = movimientos.reduce((s, m) => s + m.valor, 0);
         return res.json({ success: true, movimientos, total });
@@ -5070,8 +5042,11 @@ const getTiendasStatsHoy = async (req, res) => {
             ultimos7.push(found ? Math.round(parseFloat(found.suma)) : 0);
         }
 
-        // Totales globales por método de pago
-        let pagosGlobales = { efectivo: 0, transBill: 0, tCredito: 0, creditos: 0, creditoTienda: 0 };
+        // Totales globales por método de pago (helpers/abonosCredito.js
+        // `bucketPagosVacio`/`acumularEnBucketPagos` — mismo bucket que usa el broadcast SSE
+        // de storeControllers.js `procesarFactura`, antes cada uno con su propio switch).
+        // `facturasHoy` se reusa de la consulta de arriba en vez de volver a pedirla.
+        let pagosGlobales = bucketPagosVacio();
         if (facturasHoy.length) {
             const factIds = facturasHoy.map(f => f.idFacturaCliente);
             const pagosRows = await DetallesPagosFactura.findAll({
@@ -5080,15 +5055,13 @@ const getTiendasStatsHoy = async (req, res) => {
                 group: ['metodoPago'],
                 raw: true
             });
-            for (const r of pagosRows) {
-                const v = Math.round(parseFloat(r.total || 0));
-                if (r.metodoPago === 'Efectivo')                                       pagosGlobales.efectivo     += v;
-                else if (r.metodoPago === 'Banco' || r.metodoPago === 'Billetera Virtual') pagosGlobales.transBill += v;
-                else if (r.metodoPago === 'Tarjeta Credito')                           pagosGlobales.tCredito     += v;
-                else if (r.metodoPago === 'Entidad Crediticia')                        pagosGlobales.creditos     += v;
-                else if (r.metodoPago === 'Credito En Tienda')                         pagosGlobales.creditoTienda += v;
-            }
+            for (const r of pagosRows) acumularEnBucketPagos(pagosGlobales, r.metodoPago, parseFloat(r.total || 0));
         }
+
+        // Abonos a crédito de cliente recibidos hoy, en cualquier tienda — sin
+        // idPuntoDeVenta acá porque este widget es global, no de una sola sede.
+        const totalesAbonoHoy = sumarAbonosPorMetodo(await buscarAbonosPeriodo({ desde: hoy }));
+        for (const [metodo, total] of Object.entries(totalesAbonoHoy)) acumularEnBucketPagos(pagosGlobales, metodo, total);
 
         return res.json({ success: true, stats, ventasGlobalesHoy, pagosGlobales, ticketPromedio: ticketPromedioHoy, ticketPct, ventasMes, diasTranscurridos, ultimos7 });
     } catch (e) {
@@ -8767,7 +8740,7 @@ export {
     verProveedor, actualizarProveedor,
     saveSupplier, checkNitSupplier,
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
-    dashboardClienteCredito, generarInformeCreditoPDF, aumentarCreditoCliente, abonarFactura, abonoGlobalCliente,
+    dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
 
     dashboardOrders,

@@ -49,9 +49,9 @@ block contenedor
                                                 span Más acciones
                                                 i(class="fi fi-rr-menu-dots text-xs")
                                             div(id="menu-mas-acciones" class="hidden absolute right-0 top-[calc(100%+6px)] w-56 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-20")
-                                                button(id="btn-aumentar-credito" class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left")
-                                                    i(class="fi fi-rr-arrow-trend-up text-sm text-emerald-500 w-4")
-                                                    span Aumentar Crédito
+                                                button(id="btn-modificar-credito" class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left")
+                                                    i(class="fi fi-rr-pencil text-sm text-blue-500 w-4")
+                                                    span Modificar Crédito
                                                 a(href=`/admin/clientes/${cliente.idCliente}/credito/informe` target="_blank" rel="noopener" class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors")
                                                     i(class="fi fi-rr-file-invoice text-sm text-violet-500 w-4")
                                                     span Generar Informe (PDF)
@@ -134,17 +134,33 @@ block contenedor
                                                 i.fi-rr-check
                                                 span Dentro del plazo esperado
 
-                                    //- Reputación acumulada — simulado, parámetros de cálculo pendientes.
-                                    div(class="tarjetaBase border border-emerald-100 bg-emerald-50/40")
-                                        p(class="text-sm font-semibold text-emerald-600 mb-1 flex items-center gap-2")
-                                            i.fi-rr-star.text-emerald-500.text-lg
+                                    //- Reputación acumulada — % de facturas de crédito históricas que NO
+                                    //- están en mora ahora mismo (helpers/abonosCredito.js, calculada en
+                                    //- dashboardClienteCredito). Ojo con la limitación: usa el estado
+                                    //- ACTUAL de cada factura, no reconstruye si una ya pagada llegó a
+                                    //- estar en mora en el camino (esa fecha no queda registrada aparte).
+                                    - const repSinHistorial = resumen.reputacion.puntaje === null
+                                    - const repBaja = !repSinHistorial && resumen.reputacion.puntaje < 2.5
+                                    div(class=`tarjetaBase border ${repSinHistorial ? 'border-slate-200 bg-slate-50/40' : (repBaja ? 'border-rose-200 bg-rose-50/40' : 'border-emerald-100 bg-emerald-50/40')}`)
+                                        p(class=`text-sm font-semibold mb-1 flex items-center gap-2 ${repSinHistorial ? 'text-slate-500' : (repBaja ? 'text-rose-600' : 'text-emerald-600')}`)
+                                            i(class=`fi-rr-star text-lg ${repSinHistorial ? 'text-slate-400' : (repBaja ? 'text-rose-500' : 'text-emerald-500')}`)
                                             | Reputación acumulada
                                         div(class="flex justify-center items-center gap-2 mt-1")
                                             h3(class="text-3xl font-bold text-slate-800 text-center")= resumen.reputacion.etiqueta
-                                            span(class="text-sm text-slate-400 font-semibold")= `★ ${resumen.reputacion.puntaje.toFixed(1)}/5`
-                                        div(class="mt-3 flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-100 p-2 rounded-lg" title="Cálculo simulado — parámetros pendientes")
-                                            i.fi-rr-info
-                                            span Cálculo simulado — parámetros pendientes
+                                            if !repSinHistorial
+                                                span(class="text-sm text-slate-400 font-semibold")= `★ ${resumen.reputacion.puntaje.toFixed(1)}/5`
+                                        if repSinHistorial
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 p-2 rounded-lg")
+                                                i.fi-rr-info
+                                                span Aún no tiene facturas de crédito
+                                        else if repBaja
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-bold text-rose-700 bg-rose-100 p-2 rounded-lg")
+                                                i.fi-rr-triangle-warning
+                                                span Tiene facturas en mora
+                                        else
+                                            div(class="mt-3 flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-100 p-2 rounded-lg")
+                                                i.fi-rr-badge-check
+                                                span Basado en su historial de mora
 
                             //- ── ALERTAS ──────────────────────────────────────────────────────
                             if alertas.length

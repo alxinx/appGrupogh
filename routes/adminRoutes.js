@@ -13,7 +13,7 @@ getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
 getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente,
-getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, aumentarCreditoCliente, abonarFactura, abonoGlobalCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
+getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
 getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 storeCierresCaja, storeTrasladosTienda,
 getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
@@ -220,7 +220,7 @@ routes.post('/api/clientes/verificar-codigo-credito', pCli('EDIT'), verificarCod
 // cliente ya tiene crédito activo — ver panel-btn-credito en adminClientes.js) ──────────
 routes.get('/clientes/:idCliente/credito', pCli('READ'), dashboardClienteCredito);
 routes.get('/clientes/:idCliente/credito/informe', pCli('READ'), generarInformeCreditoPDF);
-routes.post('/api/clientes/:idCliente/credito/aumentar', pCli('EDIT'), verificarCodigoEmpleadoAdmin, aumentarCreditoCliente);
+routes.post('/api/clientes/:idCliente/credito/modificar', pCli('EDIT'), verificarCodigoEmpleadoAdmin, modificarCreditoCliente);
 routes.post('/api/clientes/:idCliente/facturas/:idFacturaCliente/abonar', pCli('EDIT'), verificarCodigoEmpleadoAdmin, abonarFactura);
 routes.post('/api/clientes/:idCliente/credito/abono-global', pCli('EDIT'), verificarCodigoEmpleadoAdmin, abonoGlobalCliente);
 
