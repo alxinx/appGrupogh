@@ -165,6 +165,35 @@ export const limpiarPrecio = (precio) => {
     return parseInt(numeroLimpio, 10);
 };
 
+// Monto de dinero tal como llega de un formulario. Devuelve un entero mayor que cero, o
+// `null` si el texto no representa un monto válido.
+//
+// Existe por una trampa de `limpiarPrecio`: como borra todo lo que no sea dígito, el
+// signo se pierde y un '-500' sale de ahí convertido en 500. En un endpoint de dinero un
+// monto negativo se rechaza, no se reinterpreta como positivo — si la intención era sacar
+// plata, eso es un egreso, y el sentido del movimiento es un campo aparte.
+//
+// Por eso el signo se mira ANTES de limpiar. Lo usan el abono a crédito
+// (`_validarDatosAbono`) y el movimiento manual de caja/banco (`crearMovimientoCuenta`).
+export const montoPositivo = (valorCrudo) => {
+    const texto = String(valorCrudo ?? '').trim();
+    if (texto.startsWith('-')) return null;
+    const valor = parseInt(limpiarPrecio(texto), 10);
+    return Number.isFinite(valor) && valor > 0 ? valor : null;
+};
+
+// Igual que `montoPositivo` pero acepta el cero, para los montos donde 0 es un valor
+// legítimo y no un error: un costo que todavía no se cargó, un precio mayorista surtido
+// que ese producto no maneja, un salario base en cero. Devuelve `null` para un negativo o
+// para un texto que no representa un número — nunca lo convierte en positivo.
+export const montoNoNegativo = (valorCrudo) => {
+    const texto = String(valorCrudo ?? '').trim();
+    if (texto.startsWith('-')) return null;
+    if (texto === '') return 0;
+    const valor = parseInt(limpiarPrecio(texto), 10);
+    return Number.isFinite(valor) && valor >= 0 ? valor : null;
+};
+
 
 export const formatearFecha = (fechaRaw) => {
     if (!fechaRaw) return "Sin fecha";

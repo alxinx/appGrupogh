@@ -1,5 +1,5 @@
 import { Op, fn, col } from 'sequelize';
-import { AbonoClienteCreditos, FacturaClientes, Entidades, DetallesFactura, DetallesPagosFactura, Clientes, CreditoDisponibleCliente } from '../models/index.js';
+import { AbonoClienteCreditos, FacturaClientes, Entidades, DetallesFactura, DetallesPagosFactura, Clientes, CreditoDisponibleCliente, CajasYBancos, MovimientosCajasBancos } from '../models/index.js';
 import { round2 } from './formatMoney.js';
 import db from '../config/bd.js';
 
@@ -138,12 +138,72 @@ export const bloquearFacturasCreditoCliente = async ({ idCliente, idPuntoDeVenta
 // pago sobre M facturas en orden". Antes de esto, esa lógica estaba escrita tres veces con
 // pequeñas diferencias que una corrección futura (ej. un bug en el redondeo) podía terminar
 // arreglando en un solo lugar.
+// El método de pago dejó de preguntarse en el panel: ahora se elige la cuenta que recibe
+// la plata y el método sale de su tipo. ABONO_CLIENTE_CREDITOS.metodoPago es NOT NULL y
+// lo leen los tableros y el cuadre de caja (`sumarAbonosPorMetodo`), así que se sigue
+// guardando — pero ya no puede contradecir a la cuenta: un abono a una caja es efectivo,
+// y uno a un banco no lo es.
+export const METODO_POR_TIPO_CUENTA = {
+    caja:      'Efectivo',
+    banco:     'Banco',
+    billetera: 'Billetera Virtual'
+};
+
+/**
+ * Ingreso en el libro de la cuenta que recibió el abono.
+ *
+ * Va en la MISMA transacción que los abonos (CLAUDE.md §9): o entra la plata a la cuenta
+ * y queda registrado el abono, o no pasa ninguna de las dos cosas. Antes esto no existía
+ * y el saldo de cajas y bancos nunca veía la plata de un abono a crédito.
+ *
+ * Un movimiento por línea de pago, no por factura: si un abono global de $500.000 se
+ * reparte entre cuatro facturas, a la caja entraron $500.000 una sola vez.
+ */
+const registrarIngresoDeAbono = async ({ linea, empleado, transaction }) => {
+    const cuenta = await CajasYBancos.findByPk(linea.idCajaBanco, {
+        attributes: ['idCajaBanco', 'estado'],
+        transaction,
+        lock: transaction.LOCK.SHARE
+    });
+    if (!cuenta) throw Object.assign(new Error('La cuenta que recibe el abono no existe.'), { publico: true });
+    if (!cuenta.estado) throw Object.assign(new Error('La cuenta que recibe el abono está inactiva.'), { publico: true });
+
+    // MOVIMIENTOS_CAJAS_BANCOS.idEmpleado es NOT NULL: sin ficha de empleado el
+    // movimiento no puede quedar a nombre de nadie, y el libro es append-only.
+    if (!empleado?.idEmpleado) {
+        throw Object.assign(
+            new Error('El abono no puede registrarse en la cuenta sin un empleado verificado.'),
+            { publico: true }
+        );
+    }
+
+    return MovimientosCajasBancos.create({
+        idCajaBanco: linea.idCajaBanco,
+        idEmpleado:  empleado.idEmpleado,
+        fecha:       linea.fecha || new Date(),
+        tipo:        'ingreso',
+        valor:       linea.valor,
+        referencia:  linea.nroReferencia ?? null,
+        descripcion: linea.descripcion || null
+    }, { transaction });
+};
+
 export const aplicarAbonoFIFO = async ({ lineas, facturas, loteAbonoGlobal = null, empleado, idUsuario, transaction }) => {
     const aplicadoPorFactura = new Map();
     const abonosCreados = [];
+    // Los movimientos que este abono asentó en el libro de la cuenta, para que el
+    // llamador pueda ofrecer su comprobante — uno por línea de pago.
+    const movimientosCreados = [];
     let idxFactura = 0;
 
     for (const linea of lineas) {
+        // El ingreso a la cuenta se registra una sola vez por línea de pago, antes de
+        // repartirla entre facturas. `idCajaBanco` es opcional: el abono de tienda
+        // todavía no elige cuenta y sigue funcionando como antes (ver storeControllers).
+        if (linea.idCajaBanco) {
+            movimientosCreados.push(await registrarIngresoDeAbono({ linea, empleado, transaction }));
+        }
+
         let restanteLinea = linea.valor;
         while (restanteLinea > 0 && idxFactura < facturas.length) {
             const f = facturas[idxFactura];
@@ -158,6 +218,7 @@ export const aplicarAbonoFIFO = async ({ lineas, facturas, loteAbonoGlobal = nul
                 totalFactura: f.valorOriginal,
                 valorAbono: aplicar, valorPorPagar: f.deudaActual,
                 metodoPago: linea.metodoPago, idEntidad: linea.idEntidad ?? null,
+                idCajaBanco: linea.idCajaBanco ?? null,
                 nroReferencia: linea.nroReferencia ?? null, loteAbonoGlobal,
                 idEmpleado:     empleado?.idEmpleado || null,
                 nombreEmpleado: empleado?.nombre || null,
@@ -186,7 +247,7 @@ export const aplicarAbonoFIFO = async ({ lineas, facturas, loteAbonoGlobal = nul
         return { idFacturaCliente, nroFactura: f?.nroFactura, aplicado, saldoRestante: f?.deudaActual ?? 0 };
     });
 
-    return { resumen, abonosCreados };
+    return { resumen, abonosCreados, movimientosCreados };
 };
 
 // Ventas y desglose de pagos (por nombre completo de método, ver METODOS_PAGO) de un rango

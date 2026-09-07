@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import db from '../config/bd.js';
 import { Productos, Familia, Categorias, Atributos, VariacionesProducto } from '../models/index.js';
-import { limpiarPrecio } from '../helpers/helpers.js';
+import { montoNoNegativo } from '../helpers/helpers.js';
 import { generarSlugDe, slugUnico, resolverIdFamilia } from '../helpers/productos.js';
 
 // Importador masivo de productos desde el Excel del proveedor (mismo formato de columnas
@@ -159,15 +159,25 @@ const procesarImportacionExcel = async (req, res) => {
                 ['costo', 'costo', 'Costo']
             ];
             let faltaPrecio = null;
+            let precioInvalido = null;
             const valoresPrecio = {};
             for (const [colExcel, campoDB, etiqueta] of camposPrecio) {
                 const valor = f[colExcel];
                 const vacio = valor === null || valor === undefined || valor === '';
                 if (vacio && !permitirVacio[campoDB]) { faltaPrecio = etiqueta; break; }
-                valoresPrecio[campoDB] = vacio ? 0 : (parseInt(limpiarPrecio(valor)) || 0);
+                // `montoNoNegativo` devuelve null para un negativo o para algo que no es un
+                // número. Con `limpiarPrecio` a secas, una celda con -8000 entraba como
+                // 8000 y una con texto como 0 — sin que nadie se enterara.
+                const limpio = vacio ? 0 : montoNoNegativo(valor);
+                if (limpio === null) { precioInvalido = etiqueta; break; }
+                valoresPrecio[campoDB] = limpio;
             }
             if (faltaPrecio) {
                 malos.push({ rowNumber: f.rowNumber, nombre: nombreFinal, sku: f.codigo, motivo: `${faltaPrecio} vacío` });
+                continue;
+            }
+            if (precioInvalido) {
+                malos.push({ rowNumber: f.rowNumber, nombre: nombreFinal, sku: f.codigo, motivo: `${precioInvalido} negativo o no numérico` });
                 continue;
             }
 

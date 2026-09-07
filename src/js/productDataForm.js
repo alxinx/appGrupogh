@@ -771,7 +771,13 @@ actualizarEstadoWeb();
     formulario.addEventListener('submit', function(e) {
         e.preventDefault();
 
-        const limpiarPrecio = (val) => parseInt(String(val).replace(/\D/g, '')) || 0;
+        // El \D borra también el signo, así que un "-500" pasaba la comprobación de
+        // "mayor a 0" como 500. Un negativo se devuelve como -1 para que la rechace.
+        const limpiarPrecio = (val) => {
+            const texto = String(val ?? '').trim();
+            if (texto.startsWith('-')) return -1;
+            return parseInt(texto.replace(/\D/g, '')) || 0;
+        };
         const mayorista = limpiarPrecio(document.getElementById('precioVentaMayorista')?.value);
         const publico   = limpiarPrecio(document.getElementById('precioVentaPublicoFinal')?.value);
 

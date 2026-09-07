@@ -201,33 +201,33 @@ block contenedor
                                         p(class="text-sm text-slate-400 font-medium") No hay facturas para este filtro
                                 else
                                     div(class="overflow-x-auto -mx-1")
-                                        table(class="w-full text-sm min-w-[820px]")
+                                        table(class="w-full text-left border-collapse min-w-[820px]")
                                             thead
-                                                tr(class="text-left text-[11px] text-slate-400 font-bold uppercase border-b border-slate-100")
-                                                    th(class="py-2 px-1") N° Factura
-                                                    th(class="py-2 px-1") Fecha ingreso
-                                                    th(class="py-2 px-1") Días transcurridos
-                                                    th(class="py-2 px-1 text-right") Valor original
-                                                    th(class="py-2 px-1 text-right") Abonado
-                                                    th(class="py-2 px-1 text-right") Deuda actual
-                                                    th(class="py-2 px-1") Estado
-                                                    th(class="py-2 px-1 text-right") Acción
-                                            tbody
+                                                tr(class="border-b border-gh-primaryHover text-sm transition-colors")
+                                                    th(class="px-4 py-4 text-gray-600") N° Factura
+                                                    th(class="px-4 py-4 text-gray-600") Fecha ingreso
+                                                    th(class="px-4 py-4 text-gray-600") Días transcurridos
+                                                    th(class="px-4 py-4 text-right text-gray-600") Valor original
+                                                    th(class="px-4 py-4 text-right text-gray-600") Abonado
+                                                    th(class="px-4 py-4 text-right text-gray-600") Deuda actual
+                                                    th(class="px-4 py-4 text-gray-600") Estado
+                                                    th(class="px-4 py-4 text-right text-gray-600") Acción
+                                            tbody(class="divide-y divide-slate-100")
                                                 - const ETIQUETAS_ESTADO = { pagado: ['Pagado','table-badge-active'], en_mora: ['En mora','table-badge-low'], pendiente: ['Pendiente','table-badge-pending'] }
                                                 each f in facturas
                                                     - const [etiquetaEstado, claseEstado] = ETIQUETAS_ESTADO[f.estadoCalculado]
-                                                    tr(class="border-b border-slate-50 hover:bg-slate-50/60 transition-colors")
-                                                        td(class="py-3 px-1 font-bold text-slate-700")= f.nroFactura
-                                                        td(class="py-3 px-1 text-slate-500")= new Date(f.fechaEmision).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                        td(class=`py-3 px-1 font-semibold ${f.estadoCalculado === 'en_mora' ? 'text-rose-500' : 'text-amber-500'}`)= `${f.diasTranscurridos} día${f.diasTranscurridos !== 1 ? 's' : ''}`
-                                                        td(class="py-3 px-1 text-right font-medium text-slate-600")= `$${Math.round(f.valorOriginal).toLocaleString('es-CO')}`
-                                                        td(class="py-3 px-1 text-right font-medium text-emerald-600")= `$${Math.round(f.abonado).toLocaleString('es-CO')}`
-                                                        td(class="py-3 px-1 text-right font-bold text-slate-800")= `$${Math.round(f.deudaActual).toLocaleString('es-CO')}`
-                                                        td(class="py-3 px-1")
+                                                    tr(class="border-b border-gray-100 hover:bg-gray-100 transition-colors")
+                                                        td(class="px-4 py-4 font-bold text-slate-800")= f.nroFactura
+                                                        td(class="px-4 py-4 text-sm text-slate-600")= new Date(f.fechaEmision).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                        td(class=`px-4 py-4 text-sm font-semibold ${f.estadoCalculado === 'en_mora' ? 'text-rose-500' : 'text-amber-500'}`)= `${f.diasTranscurridos} día${f.diasTranscurridos !== 1 ? 's' : ''}`
+                                                        td(class="px-4 py-4 text-right text-sm tabular-nums text-slate-600")= `$${Math.round(f.valorOriginal).toLocaleString('es-CO')}`
+                                                        td(class="px-4 py-4 text-right text-sm tabular-nums font-semibold text-emerald-600")= `$${Math.round(f.abonado).toLocaleString('es-CO')}`
+                                                        td(class="px-4 py-4 text-right text-sm tabular-nums font-bold text-slate-800")= `$${Math.round(f.deudaActual).toLocaleString('es-CO')}`
+                                                        td(class="px-4 py-4")
                                                             span(class=`table-badge ${claseEstado}`)
                                                                 span(class="table-badge-dot")
                                                                 span= etiquetaEstado
-                                                        td(class="py-3 px-1")
+                                                        td(class="px-4 py-4")
                                                             div(class="flex items-center justify-end gap-1")
                                                                 a(href=`/admin/api/factura/${f.idFacturaCliente}/tirilla` target="_blank" rel="noopener" title="Ver factura" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors")
                                                                     i(class="fi fi-rr-eye text-sm")
@@ -261,7 +261,12 @@ block contenedor
                         idCliente: !{JSON.stringify(cliente.idCliente)},
                         nombreCliente: !{JSON.stringify(nombreCliente || 'este cliente')},
                         valorCreditoCliente: !{JSON.stringify(resumen.valorTotalCredito)},
-                        deudaTotal: !{JSON.stringify(resumen.valorConsumido)}
+                        deudaTotal: !{JSON.stringify(resumen.valorConsumido)},
+                        //- Cajas y bancos activos que pueden recibir el abono. El modal ya
+                        //- no pregunta "método de pago": se elige la cuenta y el método
+                        //- sale de su tipo (ver helpers/abonosCredito.js).
+                        cuentas: !{JSON.stringify(cuentasAbono || [])},
+                        ahora: !{JSON.stringify(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16))}
                     };
 
                 include ../../../components/modalConfirmacion

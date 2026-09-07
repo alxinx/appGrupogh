@@ -6,7 +6,7 @@ import Familia from '../models/Familia.js';
 import Categorias from '../models/Categorias.js';
 import Atributos from '../models/Atributos.js';
 import VariacionesProducto from '../models/VariacionesProducto.js';
-import { normalizarFamilia, limpiarPrecio } from '../helpers/helpers.js';
+import { normalizarFamilia, montoNoNegativo } from '../helpers/helpers.js';
 
 dotenv.config();
 
@@ -192,10 +192,12 @@ const run = async () => {
             sku: f.codigo,
             idCategoria: idCategoriaFinal,
             idFamilia: idFamiliaFinal,
-            precioVentaPublicoFinal: parseInt(limpiarPrecio(f.precio)) || 0,
-            precioVentaMayorista: parseInt(limpiarPrecio(f.mayorista)) || 0,
-            precioVentaMayoristaSurtido: parseInt(limpiarPrecio(f.surtido)) || 0,
-            costo: parseInt(limpiarPrecio(f.costo)) || 0,
+            // `?? 0` sobre montoNoNegativo: una celda negativa o con texto queda en 0 en vez
+            // de entrar convertida en positiva, que es lo que hacía `limpiarPrecio` solo.
+            precioVentaPublicoFinal: montoNoNegativo(f.precio) ?? 0,
+            precioVentaMayorista: montoNoNegativo(f.mayorista) ?? 0,
+            precioVentaMayoristaSurtido: montoNoNegativo(f.surtido) ?? 0,
+            costo: montoNoNegativo(f.costo) ?? 0,
             idTalla,
             idColor,
             tallaOriginal: f.talla,

@@ -25,7 +25,7 @@ import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {typ
 import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
 import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
-import { limpiarPrecio, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
+import { montoPositivo, montoNoNegativo, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
 import { generarSlugDe, slugUnico, normalizarSku13, normalizarSku20, resolverIdFamilia } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col, literal } from "sequelize";
@@ -35,9 +35,11 @@ import { crearConCodigo } from '../helpers/secuencias.js';
 import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
 import ExcelJS from 'exceljs';
 import { tituloLista } from '../helpers/textoLista.js';
-import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, bucketPagosVacio, acumularEnBucketPagos, facturasCreditoCliente, creditoClienteResumen, METODOS_ABONO, METODOS_PAGO } from '../helpers/abonosCredito.js';
+import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, bucketPagosVacio, acumularEnBucketPagos, facturasCreditoCliente, creditoClienteResumen, METODOS_ABONO, METODOS_PAGO, METODO_POR_TIPO_CUENTA } from '../helpers/abonosCredito.js';
 import { round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
+import { subirComprobantes, borrarComprobantes, urlComprobante } from '../helpers/comprobantesMovimiento.js';
+import { crearTirilla, fmtCOP, fmtFecha, fmtHora } from '../helpers/tirilla.js';
 
 
 dotenv.config();
@@ -2493,9 +2495,20 @@ const dashboardClienteCredito = async (req, res) => {
             pagado:     facturasTodas.filter(f => f.estadoCalculado === 'pagado').length
         };
 
+        // Cuentas que pueden recibir el abono: las mismas que lista /admin/bankentities,
+        // acotadas a las activas. Mismo orden que allá para que el operador las encuentre
+        // donde las vio por última vez.
+        const cuentasAbono = await CajasYBancos.findAll({
+            attributes: ['idCajaBanco', 'nombreCajaBanco', 'tipo', 'referencia'],
+            where: { estado: true },
+            order: [['tipo', 'ASC'], ['nombreCajaBanco', 'ASC'], ['idCajaBanco', 'ASC']],
+            raw: true
+        });
+
         return res.render('./administrador/customers/views/creditoCliente', {
             pagina: 'Clientes',
             subPagina: 'Estado de crédito',
+            cuentasAbono,
             csrfToken: req.csrfToken(),
             currentPath: req.path,
             cliente,
@@ -2682,31 +2695,95 @@ const modificarCreditoCliente = async (req, res) => {
 };
 
 // ─── ABONAR A UNA FACTURA PUNTUAL ─────────────────────────────────────────────
+// Parámetros de un abono desde el panel. Son los MISMOS que pide un ingreso manual a una
+// caja o banco (`crearMovimientoCuenta`): cuenta que recibe, valor, descripción, fecha y
+// referencia — porque un abono es exactamente eso, plata que entra a una cuenta. El
+// método de pago ya no se pregunta: sale del tipo de la cuenta elegida.
+//
+// Devuelve { error } con el mensaje listo para responder, o { datos } con todo validado.
+const _validarDatosAbono = async (req) => {
+    // `montoPositivo` rechaza los negativos, que `limpiarPrecio` por sí solo convertiría
+    // en positivos al borrar el signo (ver helpers/helpers.js).
+    const valorAbono = montoPositivo(req.body?.valorAbono);
+    if (valorAbono === null)
+        return { error: { code: 400, mensaje: 'El valor del abono debe ser mayor a 0.' } };
+
+    const idCajaBanco = String(req.body?.idCajaBanco || '').trim();
+    if (!idCajaBanco)
+        return { error: { code: 400, mensaje: 'Seleccioná la caja o el banco que recibe el abono.' } };
+
+    const cuenta = await CajasYBancos.findByPk(idCajaBanco, {
+        attributes: ['idCajaBanco', 'nombreCajaBanco', 'tipo', 'estado'],
+        raw: true
+    });
+    if (!cuenta)      return { error: { code: 400, mensaje: 'La cuenta seleccionada no existe.' } };
+    if (!cuenta.estado) return { error: { code: 422, mensaje: `"${cuenta.nombreCajaBanco}" está inactiva: no admite movimientos.` } };
+
+    const metodoPago = METODO_POR_TIPO_CUENTA[cuenta.tipo];
+    if (!metodoPago)
+        return { error: { code: 422, mensaje: 'El tipo de cuenta no admite recibir abonos.' } };
+
+    // La referencia es obligatoria: es el número de recibo/voucher con el que después se
+    // concilia este ingreso contra el extracto o el talonario. Sin ella, la fila del libro
+    // de la cuenta no se puede rastrear hasta el documento que la respalda.
+    const nroReferencia = String(req.body?.nroReferencia || '').trim().slice(0, 50);
+    if (!nroReferencia)
+        return { error: { code: 422, mensaje: 'La referencia es obligatoria.' } };
+
+    // La descripción NO se lee del body: la arma el servidor con `_descripcionAbono`. En el
+    // modal se muestra de solo lectura, y confiar en lo que llegue por la petición dejaría
+    // que cualquiera escribiera lo que quisiera en un libro append-only.
+
+    // Misma regla que el movimiento manual: llega de un <input type="datetime-local"> en
+    // hora local de quien registra, y una fecha futura descuadraría el saldo corrido de
+    // la cuenta (ver CLAUDE.md §10 sobre la zona horaria del servidor).
+    const fecha = req.body?.fecha ? new Date(req.body.fecha) : new Date();
+    if (isNaN(fecha.getTime()))
+        return { error: { code: 422, mensaje: 'La fecha del abono no es válida.' } };
+    if (fecha.getTime() > Date.now() + 60_000)
+        return { error: { code: 422, mensaje: 'La fecha del abono no puede ser futura.' } };
+
+    return { datos: { valorAbono, idCajaBanco, cuenta, metodoPago, nroReferencia, fecha } };
+};
+
+/** Texto que queda en el libro de la cuenta. Lo arma el servidor, no el navegador. */
+const _descripcionAbono = ({ nroFactura, cliente }) => {
+    const nombre = (cliente?.razon_social?.trim())
+        || [cliente?.primer_nombre, cliente?.primer_apellido].filter(Boolean).join(' ').trim()
+        || 'Cliente';
+    return (nroFactura
+        ? `Abono factura ${nroFactura} — ${nombre}`
+        : `Abono global — ${nombre}`).slice(0, 150);
+};
+
 const abonarFactura = async (req, res) => {
     const { idCliente, idFacturaCliente } = req.params;
-    const valorAbono   = parseFloat(req.body?.valorAbono);
-    const metodoPago   = req.body?.metodoPago;
-    const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
-    const nroReferencia = req.body?.nroReferencia?.trim() || null;
+    const subidos = [];
 
-    if (!Number.isFinite(valorAbono) || valorAbono <= 0)
-        return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
-    if (!METODOS_ABONO.includes(metodoPago))
-        return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
-    if (metodoPago === 'Entidad Crediticia' && !idEntidad)
-        return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
+    const { error, datos } = await _validarDatosAbono(req);
+    if (error) return res.status(error.code).json({ success: false, mensaje: error.mensaje });
+    const { valorAbono, idCajaBanco, metodoPago, nroReferencia, fecha } = datos;
 
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
             return res.status(403).json({ success: false, mensaje: 'Sin autorización para registrar abonos.' });
 
-        if (metodoPago === 'Entidad Crediticia') {
-            const entidad = await Entidades.findOne({ where: { idEntidad, tipoEntidad: 'Entidad Crediticia' }, raw: true });
-            if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
-        }
-
         const empleado = req.empleadoVerificado;
-        const linea = { valor: valorAbono, metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null, nroReferencia };
+        const idAbono = uuidV7();
+
+        // Los comprobantes se suben ANTES de abrir la transacción, igual que en el
+        // movimiento manual: mantenerla abierta mientras viajan bloquea la factura.
+        const { docs, subidos: keysSubidas } = await subirComprobantes({
+            archivos:      req.files?.comprobantes || [],
+            idPropietario: idAbono,
+            pertenece:     'transacciones_bancarias',
+            prefijo:       'abono'
+        });
+        subidos.push(...keysSubidas);
+
+        const cliente = await Clientes.findByPk(idCliente, { raw: true });
+        const linea = { valor: valorAbono, metodoPago, idEntidad: null, idCajaBanco, fecha, nroReferencia };
+        let idMovimientoCuenta = null;
 
         // El SELECT ... FOR UPDATE va DENTRO de la transacción: dos abonos casi simultáneos
         // sobre la misma factura serializan acá (el segundo espera a que el primero
@@ -2725,15 +2802,30 @@ const abonarFactura = async (req, res) => {
                 await t.rollback();
                 return res.status(409).json({ success: false, mensaje: 'Esta factura ya está pagada.' });
             }
+            // Con la factura ya bloqueada se conoce su número: recién acá la descripción
+            // del movimiento puede nombrarla.
+            linea.descripcion = _descripcionAbono({ nroFactura: facturaFIFO.nroFactura, cliente });
+
             if (valorAbono > facturaFIFO.deudaActual) {
                 await t.rollback();
                 return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda actual (${_pesosCO(facturaFIFO.deudaActual)}).` });
             }
 
-            const { abonosCreados } = await aplicarAbonoFIFO({
+            const { abonosCreados, movimientosCreados } = await aplicarAbonoFIFO({
                 lineas: [linea], facturas: [facturaFIFO],
                 empleado, idUsuario: req.usuario?.idUsuario || null, transaction: t
             });
+            idMovimientoCuenta = movimientosCreados[0]?.idMovimiento || null;
+
+            // Los comprobantes cuelgan del abono que quedó creado.
+            if (docs.length) {
+                const idPropietario = abonosCreados[0]?.idAbonoClienteCredito || idAbono;
+                await Documentacion.bulkCreate(
+                    docs.map(d => ({ ...d, idPropietario })),
+                    { transaction: t }
+                );
+            }
+
             await t.commit();
 
             const nuevoSaldo = facturaFIFO.deudaActual;
@@ -2742,15 +2834,200 @@ const abonarFactura = async (req, res) => {
                 mensaje: nuevoSaldo <= 0 ? 'Factura liquidada.' : 'Abono registrado.',
                 liquidada: nuevoSaldo <= 0,
                 saldoRestante: nuevoSaldo,
-                idAbonoClienteCredito: abonosCreados[0]?.idAbonoClienteCredito
+                idAbonoClienteCredito: abonosCreados[0]?.idAbonoClienteCredito,
+                // El ingreso que quedó asentado en la caja/banco, para su propio comprobante.
+                idMovimientoCuenta,
+                adjuntos: docs.map(d => ({ nombreDocumento: d.nombreDocumento, formato: d.formato, url: urlComprobante(d.keyName) }))
             });
         } catch (e) {
             if (!t.finished) await t.rollback().catch(() => {});
             throw e;
         }
     } catch (e) {
+        // La escritura falló: lo que alcanzó a subir a R2 no debe quedar suelto.
+        await borrarComprobantes(subidos);
+        if (e.publico) return res.status(422).json({ success: false, mensaje: e.message });
         console.error('abonarFactura:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono.' });
+    }
+};
+
+// ─── COMPROBANTE DE ABONO EN PDF ─────────────────────────────────────────────
+// GET /admin/api/clientes/abonos/:id/tirilla
+//
+// `:id` es el idAbonoClienteCredito de un abono puntual O el loteAbonoGlobal de un abono
+// global — un solo endpoint para los dos, porque el comprobante es el mismo documento:
+// el papel que se le entrega al cliente por la plata que acaba de entregar. Un abono
+// global se reparte entre varias facturas, así que ahí la tirilla las lista todas.
+//
+// Mismo formato de tirilla de 80mm que el comprobante de abono a proveedor
+// (`getTirillaAbonoProveedor`), pero en streaming con doc.pipe(res) (CLAUDE.md §11).
+const getTirillaAbonoCliente = async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Se busca primero como abono puntual y después como lote: son dos columnas
+        // distintas de la misma tabla, así que una sola consulta con OR alcanza.
+        const abonos = await AbonoClienteCreditos.findAll({
+            where: { [Op.or]: [{ idAbonoClienteCredito: id }, { loteAbonoGlobal: id }] },
+            include: [
+                { model: Clientes, as: 'cliente', attributes: ['razon_social', 'primer_nombre', 'primer_apellido', 'numero_doc'] },
+                { model: CajasYBancos, as: 'cuenta', attributes: ['nombreCajaBanco', 'tipo'] }
+            ],
+            order: [['createdAt', 'ASC']]
+        });
+        if (!abonos.length) return res.status(404).json({ success: false, mensaje: 'Abono no encontrado.' });
+
+        // Los números de factura no están en ABONO_CLIENTE_CREDITOS: se resuelven en una
+        // sola consulta por todos los ids, no una por fila (CLAUDE.md §7).
+        const facturas = await FacturaClientes.findAll({
+            where: { idFacturaCliente: { [Op.in]: abonos.map(a => a.idFacturaCliente) } },
+            attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura'],
+            raw: true
+        });
+        const nroPorFactura = Object.fromEntries(
+            facturas.map(f => [f.idFacturaCliente, `${f.prefijo || ''}${f.numeroFactura}`])
+        );
+
+        const primero  = abonos[0];
+        const cliente  = primero.cliente;
+        const regimen  = await RegimenFacturacion.findOne();
+        const esGlobal = !!primero.loteAbonoGlobal;
+        const total    = abonos.reduce((acc, a) => acc + parseFloat(a.valorAbono), 0);
+
+        const nombreCliente = (cliente?.razon_social?.trim())
+            || [cliente?.primer_nombre, cliente?.primer_apellido].filter(Boolean).join(' ').trim()
+            || 'Cliente';
+
+        // Alto ajustado al contenido: el rollo es continuo y cada punto de más es papel.
+        const alto = 300 + abonos.length * 12 + (cliente?.numero_doc ? 11 : 0) + (primero.nombreEmpleado ? 11 : 0);
+        const { doc, CW, MARGEN, hr, hrDot, rowKV, centrado, cabecera, pieFirma } = crearTirilla({ alto });
+
+        // Cabeceras antes del pipe: una vez que empieza a fluir el PDF ya no se pueden
+        // mandar, y un error posterior no podría convertirse en un 500 con JSON.
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="abono-${esGlobal ? 'global' : (nroPorFactura[primero.idFacturaCliente] || id)}.pdf"`);
+        doc.pipe(res);
+
+        cabecera({
+            regimen,
+            titulo: esGlobal ? 'COMPROBANTE DE ABONO GLOBAL' : 'COMPROBANTE DE ABONO',
+            fecha: primero.createdAt
+        });
+
+        rowKV('Cliente:', nombreCliente);
+        if (cliente?.numero_doc) rowKV('Documento:', cliente.numero_doc);
+        rowKV('Referencia:', primero.nroReferencia || '—');
+        rowKV('Recibido en:', primero.cuenta?.nombreCajaBanco || primero.metodoPago);
+        rowKV('Forma de pago:', primero.metodoPago);
+        if (primero.nombreEmpleado) rowKV('Atendió:', primero.nombreEmpleado);
+        doc.moveDown(0.2); hr();
+
+        centrado(esGlobal ? 'FACTURAS ABONADAS' : 'DETALLE', { size: 7, negrita: true });
+        doc.moveDown(0.3);
+
+        const cFac = CW * 0.34, cAbo = CW * 0.33, cSal = CW * 0.33;
+        const yTh = doc.y;
+        doc.font('Helvetica-Bold').fontSize(6)
+           .text('Factura', MARGEN, yTh, { width: cFac })
+           .text('Abono',   MARGEN + cFac, yTh, { width: cAbo, align: 'right' })
+           .text('Saldo',   MARGEN + cFac + cAbo, yTh, { width: cSal, align: 'right' });
+        doc.y = yTh + 9;
+        hrDot();
+
+        abonos.forEach(a => {
+            const y = doc.y;
+            doc.font('Helvetica').fontSize(6)
+               .text(nroPorFactura[a.idFacturaCliente] || '—', MARGEN, y, { width: cFac })
+               .text(fmtCOP(parseFloat(a.valorAbono)),    MARGEN + cFac, y, { width: cAbo, align: 'right' })
+               .text(fmtCOP(parseFloat(a.valorPorPagar)), MARGEN + cFac + cAbo, y, { width: cSal, align: 'right' });
+            doc.y = y + 11;
+        });
+
+        doc.moveDown(0.2); hrDot();
+        rowKV('TOTAL ABONADO:', fmtCOP(total), true);
+        doc.moveDown(0.4); hr();
+        pieFirma();
+
+        doc.end();
+    } catch (error) {
+        console.error('getTirillaAbonoCliente:', error);
+        // Si el pipe ya arrancó, la respuesta va a medio camino: no se puede mandar JSON.
+        if (res.headersSent) return res.end();
+        return res.status(500).json({ success: false, mensaje: 'Error al generar el comprobante.' });
+    }
+};
+
+// ─── COMPROBANTE DE UN MOVIMIENTO DE CAJA O BANCO ────────────────────────────
+// GET /admin/bankentities/movimientos/:idMovimiento/tirilla
+//
+// El papel de la ENTRADA (o salida) de dinero en la cuenta, distinto del comprobante de
+// abono: ése documenta lo que el cliente entregó contra su deuda, éste documenta que esa
+// plata quedó asentada en el libro de una caja o un banco. Un abono genera los dos.
+//
+// Sirve para cualquier fila de MOVIMIENTOS_CAJAS_BANCOS, la haya creado un abono o el
+// formulario manual del perfil de la cuenta.
+const getTirillaMovimientoCuenta = async (req, res) => {
+    const { idMovimiento } = req.params;
+    try {
+        const mov = await MovimientosCajasBancos.findByPk(idMovimiento, {
+            include: [
+                { model: CajasYBancos, as: 'cajaBanco', attributes: ['nombreCajaBanco', 'tipo', 'referencia'] },
+                { model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido', 'codigoEmpleado'] }
+            ]
+        });
+        if (!mov) return res.status(404).json({ success: false, mensaje: 'Movimiento no encontrado.' });
+
+        const regimen = await RegimenFacturacion.findOne();
+        const esIngreso = mov.tipo === 'ingreso';
+        const empleado = mov.empleado
+            ? `${mov.empleado.PrimerNombre || ''} ${mov.empleado.PrimerApellido || ''}`.trim()
+            : null;
+
+        // La descripción envuelve, así que su alto depende del largo del texto.
+        const lineasDesc = Math.ceil((mov.descripcion || '').length / 42) || 1;
+        const alto = 275 + lineasDesc * 10 + (empleado ? 11 : 0) + (mov.referencia ? 11 : 0);
+
+        const { doc, CW, MARGEN, hr, rowKV, centrado, cabecera, pieFirma } = crearTirilla({ alto });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="movimiento-${idMovimiento}.pdf"`);
+        doc.pipe(res);
+
+        cabecera({
+            regimen,
+            titulo: esIngreso ? 'COMPROBANTE DE INGRESO' : 'COMPROBANTE DE EGRESO',
+            fecha: mov.fecha
+        });
+
+        rowKV('Cuenta:', mov.cajaBanco?.nombreCajaBanco || '—');
+        rowKV('Tipo de cuenta:', mov.cajaBanco?.tipo || '—');
+        if (mov.cajaBanco?.referencia) rowKV('Nº de cuenta:', mov.cajaBanco.referencia);
+        if (mov.referencia) rowKV('Referencia:', mov.referencia);
+        if (empleado) rowKV('Registró:', empleado);
+        doc.moveDown(0.2); hr();
+
+        // El monto es lo que se busca de un vistazo, así que va grande y en el color del
+        // sentido del movimiento: verde entra, rojo sale.
+        centrado(esIngreso ? 'ENTRA A LA CUENTA' : 'SALE DE LA CUENTA', { size: 6.5 });
+        doc.moveDown(0.2);
+        centrado(fmtCOP(parseFloat(mov.valor)), { size: 14, negrita: true, color: esIngreso ? '#12a370' : '#dc2626' });
+        doc.moveDown(0.5); hr();
+
+        if (mov.descripcion) {
+            doc.font('Helvetica-Bold').fontSize(6.5).text('Concepto:', MARGEN, doc.y);
+            doc.font('Helvetica').fontSize(6.5).text(mov.descripcion, MARGEN, doc.y, { width: CW });
+            doc.moveDown(0.4); hr();
+        }
+
+        // El asiento es dato de auditoría: cuándo se anotó, que no siempre es cuándo pasó.
+        centrado(`Asentado el ${fmtFecha(mov.createdAt)} ${fmtHora(mov.createdAt)}`, { size: 5.5 });
+        pieFirma({ etiqueta: 'Registra:', quien: 'registra' });
+
+        doc.end();
+    } catch (error) {
+        console.error('getTirillaMovimientoCuenta:', error);
+        if (res.headersSent) return res.end();
+        return res.status(500).json({ success: false, mensaje: 'Error al generar el comprobante.' });
     }
 };
 
@@ -2762,30 +3039,34 @@ const abonarFactura = async (req, res) => {
 // esta primera versión).
 const abonoGlobalCliente = async (req, res) => {
     const { idCliente } = req.params;
-    const valorTotal   = parseFloat(req.body?.valorAbono);
-    const metodoPago   = req.body?.metodoPago;
-    const idEntidad    = req.body?.idEntidad ? parseInt(req.body.idEntidad) : null;
-    const nroReferencia = req.body?.nroReferencia?.trim() || null;
+    const subidos = [];
 
-    if (!Number.isFinite(valorTotal) || valorTotal <= 0)
-        return res.status(400).json({ success: false, mensaje: 'El valor del abono debe ser mayor a 0.' });
-    if (!METODOS_ABONO.includes(metodoPago))
-        return res.status(400).json({ success: false, mensaje: 'Método de pago inválido.' });
-    if (metodoPago === 'Entidad Crediticia' && !idEntidad)
-        return res.status(400).json({ success: false, mensaje: 'Selecciona la entidad crediticia.' });
+    // Mismos parámetros que el abono a una factura puntual y que el ingreso manual a una
+    // cuenta: los tres pasan por el mismo validador.
+    const { error, datos } = await _validarDatosAbono(req);
+    if (error) return res.status(error.code).json({ success: false, mensaje: error.mensaje });
+    const { valorAbono: valorTotal, idCajaBanco, metodoPago, nroReferencia, fecha } = datos;
 
     try {
         if (!(await _tienePermisoCredito(req.usuario)))
             return res.status(403).json({ success: false, mensaje: 'Sin autorización para registrar abonos.' });
 
-        if (metodoPago === 'Entidad Crediticia') {
-            const entidad = await Entidades.findOne({ where: { idEntidad, tipoEntidad: 'Entidad Crediticia' }, raw: true });
-            if (!entidad) return res.status(400).json({ success: false, mensaje: 'Entidad crediticia inválida.' });
-        }
-
         const empleado = req.empleadoVerificado;
         const loteAbonoGlobal = uuidV7();
-        const linea = { valor: valorTotal, metodoPago, idEntidad: metodoPago === 'Entidad Crediticia' ? idEntidad : null, nroReferencia };
+
+        const { docs, subidos: keysSubidas } = await subirComprobantes({
+            archivos:      req.files?.comprobantes || [],
+            idPropietario: loteAbonoGlobal,
+            pertenece:     'transacciones_bancarias',
+            prefijo:       'abono'
+        });
+        subidos.push(...keysSubidas);
+
+        const cliente = await Clientes.findByPk(idCliente, { raw: true });
+        const linea = {
+            valor: valorTotal, metodoPago, idEntidad: null, idCajaBanco, fecha, nroReferencia,
+            descripcion: _descripcionAbono({ nroFactura: null, cliente })
+        };
 
         // El SELECT ... FOR UPDATE va DENTRO de la transacción: dos abonos globales casi
         // simultáneos sobre el mismo cliente serializan acá (el segundo espera a que el
@@ -2795,7 +3076,7 @@ const abonoGlobalCliente = async (req, res) => {
         // porque esa lee sin lock (sigue siendo la correcta para las pantallas de solo
         // lectura, dashboardClienteCredito/generarInformeCreditoPDF).
         const t = await db.transaction();
-        let resumen, deudaTotal;
+        let resumen, deudaTotal, idMovimientoCuenta = null;
         try {
             const facturas = (await bloquearFacturasCreditoCliente({ idCliente, transaction: t }))
                 .filter(f => f.deudaActual > 0);
@@ -2810,18 +3091,34 @@ const abonoGlobalCliente = async (req, res) => {
                 return res.status(400).json({ success: false, mensaje: `El abono no puede superar la deuda total del cliente (${_pesosCO(deudaTotal)}).` });
             }
 
-            ({ resumen } = await aplicarAbonoFIFO({
+            let movimientosCreados;
+            ({ resumen, movimientosCreados } = await aplicarAbonoFIFO({
                 lineas: [linea], facturas, loteAbonoGlobal,
                 empleado, idUsuario: req.usuario?.idUsuario || null, transaction: t
             }));
+            idMovimientoCuenta = movimientosCreados[0]?.idMovimiento || null;
+
+            // El comprobante es del pago, no de una factura puntual: cuelga del lote, que
+            // es lo que agrupa las filas que ese pago creó en varias facturas.
+            if (docs.length) await Documentacion.bulkCreate(docs, { transaction: t });
+
             await t.commit();
         } catch (e) {
             if (!t.finished) await t.rollback().catch(() => {});
             throw e;
         }
 
-        return res.json({ success: true, mensaje: `Abono repartido entre ${resumen.length} factura${resumen.length !== 1 ? 's' : ''}.`, loteAbonoGlobal, facturas: resumen });
+        return res.json({
+            success: true,
+            mensaje: `Abono repartido entre ${resumen.length} factura${resumen.length !== 1 ? 's' : ''}.`,
+            loteAbonoGlobal,
+            idMovimientoCuenta,
+            facturas: resumen,
+            adjuntos: docs.map(d => ({ nombreDocumento: d.nombreDocumento, formato: d.formato, url: urlComprobante(d.keyName) }))
+        });
     } catch (e) {
+        await borrarComprobantes(subidos);
+        if (e.publico) return res.status(422).json({ success: false, mensaje: e.message });
         console.error('abonoGlobalCliente:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono global.' });
     }
@@ -3216,6 +3513,13 @@ const saveEmployee = async (req, res) => {
         cargo, salarioBase, comisiones, idPuntoDeVenta
     } = req.body;
 
+    // Un salario negativo se rechaza, no se guarda como 0: `limpiarPrecio` le borraba el
+    // signo y lo convertía en positivo (ver helpers/helpers.js `montoNoNegativo`).
+    const salarioBaseLimpio = montoNoNegativo(salarioBase);
+    if (salarioBaseLimpio === null) {
+        return res.status(400).json({ success: false, mensaje: 'El salario base no puede ser negativo.' });
+    }
+
     const t = await db.transaction();
     const uploadedFiles = [];
 
@@ -3253,7 +3557,7 @@ const saveEmployee = async (req, res) => {
             telefonoEmergencia,
             tipoContrato,
             cargo,
-            salarioBase: limpiarPrecio(salarioBase),
+            salarioBase: salarioBaseLimpio,
             comisiones: comisiones === 'on',
             codigoEmpleado,
             estado: 'activo'
@@ -3678,12 +3982,30 @@ const saveProduct = async (req, res, next) => {
 
         // 1. Sanitización de Datos
         const idCategoriaParaDB = Array.isArray(categorias) ? categorias.join('|') : categorias;
-        const precioVentaPublicoFinal = parseInt(limpiarPrecio(req.body.precioVentaPublicoFinal));
-        const precioVentaMayorista = parseInt(limpiarPrecio(req.body.precioVentaMayorista));
-        const precioVentaMayoristaSurtido = parseInt(limpiarPrecio(req.body.precioVentaMayoristaSurtido)) || 0;
-        // TEMPORAL. Mismo tratamiento que los precios: el formulario manda "$8.000" con
-        // separadores, así que hay que limpiarlo antes de guardarlo como DECIMAL.
-        const costo = parseInt(limpiarPrecio(req.body.costo)) || 0;
+        // El formulario manda "$8.000" con separadores, así que hay que limpiarlo antes de
+        // guardarlo como DECIMAL. `montoNoNegativo` y no `limpiarPrecio` a secas porque
+        // éste borra el signo: un "-8.000" se guardaba como 8.000 (ver helpers/helpers.js).
+        // Devuelve null para un negativo o para algo que no es un número.
+        const precioVentaPublicoFinal     = montoNoNegativo(req.body.precioVentaPublicoFinal);
+        const precioVentaMayorista        = montoNoNegativo(req.body.precioVentaMayorista);
+        const precioVentaMayoristaSurtido = montoNoNegativo(req.body.precioVentaMayoristaSurtido);
+        const costo                       = montoNoNegativo(req.body.costo);
+
+        // Los precios no se validaban en el servidor: la única comprobación vivía en
+        // src/js/productDataForm.js, y el cliente no es una validación (CLAUDE.md §5.3).
+        // Un POST directo podía crear un producto con precio NaN o negativo.
+        const erroresPrecio = {};
+        if (precioVentaPublicoFinal === null || precioVentaPublicoFinal <= 0)
+            erroresPrecio.precioVentaPublicoFinal = 'El precio al público debe ser mayor a $0.';
+        if (precioVentaMayorista === null || precioVentaMayorista <= 0)
+            erroresPrecio.precioVentaMayorista = 'El precio mayorista debe ser mayor a $0.';
+        if (precioVentaMayoristaSurtido === null)
+            erroresPrecio.precioVentaMayoristaSurtido = 'El precio mayorista surtido no puede ser negativo.';
+        if (costo === null)
+            erroresPrecio.costo = 'El costo no puede ser negativo.';
+        if (Object.keys(erroresPrecio).length) {
+            return res.status(400).json({ errores: erroresPrecio });
+        }
         const descripcionLimpia = sanitizarHTML(req.body.descripcion); // Usamos el name="descripcion" del pug
         const activo = req.body.activo === 'on' || req.body.activo === true;
         const web = req.body.web === 'on' || req.body.web === true;
@@ -5133,6 +5455,10 @@ const actualizarEmpleado = async (req, res) => {
 
     // ── 2. VALIDACIÓN ────────────────────────────────────────────────────────────
     const errores = {};
+    // Un salario negativo se rechaza, no se guarda como 0: `limpiarPrecio` le borraba el
+    // signo y lo convertía en positivo (ver helpers/helpers.js `montoNoNegativo`).
+    const salarioBaseLimpio = montoNoNegativo(salarioBase);
+    if (salarioBaseLimpio === null) errores.salarioBase = 'El salario base no puede ser negativo';
     if (!PrimerNombre?.trim())  errores.PrimerNombre  = 'El primer nombre es requerido';
     if (!PrimerApellido?.trim()) errores.PrimerApellido = 'El primer apellido es requerido';
 
@@ -5259,7 +5585,7 @@ const actualizarEmpleado = async (req, res) => {
             departamento: departamentoSelect, ciudad: ciudadSelect,
             direccionResidencia, contactoEmergencia, telefonoEmergencia,
             tipoContrato, cargo,
-            salarioBase: limpiarPrecio(salarioBase),
+            salarioBase: salarioBaseLimpio,
             comisiones: comisiones === 'on',
         };
         if (nuevaFotoKey) updatePayload.imagen = nuevaFotoKey;
@@ -6331,11 +6657,6 @@ const getMovimientosCuentaJSON = async (req, res) => {
     }
 };
 
-// El mismo tope que aplica multer en middlewares/uploadComprobantes.js. Se repite acá
-// porque la validación del contenido tiene que conocerlo: multer corta por tamaño de
-// petición, esto corta por tamaño del archivo ya en memoria.
-const MAX_BYTES_COMPROBANTE = (parseInt(process.env.MAX_MB_COMPROBANTE) || 5) * 1024 * 1024;
-
 // POST /admin/bankentities/cajas/:idCajaBanco/movimientos
 // Registra un ingreso o egreso y, si vienen, adjunta sus comprobantes en R2
 // (bucket público `grupo-gh`, prefijo documentacion/transacciones/) más su fila en
@@ -6351,8 +6672,10 @@ const crearMovimientoCuenta = async (req, res) => {
 
         // Whitelist explícita: nada de pasarle req.body a create().
         const tipo  = req.body.tipo === 'egreso' ? 'egreso' : 'ingreso';
-        const valor = parseInt(limpiarPrecio(req.body.valor)) || 0;
-        if (valor <= 0) return res.status(422).json({ success: false, mensaje: 'El monto debe ser mayor que cero.' });
+        // `montoPositivo` y no `limpiarPrecio` a secas: éste borra el signo, así que un
+        // '-500' entraba como un movimiento de 500 (ver helpers/helpers.js).
+        const valor = montoPositivo(req.body.valor);
+        if (valor === null) return res.status(422).json({ success: false, mensaje: 'El monto debe ser mayor que cero.' });
 
         const descripcion = String(req.body.descripcion || '').trim();
         if (!descripcion) return res.status(422).json({ success: false, mensaje: 'La descripción es obligatoria.' });
@@ -6396,49 +6719,13 @@ const crearMovimientoCuenta = async (req, res) => {
         // Los archivos se suben ANTES de abrir la transacción: mantenerla abierta
         // mientras viajan bloquea filas por segundos. Si la escritura falla después,
         // se borran los objetos en el catch.
-        const archivos = req.files?.comprobantes || [];
-        const docs = [];
-        for (const [idx, file] of archivos.entries()) {
-            // El mimetype y la extensión los controla quien sube: no son evidencia de
-            // nada. Lo que decide es el contenido real del buffer. El fileFilter de multer
-            // ya descartó lo obvio; esto es la verificación que cuenta.
-            const esPdf = file.buffer.slice(0, 5).toString('ascii') === '%PDF-';
-
-            let cuerpo, contentType, extension;
-            if (esPdf) {
-                cuerpo      = file.buffer;
-                contentType = 'application/pdf';
-                extension   = 'pdf';
-            } else {
-                const revision = await validarImagen(file.buffer, {
-                    minLado:  150,                     // una foto de voucher siempre supera esto
-                    maxBytes: MAX_BYTES_COMPROBANTE    // el mismo tope que aplica multer
-                });
-                if (!revision.ok) {
-                    throw Object.assign(new Error(`"${file.originalname}": ${revision.mensaje}`), { publico: true });
-                }
-                // Se persiste siempre convertido a WebP, nunca el archivo tal como llegó.
-                cuerpo      = await aWebp(file.buffer, { anchoMaximo: 1600 });
-                contentType = 'image/webp';
-                extension   = 'webp';
-            }
-
-            const r2Key = `documentacion/transacciones/mov-${idMovimiento}-${Date.now()}-${idx}.${extension}`;
-
-            await new Upload({
-                client: s3Client,
-                params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: cuerpo, ContentType: contentType }
-            }).done();
-
-            subidos.push(r2Key);
-            docs.push({
-                idPropietario:   idMovimiento,          // el movimiento es el dueño del comprobante
-                nombreDocumento: file.originalname,
-                keyName:         r2Key,
-                formato:         extension.toUpperCase(),
-                pertenece:       'transacciones_bancarias'
-            });
-        }
+        const { docs, subidos: keysSubidas } = await subirComprobantes({
+            archivos:      req.files?.comprobantes || [],
+            idPropietario: idMovimiento,          // el movimiento es el dueño del comprobante
+            pertenece:     'transacciones_bancarias',
+            prefijo:       'mov'
+        });
+        subidos.push(...keysSubidas);
 
         const t = await db.transaction();
         try {
@@ -6475,14 +6762,12 @@ const crearMovimientoCuenta = async (req, res) => {
             adjuntos: docs.map(d => ({
                 nombreDocumento: d.nombreDocumento,
                 formato:         d.formato,
-                url:             `${process.env.R2_PUBLIC_URL}/${d.keyName}`
+                url:             urlComprobante(d.keyName)
             }))
         });
     } catch (e) {
         // La escritura falló: los objetos que alcanzaron a subir no deben quedar sueltos.
-        await Promise.all(subidos.map(k =>
-            s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: k })).catch(() => {})
-        ));
+        await borrarComprobantes(subidos);
         // Archivo rechazado por su contenido: el motivo le sirve a quien sube, no es
         // información interna.
         if (e.publico) {
@@ -8740,7 +9025,7 @@ export {
     verProveedor, actualizarProveedor,
     saveSupplier, checkNitSupplier,
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
-    dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente,
+    dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
 
     dashboardOrders,

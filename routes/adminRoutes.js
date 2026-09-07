@@ -13,7 +13,7 @@ getStatsVendedorMes,
 getCajasCerradasAdmin,
 getAdminCuadrePDF,
 getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente,
-getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
+getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
 getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
 storeCierresCaja, storeTrasladosTienda,
 getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
@@ -151,6 +151,9 @@ routes.get('/bankentities/cajas/:idCajaBanco/movimientos', pBan('READ'), getMovi
 routes.get('/bankentities/cajas/:idCajaBanco/movimientos/export', pBan('READ'), exportarMovimientosCuenta);
 // Los comprobantes van en memoria antes de subirse a R2, por eso el límite de multer.
 routes.post('/bankentities/cajas/:idCajaBanco/movimientos', pBan('CREATE'), csrfProtection, subirComprobantesMovimiento, crearMovimientoCuenta);
+// Comprobante en PDF de un movimiento: sirve tanto para el que se registra a mano acá
+// como para el ingreso que genera un abono a crédito.
+routes.get('/bankentities/movimientos/:idMovimiento/tirilla', pBan('READ'), getTirillaMovimientoCuenta);
 routes.post('/bankentities/toggle/:id', pBan('EDIT'), csrfProtection, toggleEntidad);
 routes.get('/bankentities/detallesEntidad/:idEntidad', pBan('READ'), csrfProtection, verDetallesEntidad);
 routes.post('/bankentities/editar/:idEntidad', pBan('EDIT'), csrfProtection, editarEntidad);
@@ -221,8 +224,15 @@ routes.post('/api/clientes/verificar-codigo-credito', pCli('EDIT'), verificarCod
 routes.get('/clientes/:idCliente/credito', pCli('READ'), dashboardClienteCredito);
 routes.get('/clientes/:idCliente/credito/informe', pCli('READ'), generarInformeCreditoPDF);
 routes.post('/api/clientes/:idCliente/credito/modificar', pCli('EDIT'), verificarCodigoEmpleadoAdmin, modificarCreditoCliente);
-routes.post('/api/clientes/:idCliente/facturas/:idFacturaCliente/abonar', pCli('EDIT'), verificarCodigoEmpleadoAdmin, abonarFactura);
-routes.post('/api/clientes/:idCliente/credito/abono-global', pCli('EDIT'), verificarCodigoEmpleadoAdmin, abonoGlobalCliente);
+// Un abono es plata que entra a una caja o banco, así que pide lo mismo que un movimiento
+// manual —cuenta, valor, descripción, fecha, referencia y comprobantes— y viaja como
+// multipart. `subirComprobantesMovimiento` va antes del middleware del código de empleado
+// porque ese lee `req.body`, que en multipart solo existe después de que multer parsea.
+routes.post('/api/clientes/:idCliente/facturas/:idFacturaCliente/abonar', pCli('EDIT'), subirComprobantesMovimiento, verificarCodigoEmpleadoAdmin, abonarFactura);
+routes.post('/api/clientes/:idCliente/credito/abono-global', pCli('EDIT'), subirComprobantesMovimiento, verificarCodigoEmpleadoAdmin, abonoGlobalCliente);
+// Comprobante en PDF del abono. `:id` acepta el id de un abono puntual o el lote de un
+// abono global — el papel que se le entrega al cliente es el mismo documento.
+routes.get('/api/clientes/abonos/:id/tirilla', pCli('READ'), getTirillaAbonoCliente);
 
 routes.get('/pedidos', pPed('READ'), dashboardOrders);
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);

@@ -66,6 +66,19 @@ const AbonoClienteCreditos = db.define('ABONO_CLIENTE_CREDITOS', {
         allowNull: true,
         references: { model: 'ENTIDADES', key: 'idEntidad' }
     },
+    // A qué caja, banco o billetera entró la plata de este abono. Es lo que conecta el
+    // cobro con el libro de la cuenta: el abono genera además su fila de ingreso en
+    // MOVIMIENTOS_CAJAS_BANCOS (ver helpers/abonosCredito.js `aplicarAbonoFIFO`).
+    //
+    // NULL solo en los abonos anteriores a que existiera esta columna y en el abono de
+    // tienda, que todavía no elige cuenta. Un abono nuevo desde el panel siempre la trae.
+    idCajaBanco: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: 'CAJAS_Y_BANCOS', key: 'idCajaBanco' },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
+    },
     nroReferencia: {
         type: DataTypes.STRING(50),
         allowNull: true
