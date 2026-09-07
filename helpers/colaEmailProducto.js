@@ -2,11 +2,10 @@ import { Queue, Worker } from "bullmq";
 import dotenv from "dotenv";
 import { sendProductAvailableNotification } from "./emailSes.js";
 import { generarTokenBaja } from "./bajaInteresados.js";
+// PORTAL_URL: URL absoluta hacia este mismo backend (el endpoint de baja vive en la
+// API, no en el sitio público). Antes cada archivo repetía la fórmula APP_URL+APP_PORT.
+import { PORTAL_URL } from "../config/marca.js";
 dotenv.config();
-
-// Mismo patrón que helpers/mailNewEmployer.js para armar una URL absoluta hacia este
-// mismo backend (acá el endpoint de baja vive en la API, no en el sitio público).
-const API_BASE_URL = `${process.env.APP_URL}:${process.env.APP_PORT}`;
 
 // Único caso de los tres que puede disparar MUCHOS envíos a la vez (todos los que
 // pidieron el mismo producto agotado) — por eso es el único que pasa por una cola en
@@ -82,7 +81,7 @@ export async function encolarNotificacionesProducto(destinatarios, { nombreProdu
             to,
             nombreProducto,
             urlProducto,
-            urlBaja: `${API_BASE_URL}/api/web/interesado/baja?token=${generarTokenBaja(idInteres)}`
+            urlBaja: `${PORTAL_URL}/api/web/interesado/baja?token=${generarTokenBaja(idInteres)}`
         },
         opts: { attempts: 3, backoff: { type: "exponential", delay: 5000 } }
     }));

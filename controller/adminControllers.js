@@ -37,6 +37,7 @@ import ExcelJS from 'exceljs';
 import { tituloLista } from '../helpers/textoLista.js';
 import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, bucketPagosVacio, acumularEnBucketPagos, facturasCreditoCliente, creditoClienteResumen, METODOS_ABONO, METODOS_PAGO } from '../helpers/abonosCredito.js';
 import { round2 } from '../helpers/formatMoney.js';
+import { PORTAL_URL } from '../config/marca.js';
 
 
 dotenv.config();
@@ -7243,8 +7244,7 @@ const exportarFacturasTienda = async (req, res) => {
         // El número de factura enlaza a su tirilla. Tiene que ser absoluta: el .xlsx viaja
         // por correo y se abre en equipos que no saben de dónde salió, así que una ruta
         // relativa no lleva a ninguna parte.
-        const baseUrl  = `${process.env.APP_URL}:${process.env.APP_PORT}`;
-        const urlPDF   = (id) => `${baseUrl}/admin/api/factura/${id}/tirilla`;
+        const urlPDF   = (id) => `${PORTAL_URL}/admin/api/factura/${id}/tirilla`;
 
         // ── Por qué una fórmula y no un hipervínculo de verdad ────────────────
         //

@@ -1,60 +1,45 @@
 import { SendEmailCommand } from "@aws-sdk/client-ses";
 import dotenv from "dotenv";
 import sesClient from "../config/ses.js";
+import { COLORES_CORREO as C, LOGO_URL, SOPORTE_WHATSAPP } from "../config/marca.js";
+import { plantillaSimple } from "./plantillaCorreo.js";
 import { money } from "./formatMoney.js";
 dotenv.config();
 
-// Dos remitentes, cada uno atado a su propio caso de uso — no uno genérico para todo.
-const REMITENTE_EMPLEADOS = "empleados@notificaciones.grupogh.co";
-const REMITENTE_COMPRAS   = "compras@notificaciones.grupogh.co";
+// Un remitente por caso de uso — nunca uno genérico para todo. Los tres son direcciones
+// del dominio verificado en SES (notificaciones.grupogh.co); al ser una identidad de
+// dominio, no hace falta verificar cada dirección por separado.
+export const REMITENTE_EMPLEADOS = "empleados@notificaciones.grupogh.co";
+export const REMITENTE_COMPRAS   = "compras@notificaciones.grupogh.co";
+export const REMITENTE_ALERTAS   = "alertas@notificaciones.grupogh.co";
 
-// El logo real vive en grupoghweb (el sitio público, dominio grupogh.co), no en este
-// backend — es la única URL de imagen que un cliente de correo puede resolver siempre
-// (a diferencia de un data URI, que Outlook/Windows Mail rendereiza mal o no rendereiza).
-const WEB_STORE_URL = (process.env.WEB_STORE_URL || 'https://www.grupogh.co').replace(/\/$/, '');
-const LOGO_URL = `${WEB_STORE_URL}/logo.png`;
+// Único punto de salida de correo del proyecto: arma el comando, manda y atrapa
+// cualquier error ahí mismo. Ningún llamador necesita acordarse de envolverlo en
+// try/catch — un correo que no sale nunca debe tumbar el flujo que lo disparó (crear
+// una orden, dar de alta un empleado, cancelar un pedido).
+//
+// Lo usan también helpers/mailNewEmployer.js, helpers/mailPedidoCancelado.js y
+// helpers/notificarQrPago.js, que antes abrían cada uno su propio transporte SMTP con
+// nodemailer. Cada helper arma su HTML y delega el envío acá: un solo lugar donde mirar
+// cuando el correo deja de salir, y uno solo donde tocar si cambia el proveedor.
+//
+// `texto` es opcional: la alternativa en texto plano para los clientes que no
+// rendericen HTML (y un punto menos de spam score).
+export async function enviarCorreoSes({ remitente, destinatario, asunto, html, texto, contexto }) {
+    if (!destinatario) {
+        console.warn(`[ses:${contexto}] sin destinatario; no se envía nada.`);
+        return false;
+    }
 
-// Misma línea visual que helpers/mailNewEmployer.js (nodemailer), para que un correo de
-// SES no se vea "de otro sistema" al lado de los que ya manda la app.
-function plantillaBase({ titulo, saludo, cuerpoHtml, pieBaja }) {
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="utf-8">
-    <style>
-        body { margin: 0; padding: 0; font-family: 'Helvetica', Arial, sans-serif; background-color: #f9fafb; color: #334155; }
-    </style>
-</head>
-<body style="background-color: #f9fafb; padding: 20px;">
-    <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden;">
-        <div style="background-color: #FFF5F9; padding: 30px; text-align: center;">
-            <h1 style="color: #D44289; font-size: 22px; margin: 0;">${titulo}</h1>
-        </div>
-        <div style="padding: 40px;">
-            <p style="font-weight: bold; font-size: 16px; margin-top: 0;">${saludo}</p>
-            <div style="font-size: 15px; line-height: 1.6; color: #334155;">${cuerpoHtml}</div>
-        </div>
-        <div style="background-color: #f8fafc; padding: 24px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
-            <p style="font-weight: bold; color: #1e293b; margin-bottom: 5px;">Grupo GH</p>
-            <p style="margin: 0;">Este es un mensaje automático.</p>
-            ${pieBaja ? `<p style="margin: 10px 0 0;"><a href="${pieBaja}" style="color: #94a3b8; text-decoration: underline;">Dar de baja este aviso</a></p>` : ''}
-        </div>
-    </div>
-</body>
-</html>`;
-}
+    const cuerpo = { Html: { Data: html, Charset: "UTF-8" } };
+    if (texto) cuerpo.Text = { Data: texto, Charset: "UTF-8" };
 
-// Un solo punto de envío para las tres funciones públicas: arma el comando, manda y
-// atrapa cualquier error ahí mismo. Ningún llamador de estas funciones necesita
-// acordarse de envolverlas en try/catch — un correo que no sale nunca debe tumbar el
-// flujo que lo disparó (crear una orden, dar de alta un empleado, etc.).
-async function enviarCorreo({ remitente, destinatario, asunto, html, contexto }) {
     const comando = new SendEmailCommand({
         Source: remitente,
         Destination: { ToAddresses: [destinatario] },
         Message: {
             Subject: { Data: asunto, Charset: "UTF-8" },
-            Body: { Html: { Data: html, Charset: "UTF-8" } }
+            Body: cuerpo
         }
     });
 
@@ -71,12 +56,12 @@ async function enviarCorreo({ remitente, destinatario, asunto, html, contexto })
 // Devuelve true/false — nunca lanza.
 export async function sendEmployeeNotification({ to, nombreEmpleado, asunto, mensajeHtml }) {
     const asuntoFinal = asunto || `Aviso para ${nombreEmpleado}`;
-    const html = plantillaBase({
+    const html = plantillaSimple({
         titulo: asuntoFinal,
         saludo: `Hola, ${nombreEmpleado},`,
         cuerpoHtml: mensajeHtml
     });
-    return enviarCorreo({ remitente: REMITENTE_EMPLEADOS, destinatario: to, asunto: asuntoFinal, html, contexto: 'empleado' });
+    return enviarCorreoSes({ remitente: REMITENTE_EMPLEADOS, destinatario: to, asunto: asuntoFinal, html, contexto: 'empleado' });
 }
 
 // Cambio de estado de un pedido/compra (confirmado, en camino, entregado, cancelado...).
@@ -84,12 +69,12 @@ export async function sendEmployeeNotification({ to, nombreEmpleado, asunto, men
 // ni el cambio de estado del pedido que lo dispara.
 export async function sendPurchaseStatusUpdate({ to, nombreCliente, numeroPedido, estado, mensajeHtml }) {
     const asunto = `Tu pedido ${numeroPedido}: ${estado}`;
-    const html = plantillaBase({
+    const html = plantillaSimple({
         titulo: asunto,
         saludo: `Hola, ${nombreCliente},`,
         cuerpoHtml: mensajeHtml || `<p>El estado de tu pedido <strong>${numeroPedido}</strong> cambió a <strong>${estado}</strong>.</p>`
     });
-    return enviarCorreo({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto, html, contexto: 'pedido' });
+    return enviarCorreoSes({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto, html, contexto: 'pedido' });
 }
 
 // Aviso de "producto disponible de nuevo" a UN destinatario. Para avisar a varios a la
@@ -102,7 +87,7 @@ export async function sendPurchaseStatusUpdate({ to, nombreCliente, numeroPedido
 // así que es la que necesita forma de bajarse.
 export async function sendProductAvailableNotification({ to, nombreProducto, urlProducto, urlBaja }) {
     const asunto = `¡${nombreProducto} ya está disponible!`;
-    const html = plantillaBase({
+    const html = plantillaSimple({
         titulo: asunto,
         saludo: '¡Buenas noticias!',
         cuerpoHtml: `
@@ -113,12 +98,12 @@ export async function sendProductAvailableNotification({ to, nombreProducto, url
         `,
         pieBaja: urlBaja
     });
-    return enviarCorreo({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto, html, contexto: 'producto-disponible' });
+    return enviarCorreoSes({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto, html, contexto: 'producto-disponible' });
 }
 
 // ─── Confirmación de pedido web ─────────────────────────────────────────────
 //
-// A diferencia de plantillaBase() (usada por las otras dos notificaciones), esta va con
+// A diferencia de plantillaSimple() (la que usan las otras tres notificaciones), esta va con
 // tabla + estilos inline de punta a punta: es la que de verdad tiene que abrirse bien en
 // Outlook/Gmail/Apple Mail, no solo en un navegador. flex/grid y <style> no sobreviven a
 // Outlook de escritorio.
@@ -148,11 +133,21 @@ function inicialesProducto(nombre) {
 function filaProducto(item, idx) {
     const { bg, fg } = PALETA_SWATCH[idx % PALETA_SWATCH.length];
     const meta = [item.talla ? `Talla ${item.talla}` : null, item.color ? `Color: ${item.color}` : null].filter(Boolean).join(' · ');
+
+    // La foto real del producto cuando la hay; si no, el cuadro con las iniciales. Un
+    // producto puede no tener imagen cargada todavía, y una etiqueta <img> rota se ve
+    // mucho peor que el cuadro de color. El mismo criterio que en el correo de
+    // cancelación (helpers/mailPedidoCancelado.js). El color de fondo se queda debajo de
+    // la foto: es lo que ve el cliente mientras la imagen carga, o si bloquea imágenes.
+    const miniatura = item.imagen
+        ? `<td style="width:44px;"><img src="${item.imagen}" width="44" height="44" alt="${item.nombreProducto}" style="display:block;width:44px;height:44px;border-radius:10px;object-fit:cover;background:${bg};"></td>`
+        : `<td style="width:44px;height:44px;border-radius:10px;background:${bg};color:${fg};text-align:center;vertical-align:middle;font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;">${inicialesProducto(item.nombreProducto)}</td>`;
+
     return `
     <tr>
         <td style="padding:14px 0;border-bottom:1px solid #ece8f3;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                <td style="width:44px;height:44px;border-radius:10px;background:${bg};color:${fg};text-align:center;vertical-align:middle;font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;">${inicialesProducto(item.nombreProducto)}</td>
+                ${miniatura}
                 <td style="padding-left:12px;font-family:Helvetica,Arial,sans-serif;">
                     <div style="font-weight:600;color:#241f38;font-size:13.5px;">${item.nombreProducto}</div>
                     ${meta ? `<div style="font-size:12px;color:#8a84a0;margin-top:2px;">${meta}</div>` : ''}
@@ -185,8 +180,8 @@ function pasoTracker({ metodoPago }) {
 
 function circuloPaso(estado, numero) {
     const estilos = {
-        hecho:     { bg: '#12a370', fg: '#ffffff', contenido: '&#10003;' },
-        actual:    { bg: '#bc8be0', fg: '#ffffff', contenido: String(numero) },
+        hecho:     { bg: C.ok,   fg: '#ffffff', contenido: '&#10003;' },
+        actual:    { bg: C.lila, fg: '#ffffff', contenido: String(numero) },
         esperando: { bg: '#fbf3dd', fg: '#b08d1a', contenido: String(numero) },
         pendiente: { bg: '#ffffff', fg: '#8a84a0', contenido: String(numero) }
     }[estado];
@@ -218,12 +213,12 @@ export async function sendOrderConfirmation({
             <p style="margin:2px 0;color:#4b4560;font-size:13px;">${direccion}${apto ? `, ${apto}` : ''}</p>
             <p style="margin:2px 0;color:#4b4560;font-size:13px;">${ciudad}, ${departamento}</p>
             <p style="margin:2px 0 12px;color:#4b4560;font-size:13px;">Colombia</p>
-            <div style="background:#FDE7F2;color:#E24C95;border-radius:9px;padding:9px 10px;font-size:11.5px;font-weight:600;">Enviaremos tu pedido a esta dirección.</div>`
+            <div style="background:${C.primarySoft};color:${C.primary};border-radius:9px;padding:9px 10px;font-size:11.5px;font-weight:600;">Enviaremos tu pedido a esta dirección.</div>`
         : `
             <p style="margin:0;font-weight:700;color:#241f38;font-size:13px;">${puntoRecogida?.nombreComercial || 'Tu tienda'}</p>
             <p style="margin:2px 0;color:#4b4560;font-size:13px;">${puntoRecogida?.direccionPrincipal || ''}</p>
             <p style="margin:2px 0 12px;color:#4b4560;font-size:13px;">${[puntoRecogida?.ciudad, puntoRecogida?.departamento].filter(Boolean).join(', ')}</p>
-            <div style="background:#FDE7F2;color:#E24C95;border-radius:9px;padding:9px 10px;font-size:11.5px;font-weight:600;">Recoges tu pedido en esta tienda.</div>`;
+            <div style="background:${C.primarySoft};color:${C.primary};border-radius:9px;padding:9px 10px;font-size:11.5px;font-weight:600;">Recoges tu pedido en esta tienda.</div>`;
 
     const avisoQr = esQrPendiente ? `
     <tr><td style="padding:0 32px;">
@@ -232,7 +227,7 @@ export async function sendOrderConfirmation({
                 <td style="padding:18px;font-family:Helvetica,Arial,sans-serif;">
                     <p style="margin:0 0 6px;font-size:13.5px;font-weight:700;color:#7a4d00;">Importante: pago por transferencia (QR)</p>
                     <p style="margin:0 0 8px;font-size:12.8px;line-height:1.6;color:#8a5a00;">Recibimos tu pedido, pero todavía estamos esperando la confirmación de la transferencia. En cuanto la verifiquemos, tu pedido pasa a empaque.</p>
-                    <p style="margin:0;font-size:12.8px;line-height:1.6;color:#8a5a00;">Si ya hiciste la transferencia, envíanos el comprobante a <a href="mailto:${REMITENTE_COMPRAS}" style="color:#E24C95;font-weight:700;text-decoration:none;">${REMITENTE_COMPRAS}</a>${process.env.SOPORTE_WHATSAPP ? ` o por WhatsApp al <b>${process.env.SOPORTE_WHATSAPP}</b>` : ''}.</p>
+                    <p style="margin:0;font-size:12.8px;line-height:1.6;color:#8a5a00;">Si ya hiciste la transferencia, envíanos el comprobante a <a href="mailto:${REMITENTE_COMPRAS}" style="color:${C.primary};font-weight:700;text-decoration:none;">${REMITENTE_COMPRAS}</a>${SOPORTE_WHATSAPP ? ` o por WhatsApp al <b>${SOPORTE_WHATSAPP}</b>` : ''}.</p>
                 </td>
             </tr>
         </table>
@@ -251,7 +246,7 @@ export async function sendOrderConfirmation({
     </td></tr>
 
     <tr><td style="padding:28px 40px 4px;text-align:center;font-family:Helvetica,Arial,sans-serif;">
-        <div style="width:44px;height:44px;line-height:44px;border-radius:50%;background:#e7f8f1;color:#12a370;margin:0 auto 14px;font-size:20px;">&#10003;</div>
+        <div style="width:44px;height:44px;line-height:44px;border-radius:50%;background:#e7f8f1;color:${C.ok};margin:0 auto 14px;font-size:20px;">&#10003;</div>
         <h1 style="margin:0 0 6px;font-size:21px;color:#241f38;">¡Pedido confirmado!</h1>
         <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#4b4560;">Hola ${nombreCliente} &#128075;</p>
         <p style="margin:0 auto;max-width:38ch;font-size:13.5px;color:#8a84a0;line-height:1.6;">Gracias por tu compra. Recibimos tu pedido correctamente y está siendo procesado.</p>
@@ -261,10 +256,10 @@ export async function sendOrderConfirmation({
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #ece8f3;border-radius:12px;">
             <tr>
                 <td style="width:44px;padding:14px 8px 14px 16px;vertical-align:middle;">
-                    <div style="width:30px;height:30px;border-radius:9px;background:#FDE7F2;color:#E24C95;text-align:center;line-height:30px;font-family:Helvetica,Arial,sans-serif;font-size:14px;">&#128717;</div>
+                    <div style="width:30px;height:30px;border-radius:9px;background:${C.primarySoft};color:${C.primary};text-align:center;line-height:30px;font-family:Helvetica,Arial,sans-serif;font-size:14px;">&#128717;</div>
                 </td>
                 <td style="padding:14px 16px 14px 4px;font-family:Helvetica,Arial,sans-serif;">
-                    <div style="font-size:14px;font-weight:700;color:#E24C95;">Pedido #${numeroPedido}</div>
+                    <div style="font-size:14px;font-weight:700;color:${C.primary};">Pedido #${numeroPedido}</div>
                     <div style="font-size:12.5px;color:#8a84a0;">Realizado el ${fechaTexto}</div>
                 </td>
             </tr>
@@ -324,8 +319,8 @@ export async function sendOrderConfirmation({
                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                             <tr><td style="font-size:13px;color:#4b4560;padding:3px 0;">Subtotal</td><td align="right" style="font-size:13px;color:#4b4560;padding:3px 0;">$${money(subtotal)}</td></tr>
                             <tr><td style="font-size:13px;color:#4b4560;padding:3px 0;">Envío</td><td align="right" style="font-size:13px;color:#4b4560;padding:3px 0;">${envio ? `$${money(envio)}` : 'Gratis'}</td></tr>
-                            ${descuento ? `<tr><td style="font-size:13px;color:#E24C95;padding:3px 0;">Descuento</td><td align="right" style="font-size:13px;color:#E24C95;padding:3px 0;">-$${money(descuento)}</td></tr>` : ''}
-                            <tr><td style="font-size:15px;font-weight:800;color:#241f38;padding-top:10px;border-top:1px solid #ece8f3;">Total</td><td align="right" style="font-size:15px;font-weight:800;color:#E24C95;padding-top:10px;border-top:1px solid #ece8f3;">$${money(total)}</td></tr>
+                            ${descuento ? `<tr><td style="font-size:13px;color:${C.primary};padding:3px 0;">Descuento</td><td align="right" style="font-size:13px;color:${C.primary};padding:3px 0;">-$${money(descuento)}</td></tr>` : ''}
+                            <tr><td style="font-size:15px;font-weight:800;color:#241f38;padding-top:10px;border-top:1px solid #ece8f3;">Total</td><td align="right" style="font-size:15px;font-weight:800;color:${C.primary};padding-top:10px;border-top:1px solid #ece8f3;">$${money(total)}</td></tr>
                         </table>
                         <p style="margin:12px 0 0;font-size:12px;color:#8a84a0;">Método de pago: ${metodoPagoTexto}</p>
                     </td></tr>
@@ -357,5 +352,5 @@ export async function sendOrderConfirmation({
 </body>
 </html>`;
 
-    return enviarCorreo({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto: `Pedido confirmado #${numeroPedido}`, html, contexto: 'confirmacion-pedido' });
+    return enviarCorreoSes({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto: `Pedido confirmado #${numeroPedido}`, html, contexto: 'confirmacion-pedido' });
 }
