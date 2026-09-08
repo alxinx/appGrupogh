@@ -37,7 +37,8 @@ import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
 import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
-import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, pagosATransBucket, creditoClienteResumen, METODOS_ABONO, METODOS_ABONO_CON_ENTIDAD } from '../helpers/abonosCredito.js';
+import { resolverPacksParaVenta, buscarPacksVendibles } from '../helpers/packsVenta.js';
+import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, pagosATransBucket, creditoClienteResumen, financiadoPorFactura, METODOS_ABONO, METODOS_ABONO_CON_ENTIDAD } from '../helpers/abonosCredito.js';
 import { round2 as _round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
 
@@ -1243,17 +1244,91 @@ const liberarReservasPos = async (req, res) => {
     }
 };
 
+// GET /store/json/pos/pack?codigo=D3E17-P001
+//
+// El cajero escanea la etiqueta del bulto. Devuelve lo que se va a facturar —las prendas
+// y su precio mayorista vigente— para que el POS lo muestre antes de cobrar. La misma
+// resolución que usa `procesarFactura`, así lo que se ve es lo que se cobra.
+const buscarPackPos = async (req, res) => {
+    const idPdv = req.idPuntoDeVenta;
+    if (!idPdv) return res.status(403).json({ success: false });
+
+    // Búsqueda por prefijo: el cajero escribe los primeros dígitos de la etiqueta y ve los
+    // bultos disponibles como tarjetas, igual que al buscar una prenda. Devuelve una lista.
+    const termino = String(req.query.q || '').trim();
+    if (termino) {
+        try {
+            const packs = await buscarPacksVendibles({ termino, idPuntoDeVenta: idPdv });
+            return res.json({ success: true, packs });
+        } catch (e) {
+            console.error('buscarPackPos(q):', e);
+            return res.status(500).json({ success: false, packs: [] });
+        }
+    }
+
+    const codigo = String(req.query.codigo || '').trim();
+    if (!codigo) return res.status(400).json({ success: false, mensaje: 'Falta el código del paquete.' });
+
+    try {
+        const [pack] = await resolverPacksParaVenta({ claves: [codigo], idPuntoDeVenta: idPdv });
+        return res.json({ success: true, pack });
+    } catch (e) {
+        // El motivo le sirve al cajero: le dice si el bulto ya se vendió, si se desempacó
+        // o si está en otra tienda.
+        if (e.publico) return res.status(404).json({ success: false, mensaje: e.message });
+        console.error('buscarPackPos:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al buscar el paquete.' });
+    }
+};
+
 const buscarPosProducto = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false });
 
     const q = (req.query.q || '').trim();
-    if (!q) return res.json({ success: true, productos: [] });
+    if (!q) return res.json({ success: true, productos: [], hayMas: false });
+
+    // El catálogo pagina de a 8 (lo que cabe en la grilla del POS sin scroll). El `offset`
+    // lo manda la propia grilla al pedir más; se sanea acá porque llega por querystring.
+    const PAGINA = 8;
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
     try {
         const term = `%${q}%`;
-        // Traemos hasta 50 candidatos para que el sort por stock posterior
-        // no quede truncado antes de evaluar todos los coincidentes.
+
+        // El stock se calcula EN LA CONSULTA, no después en JS, porque de todos los
+        // productos que coinciden solo se muestran 8: buscar "body" traía decenas de
+        // referencias y el LIMIT las cortaba antes de mirar existencias, así que la grilla
+        // se llenaba de agotados mientras los que sí había en la tienda quedaban afuera.
+        // Ordenar en la base es lo único que garantiza que esos 8 sean los 8 correctos.
+        // Las filas de pack (idProducto NULL) no cuentan: sus unidades no están sueltas.
+        const sqlStockPdv = `(
+            SELECT COALESCE(SUM(sl.cantidadExistente), 0)
+            FROM STOCKS sl
+            WHERE sl.idProducto = PRODUCTOS.idProducto
+              AND sl.idPuntoVenta = :idPdv
+              AND sl.cantidadExistente > 0
+        )`;
+        // Solo puntos de venta: bodega y tránsito no son mercancía que otra tienda pueda
+        // vender, y ofrecerlas como "hay en otra tienda" mandaría a pedir un traslado
+        // imposible.
+        const sqlStockOtras = `(
+            SELECT COALESCE(SUM(so.cantidadExistente), 0)
+            FROM STOCKS so
+            INNER JOIN PUNTO_DE_VENTA pv
+                    ON pv.idPuntoDeVenta = so.idPuntoVenta
+                   AND pv.tipo = 'Punto de venta'
+            WHERE so.idProducto = PRODUCTOS.idProducto
+              AND so.idPuntoVenta <> :idPdv
+              AND so.cantidadExistente > 0
+        )`;
+        // Tres escalones: hay acá → hay en otra tienda → no hay en ninguna parte. Dentro de
+        // cada uno manda la cantidad, y el nombre + el id cierran el orden para que la misma
+        // búsqueda devuelva siempre los mismos ocho (§8).
+        const sqlEscalon = `CASE WHEN ${sqlStockPdv} > 0 THEN 0
+                                 WHEN ${sqlStockOtras} > 0 THEN 1
+                                 ELSE 2 END`;
+
         const productos = await Productos.findAll({
             where: {
                 activo: 1,
@@ -1263,7 +1338,12 @@ const buscarPosProducto = async (req, res) => {
                     { ean:            { [Op.like]: term } }
                 ]
             },
-            attributes: ['idProducto', 'nombreProducto', 'sku', 'precioVentaMayorista', 'precioVentaPublicoFinal'],
+            attributes: [
+                'idProducto', 'nombreProducto', 'sku',
+                'precioVentaMayorista', 'precioVentaPublicoFinal',
+                [literal(sqlStockPdv),   'stockPdv'],
+                [literal(sqlStockOtras), 'stockOtras']
+            ],
             include: [{
                 model: Imagenes,
                 as: 'imagenes',
@@ -1271,67 +1351,39 @@ const buscarPosProducto = async (req, res) => {
                 limit: 1,
                 required: false
             }],
-            limit: 50
+            order: [
+                [literal(sqlEscalon),     'ASC'],
+                [literal(sqlStockPdv),    'DESC'],
+                [literal(sqlStockOtras),  'DESC'],
+                ['nombreProducto',        'ASC'],
+                ['idProducto',            'ASC']
+            ],
+            replacements: { idPdv },
+            offset,
+            // Una fila de más: si vuelve, es que hay siguiente página. Sale más barato que
+            // un COUNT sobre las 318 coincidencias de un término amplio como "body".
+            limit: PAGINA + 1
         });
 
-        if (!productos.length) return res.json({ success: true, productos: [] });
-
-        const ids = productos.map(p => p.idProducto);
-
-        const stockRows = await Stock.findAll({
-            where: {
-                idPuntoVenta: idPdv,
-                idProducto:   { [Op.in]: ids },
-                cantidadExistente: { [Op.gt]: 0 }
-            },
-            attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stock']],
-            group: ['idProducto'],
-            raw: true
-        });
-        const mapStock = Object.fromEntries(stockRows.map(r => [r.idProducto, parseInt(r.stock) || 0]));
-        // Stock en OTRAS tiendas vendibles. Sirve para distinguir "acá no hay, pero se puede
-        // pedir" de "no hay en ninguna parte": son dos situaciones muy distintas para quien
-        // atiende, y hasta ahora las dos decían lo mismo.
-        // Una sola consulta agregada para todos los productos, no una por fila.
-        const stockOtras = await Stock.findAll({
-            where: {
-                idPuntoVenta: { [Op.ne]: idPdv },
-                idProducto:   { [Op.in]: ids },
-                cantidadExistente: { [Op.gt]: 0 }
-            },
-            attributes: ['idProducto', [fn('SUM', col('cantidadExistente')), 'stock']],
-            include: [{
-                model: PuntosDeVenta,
-                as: 'ubicacion',
-                attributes: [],
-                // Bodega y tránsito no cuentan: no son mercancía que otra tienda pueda vender.
-                where: { tipo: 'Punto de venta' },
-                required: true
-            }],
-            group: ['STOCKS.idProducto'],
-            raw: true
-        });
-        const mapOtras = Object.fromEntries(stockOtras.map(r => [r.idProducto, parseInt(r.stock) || 0]));
+        const hayMas = productos.length > PAGINA;
+        if (hayMas) productos.length = PAGINA;
 
         const r2 = `${process.env.R2_PUBLIC_URL}/productos/`;
-        const resultado = productos
-            .map(p => {
-                const img = p.imagenes?.[0]?.nombreImagen;
-                return {
-                    idProducto:              p.idProducto,
-                    nombreProducto:          p.nombreProducto,
-                    sku:                     p.sku,
-                    precioVentaMayorista:    parseFloat(p.precioVentaMayorista)    || 0,
-                    precioVentaPublicoFinal: parseFloat(p.precioVentaPublicoFinal) || 0,
-                    stock:                   mapStock[p.idProducto] || 0,
-                    stockOtrasTiendas:       mapOtras[p.idProducto] || 0,
-                    imagen:                  img ? `${r2}${img}` : '/img/image-default.webp'
-                };
-            })
-            .sort((a, b) => b.stock - a.stock)
-            .slice(0, 8);
+        const resultado = productos.map(p => {
+            const img = p.imagenes?.[0]?.nombreImagen;
+            return {
+                idProducto:              p.idProducto,
+                nombreProducto:          p.nombreProducto,
+                sku:                     p.sku,
+                precioVentaMayorista:    parseFloat(p.precioVentaMayorista)    || 0,
+                precioVentaPublicoFinal: parseFloat(p.precioVentaPublicoFinal) || 0,
+                stock:                   parseInt(p.get('stockPdv'))   || 0,
+                stockOtrasTiendas:       parseInt(p.get('stockOtras')) || 0,
+                imagen:                  img ? `${r2}${img}` : '/img/image-default.webp'
+            };
+        });
 
-        return res.json({ success: true, productos: resultado });
+        return res.json({ success: true, productos: resultado, hayMas });
     } catch (e) {
         console.error('buscarPosProducto:', e);
         return res.status(500).json({ success: false });
@@ -2167,7 +2219,7 @@ const fmtCOP = n => Math.round(n).toLocaleString('es-CO');
 // ─── PROCESAR FACTURA ─────────────────────────────────────────────────────────
 const procesarFactura = async (req, res) => {
   try {
-    const { idCliente, idEmpleado, items, pagos, idPedidoWeb } = req.body;
+    const { idCliente, idEmpleado, items, pagos, idPedidoWeb, packs } = req.body;
     const idPuntoDeVenta = req.idPuntoDeVenta;
 
     // La marca OF viene del interruptor del formulario de cliente. Se normaliza a booleano
@@ -2203,9 +2255,12 @@ const procesarFactura = async (req, res) => {
     const _idEmpleado = String(idEmpleado || '').trim();
     if (!_idEmpleado)
         return res.status(400).json({ success: false, mensaje: 'Empleado inválido.' });
-    if (!Array.isArray(items) || items.length === 0)
+    // Una orden puede ser solo de packs, sin artículos sueltos.
+    const clavesPacks = Array.isArray(packs) ? packs.filter(Boolean) : [];
+    const itemsSueltos = Array.isArray(items) ? items : [];
+    if (itemsSueltos.length === 0 && clavesPacks.length === 0)
         return res.status(400).json({ success: false, mensaje: 'Orden sin artículos.' });
-    for (const it of items) {
+    for (const it of itemsSueltos) {
         if (!it.idProducto || typeof it.idProducto !== 'string')
             return res.status(400).json({ success: false, mensaje: 'Producto inválido en la orden.' });
         const qty = parseInt(it.cantidad);
@@ -2217,7 +2272,7 @@ const procesarFactura = async (req, res) => {
     // cliente, para que ni un bug del front ni una petición manipulada puedan cambiar el monto
     // o la entidad con la que queda registrada una venta ya cobrada.
     let pagosEfectivos = pagos;
-    let itemsEfectivos = items;
+    let itemsEfectivos = itemsSueltos;
     let idClienteEfectivo = idCliente;
     let detallesWeb = null;
     let pagoWebFactura = null;
@@ -2267,6 +2322,37 @@ const procesarFactura = async (req, res) => {
     }
 
     // ── 2. Verificar suma de pagos = total de la orden ────────────────────────
+    // ── Packs completos ───────────────────────────────────────────────────────
+    // El pack no es un artículo: es un atajo de captura. Se resuelve en el SERVIDOR a
+    // partir de su código —nunca se confía en las líneas que mande el carrito, mismo
+    // principio que el pedido web— y se explota en sus prendas, que se facturan como
+    // líneas normales. El precio va forzado a mayorista por línea y no depende del umbral
+    // global de la orden: un pack se vende a mayorista aunque traiga menos unidades que
+    // WHOLESALE_PRICE_MIN_PRODUCT, que es el caso de los packs de residuo.
+    let packsVendidos = [];
+    if (clavesPacks.length) {
+        try {
+            packsVendidos = await resolverPacksParaVenta({
+                claves: clavesPacks,
+                idPuntoDeVenta
+            });
+        } catch (e) {
+            if (e.publico) return res.status(400).json({ success: false, mensaje: e.message });
+            throw e;
+        }
+
+        for (const pack of packsVendidos) {
+            for (const linea of pack.lineas) {
+                itemsEfectivos.push({
+                    idProducto:     linea.idProducto,
+                    cantidad:       linea.cantidad,
+                    precioForzado:  linea.precioMayorista,
+                    idPackOrigen:   pack.idPack
+                });
+            }
+        }
+    }
+
     const idProductos = [...new Set(itemsEfectivos.map(i => i.idProducto))];
     const productos   = await Productos.findAll({
         where: { idProducto: idProductos },
@@ -2297,13 +2383,18 @@ const procesarFactura = async (req, res) => {
     let subtotalOrden       = 0;
     let totalImpuestosOrden = 0;
     let descuentoMayorista  = 0;
-    const itemsProcesados = itemsEfectivos.map(it => {
+    let itemsProcesados = itemsEfectivos.map(it => {
         const prod   = prodMap.get(it.idProducto);
         const qty    = parseInt(it.cantidad);
         const esWeb  = precioWebPorProducto.has(it.idProducto);
-        const precio = esWeb
-            ? precioWebPorProducto.get(it.idProducto)
-            : (esMayorista ? parseFloat(prod.precioVentaMayorista) : parseFloat(prod.precioVentaPublicoFinal));
+        // `precioForzado` lo pone una línea que viene de un pack: ese precio ya es el
+        // mayorista vigente y no se recalcula con el umbral de la orden. Va antes que
+        // `esWeb` porque una línea de pack nunca es de un pedido web.
+        const precio = it.precioForzado != null
+            ? parseFloat(it.precioForzado)
+            : (esWeb
+                ? precioWebPorProducto.get(it.idProducto)
+                : (esMayorista ? parseFloat(prod.precioVentaMayorista) : parseFloat(prod.precioVentaPublicoFinal)));
 
         const totalLinea    = _round2(precio * qty);                       // con IVA incluido: lo que se cobra
         const baseGravable   = _round2(totalLinea / (1 + IVA_RATE));        // sin IVA, ya con el descuento adentro
@@ -2314,7 +2405,7 @@ const procesarFactura = async (req, res) => {
         // No aplica a un pedido web (precio ya fijo, pagado de antes: no hay "precio de
         // detal" que comparar) ni cuando la orden no calificó como mayorista (ahí el precio
         // ya es el de detal, y precioDetalLinea === precio da descuento 0).
-        const precioDetalLinea = esWeb ? precio : parseFloat(prod.precioVentaPublicoFinal);
+        const precioDetalLinea = (esWeb && it.precioForzado == null) ? precio : parseFloat(prod.precioVentaPublicoFinal);
         const totalDetalLinea  = _round2(precioDetalLinea * qty);
         const baseDetalLinea   = _round2(totalDetalLinea / (1 + IVA_RATE));
         // Descuento en términos de base gravable (sin IVA), no del valor cobrado con IVA
@@ -2331,9 +2422,38 @@ const procesarFactura = async (req, res) => {
         return {
             idProducto: it.idProducto, nombreProducto: prod.nombreProducto, cantidad: qty,
             valorUnidad: precio, subTotal: baseGravable, porcentajeIva: IVA_PCT,
-            valorImpuesto: impuestoLinea, total: totalLinea
+            valorImpuesto: impuestoLinea, total: totalLinea,
+            // De qué pack salió esta línea, si salió de uno. El descuento de stock la trata
+            // distinto: sus unidades no están sueltas, están dentro del bulto sellado.
+            idPackOrigen: it.idPackOrigen || null
         };
     });
+    // ── Consolidar líneas repetidas ───────────────────────────────────────────
+    // Cuatro packs iguales generaban dieciséis renglones, con la misma prenda repetida
+    // cuatro veces en la tirilla. Se agrupan por producto para que salga una línea con la
+    // cantidad total.
+    //
+    // La clave incluye el precio y el origen, no solo el producto:
+    //   · precio  — una misma prenda puede ir a mayorista en una línea y a detal en otra;
+    //               fusionarlas inventaría un precio que no se cobró.
+    //   · origen  — una línea de pack y una suelta se tratan distinto en los pasos 4 y 9
+    //               (la de pack no valida ni descuenta stock suelto). Fusionarlas haría
+    //               que la mitad de la venta se descontara del inventario equivocado.
+    //
+    // Los importes se suman, no se recalculan: cada uno ya venía redondeado a dos
+    // decimales, y sumarlos deja el total de la factura idéntico al de la suma de líneas.
+    const consolidadas = new Map();
+    for (const it of itemsProcesados) {
+        const clave = `${it.idProducto}|${it.valorUnidad}|${it.idPackOrigen ? 'pack' : 'suelto'}`;
+        const previa = consolidadas.get(clave);
+        if (!previa) { consolidadas.set(clave, { ...it }); continue; }
+        previa.cantidad      += it.cantidad;
+        previa.subTotal       = _round2(previa.subTotal      + it.subTotal);
+        previa.valorImpuesto  = _round2(previa.valorImpuesto + it.valorImpuesto);
+        previa.total          = _round2(previa.total         + it.total);
+    }
+    itemsProcesados = [...consolidadas.values()];
+
     totalOrden          = _round2(totalOrden);
     subtotalOrden        = _round2(subtotalOrden);
     totalImpuestosOrden = _round2(totalImpuestosOrden);
@@ -2355,7 +2475,12 @@ const procesarFactura = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Cliente no encontrado.' });
 
     // ── 4. Verificar stock por producto ───────────────────────────────────────
-    for (const it of itemsProcesados) {
+    // Solo las líneas sueltas. Las de un pack NO se miden contra el inventario suelto:
+    // sus prendas están dentro del bulto sellado, que es justamente lo que hace que no
+    // aparezcan como stock individual. Su disponibilidad ya la garantiza la fila CERRADO
+    // del pack —validada en `resolverPacksParaVenta` y bloqueada en el paso 9.5—, así que
+    // exigirlas acá rechazaba la venta de un pack perfectamente disponible.
+    for (const it of itemsProcesados.filter(i => !i.idPackOrigen)) {
         const [{ total: stockTotal }] = await Stock.findAll({
             where: { idPuntoVenta: idPuntoDeVenta, idProducto: it.idProducto, cantidadExistente: { [Op.gt]: 0 } },
             attributes: [[fn('SUM', col('cantidadExistente')), 'total']],
@@ -2513,7 +2638,11 @@ const procesarFactura = async (req, res) => {
         }
 
         // ── 9. Actualizar stock FIFO ──────────────────────────────────────────
-        for (const it of itemsProcesados) {
+        // Solo las líneas sueltas. Las que vienen de un pack se saltan este bloque: sus
+        // unidades no están en stock suelto, están dentro del bulto sellado, y descontarlas
+        // acá se comería el inventario suelto de esos mismos productos. El bulto se
+        // descuenta entero en el paso 9.5.
+        for (const it of itemsProcesados.filter(i => !i.idPackOrigen)) {
             let pendiente   = it.cantidad;
             const stockRows = await Stock.findAll({
                 where:    { idPuntoVenta: idPuntoDeVenta, idProducto: it.idProducto, cantidadExistente: { [Op.gt]: 0 } },
@@ -2534,6 +2663,49 @@ const procesarFactura = async (req, res) => {
             if (pendiente > 0) {
                 await t.rollback();
                 return res.status(400).json({ success: false, mensaje: `Stock insuficiente para "${it.nombreProducto}" al facturar.` });
+            }
+        }
+
+        // ── 9.5 Packs vendidos enteros ────────────────────────────────────────
+        // Se revalida DENTRO de la transacción y con bloqueo: entre la resolución de
+        // arriba y este punto, otra caja pudo haber vendido el mismo bulto. El SELECT
+        // ... FOR UPDATE serializa a las dos, y el update condicional confirma que
+        // seguía disponible antes de darlo por vendido (CLAUDE.md §9).
+        for (const pack of packsVendidos) {
+            const [filasStock] = await Stock.update(
+                { cantidadExistente: 0 },
+                {
+                    where: {
+                        idStock: pack.idStock,
+                        idPuntoVenta: idPuntoDeVenta,
+                        estadoInterno: 'CERRADO',
+                        cantidadExistente: { [Op.gt]: 0 }
+                    },
+                    transaction: t
+                }
+            );
+            if (filasStock === 0) {
+                await t.rollback();
+                return res.status(409).json({
+                    success: false,
+                    mensaje: `El paquete ${pack.codigoEtiqueta} dejó de estar disponible. Actualizá la venta e intentá de nuevo.`
+                });
+            }
+
+            // Mismo criterio: solo pasa a VENDIDO si no lo marcó nadie más en el camino.
+            const [filasPack] = await Pack.update(
+                { estado: 'VENDIDO' },
+                {
+                    where: { idPack: pack.idPack, estado: { [Op.notIn]: ['VENDIDO', 'DESEMPACADO', 'ANULADO'] } },
+                    transaction: t
+                }
+            );
+            if (filasPack === 0) {
+                await t.rollback();
+                return res.status(409).json({
+                    success: false,
+                    mensaje: `El paquete ${pack.codigoEtiqueta} cambió de estado mientras se facturaba.`
+                });
             }
         }
 
@@ -2816,13 +2988,40 @@ const getTirillaPDF = async (req, res) => {
         ], doc.y);
         hr();
 
-        for (const det of factura.detalles) {
-            const nombre = det.producto?.nombreProducto || det.idProducto;
-            const vu     = parseFloat(det.valorUnidad);
-            const vtotal = parseFloat(det.total);
+        // Se agrupan las líneas iguales al imprimir, no solo al facturar: las facturas
+        // emitidas antes de que `procesarFactura` consolidara ya tienen sus filas
+        // repetidas escritas —una venta de cuatro packs iguales dejó dieciséis— y esas
+        // también tienen que poder reimprimirse legibles.
+        //
+        // Agrupa por producto Y precio unitario: la misma prenda puede ir a mayorista en
+        // una línea y a detal en otra, y juntarlas mostraría un precio que no se cobró.
+        // Solo cambia cómo se ve; los valores se suman, no se recalculan, así que el
+        // total impreso sigue siendo el de la factura.
+        const detallesAgrupados = [...factura.detalles.reduce((mapa, det) => {
+            const vu    = parseFloat(det.valorUnidad);
+            const clave = `${det.idProducto}|${vu}`;
+            const previa = mapa.get(clave);
+            if (previa) {
+                previa.cantidad += parseInt(det.cantidad);
+                previa.total    += parseFloat(det.total);
+            } else {
+                mapa.set(clave, {
+                    nombre:   det.producto?.nombreProducto || det.idProducto,
+                    cantidad: parseInt(det.cantidad),
+                    vu,
+                    total:    parseFloat(det.total)
+                });
+            }
+            return mapa;
+        }, new Map()).values()];
+
+        for (const det of detallesAgrupados) {
+            const nombre = det.nombre;
+            const vu     = det.vu;
+            const vtotal = det.total;
             row([
                 { txt: nombre,         x: MARGIN,            w: c1 },
-                { txt: String(parseInt(det.cantidad)), x: MARGIN + c1, w: c2, align: 'center' },
+                { txt: String(det.cantidad), x: MARGIN + c1, w: c2, align: 'center' },
                 { txt: `$${fmtCOP(vu)}`,    x: MARGIN + c1 + c2,  w: c3, align: 'right' },
                 { txt: `$${fmtCOP(vtotal)}`, x: MARGIN+c1+c2+c3, w: c4, align: 'right' }
             ], doc.y);
@@ -2907,9 +3106,17 @@ const getTirillaPDF = async (req, res) => {
             }
             doc.moveDown(0.3);
 
+            // Sin abonos, la deuda de arranque es lo FINANCIADO, no el total: una venta a
+            // crédito puede venir parcialmente pagada en el mismo momento (efectivo +
+            // crédito), y eso que ya entregó el cliente no lo debe. La tirilla mostraba el
+            // total completo aunque hubiera pagado la mitad en efectivo.
+            const mapaFinanciado = await financiadoPorFactura([factura.idFacturaCliente]);
+            const financiadoFactura = mapaFinanciado.has(factura.idFacturaCliente)
+                ? mapaFinanciado.get(factura.idFacturaCliente)
+                : parseFloat(factura.total);
             const saldoActual = abonosFactura.length
                 ? parseFloat(abonosFactura[abonosFactura.length - 1].valorPorPagar)
-                : parseFloat(factura.total);
+                : financiadoFactura;
 
             if (factura.estado === 'liquidada' || saldoActual <= 0) {
                 const altoPaz = 24;
@@ -2929,7 +3136,7 @@ const getTirillaPDF = async (req, res) => {
                 doc.save();
                 doc.lineWidth(1.4).rect(MARGIN, ySaldo, CW, altoSaldo).stroke('#BE185D');
                 doc.font('Helvetica').fontSize(7).fillColor('#BE185D')
-                   .text('Saldo actual', MARGIN, ySaldo + 4, { width: CW, align: 'center', lineBreak: false });
+                   .text('Deuda Actual', MARGIN, ySaldo + 4, { width: CW, align: 'center', lineBreak: false });
                 doc.font('Helvetica-Bold').fontSize(15)
                    .text(`$${fmtCOP(saldoActual)}`, MARGIN, ySaldo + 12, { width: CW, align: 'center', lineBreak: false });
                 doc.restore();
@@ -5245,6 +5452,7 @@ export {
     trasladarDesdeStoreAPI,
     getPerfilProducto,
     buscarPosProducto,
+    buscarPackPos,
     getPosProductoJSON,
     buscarClientePorDoc,
     getClienteCreditoJSON,

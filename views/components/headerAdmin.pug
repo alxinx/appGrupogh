@@ -1,0 +1,48 @@
+//- ── HEADER DE SECCIÓN DEL ADMIN ─────────────────────────────────────────────
+//- La identidad de la pantalla: avatar en círculo, título y una línea de contexto.
+//- Antes este mismo marcado estaba copiado en 19 partials, uno por módulo, y por eso se
+//- fueron separando entre sí (el de clientes había quedado con otro degradado, otro
+//- tamaño de círculo y el botón de acción metido adentro).
+//-
+//- Es un MIXIN y no un include para que una pantalla pueda agregar contenido propio
+//- —chips de estado, avisos— sin que el partial tenga que preverlo: lo que se pase como
+//- bloque se pinta debajo del título.
+//-
+//- Cada módulo sigue resolviendo QUÉ mostrar (el avatar depende de si es alta, listado o
+//- edición) y delega acá el CÓMO:
+//-
+//-     include ../../components/headerAdmin
+//-     +headerAdmin({ avatar: '/img/avatars/listado.webp', titulo: subPagina })
+//-
+//-     +headerAdmin({ avatar: a, titulo: t, subtitulo: s, iconoSub: 'fi-rr-marker' })
+//-         span.status-chip.status-active Abierta
+//-
+//- El título NO usa la clase `.h1`: está declarada dos veces en input.css y la segunda le
+//- mete `text-center`, que corre el texto al medio de su columna. Es el mismo motivo por
+//- el que headerStore.pug ya la evitaba a mano.
+mixin headerAdmin(opts)
+    - var o = opts || {}
+    div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6 text-left")
+        div(class="flex justify-center md:items-center gap-4")
+            div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                if o.avatar
+                    img(src=o.avatar alt=(o.titulo || 'Sección') class="w-17 h-17 object-contain")
+                else if o.icono
+                    i(class=`fi ${o.icono} text-3xl text-white`)
+
+        div(class="flex flex-col gap-1")
+            div(class="flex items-center gap-2 flex-wrap")
+                h1(class="text-2xl md:text-3xl font-semibold text-gray-900 tracking-tight text-left")= o.titulo
+                if o.badge
+                    span(class="inline-flex items-center bg-gh-primarySoft text-gh-primaryHover text-[11px] font-bold px-2.5 py-1 rounded-full")= o.badge
+
+            //- Contenido propio de la pantalla (chips de estado, avisos).
+            if block
+                div(class="flex flex-wrap items-center gap-2")
+                    block
+
+            if o.subtitulo
+                div(class="flex items-center gap-2 text-sm text-gray-500 mt-1")
+                    if o.iconoSub
+                        i(class=`fi ${o.iconoSub}`)
+                    span!= o.subtitulo

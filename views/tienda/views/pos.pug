@@ -9,8 +9,12 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
                 span(class="text-sm font-bold text-gh-grayText") Pedidos web por despachar
             div#pedidos-web-lista(class="flex flex-col gap-2")
 
-        //- Buscador Gigante
-        div(class="bg-white/70 backdrop-blur-md rounded-[1.5rem] p-6 shadow-sm border border-white")
+        //- Buscador Gigante. Va PEGADO al tope de la columna: acá es donde escribe el lector
+        //- de código de barras, y con el buscador fuera de pantalla un escaneo entraba a un
+        //- campo que el operador no ve mientras la grilla se repintaba arriba, fuera del
+        //- viewport. Al bajar se compacta (pos.js le pone .buscador-compacto) para no comerse
+        //- un quinto de la pantalla de una tablet: se achica el campo, no se esconde nada.
+        div#pos-buscador(class="sticky top-0 z-20 bg-white/70 backdrop-blur-md rounded-[1.5rem] p-6 shadow-sm border border-white transition-all duration-200")
             //- Campo de lector de barras: el navegador tapaba el catálogo con dos desplegables
             //- distintos. El historial de formularios se apaga con autocomplete="off" y sin
             //- name= (no hay clave con la que guardarlo; pos.js lo lee por id y nunca se envía
@@ -26,9 +30,11 @@ div(class="h-full p-4 grid grid-cols-12 gap-6")
                 autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
-                class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none"
+                class="h-16 w-full text-4xl text-center bg-transparent border-none focus:ring-0 text-gh-grayText font-light focus:outline-none transition-all duration-200"
             )
-            div(class="flex items-center justify-center gap-3 mt-4 pt-3 border-t border-gray-100/80")
+            //- El interruptor de auto-agregar NO se oculta al compactar: cambia si un escaneo
+            //- entra o no a la orden, y no verlo es peor que los 28px que ocupa.
+            div#pos-buscador-extra(class="flex items-center justify-center gap-3 mt-4 pt-3 border-t border-gray-100/80 transition-all duration-200")
                 label(class="flex items-center gap-3 cursor-pointer select-none group")
                     input(id="auto-add-toggle" type="checkbox" class="sr-only" checked)
                     span.switch

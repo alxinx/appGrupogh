@@ -15,7 +15,7 @@ import {
     desempacarPackAPI,
     trasladarDesdeStoreAPI,
     getPerfilProducto,
-    buscarPosProducto,
+    buscarPosProducto, buscarPackPos,
     sincronizarReservasPos,
     liberarReservasPos,
     getPosProductoJSON,
@@ -117,6 +117,9 @@ routes.get('/json/personal/codigo/:codigo', buscarEmpleadoPorCodigo);
 routes.get('/json/personal/validar/:codigo', validarEmpleadoTienda);
 routes.get('/json/destinos', getDestinosJSON);
 routes.get('/json/pos/buscar', buscarPosProducto);
+// Un pack se vende entero: se escanea su etiqueta y el POS muestra las prendas que trae
+// con su precio mayorista antes de cobrar.
+routes.get('/json/pos/pack', buscarPackPos);
 // Reservas blandas del POS: avisan competencia por el producto, no bloquean stock.
 routes.post('/json/pos/reservas', sincronizarReservasPos);
 routes.delete('/json/pos/reservas', liberarReservasPos);

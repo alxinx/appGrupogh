@@ -11,7 +11,11 @@ block contenedor
                         div(class="mainDashboard")
 
                             //- ── HEADER ─────────────────────────────────────────────────────────────
-                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4")
+                            //- `relative z-40`: este header lleva `backdrop-blur-md`, que crea contexto
+                            //- de apilamiento, y ahí adentro queda encerrado el z-20 del menú "Más".
+                            //- Las tarjetas de abajo —con su propio backdrop-filter— lo tapaban.
+                            //- z-40 y no z-30 porque `z-30` no está en el CSS compilado.
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4 relative z-40")
                                 div(class="flex items-center gap-4")
                                     a(href="/admin/provedores/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
                                         i(class="fi fi-rr-arrow-left text-slate-600")

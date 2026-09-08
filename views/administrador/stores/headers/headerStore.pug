@@ -1,38 +1,17 @@
-div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6 text-left")
-    div(class="flex md:items-center gap-4")
-         div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
-            if dato
-                if dato.activa === true
-                    img(src="/img/avatars/tiendaLila.png" alt="Tienda" class="w-17 h-17 object-contain")
-                else 
-                    img(src="/img/avatars/tiendaLilaSleep.png" alt="Tienda" class="w-17 h-17 object-contain")
-            else
-                img(src="/img/avatars/tiendaNueva.png" alt="Tienda" class="w-17 h-17 object-contain")
+include ../../../components/headerAdmin
 
-    div(class="flex flex-col gap-1")
-        //- Clases explícitas y no `.h1`: esa clase global lleva `text-center`, que corría el
-        //- nombre de la tienda al medio de su columna aunque el bloque esté alineado a la
-        //- izquierda. Mismo criterio que ya se usa en el panel de tienda.
-        if dato
-            h1(class="text-2xl md:text-3xl font-semibold text-gray-900 tracking-tight text-left")=dato.nombreComercial
-        else
-            h1(class="text-2xl md:text-3xl font-semibold text-gray-900 tracking-tight text-left") Nueva Tienda
-        
-        div(class="flex flex-wrap items-center gap-2")
-             if dato
-                span(class="status-chip status-active")
-                    | Abierta
-                span(class="status-chip status-pending")=dato.tipo 
-             else 
-                span(class="status-chip status-low")
-                    i.fi-rr-triangle-warning.h1
-                    | Puedes crear la tienda sin necesidad de todos los datos tributarios, pero no podrás facturar hasta que los datos tributarios esten completos.
-                
-            
-        div(class="flex items-center gap-2 text-sm text-gray-500 mt-1")
-            if dato
-                i(class="fi fi-rr-marker")
-                span=dato.direccionPrincipal
-    
-    
-        
+- var avatar = dato ? (dato.activa === true ? '/img/avatars/tiendaLila.png' : '/img/avatars/tiendaLilaSleep.png') : '/img/avatars/tiendaNueva.png'
+
++headerAdmin({
+    avatar:    avatar,
+    titulo:    dato ? dato.nombreComercial : 'Nueva Tienda',
+    subtitulo: dato ? dato.direccionPrincipal : null,
+    iconoSub:  dato ? 'fi-rr-marker' : null
+})
+    if dato
+        span(class="status-chip status-active") Abierta
+        span(class="status-chip status-pending")= dato.tipo
+    else
+        span(class="status-chip status-low")
+            i.fi-rr-triangle-warning
+            | Puedes crear la tienda sin necesidad de todos los datos tributarios, pero no podrás facturar hasta que los datos tributarios esten completos.

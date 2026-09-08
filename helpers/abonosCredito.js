@@ -109,9 +109,15 @@ export const bloquearFacturasCreditoCliente = async ({ idCliente, idPuntoDeVenta
         if (!ultimoPorFactura.has(u.idFacturaCliente)) ultimoPorFactura.set(u.idFacturaCliente, parseFloat(u.valorPorPagar));
     }
 
+    // Mismo criterio que `facturasCreditoCliente`: sin abonos, la deuda de arranque es lo
+    // financiado. Sin esto un abono exigía el total y el cliente terminaba pagando dos
+    // veces lo que ya había entregado en efectivo al comprar.
+    const financiado = await financiadoPorFactura(ids, transaction);
+
     return facturas.map(f => {
         const total = parseFloat(f.total);
-        const deudaActual = ultimoPorFactura.has(f.idFacturaCliente) ? ultimoPorFactura.get(f.idFacturaCliente) : total;
+        const aCredito = financiado.has(f.idFacturaCliente) ? financiado.get(f.idFacturaCliente) : total;
+        const deudaActual = ultimoPorFactura.has(f.idFacturaCliente) ? ultimoPorFactura.get(f.idFacturaCliente) : aCredito;
         return {
             idFacturaCliente: f.idFacturaCliente, idCliente,
             nroFactura: `${f.prefijo || ''}${f.numeroFactura}`,
@@ -323,6 +329,36 @@ export const pagosATransBucket = (pagos) => {
 // proveedores). Antes vivía como `_facturasCreditoCliente` en adminControllers.js, y
 // storeControllers.js `misClienteDetallePage` tenía su propia copia (recortada, solo para
 // sumar "consumido") de la misma consulta.
+/**
+ * Cuánto se FINANCIÓ realmente en una factura a crédito.
+ *
+ * No es su total: una venta a crédito puede venir parcialmente pagada en el mismo
+ * momento —el cliente abona algo en efectivo y financia el resto—, y lo que queda
+ * debiendo es solo la línea de pago 'Credito En Tienda'.
+ *
+ * Tomar el total como deuda inicial inflaba la deuda del cliente por el monto que ya
+ * había entregado: la factura 67 (total 496.200, de los cuales pagó 100.000 en efectivo)
+ * aparecía debiendo los 496.200 completos. Y como el cupo disponible se calcula restando
+ * los saldos abiertos, también le comía cupo que sí tenía.
+ *
+ * Devuelve un Map idFacturaCliente → monto financiado. Sin línea de crédito cae en el
+ * total, que es el caso de las facturas 100% a crédito.
+ */
+export const financiadoPorFactura = async (ids, transaction = undefined) => {
+    const mapa = new Map();
+    if (!ids?.length) return mapa;
+
+    const filas = await DetallesPagosFactura.findAll({
+        attributes: ['idFacturaCliente', [fn('SUM', col('valor')), 'financiado']],
+        where: { idFacturaCliente: { [Op.in]: ids }, metodoPago: 'Credito En Tienda' },
+        group: ['idFacturaCliente'],
+        raw: true,
+        transaction
+    });
+    filas.forEach(f => mapa.set(f.idFacturaCliente, parseFloat(f.financiado) || 0));
+    return mapa;
+};
+
 export const facturasCreditoCliente = async (idCliente, transaction = undefined) => {
     const rows = await db.query(`
         SELECT fc.idFacturaCliente, fc.prefijo, fc.numeroFactura, fc.fechaEmision,
@@ -342,16 +378,24 @@ export const facturasCreditoCliente = async (idCliente, transaction = undefined)
         ORDER BY fc.fechaEmision ASC
     `, { replacements: { idCliente }, type: db.QueryTypes.SELECT, transaction });
 
+    // Sin abonos todavía, la deuda de arranque es lo FINANCIADO, no el total: lo que el
+    // cliente pagó en el momento de la venta ya no lo debe.
+    const financiado = await financiadoPorFactura(rows.map(r => r.idFacturaCliente), transaction);
+
     return rows.map(r => {
-        const total = parseFloat(r.total);
-        const deudaActual = r.deudaUltima != null ? parseFloat(r.deudaUltima) : total;
+        const total  = parseFloat(r.total);
+        const aCredito = financiado.has(r.idFacturaCliente) ? financiado.get(r.idFacturaCliente) : total;
+        const deudaActual = r.deudaUltima != null ? parseFloat(r.deudaUltima) : aCredito;
         return {
             idFacturaCliente: r.idFacturaCliente,
             nroFactura: `${r.prefijo || ''}${r.numeroFactura}`,
             fechaEmision: r.fechaEmision,
             diasTranscurridos: parseInt(r.diasTranscurridos),
             valorOriginal: total,
-            abonado: round2(total - deudaActual),
+            // Lo abonado se mide contra lo financiado, no contra el total: si no, el pago
+            // hecho en la venta aparecería como un abono posterior que nunca existió.
+            valorFinanciado: aCredito,
+            abonado: round2(aCredito - deudaActual),
             deudaActual,
             estadoFactura: r.estado
         };

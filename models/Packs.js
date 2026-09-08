@@ -23,8 +23,14 @@ const Pack = db.define('PACKS', {
         type: DataTypes.ENUM('ESTANDAR', 'RESIDUO'),
         defaultValue: 'ESTANDAR'
     },
+    // EMPACADO   recién armado, en fábrica/bodega
+    // TRASLADADO enviado a otra sede
+    // DESEMPACADO abierto en tienda: su contenido pasó a stock suelto
+    // VENDIDO    facturado entero en el POS, sin abrirse
+    // ANULADO    rechazado al recibirlo (resolución de controversia)
+    // SEPARADO / DESPACHADO están declarados de antes y hoy no los asigna nadie.
     estado: {
-        type: DataTypes.ENUM('EMPACADO', 'SEPARADO', 'DESPACHADO', 'TRASLADADO', 'DESEMPACADO', 'ANULADO'),
+        type: DataTypes.ENUM('EMPACADO', 'SEPARADO', 'DESPACHADO', 'TRASLADADO', 'DESEMPACADO', 'ANULADO', 'VENDIDO'),
         defaultValue: 'EMPACADO'
     },
     contadorReimpresiones: {

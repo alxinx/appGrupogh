@@ -12,8 +12,12 @@ block contenedor
                             //******************[CUERPO PANELES]*********************//
 
                             //- HEADER
-                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                            //- Mismo armado que el de inventario (inventarios/new.pug): rejilla de
+                            //- dos columnas, identidad de la sección a la izquierda y las acciones
+                            //- a la derecha, cada una en su propio partial.
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 bg-white/70 backdrop-blur-md rounded-2xl p-6")
                                 include ./customers/headerClientes.pug
+                                include ./customers/actionBtnsClientes.pug
 
                             //- STATS
                             div(class="col-span-12 grid grid-cols-1 md:grid-cols-4 gap-4")

@@ -1,0 +1,32 @@
+//- ── BOTONES DE ACCIÓN DEL HEADER ────────────────────────────────────────────
+//- No es un partial que se incluya: es el ESTÁNDAR, escrito acá para que haya un solo
+//- lugar donde consultarlo. Cada módulo arma su fila de acciones con estas clases.
+//-
+//- CONTENEDOR
+//-     div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+//-
+//- ORDEN — de menor a mayor peso, la acción principal siempre al final (a la derecha):
+//-     1. Volver
+//-     2. acciones secundarias (Guía de Empaque, Exportar, Más acciones…)
+//-     3. la acción principal de la pantalla (Nueva tienda, Nuevo cliente, Crear producto)
+//-
+//- ESTILOS
+//-     · Volver y secundarias  →  .btn .btn-secondary   (blanco con borde)
+//-     · acción principal      →  .btn .btn-danger      (rosa sólido)
+//-     · destructiva           →  .btn .btn-danger      con confirmación previa
+//-
+//- `btn-outline` NO existe: no está en el CSS compilado, así que los botones que la
+//- usaban se veían blancos por el `.btn` a secas y sin borde. Es la clase que hay que
+//- reemplazar por `btn-secondary` cuando aparezca.
+//-
+//- No repetir `btn btn btn-danger` — la clase duplicada venía de copiar y pegar.
+//-
+//- DESPLEGABLES ("Más acciones")
+//-     button(id="btn-mas-acciones" class="btn btn-secondary flex items-center gap-2")
+//-         | Más acciones
+//-         i(class="fi fi-rr-menu-dots text-xs")
+//-     div(id="menu-mas-acciones" class="hidden absolute right-0 top-[calc(100%+6px)] w-56 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-20")
+//-         · el contenedor del par va con `class="relative"`
+//-         · cada opción: w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm
+//-           font-semibold text-slate-700 hover:bg-slate-50, con su ícono en w-4
+//-         · la opción destructiva en text-rose-600 hover:bg-rose-50

@@ -50,9 +50,17 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // Productos actualmente visibles en pantalla (lookup para carrito)
     const productosEnPantalla = new Map();
 
-    // Anima las tarjetas con stagger al aparecer
-    const animarTarjetas = () => {
-        catalogoPos?.querySelectorAll('.product-card-individual').forEach((card, i) => {
+    // Todo lo que entra a una plantilla de string pasa por acá. El nombre de un producto
+    // lo escribe un operador: sin escapar, unas comillas en el nombre rompen el atributo
+    // y un "<" rompe la tarjeta entera.
+    const esc = (v) => String(v ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    // Anima las tarjetas con stagger al aparecer. Recibe qué tarjetas animar: al cargar
+    // más resultados solo entran las nuevas, si no toda la grilla parpadearía de nuevo.
+    const animarTarjetas = (tarjetas) => {
+        (tarjetas || catalogoPos?.querySelectorAll('.product-card-individual') || []).forEach((card, i) => {
             card.style.opacity   = '0';
             card.style.transform = 'translateY(10px)';
             card.style.transition = 'opacity 0.22s ease, transform 0.22s ease';
@@ -83,9 +91,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         <div
             id="product-${p.idProducto}"
             class="product-card product-card-individual group cursor-pointer ${sinStock ? 'opacity-50' : ''}"
-            data-name="${p.nombreProducto}"
-            data-codigo="${p.sku}"
+            data-name="${esc(p.nombreProducto)}"
+            data-codigo="${esc(p.sku)}"
             data-modal-target="${modalId}"
+            data-drag-tipo="producto"
             draggable="${sinStock ? 'false' : 'true'}"
         >
             <div class="relative aspect-[4/5] rounded-[1rem] overflow-hidden mb-4 bg-gray-50 shadow-sm">
@@ -127,21 +136,322 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         </div>`;
     };
 
+    // Bultos cuyo código empieza por lo escrito. Devuelve [] ante cualquier problema: si
+    // la búsqueda de packs falla, la pantalla sigue mostrando el "sin resultados" normal.
+    const buscarPacks = async (q) => {
+        try {
+            const res  = await fetch(`/store/json/pos/pack?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            return data.success ? (data.packs || []) : [];
+        } catch (_) {
+            return [];
+        }
+    };
+
+    // Tarjeta de un pack en la grilla. Es la MISMA tarjeta que la de una prenda —misma
+    // caja 4/5, mismo badge, mismo bloque de dos precios, mismo botón— porque el cajero
+    // busca en una sola grilla y no debe reaprender dónde mirar. Solo cambia lo que de
+    // verdad es distinto: el avatar de bulto en vez de una foto (no hay una foto honesta
+    // de un paquete cerrado) sobre el rosa suave de marca.
+    const renderTarjetaPack = (pack) => {
+        const unidades     = pack.unidades || 1;
+        const precioPack   = fmt(pack.total);
+        // Lo que el cliente pregunta siempre: "¿a cómo me sale cada prenda?".
+        const precioPrenda = fmt(pack.total / unidades);
+        const esResiduo    = pack.tipo === 'RESIDUO';
+
+        return `
+        <div
+            id="pack-${esc(pack.idPack)}"
+            class="product-card product-card-individual group cursor-pointer"
+            data-pack="${esc(pack.idPack)}"
+            data-drag-tipo="pack"
+            data-name="Paquete ${esc(pack.codigoEtiqueta)}"
+            data-codigo="${esc(pack.codigoEtiqueta)}"
+            draggable="true"
+            title="Doble clic para ver qué trae · arrástralo a la orden"
+        >
+            <div class="relative aspect-[4/5] rounded-[1rem] overflow-hidden mb-4 bg-gh-primarySoft/50 shadow-sm flex items-center justify-center">
+                <img
+                    src="/img/avatars/pack.webp"
+                    alt="Paquete ${esc(pack.codigoEtiqueta)}"
+                    class="w-3/5 h-3/5 object-contain group-hover:scale-110 transition-transform duration-700"
+                    loading="lazy"
+                >
+                <span class="absolute bottom-4 left-3 px-3 py-1.5 bg-white/80 text-gh-primaryHover backdrop-blur-sm text-[10px] font-bold uppercase rounded-xl shadow-sm border border-white/20">
+                    ${unidades} prendas
+                </span>
+                ${esResiduo ? `<span class="absolute top-3 right-3 px-2.5 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-xl shadow-sm">Residuo</span>` : ''}
+            </div>
+            <h3 class="font-bold text-gray-900 truncate px-2 text-sm md:text-base">Paquete Lote ${esc(pack.numLote)}</h3>
+            <p class="text-xs text-gray-500 mb-4 px-2 flex items-center">
+                <i class="fi-rr-rectangle-barcode pr-2 text-slate-400"></i>
+                <span class="font-mono">${esc(pack.codigoEtiqueta)}</span>
+            </p>
+            <div class="flex items-center justify-between px-2 mb-4">
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase">Paquete</span>
+                    <span class="font-bold text-lg text-gray-900">$${precioPack}</span>
+                </div>
+                <div class="flex flex-col text-right">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase">Por prenda</span>
+                    <span class="font-bold text-lg text-gh-primary">$${precioPrenda}</span>
+                </div>
+            </div>
+            <button
+                type="button"
+                data-pack="${esc(pack.idPack)}"
+                class="btn-agregar-pack w-full h-11 bg-gh-primary/10 text-gh-primary cursor-pointer hover:bg-gh-primary hover:text-white rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm"
+            >
+                <i class="fi-rr-add-document"></i>
+                <span class="font-bold text-sm">Agregar paquete</span>
+            </button>
+        </div>`;
+    };
+
+    // Los packs de la última búsqueda, para no volver a pedirlos al agregar o al ver detalle.
+    const packsEnPantalla = new Map();
+
+    const agregarPackAOrden = (idPack) => {
+        const pack = packsEnPantalla.get(idPack);
+        if (!pack) return;
+        if (bloquearSiSinCaja() || bloqueadoPorCuadre() || bloqueadoPorPedidoWeb('agregar paquetes')) return;
+        if (packsEnOrden.has(pack.idPack)) {
+            window.showToast?.(`El paquete ${pack.codigoEtiqueta} ya está en la orden`, 'warning');
+            return;
+        }
+        packsEnOrden.set(pack.idPack, pack);
+        window.showToast?.(`Paquete ${pack.codigoEtiqueta} agregado (${pack.unidades} prendas)`, 'success');
+        renderCarrito();
+    };
+
+    // Doble clic: qué trae el bulto y cuánto vale entero. Es la pregunta que el cajero
+    // necesita responderle al cliente antes de venderlo, y no cabe en la tarjeta. Cada
+    // prenda se lista como en el resto del POS —foto, nombre, referencia— para que el
+    // cajero pueda confirmar contra lo que tiene en el mostrador sin abrir el paquete.
+    const verDetallePack = (idPack) => {
+        const pack = packsEnPantalla.get(idPack);
+        if (!pack) return;
+
+        const filas = pack.lineas.map(l => `
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px solid #f1f5f9;text-align:left;">
+                <img src="${esc(l.imagen)}" alt=""
+                     onerror="this.src='/img/image-default.webp'"
+                     style="width:44px;height:55px;flex:none;object-fit:cover;border-radius:10px;background:#f8fafc;">
+                <div style="flex:1;min-width:0;">
+                    <p style="margin:0;font-size:13.5px;font-weight:700;color:#1f2430;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(tc(l.nombreProducto))}</p>
+                    <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${esc(l.sku)}</p>
+                </div>
+                <div style="flex:none;text-align:right;">
+                    <p style="margin:0;font-size:13.5px;font-weight:800;color:#1f2430;line-height:1.3;">${l.cantidad} und</p>
+                    <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;white-space:nowrap;">$${fmt(l.precioMayorista)} c/u</p>
+                </div>
+            </div>`).join('');
+
+        const chip = (texto) => `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#FDE7F2;color:#E24C95;font-size:11px;font-weight:700;">${esc(texto)}</span>`;
+
+        Swal.fire({
+            title: `Paquete ${pack.codigoEtiqueta}`,
+            html: `
+                <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:0 0 14px;">
+                    ${chip(`Lote ${pack.numLote}`)}
+                    ${chip(`${pack.unidades} prendas`)}
+                    ${chip(`${pack.lineas.length} referencias`)}
+                    ${pack.tipo === 'RESIDUO' ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#FEF3C7;color:#B45309;font-size:11px;font-weight:700;">Residuo</span>` : ''}
+                </div>
+                <div style="max-height:46vh;overflow-y:auto;border-top:1px solid #f1f5f9;">${filas}</div>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;padding:14px 2px 0;">
+                    <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#94a3b8;">Total del paquete</span>
+                    <span style="font-size:20px;font-weight:800;color:#1f2430;">$${fmt(pack.total)}</span>
+                </div>
+                <p style="margin:4px 0 0;text-align:right;font-size:11.5px;color:#94a3b8;">
+                    Precio mayorista · $${fmt(pack.total / (pack.unidades || 1))} por prenda
+                </p>`,
+            width: '34rem',
+            showCancelButton: true,
+            confirmButtonText: 'Agregar a la orden',
+            cancelButtonText: 'Cerrar',
+            reverseButtons: true,
+            confirmButtonColor: '#EC5FA3'
+        }).then(r => { if (r.isConfirmed) agregarPackAOrden(idPack); });
+    };
+
+    const mostrarPacks = (packs) => {
+        resetPaginacion();
+        packsEnPantalla.clear();
+        packs.forEach(p => packsEnPantalla.set(p.idPack, p));
+        catalogoPos.innerHTML = packs.map(renderTarjetaPack).join('');
+        setEscena(false);
+        animarTarjetas();
+
+        // El doble clic (y el doble tap) los atiende el handler global de tarjetas,
+        // que ya distingue paquete de prenda: acá solo va el botón.
+        catalogoPos.querySelectorAll('.btn-agregar-pack').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); agregarPackAOrden(btn.dataset.pack); });
+        });
+
+        // Un bulto se arrastra igual que una prenda: en tablet es la forma natural de
+        // despachar, y era la única cosa que la tarjeta de pack no sabía hacer.
+        bindDragEnCatalogo();
+    };
+
+    // ── Buscador pegado y compacto ──────────────────────────────────────────────
+    // El buscador queda fijo arriba (sticky en el pug) porque es donde escribe el lector de
+    // barras: con la grilla larga y el campo fuera de pantalla, un escaneo entraba a ciegas.
+    // Al bajar se encoge para devolverle a las tarjetas el espacio que ocupa.
+    const columnaScroll = catalogoPos?.closest('.overflow-y-auto');
+    const cajaBuscador  = document.getElementById('pos-buscador');
+    const extraBuscador = document.getElementById('pos-buscador-extra');
+
+    const compactarBuscador = (compacto) => {
+        if (!cajaBuscador) return;
+        cajaBuscador.classList.toggle('p-6', !compacto);
+        cajaBuscador.classList.toggle('p-3', compacto);
+        inputCodigo?.classList.toggle('h-16',    !compacto);
+        inputCodigo?.classList.toggle('text-4xl', !compacto);
+        inputCodigo?.classList.toggle('h-11',     compacto);
+        inputCodigo?.classList.toggle('text-xl',  compacto);
+        extraBuscador?.classList.toggle('mt-4', !compacto);
+        extraBuscador?.classList.toggle('pt-3', !compacto);
+        extraBuscador?.classList.toggle('mt-2',  compacto);
+        extraBuscador?.classList.toggle('pt-2',  compacto);
+    };
+
+    if (columnaScroll) {
+        // Histéresis: compacta a los 60px y solo vuelve a expandirse por debajo de 20. Con un
+        // único umbral, el propio cambio de alto mueve el scroll y el buscador titila.
+        let compacto = false;
+        columnaScroll.addEventListener('scroll', () => {
+            const y = columnaScroll.scrollTop;
+            if (!compacto && y > 60)      { compacto = true;  compactarBuscador(true); }
+            else if (compacto && y < 20)  { compacto = false; compactarBuscador(false); }
+        }, { passive: true });
+    }
+
+    // Una búsqueda nueva devuelve la columna arriba: si no, se busca otra cosa y se queda
+    // mirando la mitad de una grilla que ya se renovó.
+    const subirCatalogo = () => columnaScroll?.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // ── Paginación del catálogo ("ver más") ─────────────────────────────────────
+    // La grilla muestra 8 tarjetas: son las que caben sin scroll y las que el vendedor
+    // alcanza a mirar de un vistazo. Pero un término amplio como "body" tiene cientos de
+    // coincidencias, y el que no aparece ahí antes no existía para el POS. Esto le da
+    // salida al resto sin mandarle cientos de fotos de una a la tablet.
+    const paginaCatalogo = { q: '', offset: 0, hayMas: false, cargando: false, autoCargar: false };
+    let observadorMas = null;
+
+    const resetPaginacion = () => {
+        observadorMas?.disconnect();
+        observadorMas = null;
+        document.getElementById('pos-ver-mas')?.remove();
+        paginaCatalogo.q = '';
+        paginaCatalogo.offset = 0;
+        paginaCatalogo.hayMas = false;
+        paginaCatalogo.autoCargar = false;
+    };
+
+    const filaVerMas = (contenido) => `
+        <div id="pos-ver-mas" class="col-span-3 flex justify-center py-2">${contenido}</div>`;
+
+    const botonVerMas = () => filaVerMas(`
+        <button type="button" id="btn-ver-mas"
+                class="w-full sm:w-auto px-6 h-11 bg-white text-gh-primaryHover font-bold text-sm rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 hover:bg-gh-primary hover:text-white cursor-pointer">
+            <i class="fi-rr-angle-small-down"></i>
+            Ver más resultados
+        </button>`);
+
+    const cargarMasProductos = async () => {
+        if (!catalogoPos || !paginaCatalogo.hayMas || paginaCatalogo.cargando) return;
+        paginaCatalogo.cargando = true;
+        observadorMas?.disconnect();
+
+        const fila = document.getElementById('pos-ver-mas');
+        if (fila) fila.innerHTML = `
+            <span class="flex items-center gap-2 py-2 text-sm text-gray-400">
+                <i class="fi fi-rr-spinner animate-spin"></i> Cargando más...
+            </span>`;
+
+        try {
+            const res  = await fetch(`/store/json/pos/buscar?q=${encodeURIComponent(paginaCatalogo.q)}&offset=${paginaCatalogo.offset}`);
+            const data = await res.json();
+            if (!data.success) throw new Error();
+
+            data.productos.forEach(p => productosEnPantalla.set(p.idProducto, p));
+            paginaCatalogo.offset    += data.productos.length;
+            paginaCatalogo.hayMas     = !!data.hayMas;
+            // A partir del primer "ver más" el operador ya dijo que quiere seguir viendo:
+            // de ahí en adelante basta con llegar al final de la grilla.
+            paginaCatalogo.autoCargar = true;
+
+            document.getElementById('pos-ver-mas')?.remove();
+            catalogoPos.insertAdjacentHTML('beforeend', data.productos.map(renderTarjetaProducto).join(''));
+            // Solo las que acaban de entrar: las anteriores ya están en su sitio.
+            const todas  = catalogoPos.querySelectorAll('.product-card-individual');
+            const nuevas = [...todas].slice(todas.length - data.productos.length);
+            animarTarjetas(nuevas);
+            bindDragEnCatalogo();
+        } catch {
+            // La página no se pierde: el botón vuelve para reintentar desde el mismo offset.
+            window.showToast?.('No se pudieron cargar más productos', 'error');
+        } finally {
+            paginaCatalogo.cargando = false;
+            montarVerMas();
+        }
+    };
+
+    // La primera página extra siempre es un clic: en una pantalla alta la fila puede quedar
+    // visible sin scrollear y el observador encadenaría cargas que nadie pidió. Después del
+    // primer clic sí se carga solo al llegar al final, que es lo que se espera de una
+    // grilla larga. El botón nunca desaparece: en tablet el dedo llega antes que el scroll.
+    const montarVerMas = () => {
+        observadorMas?.disconnect();
+        observadorMas = null;
+        document.getElementById('pos-ver-mas')?.remove();
+        if (!catalogoPos || !paginaCatalogo.hayMas) return;
+
+        catalogoPos.insertAdjacentHTML('beforeend', botonVerMas());
+        const fila = document.getElementById('pos-ver-mas');
+        fila?.querySelector('#btn-ver-mas')?.addEventListener('click', cargarMasProductos);
+
+        if (paginaCatalogo.autoCargar && 'IntersectionObserver' in window && fila) {
+            observadorMas = new IntersectionObserver((entradas) => {
+                if (entradas.some(e => e.isIntersecting)) cargarMasProductos();
+            }, { rootMargin: '220px' });
+            observadorMas.observe(fila);
+        }
+    };
+
     const buscarProductos = async (q) => {
         if (!catalogoPos) return;
         setEscena(false);
+        resetPaginacion();
+        subirCatalogo();
         catalogoPos.innerHTML = `
             <div class="col-span-3 flex items-center justify-center py-12 text-gray-400">
                 <i class="fi fi-rr-spinner animate-spin text-2xl mr-3"></i>
                 Buscando...
             </div>`;
         try {
-            const res  = await fetch(`/store/json/pos/buscar?q=${encodeURIComponent(q)}`);
+            const res  = await fetch(`/store/json/pos/buscar?q=${encodeURIComponent(q)}&offset=0`);
             const data = await res.json();
             if (!data.success) throw new Error();
 
             if (!data.productos.length) {
                 productosEnPantalla.clear();
+
+                // Puede ser el código de una etiqueta. Se buscan los bultos cuyo código
+                // EMPIECE por lo escrito: con el código completo devuelve uno solo —así el
+                // escaneo sigue funcionando— y con los primeros dígitos, todos los de esa
+                // dosificación, como tarjetas.
+                const packs = await buscarPacks(q);
+                if (packs.length === 1 && autoAddToggle?.checked && packs[0].codigoEtiqueta.toUpperCase() === q.toUpperCase()) {
+                    packsEnPantalla.set(packs[0].idPack, packs[0]);
+                    agregarPackAOrden(packs[0].idPack);
+                    limpiarBusqueda();
+                    return;
+                }
+                if (packs.length) { mostrarPacks(packs); return; }
+
                 catalogoPos.innerHTML = `
                     <div class="col-span-3 flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
                         <i class="fi fi-rr-search text-3xl"></i>
@@ -167,6 +477,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             setEscena(false);
             animarTarjetas();
             bindDragEnCatalogo();
+
+            paginaCatalogo.q      = q;
+            paginaCatalogo.offset = data.productos.length;
+            paginaCatalogo.hayMas = !!data.hayMas;
+            montarVerMas();
         } catch {
             catalogoPos.innerHTML = `
                 <div class="col-span-3 text-center py-12 text-red-400">Error al buscar productos.</div>`;
@@ -174,6 +489,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     };
 
     const limpiarCatalogo = () => {
+        resetPaginacion();
+        subirCatalogo();
+        compactarBuscador(false);
         productosEnPantalla.clear();
         if (catalogoPos) catalogoPos.innerHTML = '';
         setEscena(true);
@@ -231,6 +549,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // ─── CARRITO MANAGER ──────────────────────────────────────────────────────
     // Estado aislado por tab (memoria JS — cada tab tiene su propio contexto)
     const cart = new Map(); // idProducto → item
+    // Los packs van aparte: `cart` está indexado por idProducto y un bulto no es un
+    // producto. Se vende tal como está —sin editar cantidades ni quitar prendas—; para
+    // armar uno a gusto del cliente hay que desempacarlo primero, y ahí ya es stock suelto.
+    const packsEnOrden = new Map(); // idPack → pack resuelto por el servidor
     let pedidoWebActivo = null; // idPedido de PEDIDOS_WEB que se está despachando en esta orden, si aplica
     // Pago ya cobrado por la pasarela para ese pedido. El cajero no lo digita ni lo puede editar:
     // el backend lo reconstruye desde PAGOS_PEDIDO_WEB al facturar. Acá solo se muestra.
@@ -260,7 +582,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     });
 
     const fmt = (n) => Math.round(n).toLocaleString('es-CO');
-    const totalQtyEnOrden = () => [...cart.values()].reduce((s, i) => s + i.cantidad, 0);
+    const unidadesEnPacks = () => [...packsEnOrden.values()].reduce((s, p) => s + p.unidades, 0);
+    const totalPacks      = () => [...packsEnOrden.values()].reduce((s, p) => s + p.total, 0);
+    // Las unidades del pack cuentan para el umbral de mayorista: el cliente se está
+    // llevando esas prendas, aunque vayan dentro de un bulto.
+    const totalQtyEnOrden = () => [...cart.values()].reduce((s, i) => s + i.cantidad, 0) + unidadesEnPacks();
     const getModo = () => totalQtyEnOrden() >= WHOLESALE_MIN ? 'mayorista' : 'detal';
     const getPrecioItem = (item) => getModo() === 'mayorista' ? item.precioMayorista : item.precioDetal;
 
@@ -815,6 +1141,38 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     };
 
     // ── Re-render completo del carrito ───────────────────────────────────────
+    // Un pack en la orden: sin botones de cantidad y sin quitar prendas sueltas — se vende
+    // tal como está. Lo único que se puede hacer es sacarlo entero. Mismo criterio que un
+    // pedido web: si hay que modificarlo, no es un pack, es mercancía suelta (hay que
+    // desempacarlo en Inventario).
+    const renderPackCarrito = (pack) => `
+        <div class="rounded-2xl border border-gh-primary/40 bg-gh-primarySoft/40 p-3 mb-2">
+            <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="fi fi-rr-box-open-full text-gh-primaryHover text-lg shrink-0"></span>
+                    <div class="min-w-0">
+                        <p class="font-bold text-sm text-slate-800 truncate">Paquete ${pack.codigoEtiqueta}</p>
+                        <p class="text-[11px] text-slate-500">Lote ${pack.numLote} · ${pack.unidades} prendas · precio mayorista</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="font-bold text-sm text-slate-800">$${fmt(pack.total)}</span>
+                    <button class="btn-remove-pack p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                            data-pack="${pack.idPack}" title="Quitar el paquete de la orden">
+                        <span class="fi fi-rr-trash text-xs"></span>
+                    </button>
+                </div>
+            </div>
+            <ul class="mt-2 pl-7 space-y-0.5">
+                ${pack.lineas.map(l => `
+                    <li class="flex items-center justify-between text-[11px] text-slate-500">
+                        <span class="truncate pr-2">${l.cantidad} × ${l.nombreProducto}</span>
+                        <span class="shrink-0">$${fmt(l.totalLinea)}</span>
+                    </li>`).join('')}
+            </ul>
+            <p class="mt-2 pl-7 text-[10px] text-slate-400">Se vende completo. Para vender prendas sueltas, desempacalo en Inventario.</p>
+        </div>`;
+
     const renderCarrito = () => {
         const items    = [...cart.values()];
         const totalQty = totalQtyEnOrden();
@@ -833,7 +1191,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         if (!cartList) return;
 
-        if (!items.length) {
+        if (!items.length && !packsEnOrden.size) {
             cartList.innerHTML = `
                 <div class="flex flex-col items-center justify-center h-full py-10 gap-3">
                     <img src="/img/avatars/sadBag.webp" alt="Carrito vacío" class="sad-bag-sigh w-24 h-24 object-contain opacity-70">
@@ -843,7 +1201,20 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             return;
         }
 
-        cartList.innerHTML = [...items].reverse().map(renderItemCarrito).join('');
+        // Los packs van arriba: son la unidad más grande de la orden y no se pueden editar,
+        // así que conviene que el cajero los vea primero y no mezclados entre las prendas.
+        cartList.innerHTML =
+            [...packsEnOrden.values()].map(renderPackCarrito).join('') +
+            [...items].reverse().map(renderItemCarrito).join('');
+
+        cartList.querySelectorAll('.btn-remove-pack').forEach(btn =>
+            btn.addEventListener('click', () => {
+                const pack = packsEnOrden.get(btn.dataset.pack);
+                packsEnOrden.delete(btn.dataset.pack);
+                if (pack) window.showToast?.(`Paquete ${pack.codigoEtiqueta} retirado de la orden`, 'info');
+                renderCarrito();
+            })
+        );
 
         // Bind eventos (después del render)
         cartList.querySelectorAll('.btn-qty-minus').forEach(btn =>
@@ -881,7 +1252,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         // el total y parecía que faltaba aplicarlo) — se ve por ítem, con el precio de
         // detal tachado (renderItemCarrito). Subtotal es la base gravable de lo realmente
         // cobrado, ya con el descuento adentro: Subtotal + Impuestos = Total.
-        const total = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
+        // El total del pack ya viene calculado por el servidor a precio mayorista y no se
+        // recalcula acá: es el mismo número que va a cobrar `procesarFactura`.
+        const total = items.reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0) + totalPacks();
         const subtotal  = IVA_PERCENT > 0 ? total / (1 + IVA_PERCENT / 100) : total;
         const impuestos = total - subtotal;
 
@@ -892,7 +1265,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
     // ── Limpiar orden ────────────────────────────────────────────────────────
     document.getElementById('btn-clear-cart')?.addEventListener('click', async () => {
-        if (!cart.size) return;
+        if (!cart.size && !packsEnOrden.size) return;
         const { isConfirmed } = await Swal.fire({
             title: '¿Limpiar orden?',
             text: 'Se eliminarán todos los productos de la orden.',
@@ -903,7 +1276,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             confirmButtonColor: '#EC5FA3'
         });
         if (isConfirmed) {
-            cart.clear(); pedidoWebActivo = null; pagoWebActivo = null;
+            cart.clear(); packsEnOrden.clear(); pedidoWebActivo = null; pagoWebActivo = null;
             liberarReservasPos();
             renderCarrito(); sincronizarBotonCliente();
             // El pedido vuelve a estar disponible y el resto se re-habilita.
@@ -932,12 +1305,31 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                     clientY >= r.top  && clientY <= r.bottom;
     };
 
+    // La grilla mezcla prendas y bultos, así que lo arrastrado se identifica por tipo+id
+    // y no por el id pelado: dos cosas distintas caen en la misma zona.
+    const _cargaArrastre = (card) => card.dataset.dragTipo === 'pack'
+        ? `pack:${card.dataset.pack}`
+        : `producto:${card.id.replace('product-', '')}`;
+
+    const _soltarEnOrden = (carga) => {
+        const sep  = carga.indexOf(':');
+        const tipo = carga.slice(0, sep);
+        const id   = carga.slice(sep + 1);
+        if (tipo === 'pack') { agregarPackAOrden(id); return; }
+        const p = productosEnPantalla.get(id);
+        if (p) addToCart(p);
+    };
+
     const bindDragEnCatalogo = () => {
         catalogoPos?.querySelectorAll('.product-card-individual[draggable="true"]').forEach(card => {
+            // mostrarPacks() puede llamar acá sobre tarjetas ya enlazadas; sin esta marca
+            // un mismo drop agregaría el bulto dos veces.
+            if (card.dataset.dragBound) return;
+            card.dataset.dragBound = '1';
 
             // ── Eventos mouse (desktop) ──────────────────────────────────────
             card.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('text/plain', card.id.replace('product-', ''));
+                e.dataTransfer.setData('text/plain', _cargaArrastre(card));
                 e.dataTransfer.effectAllowed = 'copy';
                 card.classList.add('opacity-50', 'scale-95');
             });
@@ -996,10 +1388,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 const t    = e.changedTouches[0];
                 const over = _sobreDropZone(t.clientX, t.clientY);
                 touchCleanup();
-                if (over) {
-                    const p = productosEnPantalla.get(card.id.replace('product-', ''));
-                    if (p) addToCart(p);
-                }
+                if (over) _soltarEnOrden(_cargaArrastre(card));
             }, { passive: true });
 
             card.addEventListener('touchcancel', touchCleanup, { passive: true });
@@ -1018,8 +1407,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     dropZone?.addEventListener('drop', (e) => {
         e.preventDefault();
         _dropHighlight(false);
-        const p = productosEnPantalla.get(e.dataTransfer.getData('text/plain'));
-        if (p) addToCart(p);
+        _soltarEnOrden(e.dataTransfer.getData('text/plain'));
     });
 
     // Render inicial (carrito vacío)
@@ -1795,10 +2183,14 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         });
 
         // ── Doble clic en tarjeta (mouse) ────────────────────────────────────────
+        // Un paquete comparte la clase de tarjeta con una prenda, pero NO este modal:
+        // el de producto muestra fotos, stock por tienda y traslado, cosas que no
+        // existen para un bulto cerrado. Le corresponde su propio detalle.
         document.addEventListener('dblclick', (e) => {
-            if (e.target.closest('.btn-agregar-pedido')) return;
+            if (e.target.closest('.btn-agregar-pedido') || e.target.closest('.btn-agregar-pack')) return;
             const tarjeta = e.target.closest('.product-card-individual');
             if (!tarjeta) return;
+            if (tarjeta.dataset.dragTipo === 'pack') { verDetallePack(tarjeta.dataset.pack); return; }
             const idProducto = tarjeta.id.replace('product-', '');
             if (idProducto) abrir(idProducto);
         });
@@ -1807,7 +2199,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         let _lastTapTarget = null;
         let _lastTapTime   = 0;
         document.addEventListener('touchend', (e) => {
-            if (e.target.closest('.btn-agregar-pedido')) return;
+            if (e.target.closest('.btn-agregar-pedido') || e.target.closest('.btn-agregar-pack')) return;
             const tarjeta = e.target.closest('.product-card-individual');
             if (!tarjeta) return;
             const ahora = Date.now();
@@ -1815,6 +2207,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 e.preventDefault(); // evitar zoom nativo del doble tap
                 _lastTapTarget = null;
                 _lastTapTime   = 0;
+                if (tarjeta.dataset.dragTipo === 'pack') { verDetallePack(tarjeta.dataset.pack); return; }
                 const idProducto = tarjeta.id.replace('product-', '');
                 if (idProducto) abrir(idProducto);
             } else {
@@ -1867,8 +2260,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         let empleadoActual   = null; // { idEmpleado, nombre } o null si no validado
         let empleadoTimer    = null;
 
+        // Incluye los packs: es el número contra el que se validan los pagos, así que si
+        // los dejara afuera el cajero cobraría de menos y `procesarFactura` rechazaría la
+        // venta por descuadre entre pagos y total.
         const calcularSubtotal = () =>
-            [...cart.values()].reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0);
+            [...cart.values()].reduce((s, i) => s + getPrecioItem(i) * i.cantidad, 0) + totalPacks();
 
         // Formato de miles en campo de efectivo
         window.initMoneyInput?.(document.getElementById('fv-efectivo-monto'));
@@ -2032,7 +2428,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         const abrirFV = async () => {
             if (bloqueadoPorCuadre()) return;
-            if (!cart.size) {
+            if (!cart.size && !packsEnOrden.size) {
                 Swal.fire({ icon: 'info', title: 'Orden vacía', text: 'Agrega productos antes de procesar la factura.', confirmButtonColor: '#EC5FA3' });
                 return;
             }
@@ -2109,7 +2505,18 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const poblarProductos = () => {
             const lista = document.getElementById('fv-lista-productos');
             if (!lista) return;
-            lista.innerHTML = [...cart.values()].map(item => {
+            const filasPacks = [...packsEnOrden.values()].map(pack => `
+                <div class="flex items-center gap-3 py-3">
+                    <img src="/img/avatars/pack.webp" alt="Paquete"
+                         class="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-gh-primarySoft">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold text-gray-800 truncate">Paquete ${pack.codigoEtiqueta}</p>
+                        <p class="text-xs text-gray-400 font-medium mt-0.5">${pack.unidades} prendas · precio mayorista</p>
+                    </div>
+                    <p class="text-base font-black text-gray-900 flex-shrink-0 ml-2">$${fmt(pack.total)}</p>
+                </div>`).join('');
+
+            lista.innerHTML = filasPacks + [...cart.values()].map(item => {
                 const precio = getPrecioItem(item);
                 const total  = precio * item.cantidad;
                 return `
@@ -2781,7 +3188,14 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 const resp = await fetch('/store/facturas/procesar', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body:    JSON.stringify({ idCliente, idEmpleado, items, pagos: pagosPayload, idPedidoWeb: pedidoWebActivo, OF: ventaOF })
+                    // Del pack solo viaja su id: el servidor reconstruye las prendas y sus
+                    // precios, e ignora cualquier línea que mandara el POS. Mismo principio
+                    // que el pedido web.
+                    body:    JSON.stringify({
+                        idCliente, idEmpleado, items,
+                        packs: [...packsEnOrden.keys()],
+                        pagos: pagosPayload, idPedidoWeb: pedidoWebActivo, OF: ventaOF
+                    })
                 });
                 const data = await resp.json();
 
@@ -2801,6 +3215,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 window.open(`/store/facturas/${data.idFacturaCliente}/tirilla`, '_blank');
                 cerrarFV();
                 cart.clear();
+                packsEnOrden.clear();
                 liberarReservasPos();
                 pedidoWebActivo = null;
                 sincronizarBotonCliente();
@@ -2851,7 +3266,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // ─── GUARD DE NAVEGACIÓN ─────────────────────────────────────────────────
     // Cierre / recarga de pestaña → dialog nativo del browser
     window.addEventListener('beforeunload', (e) => {
-        if (!cart.size) return;
+        if (!cart.size && !packsEnOrden.size) return;
         e.preventDefault();
         e.returnValue = '';
     });
@@ -2862,7 +3277,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         if (!link) return;
         const href = link.getAttribute('href');
         if (!href || href.startsWith('#') || href.startsWith('javascript')) return;
-        if (!cart.size) return;
+        if (!cart.size && !packsEnOrden.size) return;
 
         e.preventDefault();
 
