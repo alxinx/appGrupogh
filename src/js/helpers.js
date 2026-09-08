@@ -68,6 +68,17 @@ window.initMoneyInput = (el) => {
     });
 };
 
+// Primera letra de cada palabra en mayúscula, el resto en minúscula: "BODY CELESTE" →
+// "Body Celeste". Para mostrar valores que se guardan normalizados en mayúscula (las
+// familias de producto, por ejemplo) sin gritarle al operador en la interfaz.
+//
+// Global acá, junto a los demás helpers de presentación, para que no vuelva a escribirse
+// en cada pantalla — en el servidor la misma transformación ya vive suelta como
+// `toPascal` dentro de saveCliente y como un replace inline en saveProduct.
+window.tituloCase = (texto) => String(texto ?? '')
+    .trim()
+    .replace(/\S+/g, palabra => palabra.charAt(0).toUpperCase() + palabra.slice(1).toLowerCase());
+
 // Convierte un valor formateado ("78.000") o numérico a entero sin decimales.
 window.parseMoney = (val) => parseInt(String(val).replace(/\D/g, ''), 10) || 0;
 

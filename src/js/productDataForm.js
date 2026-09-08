@@ -465,11 +465,48 @@ actualizarEstadoWeb();
                     confirmButtonColor: '#EC5FA3'
                 });
             } else {
+                const irAlListado = () => { window.location.href = '/admin/inventario/listado'; };
+
                 if (resultado.idsProductos && resultado.idsProductos.length > 1) {
-                    const enlaceZip = document.createElement('a');
-                    enlaceZip.href = `/admin/inventario/etiqueta-sku/${resultado.idsProductos[0]}?ids=${resultado.idsProductos.join(',')}&format=zip`;
-                    enlaceZip.click();
-                } else if (resultado.idProducto) {
+                    // Antes el ZIP se descargaba solo, sin preguntar. Ahora el operador
+                    // elige qué se lleva: los PDF para imprimir las etiquetas, o la
+                    // planilla de códigos para pasarlos a otro sistema.
+                    const ids = resultado.idsProductos.join(',');
+                    const base = `/admin/inventario/etiqueta-sku/${resultado.idsProductos[0]}?ids=${ids}`;
+
+                    // Descarga sin navegar: los dos endpoints responden con
+                    // Content-Disposition: attachment, así que un <a> basta y la página
+                    // sigue en pie para que el modal pueda cerrarse y redirigir.
+                    const descargar = (url) => {
+                        const enlace = document.createElement('a');
+                        enlace.href = url;
+                        enlace.click();
+                    };
+
+                    const eleccion = await Swal.fire({
+                        icon: 'success',
+                        title: resultado.mensaje || '¡Productos guardados!',
+                        html: `Se crearon <b>${resultado.idsProductos.length}</b> productos con su SKU.<br>
+                               <span style="font-size:13px;color:#94a3b8;">¿Qué querés descargar?</span>`,
+                        showDenyButton: true,
+                        showCancelButton: true,
+                        confirmButtonText: 'Etiquetas (ZIP)',
+                        denyButtonText: 'Códigos (Excel)',
+                        cancelButtonText: 'Nada',
+                        reverseButtons: true,
+                        confirmButtonColor: '#EC5FA3',
+                        denyButtonColor: '#0f9d58'
+                    });
+
+                    if (eleccion.isConfirmed) descargar(`${base}&format=zip`);
+                    if (eleccion.isDenied)    descargar(`${base}&format=excel`);
+
+                    // La descarga necesita un instante antes de que la página navegue.
+                    setTimeout(irAlListado, eleccion.isDismissed ? 0 : 1200);
+                    return;
+                }
+
+                if (resultado.idProducto) {
                     window.open(`/admin/inventario/etiqueta-sku/${resultado.idProducto}`, '_blank');
                 }
                 Swal.fire({
@@ -478,9 +515,7 @@ actualizarEstadoWeb();
                     text: 'Los cambios se aplicaron correctamente.',
                     timer: 2000,
                     showConfirmButton: false
-                }).then(() => {
-                    window.location.href = '/admin/inventario/listado';
-                });
+                }).then(irAlListado);
             }
 
         } catch (error) {

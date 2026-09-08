@@ -2,6 +2,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 (function(){
     const inputBusqueda = document.querySelector('#busquedaText');
     const selectCategoria = document.querySelector('#categoriaProductos');
+    const selectFamilia = document.querySelector('#familiaProductos');
+    // El botón vive en la cabecera, junto a "Volver" y "Crear Nuevo Producto".
+    const btnExportar = document.querySelector('#btnExportarCodigos');
+    const nombreFamiliaExportar = document.querySelector('#exportarCodigosFamilia');
     const checkWeb = document.querySelector('#filtroWeb');
     const estado = document.querySelector('#estadoProductos');
     const contenedor = document.querySelector('#contenedor-productos');
@@ -67,6 +71,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             const filtros = {
                 busqueda: inputBusqueda.value,
                 categoria: selectCategoria.value,
+                familia: selectFamilia?.value || '',
                 estado: estado.value,
                 web: checkWeb.checked,
                 pagina: paginaActual
@@ -100,8 +105,33 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         }
     }
 
+    // El botón de exportar existe solo con una familia elegida. Lleva el nombre de la
+    // familia en la etiqueta a propósito: exporta TODOS los códigos de ese artículo,
+    // ignorando los demás filtros de la pantalla, y sin nombrarla el operador podría
+    // creer que baja lo que está viendo.
+    const sincronizarExportar = () => {
+        if (!btnExportar) return;
+        const idFamilia = selectFamilia?.value || '';
+
+        if (!idFamilia) {
+            btnExportar.classList.add('hidden');
+            btnExportar.removeAttribute('href');
+            return;
+        }
+
+        // Las familias se guardan en mayúscula (normalizarFamilia), pero en la etiqueta se
+        // muestran en Título: "BODY CELESTE" gritado al lado de "Volver" y "Crear Nuevo
+        // Producto" desentona con el resto de la cabecera.
+        const nombre = selectFamilia.options[selectFamilia.selectedIndex]?.text || 'esta familia';
+        nombreFamiliaExportar.textContent = window.tituloCase?.(nombre) || nombre;
+        btnExportar.href = `/admin/inventario/etiqueta-sku/familia/${idFamilia}?format=excel`;
+        btnExportar.title = `Descarga un Excel con el nombre y el código de todos los productos de ${window.tituloCase?.(nombre) || nombre}`;
+        btnExportar.classList.remove('hidden');
+    };
+
     const filtrar = () => {
         paginaActual = 1; // Siempre que filtramos, volvemos a la pág 1
+        sincronizarExportar();
         obtenerProductos();
     }
 
@@ -112,7 +142,18 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         timer = setTimeout(filtrar, 300);
     });
 
-    [selectCategoria, checkWeb, estado].forEach(el => el.addEventListener('change', filtrar));
+    [selectCategoria, selectFamilia, checkWeb, estado]
+        .filter(Boolean)
+        .forEach(el => el.addEventListener('change', filtrar));
+
+    // La lista de familias crece con cada alta, así que el select se vuelve buscable:
+    // se puede escribir o elegir, igual que departamento/municipio. El <select> real no
+    // se toca —mismo id, mismo value—, así que `filtros.familia` sigue leyéndose igual.
+    // Requiere el partial views/components/selectBuscable, ya incluido en la vista.
+    window.enhanceSelectBuscable?.(selectFamilia, { placeholder: 'Escribe o elige una familia' });
+
+    // Al cargar, por si el navegador restauró una familia elegida.
+    sincronizarExportar();
 
     document.addEventListener('DOMContentLoaded', filtrar);
 

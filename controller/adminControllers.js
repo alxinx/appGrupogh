@@ -760,8 +760,16 @@ const getTrasladosTiendaJSON = async (req, res) => {
 
 const listaProductos = async (req, res) => {
 
-    const categorias = await Categorias.findAll()
-
+    // Las familias alimentan el filtro buscable del listado. Van ordenadas por nombre
+    // porque la lista se lee escribiendo o recorriéndola, no por antigüedad.
+    const [categorias, familias] = await Promise.all([
+        Categorias.findAll(),
+        Familia.findAll({
+            attributes: ['idFamilia', 'nombreFamilia'],
+            order: [['nombreFamilia', 'ASC'], ['idFamilia', 'ASC']],
+            raw: true
+        })
+    ]);
 
     return res.status(201).render('./administrador/inventarios/productList', {
         pagina: "Inventarios y Productos",
@@ -771,6 +779,7 @@ const listaProductos = async (req, res) => {
         subPath: 'listado',
 
         categorias,
+        familias,
 
     })
 }
@@ -4399,7 +4408,7 @@ const eanJson = async (req, res) => {
 const filterProductListJson = async (req, res) => {
     try {
         // 1. Capturamos la página y aseguramos que sea un número
-        const { busqueda, categoria, estado, web, pagina = 1 } = req.query;
+        const { busqueda, categoria, familia, estado, web, pagina = 1 } = req.query;
         const numPagina = parseInt(pagina) || 1;
 
         const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
@@ -4421,6 +4430,19 @@ const filterProductListJson = async (req, res) => {
         let categoriaId = parseInt(categoria);
         if (categoriaId > 0) {
             condiciones.idCategoria = { [Op.like]: `%${categoriaId}%` };
+        }
+
+        // 2.1 Filtro de Familia. Comparación exacta por id y como STRING: idFamilia es un
+        // UUID, no un entero. Con `parseInt` el UUID '4a48da36-…' quedaba en 4 y MySQL
+        // coaccionaba la columna CHAR al comparar, así que el filtro también devolvía los
+        // productos de cualquier otra familia cuyo UUID empezara con ese mismo dígito.
+        //
+        // Tampoco un LIKE como el de categoría: ahí el LIKE existe porque idCategoria
+        // guarda varias categorías separadas por '|' en una sola columna; idFamilia es
+        // una FK simple.
+        const familiaId = String(familia || '').trim();
+        if (familiaId) {
+            condiciones.idFamilia = familiaId;
         }
 
         // 3. Filtros de Estado y Web
@@ -5044,12 +5066,32 @@ const nombreArchivoSeguro = (valor, fallback = 'producto') => {
 
 // ─── ETIQUETA SKU (PDF 5.5×2.5 cm landscape) ────────────────────────────────
 const imprimirEtiquetaSKU = async (req, res) => {
-    const { idProducto } = req.params;
+    const { idProducto, idFamilia } = req.params;
     const { ids, format } = req.query;
 
     let etiquetas = []; // [{ sku, nombre }]
 
-    if (ids) {
+    if (idFamilia) {
+        // Familia entera: todos los códigos de un artículo, sin depender de que vengan de
+        // un alta reciente. Lo dispara el botón del filtro del listado.
+        const familiaRow = await Familia.findByPk(idFamilia, { attributes: ['nombreFamilia'], raw: true });
+        if (!familiaRow) return res.status(404).send('Familia no encontrada.');
+
+        const productos = await Productos.findAll({
+            where: { idFamilia },
+            attributes: ['sku', 'nombreProducto'],
+            // Por nombre, que es como se lee la planilla; el sku desempata para que el
+            // orden sea total y dos productos homónimos no bailen entre exportaciones.
+            order: [['nombreProducto', 'ASC'], ['sku', 'ASC']],
+            raw: true
+        });
+
+        etiquetas = productos
+            .filter(p => p.sku)
+            .map(p => ({ sku: p.sku, nombre: p.nombreProducto, familia: familiaRow.nombreFamilia }));
+
+        if (etiquetas.length === 0) return res.status(404).send('Esta familia no tiene productos con código.');
+    } else if (ids) {
         // Varios productos independientes (uno por combinación talla+color creada de una vez)
         const idsLista = ids.split(',').map(s => s.trim()).filter(Boolean);
         const productos = await Productos.findAll({
@@ -5090,6 +5132,52 @@ const imprimirEtiquetaSKU = async (req, res) => {
     }
 
     if (etiquetas.length === 0) return res.status(404).send('Producto no encontrado.');
+
+    // Planilla de códigos: el mismo lote de etiquetas, pero como .xlsx para quien tiene
+    // que pasar los SKU a otro sistema (o simplemente leerlos) en vez de imprimirlos.
+    // Comparte con el ZIP toda la resolución de productos de arriba — lo único distinto
+    // es el formato de salida.
+    if (format === 'excel') {
+        try {
+            const familia = etiquetas.find(etiqueta => etiqueta.familia)?.familia;
+            const nombreArchivo = `${nombreArchivoSeguro(familia || etiquetas[0].nombre)}.xlsx`;
+
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+
+            // Streaming directo sobre la respuesta, nunca el archivo entero en memoria
+            // (CLAUDE.md §11 y el bullet de Excel en §2).
+            const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: false });
+            wb.creator = 'Grupo GH';
+            wb.created = new Date();
+
+            const ws = wb.addWorksheet('CODIGOS');
+            ws.columns = [
+                { key: 'nombre', width: 46 },
+                { key: 'sku',    width: 22 }
+            ];
+
+            const encabezado = ws.addRow({ nombre: 'NOMBRE DEL PRODUCTO', sku: 'CODIGO' });
+            encabezado.font = { bold: true };
+            encabezado.commit();
+
+            for (const { nombre, sku } of etiquetas) {
+                const fila = ws.addRow({ nombre, sku });
+                // El SKU va como texto: hay códigos que son solo dígitos y Excel los
+                // convertiría a número, comiéndose los ceros a la izquierda.
+                fila.getCell('sku').numFmt = '@';
+                fila.getCell('sku').alignment = { horizontal: 'left' };
+                fila.commit();
+            }
+
+            await ws.commit();
+            await wb.commit();
+        } catch (e) {
+            console.error('imprimirEtiquetasSKUExcel:', e);
+            if (!res.headersSent) res.status(500).send('Error al generar el Excel de códigos.');
+        }
+        return;
+    }
 
     if (format === 'zip') {
         try {

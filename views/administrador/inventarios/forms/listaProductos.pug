@@ -1,10 +1,13 @@
+//- Estilos del select buscable de familia (window.enhanceSelectBuscable en productList.js).
+include ../../../components/selectBuscable
+
 form(id="filtroListadoProductos" class="col-span-12 grid grid-cols-2 md:grid-cols-4 cards cardsWhite p-6")
     //-FORM BUSQUEDA
     div(class="col-span-12 grid grid-cols-2 md:grid-cols-4 cards cardSearch")
         h3.h3.col-span-12
             i.fi-rr-filter-list.mr-2
             |Filtra la lista        
-        div(class="col-span-12 p-2 md:col-span-2")
+        div(class="col-span-12 p-2 md:col-span-1")
                 div.input-group
                     i.fi-rr-search.input-icon.input-icon-left
                     input.input.input-has-icon-left(
@@ -22,6 +25,18 @@ form(id="filtroListadoProductos" class="col-span-12 grid grid-cols-2 md:grid-col
                         each categoria in categorias
                             if categoria.tipo ==='CATEGORIA'
                                 option(value=categoria.idCategoria )=categoria.nombreCategoria
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+
+        //Familia — buscable: la lista crece con cada alta y un select plano deja de
+        //servir para elegir. Mismo componente que departamento/municipio.
+        div(class="col-span-12 p-2 md:col-span-1")
+            div.col-span-9.select-wrapper
+                select(name="familiaProductos" id="familiaProductos" class="field-select bg-[#F9F4FD] ")
+                    option(value="") Familia
+                    if familias
+                        each familia in familias
+                            option(value=familia.idFamilia)= familia.nombreFamilia
                 span.select-icon
                     i.fi-rr-chevron-double-down
 

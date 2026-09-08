@@ -108,6 +108,9 @@ routes.post('/inventario/batch/', pInv('CREATE'),
     csrfProtection,
     saveBatchOrder
 )
+// Todos los códigos de una familia. Va ANTES de la ruta por producto: son dos segmentos
+// contra uno, así que no compiten, pero el orden deja explícito cuál es la más específica.
+routes.get('/inventario/etiqueta-sku/familia/:idFamilia', pInv('READ'), imprimirEtiquetaSKU)
 routes.get('/inventario/etiqueta-sku/:idProducto', pInv('READ'), imprimirEtiquetaSKU)
 
 

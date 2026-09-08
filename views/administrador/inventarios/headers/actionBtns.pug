@@ -4,6 +4,18 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
             i(class="fi fi-rr-arrow-left")
             | Volver
 
+    //- Exportar los códigos de la familia filtrada. Aparece solo con el filtro de familia
+    //- activo (lo controla src/js/productList.js): sin familia no hay conjunto que
+    //- exportar. Va acá, con las demás acciones, y no dentro del panel de filtros, que es
+    //- para filtrar. Mismo lenguaje que "Volver": acción secundaria, blanca.
+    if subPagina === 'Listado De Productos'
+        a#btnExportarCodigos(href="#" class="hidden")
+            button(class="btn btn-secondary btn-exportar-codigos flex items-center gap-2")
+                i(class="fi fi-rr-file-excel")
+                span
+                    | Exportar códigos de&nbsp;
+                    span#exportarCodigosFamilia(class="font-bold text-slate-900")
+
     if subPagina === 'Listado De Productos'
         a(href="/admin/inventario/ingreso")
             button(class="btn btn btn-danger flex items-center gap-2")
@@ -21,3 +33,28 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
                 i(class="fi fi-rr-edit")
                 | Editar Producto
 
+
+//- Lo que el sistema de botones no cubre: el ícono y la aparición.
+style.
+    /* Verde de Excel (#217346), no el emerald del proyecto: acá el color identifica un
+       FORMATO DE ARCHIVO, como un logo, no un estado. El emerald está reservado para
+       "activo/pagado" (§4.1) y usarlo en un ícono de archivo colisionaría con los badges
+       "Activo" de la misma pantalla. De paso contrasta mejor: 5.82:1 sobre blanco contra
+       los 2.54:1 del emerald, que no llega al mínimo de 3:1 para elementos gráficos.
+       A 14px el glifo se leía como una marca de error, por eso va a 17px. */
+    .btn-exportar-codigos i {
+        font-size: 1.0625rem;
+        line-height: 1;
+        color: #217346;
+    }
+    /* Sin hover propio: el .btn-secondary del sistema ya lleva a gray-50, y así el verde
+       queda como el único acento del botón. */
+    #btnExportarCodigos { text-decoration: none; }
+    #btnExportarCodigos:not(.hidden) { animation: exportar-codigos-entra .24s cubic-bezier(.16,1,.3,1) both; }
+    @keyframes exportar-codigos-entra {
+        from { opacity: 0; transform: translateY(-4px); }
+        to   { opacity: 1; transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        #btnExportarCodigos:not(.hidden) { animation: none; }
+    }
