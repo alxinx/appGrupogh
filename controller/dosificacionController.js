@@ -6,6 +6,14 @@ import { formatearFecha } from '../helpers/helpers.js';
 import db from '../config/bd.js';
 import { v4 as uuidv4 } from 'uuid'; // Para generar los códigos de etiqueta únicos
 import { Op } from 'sequelize';
+import ExcelJS from 'exceljs';
+
+// Código legible de una dosificación: 'D' + los cuatro primeros caracteres de su UUID en
+// mayúscula — D3E17 para 3e1793d1-…. Es el prefijo de los códigos de etiqueta de sus
+// paquetes (D3E17-P001) y lo que se muestra en el listado, en la guía de empaque y en el
+// título de la ficha. La fórmula vivía repetida en cuatro lugares del archivo.
+const codigoDosificacion = (idDosificacion) =>
+    `D${String(idDosificacion || '').substring(0, 4).toUpperCase()}`;
 import dotenv from "dotenv"
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -75,7 +83,7 @@ const guardarDosificacion = async (req, res) => {
         // 4. Guardar Packs y Detalles
         // Procesamos los lotes calculados (resultadoKitting.packs)
         let contadorGlobalPacks = 1;
-        const prefijoDose = dosificacion.idDosificacion.substring(0, 4).toUpperCase();
+        const codigoDose = codigoDosificacion(dosificacion.idDosificacion);
 
         const mapaPrecios = {};
         productos.forEach(p => {
@@ -88,7 +96,7 @@ const guardarDosificacion = async (req, res) => {
             // El contador debe moverse dentro del map para que cada pack sea único
             const packsData = Array.from({ length: grupo.cantidad }).map(() => {
                 const correlativo = String(contadorGlobalPacks).padStart(3, '0');
-                const codigo = `D${prefijoDose}-P${correlativo}`;
+                const codigo = `${codigoDose}-P${correlativo}`;
 
                 contadorGlobalPacks++; // Incrementamos para el siguiente bulto
 
@@ -233,7 +241,7 @@ const obtenerDosificacionesPaginadas = async (req, res) => {
         const dosificaciones = rows.map(d => ({
             id: d.idDosificacion,
             fecha: new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }).format(d.createdAt),
-            codigo: `D${d.idDosificacion.substring(0, 4).toUpperCase()}`,
+            codigo: codigoDosificacion(d.idDosificacion),
             nroPaquetes: (d.PACKs || d.packs || []).length, // Mantenemos el dato de cantidad
             estado: d.estado
         }));
@@ -251,7 +259,10 @@ const obtenerDosificacionesPaginadas = async (req, res) => {
 //VISUAL DE LA DOSIFICACION
 const verDosificacion = async (req, res) => {
     try {
-        const { idDosificacion, codigo } = req.params;
+        const { idDosificacion } = req.params;
+        // El código se deriva del id: la ruta es /ver/:idDosificacion y nunca trajo un
+        // parámetro `codigo`, así que el título decía "Ver dosificacion de undefined".
+        const codigo = codigoDosificacion(idDosificacion);
 
         const dose = await Dosificaciones.findByPk(idDosificacion, {
             include: [{
@@ -571,6 +582,45 @@ const imprimirEtiquetasLote = async (req, res) => {
 
         if (!packs || packs.length === 0) {
             return res.status(404).send('No se encontraron paquetes para este lote');
+        }
+
+        // Planilla de códigos: los mismos paquetes que salen en el PDF, pero para quien
+        // tiene que pasarlos a otro sistema en vez de imprimirlos. Comparte con el PDF la
+        // consulta de arriba — lo único distinto es el formato de salida, igual que en
+        // `imprimirEtiquetaSKU` del listado de productos.
+        if (req.query.format === 'excel') {
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="etiquetas_lote_${numLote}.xlsx"`);
+
+            // Streaming sobre la respuesta, nunca el archivo entero en memoria (§11).
+            const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: false });
+            wb.creator = 'Grupo GH';
+            wb.created = new Date();
+
+            const ws = wb.addWorksheet('CODIGOS');
+            ws.columns = [
+                { key: 'lote',   width: 18 },
+                { key: 'codigo', width: 26 }
+            ];
+
+            const encabezado = ws.addRow({ lote: 'NRO LOTE', codigo: 'CODIGO' });
+            encabezado.font = { bold: true };
+            encabezado.commit();
+
+            for (const pack of packs) {
+                const fila = ws.addRow({ lote: `Lote - ${numLote}`, codigo: pack.codigoEtiqueta });
+                // El código va como texto: uno de solo dígitos perdería los ceros a la
+                // izquierda si Excel lo tomara por número. (El lote ya es texto por el
+                // rótulo "Lote - ", pero se declara igual para no depender de eso.)
+                fila.getCell('lote').numFmt = '@';
+                fila.getCell('codigo').numFmt = '@';
+                fila.getCell('lote').alignment = { horizontal: 'left' };
+                fila.commit();
+            }
+
+            await ws.commit();
+            await wb.commit();
+            return;
         }
 
         // Crear PDF - Tamaño 10x5 cm (aprox 283x142 puntos)
@@ -1028,7 +1078,7 @@ const imprimirGuiaEmpaque = async (req, res) => {
             };
         });
 
-        const prefijoDose = dose.idDosificacion.substring(0, 4).toUpperCase();
+        const codigoDose = codigoDosificacion(dose.idDosificacion);
         const totalBultos = dose.PACKs.length;
 
         const PAGE_W = 595.28; // A4
@@ -1039,7 +1089,7 @@ const imprimirGuiaEmpaque = async (req, res) => {
         const doc = new PDFDocument({ size: 'A4', margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN } });
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=guia-empaque-D${prefijoDose}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename=guia-empaque-${codigoDose}.pdf`);
         // Sin esto el navegador reutiliza el PDF viejo cacheado en la misma URL y los
         // ajustes de layout que se hacen en caliente durante desarrollo no se ven hasta
         // que a alguien se le ocurre forzar el refresh.
@@ -1056,7 +1106,7 @@ const imprimirGuiaEmpaque = async (req, res) => {
         doc.fillColor('#111827').fontSize(18).font('Helvetica-Bold')
             .text('Guía de Empaque', MARGIN + 68, y + 4, { width: CW - 68 });
         doc.fillColor('#6b7280').fontSize(10).font('Helvetica')
-            .text(`Dosificación D${prefijoDose} · ${formatearFecha(dose.fecha)}`, MARGIN + 68, y + 26, { width: CW - 68 });
+            .text(`Dosificación ${codigoDose} · ${formatearFecha(dose.fecha)}`, MARGIN + 68, y + 26, { width: CW - 68 });
         y += 65;
 
         doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(1).strokeColor('#e5e7eb').stroke();

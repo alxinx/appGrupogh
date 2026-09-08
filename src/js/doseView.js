@@ -438,6 +438,42 @@
             }
         };
 
+        // ── IMPRIMIR ETIQUETAS: PDF o Excel ──────────────────────────────────
+        // El PDF trae una etiqueta por paquete con su código de barras, listo para
+        // imprimir. El Excel trae la planilla de códigos del lote para pasarlos a otro
+        // sistema. Los dos salen del mismo endpoint, que se ramifica por ?format.
+        document.querySelectorAll('.btn-etiquetas-lote').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const url = btn.dataset.url;
+                const lote = btn.dataset.lote;
+
+                const eleccion = await Swal.fire({
+                    title: `Etiquetas del lote ${lote}`,
+                    html: '<p style="margin:0;font-size:14px;color:#64748b;">¿En qué formato las querés?</p>',
+                    showDenyButton: true,
+                    showCancelButton: true,
+                    confirmButtonText: 'PDF para imprimir',
+                    denyButtonText: 'Excel de códigos',
+                    cancelButtonText: 'Cancelar',
+                    reverseButtons: true,
+                    confirmButtonColor: '#EC5FA3',
+                    denyButtonColor: '#217346',
+                    focusConfirm: true
+                });
+
+                // El PDF se sirve inline: se abre en una pestaña para revisarlo antes de
+                // mandarlo a la impresora. El Excel viene con Content-Disposition
+                // attachment, así que un <a> lo baja sin sacar al operador de la página.
+                if (eleccion.isConfirmed) {
+                    window.open(url, '_blank', 'noopener');
+                } else if (eleccion.isDenied) {
+                    const enlace = document.createElement('a');
+                    enlace.href = `${url}?format=excel`;
+                    enlace.click();
+                }
+            });
+        });
+
         cargarMetadata();
         initPacksList();
     });
