@@ -26,7 +26,7 @@ import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
 import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
 import { montoPositivo, montoNoNegativo, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
-import { generarSlugDe, slugUnico, normalizarSku13, normalizarSku50, resolverIdFamilia } from '../helpers/productos.js'
+import { generarSlugDe, slugUnico, normalizarSku13, normalizarSku50, resolverIdFamilia, obtenerAtributosOrdenadosPorUso } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col, literal } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
@@ -311,8 +311,8 @@ const saveStoreBasic = async (req, res) => {
 //PRINCIPAL INVENTARIOS
 const dashboardInventorys = async (req, res) => {
 
-    //Obtengo los atributos
-    const atributos = await Atributos.findAll()
+    //Obtengo los atributos (colores ordenados por uso real, ver helpers/productos.js)
+    const atributos = await obtenerAtributosOrdenadosPorUso()
     const categorias = await Categorias.findAll()
     // Familias existentes para el datalist del formulario: escribir el nombre exacto de una
     // que ya existe es lo que hace que el producto caiga en ese grupo y no en uno nuevo.
@@ -1088,7 +1088,7 @@ const editarProducto = async (req, res) => {
     try {
         const [categorias, atributos, familias, producto, variacionesDb] = await Promise.all([
             Categorias.findAll(),
-            Atributos.findAll(),
+            obtenerAtributosOrdenadosPorUso(),
             Familia.findAll({ attributes: ['idFamilia', 'nombreFamilia'], order: [['nombreFamilia', 'ASC']] }),
             Productos.findByPk(idProducto, {
                 include: [
@@ -4015,6 +4015,34 @@ const saveProduct = async (req, res, next) => {
         if (Object.keys(erroresPrecio).length) {
             return res.status(400).json({ errores: erroresPrecio });
         }
+
+        // La categoría/subcategoría tampoco se validaba en el servidor: idCategoria es un
+        // STRING(50) libre sin FK (ver models/Productos.js), y un POST directo podía dejarlo
+        // vacío o "0". CATEGORIA y SUBCATEGORIA son la misma tabla (Categorias.tipo), así
+        // que hay que resolver el tipo de cada id enviado contra la tabla para exigir al
+        // menos una de cada tipo — el string persistido no distingue una de otra.
+        const idsCategoriasSeleccionadas = (Array.isArray(categorias) ? categorias : (categorias ? [categorias] : []))
+            .map(id => parseInt(id))
+            .filter(id => !Number.isNaN(id));
+
+        const erroresCategoria = {};
+        if (idsCategoriasSeleccionadas.length === 0) {
+            erroresCategoria.categorias = 'Selecciona al menos una categoría y una subcategoría.';
+        } else {
+            const filasCategorias = await Categorias.findAll({
+                where: { idCategoria: idsCategoriasSeleccionadas },
+                attributes: ['idCategoria', 'tipo']
+            });
+            const hayCategoria = filasCategorias.some(c => c.tipo === 'CATEGORIA');
+            const haySubcategoria = filasCategorias.some(c => c.tipo === 'SUBCATEGORIA');
+            if (!hayCategoria || !haySubcategoria) {
+                erroresCategoria.categorias = 'El producto debe tener al menos una categoría y una subcategoría.';
+            }
+        }
+        if (Object.keys(erroresCategoria).length) {
+            return res.status(400).json({ errores: erroresCategoria });
+        }
+
         const descripcionLimpia = sanitizarHTML(req.body.descripcion); // Usamos el name="descripcion" del pug
         const activo = req.body.activo === 'on' || req.body.activo === true;
         const web = req.body.web === 'on' || req.body.web === true;

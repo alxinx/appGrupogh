@@ -836,6 +836,23 @@ actualizarEstadoWeb();
             return;
         }
 
+        // Igual que el precio: esto es solo UX, la validación real está en saveProduct
+        // (servidor). Categoría y subcategoría comparten name="categorias" (ver sección 2
+        // de este archivo), así que se distinguen por dónde vive el checkbox: los de
+        // categoría llevan la clase .categoria-checkbox, los de subcategoría se inyectan
+        // dentro de #SubCategorias.
+        const hayCategoria = document.querySelectorAll('.categoria-checkbox:checked').length > 0;
+        const haySubcategoria = document.querySelectorAll('#SubCategorias input[type="checkbox"]:checked').length > 0;
+        if (!hayCategoria || !haySubcategoria) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Categoría requerida',
+                text: 'Selecciona al menos una categoría y una subcategoría.',
+                confirmButtonColor: '#EC5FA3'
+            });
+            return;
+        }
+
         const variantesActuales = JSON.parse(document.getElementById('variantes_finales')?.value || '{}');
         const totalCombos = Object.values(variantesActuales).reduce((acc, colores) => acc + (colores?.length || 0), 0);
 

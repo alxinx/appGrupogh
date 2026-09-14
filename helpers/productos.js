@@ -1,6 +1,8 @@
 import { Op } from 'sequelize';
 import Productos from '../models/Productos.js';
 import Familia from '../models/Familia.js';
+import Atributos from '../models/Atributos.js';
+import VariacionesProducto from '../models/VariacionesProducto.js';
 import { normalizarFamilia } from './helpers.js';
 
 // Compartido entre el alta manual de producto (adminControllers.js#saveProduct) y el
@@ -60,4 +62,37 @@ export const resolverIdFamilia = async (nombre, transaction = null) => {
         ...(transaction ? { transaction } : {})
     });
     return fila.idFamilia;
+};
+
+// Compartido entre el alta (dashboardInventorys) y la edición (editarProducto) de producto:
+// los dos arman el mismo modal "Colores para esta Talla" con la misma lista de ATRIBUTOS.
+//
+// Antes esa lista salía en el orden de creación del atributo, sin relación con cuáles usa
+// de verdad el operador — con el catálogo de colores creciendo, el que se usa en casi
+// todas las prendas quedaba enterrado entre los que casi nadie elige. Acá se reordenan los
+// de tipo COLOR por frecuencia real de uso (cuántas VARIACION_PRODUCTO tiene cada uno), sin
+// tocar el orden de las tallas. Es una sola consulta agregada, no una por color (CLAUDE.md §7).
+export const obtenerAtributosOrdenadosPorUso = async () => {
+    const [atributos, variaciones] = await Promise.all([
+        Atributos.findAll(),
+        VariacionesProducto.findAll({ attributes: ['idAtributos'], raw: true })
+    ]);
+
+    const usosPorColor = new Map();
+    variaciones.forEach(({ idAtributos }) => {
+        // idAtributos es "idTalla|idColor" (ver saveProduct); el color es la segunda parte.
+        const idColor = idAtributos?.split('|')[1];
+        if (!idColor) return;
+        usosPorColor.set(idColor, (usosPorColor.get(idColor) || 0) + 1);
+    });
+
+    const tallas = atributos.filter(a => a.tipo !== 'COLOR');
+    const colores = atributos.filter(a => a.tipo === 'COLOR').sort((a, b) => {
+        const usoA = usosPorColor.get(String(a.idAtributo)) || 0;
+        const usoB = usosPorColor.get(String(b.idAtributo)) || 0;
+        if (usoB !== usoA) return usoB - usoA;
+        return a.valor.localeCompare(b.valor); // empate en uso: orden alfabético estable
+    });
+
+    return [...tallas, ...colores];
 };
