@@ -3,7 +3,7 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardOrders, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
+checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
@@ -25,6 +25,9 @@ import { PuntosDeVenta } from "../models/index.js";
 
 //CONTROLADOR DOSIFICACIOONES:
 import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas, obtenerProductosPorDose, verDosificacion, obtenerMetadataDose, widgetGlobales, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack, imprimirComprobanteTraslado, historialPack, imprimirGuiaEmpaque } from '../controller/dosificacionController.js'
+
+//CONTROLADOR TRASLADOS:
+import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR IMPORTACIONES:
 import { formularioImportaciones, procesarImportacionExcel } from '../controller/importacionesController.js'
@@ -57,7 +60,7 @@ const pBan = perm('Bancos');
 const pPro = perm('Provedores');
 const pPer = perm('Personal');
 const pCli = perm('Clientes');
-const pPed = perm('Pedidos y Reparto');
+const pTra = perm('Traslados');
 const pCfg = perm('Settings');
 const pDos = perm('Dosificación y Repartos');
 import uploadImages, { MAX_IMAGENES } from '../middlewares/uploadImages.js';
@@ -237,7 +240,22 @@ routes.post('/api/clientes/:idCliente/credito/abono-global', pCli('EDIT'), subir
 // abono global — el papel que se le entrega al cliente es el mismo documento.
 routes.get('/api/clientes/abonos/:id/tirilla', pCli('READ'), getTirillaAbonoCliente);
 
-routes.get('/pedidos', pPed('READ'), dashboardOrders);
+// "Pedidos y Reparto" nunca tuvo pantalla: el lugar del menú lo tomó Traslados.
+routes.get('/pedidos', (req, res) => res.redirect('/admin/traslados'));
+
+// Traslados de mercancía. Recibir una devolución de producción pide las dos cosas que pide
+// aceptar un traslado de efectivo (ver /bankentities/traslados/:idTraslado/decidir): QUIÉN
+// recibe, con su código, y que esa persona tenga permiso sobre Traslados.
+routes.get('/traslados', pTra('READ'), csrfProtection, paginaTraslados);
+routes.get('/api/traslados/controversias', pTra('READ'), listarControversiasJSON);
+routes.get('/api/traslados/historial', pTra('READ'), listarHistorialJSON);
+routes.get('/api/traslados/empleado/validar/:codigo', pTra('READ'), apiRateLimit, validarEmpleadoTraslados);
+routes.get('/api/traslados/:idTraslado', pTra('READ'), detalleTrasladoAdminJSON);
+routes.post('/traslados/:idTraslado/recibir-devolucion',
+    csrfProtection,
+    verificarCodigoEmpleadoAdmin,
+    verificarPermisoEmpleado('Traslados', 'administrativo', 'EDIT'),
+    recibirDevolucionAdmin);
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
 routes.get('/configuracion/importaciones', pCfg('READ'), formularioImportaciones);
 routes.post('/configuracion/importaciones',

@@ -1,4 +1,6 @@
 import { tituloLista as tc } from '../../helpers/textoLista.js';
+import { escaparHtml as esc } from './escaparHtml.js';
+import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
 (function () {
     const csrfToken = document.getElementById('csrf-token')?.value || '';
 
@@ -24,13 +26,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         return `<span class="badge ${cls} text-xs">${label}</span>`;
     };
 
-    const fmtFecha = (iso) => {
-        if (!iso) return '—';
-        return new Date(iso).toLocaleString('es-CO', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-    };
+    const fmtFecha = fmtFechaHora;
 
     const fmtHora = (iso) => {
         if (!iso) return '—';
@@ -248,10 +244,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         try {
             const res = await fetch(`/store/traslados/detalle/${idTraslado}`);
-            const { success, traslado } = await res.json();
+            const { success, traslado, historial } = await res.json();
             if (!success) throw new Error();
             trasladoActivo = traslado;
-            renderLightbox(traslado);
+            renderLightbox(traslado, historial || []);
         } catch {
             lbTitulo.textContent = 'Error';
             lbItems.innerHTML    = `<tr>
@@ -263,7 +259,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     window._abrirLightbox = abrirLightbox;
 
     // ─── RENDER LIGHTBOX ──────────────────────────────────────────────────────
-    const renderLightbox = (traslado) => {
+    const renderLightbox = (traslado, historial) => {
         const esPendiente    = ['PENDIENTE', 'EN_TRANSITO'].includes(traslado.estado);
         const esControvTras  = traslado.estado === 'EN_CONTROVERSIA';
         const soyOrigen      = traslado.idOrigen === miPdvId;
@@ -277,7 +273,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             ['Estado',   estadoBadge(traslado.estado)],
             ['Enviado',  fmtFecha(traslado.fechaEnvio)],
             ['Origen',   origenLabel(traslado)],
-            ['Notas',    traslado.notas || '—'],
+            ['Notas',    traslado.notas ? esc(traslado.notas) : '—'],
         ].map(([k, v]) => `
             <div>
                 <p class="text-xs text-slate-400 uppercase tracking-wider font-bold mb-0.5">${k}</p>
@@ -304,13 +300,15 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 let iconHtml;
                 if (esControvTras && esControversia) {
                     if (soyOrigen) {
-                        iconHtml = `<span class="badge badge-warning text-xs item-resolucion"
-                            data-index="${i}"
-                            data-id="${item.idDetalleTraslado}"
-                            data-pack="${item.idPack || ''}"
-                            data-resolucion="RECIBIDO">Se recibirá</span>`;
+                        // Ícono suelto, como el ✓ de la misma columna: es angosta y la frase se
+                        // partía en tres líneas.
+                        iconHtml = `<span class="item-resolucion text-amber-600" data-index="${i}" data-id="${item.idDetalleTraslado}" title="Vuelve a tu inventario">
+                            <i class="fi fi-rr-undo text-sm" aria-hidden="true"></i><span class="sr-only">Vuelve a tu inventario</span>
+                        </span>`;
                     } else {
-                        iconHtml = `<span class="badge badge-error text-xs">En controversia</span>`;
+                        iconHtml = `<span class="text-pink-600" title="Rechazado">
+                            <i class="fi fi-rr-ban text-sm" aria-hidden="true"></i><span class="sr-only">Rechazado</span>
+                        </span>`;
                     }
                 } else if (yaRecibido || esPendiente) {
                     iconHtml = `<i class="fi fi-rr-check text-emerald-500 text-sm"></i>`;
@@ -360,8 +358,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             activarEventosItems();
         }
 
-        // Incidencias previas
-        renderIncidencias(traslado.insidencias || []);
+        renderHistorial(historial);
 
         // Footer según estado
         const footerArea = document.getElementById('lb-footer-form');
@@ -376,11 +373,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 if (soyOrigen) {
                     btnAceptar.disabled = false;
                     btnAceptar.dataset.modo = 'resolver';
-                    btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+                    btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Recibir devolución';
                 } else {
                     btnAceptar.disabled = true;
                     btnAceptar.dataset.modo = '';
-                    btnAceptar.innerHTML = '<i class="fi fi-rr-clock mr-2"></i>Esperando resolución del origen';
+                    btnAceptar.innerHTML = '<i class="fi fi-rr-clock mr-2"></i>Esperando que el origen reciba la devolución';
                 }
             } else {
                 btnAceptar.disabled = !esPendiente;
@@ -455,32 +452,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         if (razon) razon.classList.toggle('hidden', !esProblema);
     };
 
-    // ─── INCIDENCIAS ──────────────────────────────────────────────────────────
-    const renderIncidencias = (insidencias) => {
-        if (!lbRazones) return;
-        if (!insidencias.length) { lbRazones.innerHTML = ''; return; }
-
-        lbRazones.innerHTML = `
-            <div class="border border-red-200 rounded-2xl p-3 bg-red-50">
-                <p class="text-sm font-bold text-red-600 uppercase tracking-wider mb-2">
-                    <i class="fi fi-rr-triangle-warning mr-1"></i>Incidencias registradas
-                </p>
-                ${insidencias.map(ins => {
-                    const codigo = ins.detalle?.pack?.codigoEtiqueta
-                        || ins.detalle?.producto?.sku
-                        || `#${ins.idDetalleTraslado}`;
-                    return `
-                    <div class="text-sm text-slate-700 border-b border-red-100 last:border-0 pb-1.5 mb-1.5 last:mb-0">
-                        <span class="font-semibold">Ítem ${codigo}:</span>
-                        Recibido <strong>${ins.cantidadAceptada}</strong>/${ins.cantidadOriginal} —
-                        <span class="italic text-slate-500">${ins.razonInsidencia}</span>
-                        ${ins.resuelta === 'si'
-                            ? `<span class="ml-1 badge badge-success badge-xs">Resuelta</span>`
-                            : `<span class="ml-1 badge badge-error badge-xs">Pendiente</span>`}
-                    </div>`;
-                }).join('')}
-            </div>`;
-    };
+    // ─── HISTORIAL ────────────────────────────────────────────────────────────
+    const renderHistorial = montarHistorialTraslado(lbRazones);
 
     // ─── CERRAR LIGHTBOX ─────────────────────────────────────────────────────
     const cerrarLightbox = () => {
@@ -533,7 +506,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             const razonEl           = document.querySelector(`.item-razon[data-index="${idx}"]`);
 
             const aceptado          = chk?.checked ?? true;
-            const cantidadAceptada  = parseInt(qty?.value ?? cantidadOriginal);
+            const cantidadAceptada  = aceptado ? parseInt(qty?.value ?? cantidadOriginal) : 0;
             const razon             = razonEl?.value?.trim() || '';
 
             items.push({ idDetalleTraslado, idPack, idProducto, cantidadOriginal, cantidadAceptada, aceptado, razon });
@@ -594,18 +567,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             return;
         }
 
-        // Recopilar ítems en controversia (todos se aceptan como RECIBIDO)
-        const resoluciones = [];
-        document.querySelectorAll('.item-resolucion').forEach(el => {
-            resoluciones.push({
-                idDetalleTraslado: parseInt(el.dataset.id),
-                idPack:            el.dataset.pack || null,
-                resolucion:        'RECIBIDO'
-            });
-        });
-
-        if (!resoluciones.length) {
-            window.showToast?.('No hay ítems en controversia por resolver.', 'warning');
+        // El servidor devuelve al origen todo lo rechazado del traslado; no hay nada que elegir.
+        if (!document.querySelectorAll('.item-resolucion').length) {
+            window.showToast?.('No hay ítems rechazados por recibir.', 'warning');
             return;
         }
 
@@ -618,26 +582,25 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                 body: JSON.stringify({
                     idTraslado:     trasladoActivo.idTraslado,
-                    codigoEmpleado: lbCodEmp.value.trim().toUpperCase(),
-                    resoluciones
+                    codigoEmpleado: lbCodEmp.value.trim().toUpperCase()
                 })
             });
             const data = await r.json();
 
             if (data.success) {
-                window.showToast?.('Controversia resuelta correctamente.', 'success');
+                window.showToast?.('Devolución recibida: lo rechazado volvió a tu inventario.', 'success');
                 cerrarLightbox();
                 await loadPendientes();
                 await loadHistorial();
             } else {
-                window.showToast?.(data.mensaje || 'Error al resolver.', 'error');
+                window.showToast?.(data.mensaje || 'Error al recibir la devolución.', 'error');
                 btnAceptar.disabled = false;
-                btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+                btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Recibir devolución';
             }
         } catch {
             window.showToast?.('Error de conexión.', 'error');
             btnAceptar.disabled = false;
-            btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Resolver Controversia';
+            btnAceptar.innerHTML = '<i class="fi fi-rr-check mr-2"></i>Recibir devolución';
         }
     };
 

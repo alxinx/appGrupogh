@@ -7,6 +7,10 @@ import db from '../config/bd.js';
 import { v4 as uuidv4 } from 'uuid'; // Para generar los códigos de etiqueta únicos
 import { Op } from 'sequelize';
 import ExcelJS from 'exceljs';
+import {
+    bloquearYValidarPacks, registrarEnvio, registrarRechazo, TrasladoRechazadoError,
+    ESTADOS_PACK_TRASLADABLE_DOSIFICACION, agruparInsidencias, vistaHistorial, INCLUDE_INSIDENCIA, esOrigenProduccion
+} from '../helpers/traslados.js';
 
 // Código legible de una dosificación: 'D' + los cuatro primeros caracteres de su UUID en
 // mayúscula — D3E17 para 3e1793d1-…. Es el prefijo de los códigos de etiqueta de sus
@@ -311,6 +315,16 @@ const verDosificacion = async (req, res) => {
         // Si son 3 columnas -> span 4, si 4 -> span 3. Maximo 4 columnas por fila (span 3)
         const colSpan = totalColumnas > 0 ? Math.floor(12 / Math.min(totalColumnas, 4)) : 12;
 
+        // El listado plano de abajo prioriza lo que falta hacer: los packs que todavía no
+        // tuvieron ningún traslado (EMPACADO) van primero; el resto (ya trasladados,
+        // desempacados, vendidos o anulados al recibirlos — ver comentario del ENUM en
+        // models/Packs.js) queda después. Es un sort en JS sobre el array ya traído, no una
+        // query nueva, y el sort de Node es estable: el orden por numLote/idPack de la
+        // consulta se conserva dentro de cada uno de los dos grupos.
+        const packsOrdenados = [...dose.PACKs].sort((a, b) =>
+            (a.estado === 'EMPACADO' ? 0 : 1) - (b.estado === 'EMPACADO' ? 0 : 1)
+        );
+
         return res.status(201).render('./administrador/dose/ver', {
             pagina: "Dosificacion de productos",
             subPagina: `Ver dosificacion de ${codigo}`,
@@ -320,7 +334,7 @@ const verDosificacion = async (req, res) => {
             currentPath: '/dosificaciones',
             subPath: 'dosificaciones',
             lotes: lotesOrdenados,
-            packs: dose.PACKs, // Lista plana para la tabla de abajo
+            packs: packsOrdenados, // Lista plana para la tabla de abajo
             colSpan
         });
     } catch (error) {
@@ -494,25 +508,18 @@ const trasladarPacks = async (req, res) => {
     if (!idEmpleadoDespacha) {
         return res.status(400).json({ success: false, mensaje: 'El código del empleado responsable es obligatorio.' });
     }
+    if (!idDestino || !Array.isArray(packs) || !packs.length) {
+        return res.status(400).json({ success: false, mensaje: 'Selecciona al menos un paquete y el destino.' });
+    }
     const t = await db.transaction();
     // Se declara afuera porque el bloque post-commit (abajo) lo necesita.
     let traslado;
 
     try {
-        // 1. Obtener los packs con sus detalles
-        const recordsPacks = await Pack.findAll({
-            where: { idPack: packs },
-            include: [{
-                model: DetallesPack,
-                as: 'DETALLES_PACKs',
-                include: [{ model: Productos, as: 'producto' }]
-            }],
-            transaction: t
-        });
+        // Con los packs bloqueados, dos envíos simultáneos del mismo pack se serializan y el
+        // segundo lo encuentra ya TRASLADADO.
+        const recordsPacks = await bloquearYValidarPacks(packs, ESTADOS_PACK_TRASLADABLE_DOSIFICACION, t);
 
-        // 2. Generar Código de Traslado Único
-        // 3. Crear el Registro del Traslado (Encabezado)
-        // Usamos req.usuario que ya viene inyectado por tu middleware de autenticación
         traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
             idOrigen: 'PRODUCCION',
             idDestino: idDestino,
@@ -521,17 +528,18 @@ const trasladarPacks = async (req, res) => {
             estado: 'EN_TRANSITO'
         }, t);
 
-        // 4. Procesar cada Pack seleccionado en la tabla
         for (const pack of recordsPacks) {
-
-            await DetalleTraslados.create({
+            const detalle = await DetalleTraslados.create({
                 idTraslado: traslado.idTraslado,
                 idPack: pack.idPack,
                 cantidad: 1
             }, { transaction: t });
 
-            // Actualizar estado del Pack a TRASLADADO
             await pack.update({ estado: 'TRASLADADO' }, { transaction: t });
+            await registrarEnvio(t, {
+                traslado, detalle, idEmpleado: idEmpleadoDespacha,
+                descripcion: `pack ${pack.codigoEtiqueta} desde producción`
+            });
         }
 
         await t.commit();
@@ -540,6 +548,10 @@ const trasladarPacks = async (req, res) => {
         // Solo se revierte si la transacción sigue viva: intentar hacer rollback sobre una ya
         // confirmada lanza otro error dentro del catch y deja la petición sin respuesta.
         if (!t.finished) await t.rollback().catch(() => {});
+        if (error instanceof TrasladoRechazadoError) {
+            await registrarRechazo(error, { idEmpleado: idEmpleadoDespacha, accion: 'trasladar packs desde dosificación' });
+            return res.status(error.status).json({ success: false, mensaje: error.message });
+        }
         console.error("Error en traslado:", error);
         return res.status(500).json({ success: false, mensaje: 'Error interno' });
     }
@@ -810,8 +822,11 @@ const imprimirComprobanteTraslado = async (req, res) => {
                         { model: Productos, as: 'producto', attributes: ['nombreProducto'] }
                     ]
                 }
-            ]
+            ],
+            order: [['idInsidencia', 'ASC']]
         });
+
+        const bloquesInsidencia = agruparInsidencias(insidencias);
 
         // URL pública del comprobante (usada para el QR)
         const comprobanteUrl = `${PORTAL_URL}/admin/dosificaciones/comprobante/${idTraslado}`;
@@ -822,8 +837,29 @@ const imprimirComprobanteTraslado = async (req, res) => {
         const MARGIN = 10;
         const CW = PAGE_W - MARGIN * 2; // 206.77
         const numItems      = traslado.items.length;
-        const numInsidencias = insidencias.length;
-        const PAGE_H = Math.max(500, 210 + numItems * 12 + 200 + (numInsidencias > 0 ? 30 + numInsidencias * 156 : 0));
+        const ROW_H = 14;
+        const ANCHO_CELDA = CW - 6;
+        // El alto va antes de crear el documento, así que la lista de códigos se mide en uno
+        // aparte con la misma fuente: la tirilla es rollo continuo y cada punto de más es papel.
+        const medidor = new PDFDocument({ size: [PAGE_W, 1000] }).fontSize(6.5).font('Helvetica');
+        // Las líneas se arman a mano, cortando entre códigos: PDFKit parte en el guion y dejaba
+        // "D3E17-" en una línea y "P012" en la siguiente.
+        const lineasDeCodigos = (codigos) => codigos.reduce((lineas, codigo, i) => {
+            const pieza = i < codigos.length - 1 ? `${codigo}, ` : codigo;
+            const ultima = lineas[lineas.length - 1];
+            if (ultima !== undefined && medidor.widthOfString(ultima + pieza) <= ANCHO_CELDA) {
+                lineas[lineas.length - 1] = ultima + pieza;
+            } else {
+                lineas.push(pieza);
+            }
+            return lineas;
+        }, []);
+        const ALTO_LINEA_CODIGOS = medidor.heightOfString('D3E17-P012') + 1;
+        const altoCodigos = (codigos) => lineasDeCodigos(codigos).length * ALTO_LINEA_CODIGOS + 7;
+        const esGrupo = (bloque) => bloque.codigos.length > 1;
+        const altoInsidencias = bloquesInsidencia.length === 0 ? 0 : 30 + bloquesInsidencia.reduce((total, bloque) =>
+            total + (esGrupo(bloque) ? 9 * ROW_H + altoCodigos(bloque.codigos) : 10 * ROW_H) + 8, 0);
+        const PAGE_H = Math.max(500, 210 + numItems * 12 + 200 + altoInsidencias);
 
         const doc = new PDFDocument({
             size: [PAGE_W, PAGE_H],
@@ -933,13 +969,12 @@ const imprimirComprobanteTraslado = async (req, res) => {
         }
 
         // --- INCIDENCIAS REPORTADAS ---
-        if (insidencias.length > 0) {
+        if (bloquesInsidencia.length > 0) {
             y += 6;
             doc.fontSize(8).font('Helvetica-Bold')
                 .text('INCIDENCIAS REPORTADAS', MARGIN, y, { width: CW, align: 'center' });
             y += 14;
 
-            const ROW_H  = 14;
             const COL_L  = 110;
             const COL_R  = CW - COL_L;
 
@@ -965,27 +1000,45 @@ const imprimirComprobanteTraslado = async (req, res) => {
                 y += ROW_H;
             };
 
-            for (const ins of insidencias) {
-                let itemLabel = `Ítem #${ins.idDetalleTraslado}`;
-                if (ins.detalle?.pack?.codigoEtiqueta)      itemLabel = ins.detalle.pack.codigoEtiqueta;
-                else if (ins.detalle?.producto?.nombreProducto) itemLabel = ins.detalle.producto.nombreProducto;
+            const filaCodigos = (codigos) => {
+                const alto = altoCodigos(codigos);
+                doc.rect(MARGIN, y, CW, alto).stroke('#bbbbbb');
+                doc.fillColor('black').fontSize(6.5).font('Helvetica');
+                lineasDeCodigos(codigos).forEach((linea, i) => {
+                    doc.text(linea, MARGIN + 3, y + 3.5 + i * ALTO_LINEA_CODIGOS, { width: ANCHO_CELDA, lineBreak: false });
+                });
+                y += alto;
+            };
 
+            for (const bloque of bloquesInsidencia) {
+                const { ins } = bloque;
                 const empNombre = ins.empleado
                     ? `${ins.empleado.PrimerNombre} ${ins.empleado.PrimerApellido}`
                     : 'N/A';
-
-                const diferencia = ins.cantidadOriginal - ins.cantidadAceptada;
 
                 fillaCompleta('FECHA',                    '#e0e0e0', true);
                 fillaCompleta(fmtFechaHora(ins.fechaInsidencia), null,      false);
                 fillaCompleta('REPORTADO POR:',           '#e0e0e0', true);
                 fillaCompleta(empNombre,                  null,      false);
                 fillaCompleta('RAZÓN DE LA INSIDENCIA',  '#e0e0e0', true);
-                fillaCompleta(ins.razonInsidencia || 'Sin descripción', '#fffde7', false);
-                fillaDosCols('Producto:',        itemLabel);
-                fillaDosCols('Cant. original',   String(ins.cantidadOriginal));
-                fillaDosCols('Cant. aceptada',   String(ins.cantidadAceptada));
-                fillaDosCols('Diferencia',       String(diferencia));
+
+                if (esGrupo(bloque)) {
+                    fillaCompleta(`${bloque.evento}: ${bloque.codigos.length} packs`, '#fffde7', false);
+                    filaCodigos(bloque.codigos);
+                    fillaDosCols('Cant. original',   String(bloque.original));
+                    fillaDosCols('Cant. aceptada',   String(bloque.aceptada));
+                    fillaDosCols('Diferencia',       String(bloque.original - bloque.aceptada));
+                } else {
+                    let itemLabel = `Ítem #${ins.idDetalleTraslado}`;
+                    if (ins.detalle?.pack?.codigoEtiqueta)      itemLabel = ins.detalle.pack.codigoEtiqueta;
+                    else if (ins.detalle?.producto?.nombreProducto) itemLabel = ins.detalle.producto.nombreProducto;
+
+                    fillaCompleta(ins.razonInsidencia || 'Sin descripción', '#fffde7', false);
+                    fillaDosCols('Producto:',        itemLabel);
+                    fillaDosCols('Cant. original',   String(ins.cantidadOriginal));
+                    fillaDosCols('Cant. aceptada',   String(ins.cantidadAceptada));
+                    fillaDosCols('Diferencia',       String(ins.cantidadOriginal - ins.cantidadAceptada));
+                }
 
                 y += 8;
             }
@@ -1285,34 +1338,40 @@ const historialPack = async (req, res) => {
         });
         if (!pack) return res.status(404).json({ error: 'Pack no encontrado' });
 
-        // Traslados en los que participó este pack
+        // Traslados en los que participó este pack, del más viejo al más nuevo.
         const detalles = await DetalleTraslados.findAll({
             where: { idPack },
             include: [{
                 model: Traslados,
                 include: [
                     { model: PuntosDeVenta, as: 'origen', attributes: ['nombreComercial'] },
-                    { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] },
-                    { model: InsidenciaTraslado, as: 'insidencias', attributes: ['idInsidencia', 'razonInsidencia', 'cantidadOriginal', 'cantidadAceptada', 'resuelta', 'fechaInsidencia'] },
+                    { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] }
                 ]
-            }]
+            }],
+            order: [['idDetalleTraslado', 'ASC']]
         });
 
-        const traslados = detalles.map(d => {
+        // Solo las incidencias de ESTE pack. Antes se colgaban las del traslado entero: en un
+        // traslado de 10 packs aparecían 23 "controversias" que eran de los otros nueve, y
+        // hasta el ENVIADO y el RECIBIDO contaban como controversia. Una sola consulta para
+        // todos los traslados del pack (CLAUDE.md §7).
+        const insidencias = detalles.length ? await InsidenciaTraslado.findAll({
+            where: { idDetalleTraslado: detalles.map(d => d.idDetalleTraslado) },
+            include: INCLUDE_INSIDENCIA
+        }) : [];
+
+        const traslados = detalles.map((d) => {
             const t = d.TRASLADO || d.Traslado || d.traslado || {};
+            const historial = vistaHistorial(insidencias.filter(i => i.idDetalleTraslado === d.idDetalleTraslado));
             return {
-                idTraslado:    t.idTraslado,
-                estado:        t.estado,
-                origen:        t.origen?.nombreComercial || '—',
-                destino:       t.destino?.nombreComercial || '—',
-                fecha:         t.createdAt,
-                controversias: (t.insidencias || []).map(i => ({
-                    razon:             i.razonInsidencia,
-                    cantidadOriginal:  i.cantidadOriginal,
-                    cantidadAceptada:  i.cantidadAceptada,
-                    resuelta:          i.resuelta,
-                    fecha:             i.fechaInsidencia,
-                })),
+                idTraslado:  t.idTraslado,
+                codigo:      t.codigoTraslado,
+                estado:      t.estado,
+                origen:      esOrigenProduccion(t.idOrigen) ? 'Producción' : (t.origen?.nombreComercial || '—'),
+                destino:     esOrigenProduccion(t.idDestino) ? 'Producción' : (t.destino?.nombreComercial || '—'),
+                fecha:       t.createdAt,
+                historial,
+                incidencias: historial.filter(h => h.tipo === 'incidencia').length
             };
         });
 
@@ -1320,7 +1379,7 @@ const historialPack = async (req, res) => {
             pack: pack.toJSON(),
             traslados,
             desempacado: pack.estado === 'DESEMPACADO',
-            tieneControversias: traslados.some(t => t.controversias.length > 0),
+            tieneIncidencias: traslados.some(t => t.incidencias > 0),
         });
     } catch (e) {
         console.error('historialPack:', e);

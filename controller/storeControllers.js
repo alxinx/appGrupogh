@@ -36,6 +36,12 @@ import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js'
 import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
+import {
+    bloquearYValidarTraslado, bloquearYValidarPacks, detallesDelBody, filaDeTraslado,
+    registrarEnvio, registrarRechazo, TrasladoRechazadoError,
+    ACTOR_JOB_EXPIRADOS, ESTADOS_PACK_TRASLADABLE_TIENDA, segundosMaximosEnTransito,
+    crearStockRow, recibirDevolucionTraslado, cargarDetalleTraslado, esOrigenProduccion
+} from '../helpers/traslados.js';
 import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
 import { resolverPacksParaVenta, buscarPacksVendibles } from '../helpers/packsVenta.js';
 import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, pagosATransBucket, creditoClienteResumen, financiadoPorFactura, METODOS_ABONO, METODOS_ABONO_CON_ENTIDAD } from '../helpers/abonosCredito.js';
@@ -406,45 +412,10 @@ const getHistorialJSON = async (req, res) => {
 };
 
 const getDetalleTrasladoJSON = async (req, res) => {
-    const { idTraslado } = req.params;
-    const idPdv = req.idPuntoDeVenta;
     try {
-        const traslado = await Traslados.findOne({
-            where: {
-                idTraslado,
-                [Op.or]: [{ idOrigen: idPdv }, { idDestino: idPdv }]
-            },
-            include: [
-                { model: PuntosDeVenta, as: 'origen',  attributes: ['nombreComercial'], required: false },
-                { model: PuntosDeVenta, as: 'destino', attributes: ['nombreComercial'] },
-                {
-                    model: DetalleTraslados, as: 'items',
-                    include: [
-                        {
-                            model: Pack, as: 'pack',
-                            attributes: ['codigoEtiqueta', 'estado'],
-                            include: [{
-                                model: DetallesPack,
-                                include: [{ model: Productos, as: 'producto', attributes: ['nombreProducto', 'sku'] }]
-                            }]
-                        },
-                        { model: Productos, as: 'producto', attributes: ['nombreProducto', 'sku'] }
-                    ]
-                },
-                {
-                    model: InsidenciaTraslado, as: 'insidencias',
-                    include: [{
-                        model: DetalleTraslados, as: 'detalle',
-                        include: [
-                            { model: Pack, as: 'pack', attributes: ['codigoEtiqueta'] },
-                            { model: Productos, as: 'producto', attributes: ['sku'] }
-                        ]
-                    }]
-                }
-            ]
-        });
-        if (!traslado) return res.status(404).json({ success: false });
-        return res.json({ success: true, traslado });
+        const detalle = await cargarDetalleTraslado(req.params.idTraslado, { idPuntoDeVenta: req.idPuntoDeVenta });
+        if (!detalle) return res.status(404).json({ success: false });
+        return res.json({ success: true, traslado: detalle.traslado, historial: detalle.historial });
     } catch (e) {
         console.error(e);
         return res.status(500).json({ success: false });
@@ -478,40 +449,6 @@ const _checkPermisoTraslado = async (codigoEmpleado, nombreAccion, idPdv = null)
 };
 
 // ─── HELPERS: operaciones comunes de traslado ─────────────────────────────────
-
-const _calcularValorPack = async (idPack, transaction) => {
-    const detalles = await DetallesPack.findAll({ where: { idPack }, transaction });
-    return detalles.reduce((s, d) => s + (parseFloat(d.valorUnidad || 0) * d.cantidad), 0);
-};
-
-const _crearStockRow = async (idPuntoVenta, { idPack, idProducto }, cantidad, transaction) => {
-    if (idPack) {
-        await Stock.create({
-            idPuntoVenta,
-            idPack,
-            idProducto:        null,
-            cantidadExistente: cantidad,
-            cantidadOriginal:  cantidad,
-            valorUnidad:       await _calcularValorPack(idPack, transaction),
-            estadoInterno:     'CERRADO'
-        }, { transaction });
-    } else if (idProducto) {
-        const ref = await Stock.findOne({
-            where: { idProducto },
-            order: [['createdAt', 'DESC']],
-            transaction
-        });
-        await Stock.create({
-            idPuntoVenta,
-            idPack:            null,
-            idProducto,
-            cantidadExistente: cantidad,
-            cantidadOriginal:  cantidad,
-            valorUnidad:       ref?.valorUnidad || 0,
-            estadoInterno:     'SUELTO'
-        }, { transaction });
-    }
-};
 
 const _crearTraslado = async (idOrigen, idDestino, idEmpleado, notas, transaction) => {
     const traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
@@ -726,20 +663,41 @@ const aceptarTrasladoAPI = async (req, res) => {
     const { idTraslado, codigoEmpleado, items } = req.body;
     // items: [{ idDetalleTraslado, idPack, cantidadOriginal, cantidadAceptada, aceptado, razon }]
 
-    if (!idTraslado || !codigoEmpleado || !Array.isArray(items)) {
+    if (!idTraslado || !codigoEmpleado || !Array.isArray(items) || !items.length) {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
     const empleado = req.empleadoVerificado;
 
-    const traslado = await Traslados.findByPk(idTraslado);
-    if (!traslado) return res.status(404).json({ success: false, mensaje: 'Traslado no encontrado.' });
-
-    const hayControversia = items.some(i => !i.aceptado || parseInt(i.cantidadAceptada) < parseInt(i.cantidadOriginal));
-
     const t = await db.transaction();
+    let traslado, nuevoEstado;
     try {
-        const nuevoEstado = hayControversia ? 'EN_CONTROVERSIA' : 'RECIBIDO';
+        // Con la fila bloqueada, dos aceptaciones simultáneas (o una aceptación y el job de
+        // expirados) se serializan: la segunda encuentra el estado ya cambiado y se rechaza.
+        const bloqueado = await bloquearYValidarTraslado(idTraslado, ['EN_TRANSITO'], t);
+        traslado = bloqueado.traslado;
+
+        if (traslado.idDestino !== idPdv) {
+            throw new TrasladoRechazadoError('Solo la tienda destino puede recibir este traslado.', {
+                status: 403, auditoria: filaDeTraslado(traslado, bloqueado.detalles[0])
+            });
+        }
+
+        // Todo se valida antes de la primera escritura.
+        const lineas = detallesDelBody(traslado, bloqueado.detalles, items).map(({ item, detalle }) => {
+            // Desmarcar el ítem es rechazarlo entero. La pantalla deja la cantidad en lo enviado,
+            // y tomarla tal cual le sumaba al destino el stock de lo que estaba rechazando.
+            const cantAceptada = item.aceptado ? Number(item.cantidadAceptada) : 0;
+            if (!Number.isInteger(cantAceptada) || cantAceptada < 0 || cantAceptada > detalle.cantidad) {
+                throw new TrasladoRechazadoError(
+                    `El ítem #${detalle.idDetalleTraslado} no puede recibir ${item.cantidadAceptada} de ${detalle.cantidad} enviadas.`,
+                    { auditoria: filaDeTraslado(traslado, detalle) }
+                );
+            }
+            return { item, detalle, cantAceptada, aceptado: cantAceptada === detalle.cantidad };
+        });
+
+        nuevoEstado = lineas.some(l => !l.aceptado) ? 'EN_CONTROVERSIA' : 'RECIBIDO';
 
         await traslado.update({
             estado: nuevoEstado,
@@ -747,23 +705,16 @@ const aceptarTrasladoAPI = async (req, res) => {
             fechaRecepcion: new Date()
         }, { transaction: t });
 
-        for (const item of items) {
-            const cantAceptada = parseInt(item.cantidadAceptada);
-            const cantOriginal = parseInt(item.cantidadOriginal);
-            const aceptado     = item.aceptado && cantAceptada === cantOriginal;
+        for (const { item, detalle, cantAceptada, aceptado } of lineas) {
+            const cantOriginal = detalle.cantidad;
 
-            // Actualizar estado del detalle
             const updateDetalle = { estado: aceptado ? 'RECIBIDO' : 'CONTROVERSIA' };
             if (!aceptado) updateDetalle.cantidadControversia = cantOriginal - cantAceptada;
-            await DetalleTraslados.update(
-                updateDetalle,
-                { where: { idDetalleTraslado: item.idDetalleTraslado }, transaction: t }
-            );
+            await detalle.update(updateDetalle, { transaction: t });
 
-            // Registrar movimiento de recepción
             await InsidenciaTraslado.create({
-                idTraslado,
-                idDetalleTraslado: item.idDetalleTraslado,
+                idTraslado:        traslado.idTraslado,
+                idDetalleTraslado: detalle.idDetalleTraslado,
                 idEmpleado:        empleado.idEmpleado,
                 razonInsidencia:   aceptado
                     ? `RECIBIDO: ${cantAceptada}/${cantOriginal} uds`
@@ -773,22 +724,28 @@ const aceptarTrasladoAPI = async (req, res) => {
                 resuelta:          aceptado ? 'si' : 'no'
             }, { transaction: t });
 
-            // Crear stock en destino
-            if (cantAceptada > 0) await _crearStockRow(traslado.idDestino, item, cantAceptada, t);
-
+            if (cantAceptada > 0) {
+                await crearStockRow(traslado.idDestino, { idPack: detalle.idPack, idProducto: detalle.idProducto }, cantAceptada, t);
+            }
         }
 
         await t.commit();
-        await _broadcastEstadoTraslado(traslado.idDestino, traslado.idOrigen);
-
-        return res.json({ success: true, estado: nuevoEstado });
     } catch (e) {
-        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
-        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
         if (!t.finished) await t.rollback().catch(() => {});
+        if (e instanceof TrasladoRechazadoError) {
+            await registrarRechazo(e, { idEmpleado: empleado.idEmpleado, accion: 'aceptar' });
+            return res.status(e.status).json({ success: false, mensaje: e.message });
+        }
         console.error('Error al aceptar traslado:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
+
+    try {
+        await _broadcastEstadoTraslado(traslado.idDestino, traslado.idOrigen);
+    } catch (e) {
+        console.error('aceptarTrasladoAPI [notificación post-commit]:', e);
+    }
+    return res.json({ success: true, estado: nuevoEstado });
 };
 
 // ─── INVENTARIO ──────────────────────────────────────────────────────────────
@@ -970,14 +927,30 @@ const trasladarDesdeStoreAPI = async (req, res) => {
     const empleado = req.empleadoVerificado;
 
     const t = await db.transaction();
+    let traslado, nuevoCodigo;
     try {
-        const { traslado, codigo: nuevoCodigo } = await _crearTraslado(idPdv, idDestino, empleado.idEmpleado, notas, t);
-
-        const recordsPacks = await Pack.findAll({
-            where: { idPack: packs },
-            include: [{ model: DetallesPack, as: 'DETALLES_PACKs' }],
+        // STOCKS antes que PACKS: es el orden en que los bloquea la venta de un pack en el POS
+        // (procesarFactura, paso 9.5). En orden inverso las dos pueden quedar esperándose.
+        const filasStock = await Stock.findAll({
+            where: { idPack: packs, idPuntoVenta: idPdv, estadoInterno: 'CERRADO', cantidadExistente: { [Op.gt]: 0 } },
+            order: [['idStock', 'ASC']],
+            lock: t.LOCK.UPDATE,
             transaction: t
         });
+        const recordsPacks = await bloquearYValidarPacks(packs, ESTADOS_PACK_TRASLADABLE_TIENDA, t);
+
+        // Un pack en tránsito o que está en otra sede no tiene fila CERRADO en esta tienda.
+        const conStock = new Set(filasStock.map(s => s.idPack));
+        const ausentes = recordsPacks.filter(p => !conStock.has(p.idPack));
+        if (ausentes.length) {
+            throw new TrasladoRechazadoError(
+                `No están en el inventario de esta tienda: ${ausentes.map(p => p.codigoEtiqueta).join(', ')}.`,
+                { status: 409, idsPack: ausentes.map(p => p.idPack) }
+            );
+        }
+
+        ({ traslado, codigo: nuevoCodigo } = await _crearTraslado(idPdv, idDestino, empleado.idEmpleado, notas, t));
+
         for (const pack of recordsPacks) {
             const detalle = await DetalleTraslados.create({
                 idTraslado: traslado.idTraslado,
@@ -985,117 +958,85 @@ const trasladarDesdeStoreAPI = async (req, res) => {
                 cantidad:   1
             }, { transaction: t });
             await pack.update({ estado: 'TRASLADADO' }, { transaction: t });
-            await Stock.update(
+            const [movidas] = await Stock.update(
                 { cantidadExistente: 0, estadoInterno: 'SUELTO' },
-                { where: { idPack: pack.idPack, idPuntoVenta: idPdv }, transaction: t }
+                {
+                    where: { idPack: pack.idPack, idPuntoVenta: idPdv, estadoInterno: 'CERRADO', cantidadExistente: { [Op.gt]: 0 } },
+                    transaction: t
+                }
             );
-            await InsidenciaTraslado.create({
-                idTraslado:        traslado.idTraslado,
-                idDetalleTraslado: detalle.idDetalleTraslado,
-                idEmpleado:        empleado.idEmpleado,
-                razonInsidencia:   `ENVIADO: pack ${pack.codigoEtiqueta || pack.idPack}`,
-                cantidadOriginal:  1,
-                cantidadAceptada:  1,
-                resuelta:          'si'
-            }, { transaction: t });
+            if (movidas === 0) {
+                throw new TrasladoRechazadoError(`El paquete ${pack.codigoEtiqueta} dejó de estar disponible en esta tienda.`, {
+                    status: 409, idsPack: [pack.idPack]
+                });
+            }
+            await registrarEnvio(t, {
+                traslado, detalle, idEmpleado: empleado.idEmpleado,
+                descripcion: `pack ${pack.codigoEtiqueta || pack.idPack}`
+            });
         }
 
         await t.commit();
-        await _broadcastEstadoTraslado(idDestino);
-
-        return res.json({ success: true, idTraslado: traslado.idTraslado, codigo: nuevoCodigo });
     } catch (e) {
-        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
-        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
         if (!t.finished) await t.rollback().catch(() => {});
+        if (e instanceof TrasladoRechazadoError) {
+            await registrarRechazo(e, { idEmpleado: empleado.idEmpleado, accion: 'trasladar packs desde tienda' });
+            return res.status(e.status).json({ success: false, mensaje: e.message });
+        }
         console.error('trasladarDesdeStoreAPI:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
+
+    try {
+        await _broadcastEstadoTraslado(idDestino);
+    } catch (e) {
+        console.error('trasladarDesdeStoreAPI [notificación post-commit]:', e);
+    }
+    return res.json({ success: true, idTraslado: traslado.idTraslado, codigo: nuevoCodigo });
 };
 
 // ─── RESOLVER CONTROVERSIA ───────────────────────────────────────────────────
 
 const resolverControversiaAPI = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
-    const { idTraslado, codigoEmpleado, resoluciones } = req.body;
-    // resoluciones: [{ idDetalleTraslado, idPack, resolucion: 'RECIBIDO'|'ANULADO' }]
+    const { idTraslado, codigoEmpleado } = req.body;
 
-    if (!idTraslado || !codigoEmpleado || !Array.isArray(resoluciones) || !resoluciones.length) {
+    if (!idTraslado || !codigoEmpleado) {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
     }
 
     const empleado = req.empleadoVerificado;
 
-    const traslado = await Traslados.findByPk(idTraslado);
-    if (!traslado || traslado.estado !== 'EN_CONTROVERSIA') {
-        return res.status(400).json({ success: false, mensaje: 'Traslado no válido para resolución.' });
-    }
-
-    // Solo el punto de origen puede resolver controversias
-    const esDesdeProduccion = traslado.idOrigen === 'PRODUCCION' || traslado.idOrigen === 'BODEGA-VIRTUAL';
-    if (!esDesdeProduccion && traslado.idOrigen !== idPdv) {
-        return res.status(403).json({ success: false, mensaje: 'Solo el punto de origen puede resolver esta controversia.' });
-    }
-
-    const nombreEmpleado = empleado.nombre;
-
     const t = await db.transaction();
+    let traslado;
     try {
-        for (const item of resoluciones) {
-            const detalle = await DetalleTraslados.findByPk(item.idDetalleTraslado, { transaction: t });
-            if (!detalle) continue;
-
-            const cantControversia = detalle.cantidadControversia ?? detalle.cantidad;
-
-            if (item.resolucion === 'RECIBIDO') {
-                await detalle.update({ estado: 'RECIBIDO' }, { transaction: t });
-                const target = item.idPack ? { idPack: item.idPack } : { idProducto: detalle.idProducto };
-                await _crearStockRow(traslado.idDestino, target, cantControversia, t);
-                await InsidenciaTraslado.create({
-                    idTraslado,
-                    idDetalleTraslado: item.idDetalleTraslado,
-                    idEmpleado:        empleado.idEmpleado,
-                    razonInsidencia:   `ACEPTADO POR ORIGEN: ${nombreEmpleado}`,
-                    cantidadOriginal:  cantControversia,
-                    cantidadAceptada:  cantControversia,
-                    resuelta:          'si'
-                }, { transaction: t });
-            } else if (item.resolucion === 'ANULADO') {
-                await detalle.update({ estado: 'CONTROVERSIA' }, { transaction: t });
-
-                if (item.idPack && esDesdeProduccion) {
-                    await Pack.update({ estado: 'ANULADO' }, { where: { idPack: item.idPack }, transaction: t });
-                }
-
-                if (!esDesdeProduccion && cantControversia > 0) {
-                    const target = item.idPack ? { idPack: item.idPack } : { idProducto: detalle.idProducto };
-                    await _crearStockRow(traslado.idOrigen, target, cantControversia, t);
-                }
-
-                await InsidenciaTraslado.create({
-                    idTraslado,
-                    idDetalleTraslado: item.idDetalleTraslado,
-                    idEmpleado:        empleado.idEmpleado,
-                    razonInsidencia:   `ANULADO POR ORIGEN: ${nombreEmpleado}`,
-                    cantidadOriginal:  cantControversia,
-                    cantidadAceptada:  0,
-                    resuelta:          'si'
-                }, { transaction: t });
+        traslado = await recibirDevolucionTraslado(idTraslado, {
+            empleado,
+            // Lo que vuelve a producción lo recibe la administración (/admin/traslados):
+            // antes cualquier tienda, incluida la que lo rechazó, podía darlo por recibido.
+            validarReceptor: (tr) => {
+                if (esOrigenProduccion(tr.idOrigen)) return 'La devolución de un traslado de producción la recibe la administración.';
+                if (tr.idOrigen !== idPdv) return 'Solo el punto de origen puede recibir esta devolución.';
+                return null;
             }
-        }
-
-        await traslado.update({ estado: 'RECIBIDO' }, { transaction: t });
+        }, t);
         await t.commit();
-        await _broadcastEstadoTraslado(traslado.idDestino, idPdv);
-
-        return res.json({ success: true });
     } catch (e) {
-        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
-        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
         if (!t.finished) await t.rollback().catch(() => {});
+        if (e instanceof TrasladoRechazadoError) {
+            await registrarRechazo(e, { idEmpleado: empleado.idEmpleado, accion: 'resolver controversia' });
+            return res.status(e.status).json({ success: false, mensaje: e.message });
+        }
         console.error('Error al resolver controversia:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
+
+    try {
+        await _broadcastEstadoTraslado(traslado.idDestino, idPdv);
+    } catch (e) {
+        console.error('resolverControversiaAPI [notificación post-commit]:', e);
+    }
+    return res.json({ success: true });
 };
 
 const getPerfilProducto = async (req, res) => {
@@ -4964,21 +4905,23 @@ const getEgresoComprobantePDF = async (req, res) => {
 // ─── VERIFICAR TRASLADOS EXPIRADOS (llamado periódicamente) ──────────────────
 const verificarTrasladosExpirados = async () => {
     try {
-        const maxHours = parseInt(process.env.MAX_TRANSFER_HOURS) || 24;
-        const corte    = new Date(Date.now() - maxHours * 60 * 60 * 1000);
+        const maxSegundos = segundosMaximosEnTransito();
+        const corte       = new Date(Date.now() - maxSegundos * 1000);
 
+        // Lista de candidatos, sin lock: el estado real se decide adentro, con la fila bloqueada.
+        // PENDIENTE no lo asigna ningún flujo; incluirlo solo generaría rechazos cada 15 minutos.
         const expirados = await Traslados.findAll({
-            where: {
-                estado:     { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] },
-                fechaEnvio: { [Op.lt]: corte }
-            },
-            include: [{ model: DetalleTraslados, as: 'items' }]
+            where: { estado: 'EN_TRANSITO', fechaEnvio: { [Op.lt]: corte } },
+            attributes: ['idTraslado']
         });
 
-        for (const traslado of expirados) {
+        for (const { idTraslado } of expirados) {
             const t = await db.transaction();
+            let devuelto = null;
             try {
-                for (const detalle of traslado.items) {
+                const { traslado, detalles } = await bloquearYValidarTraslado(idTraslado, ['EN_TRANSITO'], t);
+
+                for (const detalle of detalles) {
                     if (detalle.idPack) {
                         await Stock.update(
                             { cantidadExistente: db.literal('cantidadOriginal'), estadoInterno: 'CERRADO' },
@@ -4989,13 +4932,13 @@ const verificarTrasladosExpirados = async () => {
                             { where: { idPack: detalle.idPack }, transaction: t }
                         );
                     } else if (detalle.idProducto) {
-                        await _crearStockRow(traslado.idOrigen, { idProducto: detalle.idProducto }, detalle.cantidad, t);
+                        await crearStockRow(traslado.idOrigen, { idProducto: detalle.idProducto }, detalle.cantidad, t);
                     }
                     await InsidenciaTraslado.create({
                         idTraslado:        traslado.idTraslado,
                         idDetalleTraslado: detalle.idDetalleTraslado,
-                        idEmpleado:        null,
-                        razonInsidencia:   'DEVUELTO: traslado expirado automáticamente',
+                        idEmpleado:        ACTOR_JOB_EXPIRADOS,
+                        razonInsidencia:   `DEVUELTO: traslado expirado automáticamente tras ${Math.round(maxSegundos / 3600)}h sin aceptar (job verificarTrasladosExpirados)`,
                         cantidadOriginal:  detalle.cantidad,
                         cantidadAceptada:  detalle.cantidad,
                         resuelta:          'si'
@@ -5004,16 +4947,25 @@ const verificarTrasladosExpirados = async () => {
 
                 await traslado.update({ estado: 'DEVUELTO' }, { transaction: t });
                 await t.commit();
-
-                broadcast(traslado.idOrigen, 'traslado_devuelto', {
-                    idTraslado:  traslado.idTraslado,
-                    codigo:      traslado.codigoTraslado
-                });
+                devuelto = traslado;
             } catch (e) {
-                // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
-                // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
                 if (!t.finished) await t.rollback().catch(() => {});
-                console.error('verificarTrasladosExpirados traslado', traslado.idTraslado, e);
+                if (e instanceof TrasladoRechazadoError) {
+                    await registrarRechazo(e, { idEmpleado: ACTOR_JOB_EXPIRADOS, accion: 'devolución automática' });
+                } else {
+                    console.error('verificarTrasladosExpirados traslado', idTraslado, e);
+                }
+            }
+
+            if (devuelto) {
+                try {
+                    broadcast(devuelto.idOrigen, 'traslado_devuelto', {
+                        idTraslado: devuelto.idTraslado,
+                        codigo:     devuelto.codigoTraslado
+                    });
+                } catch (e) {
+                    console.error('verificarTrasladosExpirados [notificación post-commit]:', e);
+                }
             }
         }
     } catch (e) {
@@ -5347,7 +5299,7 @@ const getTrasladosAlertaJSON = async (req, res) => {
     if (!idPdv) return res.status(403).json({ success: false });
 
     try {
-        const maxTime = parseInt(process.env.MAX_TRANSFER_TIME) || 259200; // segundos
+        const maxTime = segundosMaximosEnTransito();
         const ahora   = Date.now();
 
         const [entrantes, salientes] = await Promise.all([

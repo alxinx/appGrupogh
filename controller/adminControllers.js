@@ -30,7 +30,7 @@ import { generarSlugDe, slugUnico, normalizarSku13, normalizarSku50, resolverIdF
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col, literal } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
-import { resolverIds } from '../middlewares/verificarPermisoEmpleado.js';
+import { resolverIds, validarCodigoConPermiso } from '../middlewares/verificarPermisoEmpleado.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
 import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
 import ExcelJS from 'exceljs';
@@ -3314,9 +3314,6 @@ const newEmployer = async (req, res) => {
     })
 }
 
-const dashboardOrders = async (req, res) => {
-
-}
 
 
 
@@ -6144,46 +6141,7 @@ const _pesosCO = (n) => `$${Math.round(parseFloat(n) || 0).toLocaleString('es-CO
 // —código válido, empleado habilitado, permiso de Bancos—, solo que en modo consulta:
 // si acá dice que sí y allá dice que no, el bug está en uno de los dos.
 //
-// No es un oráculo de códigos: vive detrás de verificarRol('ADMIN'), y un administrador
-// ya puede ver en Personal quién tiene permiso de bancos. Lo que evita es que alguien
-// llene el formulario entero para enterarse recién al final de que su código no sirve.
-const validarEmpleadoBancos = async (req, res) => {
-    const codigo = String(req.params.codigo || '').trim().toUpperCase();
-    if (!codigo) return res.status(400).json({ success: false, mensaje: 'Código requerido.' });
-
-    try {
-        const empleado = await Empleados.findOne({
-            where: { codigoEmpleado: codigo },
-            attributes: ['idEmpleado', 'idUsuario', 'PrimerNombre', 'PrimerApellido', 'estado']
-        });
-
-        // Mismo criterio que verificarCodigoEmpleadoAdmin: se bloquea a quien ya no es de
-        // confianza, no a quien está de licencia.
-        if (!empleado || ['suspendido', 'despedido'].includes(empleado.estado))
-            return res.json({ success: false, mensaje: 'Código de empleado inválido.' });
-
-        if (!empleado.idUsuario)
-            return res.json({ success: false, mensaje: 'Ese empleado no tiene acceso al sistema.' });
-
-        const ids = await resolverIds('Bancos', 'administrativo', 'EDIT');
-        if (!ids) return res.status(500).json({ success: false, mensaje: 'Configuración de permisos inválida.' });
-
-        const permiso = await UserPermisos.findOne({
-            where: { idUsuario: empleado.idUsuario, idRecurso: ids.idRecurso, idAccion: ids.idAccion },
-            attributes: ['idPermiso']
-        });
-        if (!permiso)
-            return res.json({ success: false, mensaje: 'Ese empleado no tiene permiso sobre cajas y bancos.' });
-
-        return res.json({
-            success: true,
-            nombre: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`.trim()
-        });
-    } catch (e) {
-        console.error('validarEmpleadoBancos:', e);
-        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
-    }
-};
+const validarEmpleadoBancos = validarCodigoConPermiso('Bancos', 'administrativo', 'EDIT', 'Ese empleado no tiene permiso sobre cajas y bancos.');
 
 const decidirTrasladoEfectivo = async (req, res) => {
     const { idTraslado } = req.params;
@@ -9143,8 +9101,6 @@ export {
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
     dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,
-
-    dashboardOrders,
     dashboardSettings,
     municipiosJson,
     categoriasJson,

@@ -1,3 +1,8 @@
+import { crearSeleccionMultiple } from './seleccionMultiple.js';
+import { montarHistorialTraslado } from './historialTraslado.js';
+import { pillEstadoTraslado } from './estadoTraslado.js';
+import { escaparHtml as esc } from './escaparHtml.js';
+
 (function () {
     document.addEventListener('DOMContentLoaded', () => {
         const cargarMetadata = async () => {
@@ -37,9 +42,7 @@
             const paginacionContenedor = '#paginacionPacks';
 
             let filteredPacks = window.initialPacks || [];
-            // La selección vive acá y no en los checkboxes del DOM: la tabla se repinta al
-            // paginar, filtrar o buscar, y con el estado en el DOM se perdía todo lo marcado.
-            const seleccionados = new Set();
+            const seleccion = crearSeleccionMultiple({ selectorCheckbox: '.checkbox-pack', selectAll, boton: btnTrasladar });
             let currentPage = 1;
             const itemsPerPage = 10;
 
@@ -83,7 +86,7 @@
 
                     const esTrasladable = pack.estado === 'EMPACADO';
                     const checkboxHTML = esTrasladable 
-                        ? `<input type="checkbox" name="selectedPack" value="${pack.idPack}" ${seleccionados.has(pack.idPack) ? 'checked' : ''} class="checkbox-pack w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover">`
+                        ? `<input type="checkbox" name="selectedPack" value="${pack.idPack}" ${seleccion.estaMarcado(pack.idPack) ? 'checked' : ''} class="checkbox-pack w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover">`
                         : `<span class="fi-rr-lock text-slate-300" title="No disponible para traslado"></span>`;
 
                     return `
@@ -128,9 +131,7 @@
                     });
                 }
 
-                // Re-bind events to new checkboxes
-                bindCheckboxes();
-                updateBtnVisibility();
+                seleccion.enlazar();
 
                 // Bind botones de historial
                 document.querySelectorAll('.btn-ver-historial').forEach(btn => {
@@ -139,40 +140,6 @@
                     });
                 });
             };
-
-            const bindCheckboxes = () => {
-                document.querySelectorAll('.checkbox-pack').forEach(cb => {
-                    cb.addEventListener('change', () => {
-                        if (cb.checked) seleccionados.add(cb.value);
-                        else seleccionados.delete(cb.value);
-                        updateBtnVisibility();
-                    });
-                });
-            };
-
-            const updateBtnVisibility = () => {
-                const n = seleccionados.size;
-                btnTrasladar.classList.toggle('hidden', n === 0);
-                // El total incluye lo elegido en otras páginas o escondido por un filtro,
-                // así que hay que decirlo: si no, el botón parece contar de más.
-                const etiqueta = btnTrasladar.querySelector('[data-conteo]');
-                if (etiqueta) etiqueta.textContent = n ? ` (${n})` : '';
-
-                // "Seleccionar todo" refleja solo lo visible en la página actual.
-                const visibles = [...document.querySelectorAll('.checkbox-pack')];
-                selectAll.checked = visibles.length > 0 && visibles.every(cb => cb.checked);
-                selectAll.indeterminate = !selectAll.checked && visibles.some(cb => cb.checked);
-            };
-
-            selectAll.addEventListener('change', () => {
-                // Aplica solo a los bultos de la página que se está viendo.
-                document.querySelectorAll('.checkbox-pack').forEach(cb => {
-                    cb.checked = selectAll.checked;
-                    if (cb.checked) seleccionados.add(cb.value);
-                    else seleccionados.delete(cb.value);
-                });
-                updateBtnVisibility();
-            });
 
             // ── Filtros de lote, tipo y estado ────────────────────────────────
             const fLote   = document.querySelector('#filtroLote');
@@ -272,7 +239,7 @@
             });
 
             btnTrasladar.addEventListener('click', async () => {
-                countSpan.innerText = seleccionados.size;
+                countSpan.innerText = seleccion.seleccionados.size;
                 inputCodigo.value = '';
                 textareaNotas.value = '';
                 resetEmpleado();
@@ -311,7 +278,7 @@
                     return;
                 }
 
-                const selectedPacks = [...seleccionados];
+                const selectedPacks = [...seleccion.seleccionados];
                 const notas = textareaNotas?.value?.trim() || '';
 
                 confirmBtn.disabled = true;
@@ -399,40 +366,35 @@
                     </div>
                 </div>`;
 
-                // Traslados
+                // Traslados: cada uno con el historial de ESTE pack, pintado con el mismo
+                // componente que el detalle de un traslado en la tienda y en /admin/traslados.
                 if (data.traslados.length === 0) {
                     html += `<div class="text-center text-slate-400 py-4 text-sm">Sin traslados registrados.</div>`;
                 } else {
                     html += `<p class="text-xs font-bold text-slate-400 uppercase tracking-wider mt-2">Traslados (${data.traslados.length})</p>`;
                     data.traslados.forEach((t, i) => {
-                        const tieneControversia = t.controversias.length > 0;
                         html += `
-                        <div class="rounded-2xl border ${tieneControversia ? 'border-red-200 bg-red-50' : 'border-slate-100 bg-white'} p-4">
-                            <div class="flex items-start justify-between gap-2 mb-2">
-                                <div>
-                                    <p class="text-xs text-slate-400">${fmtFecha(t.fecha)}</p>
-                                    <p class="text-sm font-semibold text-slate-700 mt-0.5">
-                                        <span class="fi-rr-arrow-right text-xs mr-1"></span>
-                                        ${t.origen} → ${t.destino}
+                        <div class="rounded-2xl border border-slate-100 bg-white p-4 space-y-3">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <p class="text-xs text-slate-400"><span class="font-mono font-semibold text-slate-500">${esc(t.codigo || '')}</span> · ${fmtFecha(t.fecha)}</p>
+                                    <p class="flex items-center gap-2 text-sm font-semibold text-slate-700 mt-0.5">
+                                        <span>${esc(t.origen)}</span>
+                                        <i class="fi fi-rr-arrow-right text-[10px] text-slate-300" aria-hidden="true"></i>
+                                        <span>${esc(t.destino)}</span>
                                     </p>
                                 </div>
-                                ${estadoChip(t.estado)}
+                                ${pillEstadoTraslado(t.estado)}
                             </div>
-                            ${tieneControversia ? `
-                                <div class="mt-2 space-y-1">
-                                    <p class="text-xs font-bold text-red-500 uppercase">⚠ Controversias (${t.controversias.length})</p>
-                                    ${t.controversias.map(c => `
-                                        <div class="bg-red-100 rounded-xl px-3 py-2 text-xs text-red-700 space-y-0.5">
-                                            <p class="font-bold">${c.razon || 'Sin descripción'}</p>
-                                            <p>Cant. original: <strong>${c.cantidadOriginal}</strong> — Aceptada: <strong>${c.cantidadAceptada}</strong></p>
-                                            <p>Resuelta: <strong>${c.resuelta === 'si' ? '✅ Sí' : '❌ No'}</strong> · ${fmtFecha(c.fecha)}</p>
-                                        </div>`).join('')}
-                                </div>` : ''}
+                            <div class="space-y-3" data-historial-traslado="${i}"></div>
                         </div>`;
                     });
                 }
 
                 historialBody.innerHTML = html;
+                historialBody.querySelectorAll('[data-historial-traslado]').forEach((contenedor) => {
+                    montarHistorialTraslado(contenedor)(data.traslados[contenedor.dataset.historialTraslado].historial);
+                });
             } catch (e) {
                 historialBody.innerHTML = '<p class="text-center text-red-400 py-8">Error al cargar el historial.</p>';
             }

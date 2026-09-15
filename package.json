@@ -53,7 +53,9 @@
     "db:migrar-credito-disponible-historial": "node ./seed/migracionCreditoDisponibleClienteHistorial.js",
     "db:migrar-permiso-mis-clientes": "node ./seed/migracionPermisoMisClientes.js",
     "db:migrar-abono-caja-banco": "node ./seed/migracionAbonoCajaBanco.js",
-    "db:migrar-pack-vendido": "node ./seed/migracionPackVendido.js"
+    "db:migrar-pack-vendido": "node ./seed/migracionPackVendido.js",
+    "db:migrar-traslado-devuelto": "node ./seed/migracionTrasladoDevuelto.js",
+    "test": "DB_NAME=grupogh_test REDIS_HOST= node --test --test-force-exit \"tests/**/*.test.js\""
   },
   "keywords": [
     "contable"

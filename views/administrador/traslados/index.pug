@@ -1,0 +1,177 @@
+extends ../../layout/index
+block contenedor
+    include ../../components/headerAdmin
+
+    //- Mismo campo de filtro que los movimientos de /admin/bankentities/cajas/:id.
+    - var campoFiltro = 'px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-300/40 cursor-pointer'
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER + PESTAÑAS
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                +headerAdmin({
+                                    avatar:    '/img/avatars/traslados.webp',
+                                    titulo:    'Traslados',
+                                    subtitulo: 'Mercancía que se mueve entre producción y las tiendas',
+                                    iconoSub:  'fi-rr-truck-side'
+                                })
+
+                                div(class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6" role="tablist")
+                                    button#tab-btn-controversias(
+                                        type="button"
+                                        role="tab"
+                                        data-tab="controversias"
+                                        aria-controls="panel-controversias"
+                                        class="tab-traslado flex items-center justify-center gap-2 py-4 rounded-2xl border text-sm font-semibold transition-all cursor-pointer"
+                                    )
+                                        i(class="fi fi-rr-triangle-warning text-base")
+                                        | En controversia
+                                        span#tab-conteo-controversias(class=`inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold tabular-nums ${controversias ? '' : 'hidden'}`)= controversias
+                                    button#tab-btn-historial(
+                                        type="button"
+                                        role="tab"
+                                        data-tab="historial"
+                                        aria-controls="panel-historial"
+                                        class="tab-traslado flex items-center justify-center gap-2 py-4 rounded-2xl border text-sm font-semibold transition-all cursor-pointer"
+                                    )
+                                        i(class="fi fi-rr-time-past text-base")
+                                        | Historial
+
+                            //- ══════════════════════════════════════════════════════════
+                            //- PESTAÑA 1 — EN CONTROVERSIA
+                            //- ══════════════════════════════════════════════════════════
+                            section#panel-controversias(class="col-span-12" role="tabpanel" aria-labelledby="tab-btn-controversias")
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="p-6 flex flex-wrap items-start justify-between gap-4")
+                                        div(class="flex items-center gap-3 flex-wrap")
+                                            div(class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center flex-shrink-0")
+                                                i(class="fi fi-rr-triangle-warning text-amber-500 text-xl")
+                                            div
+                                                h2(class="text-lg font-bold text-slate-800") En controversia
+                                                p(class="text-sm text-slate-400") Mercancía que el destino rechazó y tiene que volver a su origen
+
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left border-collapse")
+                                            thead
+                                                tr(class="border-b border-gh-primaryHover text-sm")
+                                                    th(class="px-4 py-4 text-gray-600 whitespace-nowrap") Traslado
+                                                    th(class="px-2 py-4 text-gray-600 whitespace-nowrap") Ruta
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Rechazado
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Esperando
+                                                    th(class="px-2 py-4 text-center text-gray-600 whitespace-nowrap") Quién recibe
+                                                    th(class="px-4 py-4 text-center text-gray-600 whitespace-nowrap") Acciones
+
+                                            tbody#tabla-controversias(class="divide-y divide-slate-100")
+                                                tr
+                                                    td(colspan="6" class="px-4 py-10 text-center text-sm text-slate-400")
+                                                        i(class="fi fi-rr-spinner animate-spin mr-2")
+                                                        | Cargando controversias...
+
+                                    div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100")
+                                        p#contador-controversias(class="text-xs text-slate-400") —
+
+                            //- ══════════════════════════════════════════════════════════
+                            //- PESTAÑA 2 — HISTORIAL
+                            //- ══════════════════════════════════════════════════════════
+                            section#panel-historial(class="col-span-12 hidden" role="tabpanel" aria-labelledby="tab-btn-historial")
+                                div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="p-6 flex flex-wrap items-start justify-between gap-3")
+                                        div
+                                            h2(class="text-lg font-bold text-slate-800") Historial
+                                            p(class="text-sm text-slate-400") Todos los traslados de mercancía, del más reciente al más antiguo
+                                        div(class="flex flex-wrap items-center gap-2")
+                                            div(class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white focus-within:ring-2 focus-within:ring-pink-300/40")
+                                                i(class="fi fi-rr-search text-slate-400 text-xs")
+                                                label(for="hist-codigo" class="sr-only") Buscar por código
+                                                input#hist-codigo(type="search" placeholder="Código TR-" maxlength="30" autocomplete="off" class="w-28 text-xs text-slate-600 bg-transparent focus:outline-none")
+                                            label(for="hist-punto" class="sr-only") Punto de venta
+                                            select#hist-punto(class=campoFiltro)
+                                                option(value="") Todos los puntos
+                                                option(value="PRODUCCION") Producción
+                                                each p in (puntos || [])
+                                                    option(value=p.idPuntoDeVenta)= tc(p.nombreComercial)
+                                            label(for="hist-estado" class="sr-only") Estado
+                                            select#hist-estado(class=campoFiltro)
+                                                option(value="") Todos los estados
+                                                option(value="EN_TRANSITO") En tránsito
+                                                option(value="EN_CONTROVERSIA") En controversia
+                                                option(value="RECIBIDO") Recibido
+                                                option(value="DEVUELTO") Devuelto
+                                            button#hist-limpiar(type="button" class="hidden px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer") Limpiar
+
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-left border-collapse")
+                                            thead
+                                                tr(class="border-b border-gh-primaryHover text-sm")
+                                                    th(class="px-4 py-3 text-gray-600 whitespace-nowrap") Traslado
+                                                    th(class="px-3 py-3 text-gray-600 whitespace-nowrap") Ruta
+                                                    th(class="px-3 py-3 text-center text-gray-600 whitespace-nowrap") Contenido
+                                                    th(class="px-3 py-3 text-center text-gray-600 whitespace-nowrap") Estado
+                                                    th(class="px-3 py-3 text-gray-600 whitespace-nowrap") Recepción
+                                                    th(class="px-4 py-3 text-center text-gray-600 whitespace-nowrap") Acciones
+
+                                            tbody#tabla-historial(class="divide-y divide-slate-100")
+                                                tr
+                                                    td(colspan="6" class="px-4 py-10 text-center text-sm text-slate-400")
+                                                        i(class="fi fi-rr-spinner animate-spin mr-2")
+                                                        | Cargando historial...
+
+                                    //- Paginación por cursor, como el libro de una caja: el historial crece
+                                    //- sin techo y contar el total cuesta más que traer la página.
+                                    div(class="px-6 py-4 bg-slate-50/30 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3")
+                                        p#contador-historial(class="text-xs text-slate-400") —
+                                        button#hist-cargar-mas(type="button" class="hidden px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed") Cargar más
+
+        //- ══════════════════════════════════════════════════════════════════════
+        //- MODAL: DETALLE DEL TRASLADO
+        //- ══════════════════════════════════════════════════════════════════════
+        div#modal-traslado(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="mt-titulo")
+            div(class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-cerrar-modal)
+            div(class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col")
+                div(class="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-3")
+                    div(class="flex items-center gap-3 flex-wrap")
+                        div(class="w-11 h-11 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                            i(class="fi fi-rr-truck-side text-gh-primaryHover text-lg")
+                        div
+                            h3#mt-titulo(class="font-bold text-slate-800") Traslado
+                            p#mt-subtitulo(class="text-xs text-slate-400 mt-0.5") —
+                    button(type="button" class="text-slate-300 hover:text-slate-500 transition-colors cursor-pointer" aria-label="Cerrar" data-cerrar-modal)
+                        i(class="fi fi-rr-cross-small text-xl")
+
+                div(class="px-6 py-5 space-y-4 overflow-y-auto")
+                    dl#mt-resumen(class="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 border border-slate-100 p-4")
+                    div#mt-items
+                    div#mt-historial(class="space-y-3")
+
+                //- Solo para lo que vuelve a producción: lo demás lo recibe la tienda de origen.
+                div#mt-recibir(class="hidden px-6 py-4 border-t border-amber-100 bg-amber-50/60 space-y-2")
+                    div(class="flex items-start gap-2")
+                        i(class="fi fi-rr-undo text-amber-600 mt-0.5")
+                        p(class="text-xs text-amber-800 leading-snug")
+                            | Al recibirla, los packs rechazados vuelven a
+                            strong(class="font-bold")  EMPACADO
+                            |  en su dosificación y el traslado se cierra. Si hay que enviarlos otra vez, es un traslado nuevo.
+                    div
+                        label(for="mt-codigo" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1")
+                            | Código del empleado que recibe
+                            span(class="text-gh-primaryHover ml-0.5") *
+                        input#mt-codigo(type="password" inputmode="numeric" maxlength="10" placeholder="Código de empleado" autocomplete="off" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+                        p#mt-codigo-estado(class="text-[11px] font-semibold mt-1 min-h-[16px]" aria-live="polite")
+
+                div(class="px-6 pb-6 pt-4 flex flex-wrap gap-2 border-t border-slate-100")
+                    a#mt-pdf(href="#" target="_blank" rel="noopener" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors")
+                        i(class="fi fi-rr-file-pdf")
+                        | Comprobante
+                    button(type="button" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer" data-cerrar-modal) Cerrar
+                    button#mt-btn-recibir(type="button" class="hidden flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-gh-primary hover:bg-gh-primaryHover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled) Recibir devolución
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/adminTraslados.js")

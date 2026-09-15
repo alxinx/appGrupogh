@@ -1,4 +1,5 @@
 import { tituloLista as tc } from '../../helpers/textoLista.js';
+import { crearSeleccionMultiple } from './seleccionMultiple.js';
 (function () {
     const csrfToken = document.getElementById('csrf-token')?.value || '';
     const R2 = 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/';
@@ -22,12 +23,19 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const inputNotasTras  = document.getElementById('tras-notas');
     const btnConfirmTras  = document.getElementById('tras-confirmar');
     const lblPacksCount   = document.getElementById('tras-packs-count');
+    const btnTrasladarSel = document.getElementById('inv-trasladar-seleccionados');
+
+    const seleccion = crearSeleccionMultiple({
+        selectorCheckbox: '.checkbox-pack-inv',
+        selectAll: document.getElementById('inv-select-all'),
+        boton: btnTrasladarSel
+    });
 
     // ─── CARGAR INVENTARIO ───────────────────────────────────────────────────
     const loadInventario = async () => {
         if (!tbody) return;
         tbody.innerHTML = `<tr>
-            <td colspan="6" class="p-8 text-center text-gray-500">
+            <td colspan="7" class="p-8 text-center text-gray-500">
                 <i class="fi fi-rr-spinner animate-spin mr-2"></i>Cargando inventario...
             </td></tr>`;
 
@@ -37,6 +45,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             const data   = await res.json();
             if (!data.success) throw new Error();
 
+            // Los packs no se paginan: sin búsqueda llega la lista completa de la tienda, y lo
+            // que ya no está (lo trasladó, vendió o desempacó otra caja) sale de la selección.
+            if (!busqueda.trim()) {
+                seleccion.conservarSolo((data.packs || []).map(s => s.packOrigen?.idPack).filter(Boolean));
+            }
             renderTabla(data.packs || [], data.productos || []);
 
             generarPaginacion('#inv-paginacion', data.totalPaginas, data.paginaActual, (p) => {
@@ -45,7 +58,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             });
         } catch {
             tbody.innerHTML = `<tr>
-                <td colspan="6" class="p-8 text-center text-gray-500">Error al cargar el inventario.</td>
+                <td colspan="7" class="p-8 text-center text-gray-500">Error al cargar el inventario.</td>
             </tr>`;
         }
     };
@@ -54,12 +67,14 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const renderTabla = (packs, productos) => {
         if (!packs.length && !productos.length) {
             tbody.innerHTML = `<tr>
-                <td colspan="6" class="p-8 text-center text-gray-500">No hay productos en inventario.</td>
+                <td colspan="7" class="p-8 text-center text-gray-500">No hay productos en inventario.</td>
             </tr>`;
+            seleccion.enlazar();
             return;
         }
         tbody.innerHTML = packs.map(renderRowPack).join('') + productos.map(renderRowProducto).join('');
         bindAcciones();
+        seleccion.enlazar();
     };
 
     const renderRowPack = (stock) => {
@@ -72,6 +87,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         <tr class="border-b border-purple-100 hover:bg-purple-50/60 transition-colors bg-purple-50/30"
             data-id-pack="${pack?.idPack || ''}"
             data-detalles='${JSON.stringify(detalles.map(d => ({ nombre: d.producto?.nombreProducto, cantidad: d.cantidad })))}'>
+            <td class="p-4 text-center">
+                <input type="checkbox" value="${pack?.idPack || ''}" ${seleccion.estaMarcado(pack?.idPack) ? 'checked' : ''}
+                       title="Seleccionar ${pack?.codigoEtiqueta || 'pack'}"
+                       class="checkbox-pack-inv w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover cursor-pointer">
+            </td>
             <td class="p-4">
                 <img src="/img/avatars/pack.webp" class="w-12 h-12 object-contain rounded-lg shadow-sm bg-purple-100 p-1">
             </td>
@@ -117,6 +137,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         return `
         <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+            <td class="p-4"></td>
             <td class="p-4">
                 <img src="${imgUrl}" class="w-12 h-12 object-cover rounded-lg shadow-sm">
             </td>
@@ -270,6 +291,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         if (selDestino) selDestino.value = '';
     };
 
+    btnTrasladarSel?.addEventListener('click', () => abrirModalTraslado([...seleccion.seleccionados]));
+
     document.querySelectorAll('#tras-cancelar').forEach(b => b.addEventListener('click', cerrarModalTraslado));
     document.getElementById('modal-traslado-overlay')?.addEventListener('click', cerrarModalTraslado);
 
@@ -317,8 +340,15 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             });
             const data = await r.json();
             if (data.success) {
+                const n = packsSeleccionados.length;
+                seleccion.quitar(packsSeleccionados);
                 cerrarModalTraslado();
-                await Swal.fire({ icon: 'success', title: `Traslado ${data.codigo}`, text: 'Pack trasladado correctamente.', confirmButtonColor: '#E24C95' });
+                await Swal.fire({
+                    icon: 'success',
+                    title: `Traslado ${data.codigo}`,
+                    text: n === 1 ? 'Pack trasladado correctamente.' : `${n} packs trasladados correctamente.`,
+                    confirmButtonColor: '#E24C95'
+                });
                 if (data.idTraslado) window.open(`/store/traslados/comprobante/${data.idTraslado}`, '_blank');
                 loadInventario();
             } else {

@@ -48,7 +48,7 @@ const CARPETAS = {
     'Pedidos y Reparto':        '/pedidos',
     'Settings':                 '/configuracion',
     'Tienda Web':               '/web',
-    'Traslados':                null,
+    'Traslados':                '/traslados',
     'Autorizacion de creditos': null
 };
 

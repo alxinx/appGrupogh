@@ -110,10 +110,22 @@ aside(
         i(class="fi fi-rr-user text-lg")
         span Personal
 
-    if ver('/pedidos')
-      a(href="/admin/pedidos" class=`menu-item ${currentPath === '/pedidos' ? 'active' : ''}`)
-        i(class="fi fi-rr-truck text-lg")
-        span Pedidos y Reparto
+    if ver('/traslados')
+      //- Traslados de mercancía. `devolucionesPorRecibir` lo inyecta cargarContadoresAdmin:
+      //- lo que una tienda rechazó de producción y espera que la administración lo reciba.
+      //- Mismo badge que alterna con un banner que Cajas y bancos y Tienda Web.
+      - const devolucionesAdmin = typeof devolucionesPorRecibir === 'number' ? devolucionesPorRecibir : 0
+      a#menu-traslados-mercancia(
+        href="/admin/traslados"
+        class=`menu-item ${devolucionesAdmin > 0 ? 'has-alert' : ''} ${currentPath === '/traslados' ? 'active' : ''}`)
+        div(class="menu-alert-normal")
+          i(class="fi fi-rr-truck-side text-lg")
+          span Traslados
+          span(class=`animate-badge-pulse ml-auto min-w-[26px] h-[26px] px-1.5 flex items-center justify-center rounded-full bg-gh-primaryHover text-white text-sm font-bold leading-none shadow-sm shadow-pink-300 ${devolucionesAdmin > 0 ? '' : 'hidden'}`)= devolucionesAdmin
+        div(class="menu-alert-banner bg-gh-primaryHover text-white")
+          i(class="fi fi-rr-undo text-base flex-shrink-0")
+          span(class="text-xs font-semibold leading-snug")
+            = devolucionesAdmin === 1 ? '1 devolución por recibir' : `${devolucionesAdmin} devoluciones por recibir`
 
     if ver('/web')
       //- pedidosWebNuevos lo inyecta cargarContadoresAdmin en res.locals (pedidos 'en_revision',

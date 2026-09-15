@@ -1,4 +1,4 @@
-import { UserPermisos, PermisosRecursos, PermisosAcciones } from '../models/index.js';
+import { UserPermisos, PermisosRecursos, PermisosAcciones, Empleados } from '../models/index.js';
 
 // Cache en memoria de IDs de recursos y acciones (son datos estáticos seeded).
 // Evita re-queries en cada request.
@@ -47,6 +47,45 @@ const verificarPermisoEmpleado = (nombreRecurso, tipo, nombreAccion) => async (r
         next();
     } catch (e) {
         console.error('verificarPermisoEmpleado:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error interno.' });
+    }
+};
+
+// Handler GET que comprueba un código ANTES de una acción del panel, para no habilitar un
+// botón que el servidor va a rechazar. Aplica lo mismo que después exigen
+// verificarCodigoEmpleadoAdmin + verificarPermisoEmpleado. No es un oráculo de códigos: vive
+// detrás de verificarRol('ADMIN'), y un administrador ya ve en Personal quién tiene cada
+// permiso. Montarlo detrás de apiRateLimit.
+export const validarCodigoConPermiso = (nombreRecurso, tipo, nombreAccion, mensajeSinPermiso) => async (req, res) => {
+    const codigo = String(req.params.codigo || '').trim().toUpperCase();
+    if (!codigo) return res.status(400).json({ success: false, mensaje: 'Código requerido.' });
+
+    try {
+        const empleado = await Empleados.findOne({
+            where: { codigoEmpleado: codigo },
+            attributes: ['idEmpleado', 'idUsuario', 'PrimerNombre', 'PrimerApellido', 'estado']
+        });
+
+        // Mismo criterio que verificarCodigoEmpleadoAdmin: se bloquea a quien ya no es de
+        // confianza, no a quien está de licencia.
+        if (!empleado || ['suspendido', 'despedido'].includes(empleado.estado))
+            return res.json({ success: false, mensaje: 'Código de empleado inválido.' });
+
+        if (!empleado.idUsuario)
+            return res.json({ success: false, mensaje: 'Ese empleado no tiene acceso al sistema.' });
+
+        const ids = await resolverIds(nombreRecurso, tipo, nombreAccion);
+        if (!ids) return res.status(500).json({ success: false, mensaje: 'Configuración de permisos inválida.' });
+
+        const permiso = await UserPermisos.findOne({
+            where: { idUsuario: empleado.idUsuario, idRecurso: ids.idRecurso, idAccion: ids.idAccion },
+            attributes: ['idPermiso']
+        });
+        if (!permiso) return res.json({ success: false, mensaje: mensajeSinPermiso });
+
+        return res.json({ success: true, nombre: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`.trim() });
+    } catch (e) {
+        console.error(`validarCodigoConPermiso(${nombreRecurso}):`, e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
 };

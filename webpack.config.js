@@ -41,6 +41,7 @@ export default {
         batchOrder          : '/src/js/batchOrder.js',
         adminCierresCaja    : '/src/js/adminCierresCaja.js',
         adminTrasladosTienda: '/src/js/adminTrasladosTienda.js',
+        adminTraslados: '/src/js/adminTraslados.js',
         adminDocsTienda     : '/src/js/adminDocsTienda.js',
         adminPedidosWeb     : '/src/js/adminPedidosWeb.js',
         adminPedidoDetalle  : '/src/js/adminPedidoDetalle.js',
