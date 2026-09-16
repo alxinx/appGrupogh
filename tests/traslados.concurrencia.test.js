@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'crypto';
 import {
-    prepararBaseDePrueba, cerrarBase, TIENDA_A, TIENDA_B, empleadoDe, llamar,
+    prepararBaseDePrueba, cerrarBase, TIENDA_A, TIENDA_B, empleadoDe, llamar, resSimulada, crearEmpleadoConUsuario,
     crearTrasladoEnTransito, crearStock, crearPack, stockTotal, insidenciasDe, recargar
 } from './bdPrueba.js';
 import db from '../config/bd.js';
@@ -14,6 +14,8 @@ import {
 import { trasladarPacks } from '../controller/dosificacionController.js';
 import { recibirDevolucionAdmin, listarControversiasJSON, listarHistorialJSON } from '../controller/trasladosAdminController.js';
 import { bloquearYValidarTraslado, ACTOR_JOB_EXPIRADOS, segundosMaximosEnTransito } from '../helpers/traslados.js';
+import verificarCodigoEmpleadoAdmin, { MENSAJE_SIN_EMPLEADO } from '../middlewares/verificarCodigoEmpleadoAdmin.js';
+import { validarCodigoConPermiso } from '../middlewares/verificarPermisoEmpleado.js';
 
 const EMP_A  = empleadoDe('despacho-a');
 const EMP_B  = empleadoDe('receptor-b');
@@ -44,7 +46,7 @@ const trasladarDesdeTienda = (idsPack, empleado = EMP_A) =>
     });
 
 const trasladarDesdeDosificacion = (idsPack, empleado = EMP_A) =>
-    llamar(trasladarPacks, { body: { packs: idsPack, idDestino: TIENDA_B, idEmpleadoDespacha: empleado.idEmpleado, notas: '' } });
+    llamar(trasladarPacks, { empleadoVerificado: empleado, body: { packs: idsPack, idDestino: TIENDA_B, notas: '' } });
 
 // Un pack con su traslado anterior ya recibido: ahí tiene que quedar el rastro de un intento
 // de moverlo que se rechace, porque ese intento no llega a crear traslado propio.
@@ -581,4 +583,69 @@ test('historial: pagina por cursor sin repetir ni saltarse traslados, y filtra p
     const soloControversia = await llamar(listarHistorialJSON, { query: { estado: 'EN_CONTROVERSIA' } });
     assert.ok(soloControversia.body.traslados.length > 0);
     assert.ok(soloControversia.body.traslados.every(t => t.estado === 'EN_CONTROVERSIA'));
+});
+
+
+// ─── Código de empleado en el admin: solo el de quien tiene la sesión ────────
+
+const pedirCodigo = async (idUsuario, codigoEmpleado) => {
+    const res = resSimulada();
+    let paso = null;
+    const req = { usuario: { idUsuario }, body: { codigoEmpleado }, method: 'POST', originalUrl: '/admin/prueba' };
+    await verificarCodigoEmpleadoAdmin(req, res, () => { paso = req.empleadoVerificado; });
+    return { res, paso };
+};
+
+test('admin: el código propio autoriza y deja al empleado de la sesión como responsable', async () => {
+    const yo = await crearEmpleadoConUsuario();
+    const { res, paso } = await pedirCodigo(yo.idUsuario, yo.codigoEmpleado);
+    assert.equal(res.body, undefined, 'no respondió error');
+    assert.equal(paso?.idEmpleado, yo.idEmpleado);
+});
+
+test('admin: el código de otro empleado se rechaza igual que uno inexistente y cuenta para el bloqueo', async () => {
+    const yo = await crearEmpleadoConUsuario();
+    const otro = await crearEmpleadoConUsuario();
+
+    const ajeno = await pedirCodigo(yo.idUsuario, otro.codigoEmpleado);
+    const inexistente = await pedirCodigo(yo.idUsuario, '00000000');
+    assert.equal(ajeno.paso, null, 'no pasó al controlador');
+    assert.equal(ajeno.res.statusCode, 400);
+    assert.equal(ajeno.res.body.mensaje.split('.')[0], inexistente.res.body.mensaje.split('.')[0], 'mismo mensaje: no confirma que el código existe');
+
+    let ultimo;
+    for (let i = 0; i < 3; i++) ultimo = await pedirCodigo(yo.idUsuario, otro.codigoEmpleado);
+    assert.equal(ultimo.res.statusCode, 401, 'al quinto intento se cierra la sesión');
+    assert.equal(ultimo.res.body.logout, true);
+    assert.equal(ultimo.res.cookieBorrada, true);
+});
+
+test('admin: un empleado despedido no autoriza ni con su propio código', async () => {
+    const yo = await crearEmpleadoConUsuario({ estado: 'despedido' });
+    const { res, paso } = await pedirCodigo(yo.idUsuario, yo.codigoEmpleado);
+    assert.equal(paso, null);
+    assert.equal(res.statusCode, 400);
+});
+
+test('admin: un usuario sin ficha de empleado recibe el motivo y no se le cuentan intentos', async () => {
+    const yo = await crearEmpleadoConUsuario({ conEmpleado: false });
+    const otro = await crearEmpleadoConUsuario();
+    let ultimo;
+    for (let i = 0; i < 6; i++) ultimo = await pedirCodigo(yo.idUsuario, otro.codigoEmpleado);
+    assert.equal(ultimo.paso, null);
+    assert.equal(ultimo.res.statusCode, 403);
+    assert.equal(ultimo.res.body.mensaje, MENSAJE_SIN_EMPLEADO);
+});
+
+test('admin: la prevalidación del código no revela de quién es un código ajeno', async () => {
+    const yo = await crearEmpleadoConUsuario();
+    const otro = await crearEmpleadoConUsuario();
+    const validar = validarCodigoConPermiso('Traslados', 'administrativo', 'EDIT', 'Sin permiso.');
+
+    const res = resSimulada();
+    await validar({ params: { codigo: otro.codigoEmpleado }, usuario: { idUsuario: yo.idUsuario } }, res);
+
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.nombre, undefined);
+    assert.equal(res.body.mensaje, 'Código de empleado inválido.');
 });

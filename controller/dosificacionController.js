@@ -503,11 +503,12 @@ const nroPacks = async (req, res) => {
 
 
 const trasladarPacks = async (req, res) => {
-    const { packs, idDestino, idEmpleadoDespacha, notas } = req.body;
+    const { packs, idDestino, notas } = req.body;
+    // Quién despacha sale del código que verificarCodigoEmpleadoAdmin validó contra la sesión.
+    // Antes llegaba un idEmpleado del navegador que nadie comprobaba: cualquiera podía firmar
+    // el traslado a nombre de otro.
+    const idEmpleadoDespacha = req.empleadoVerificado.idEmpleado;
 
-    if (!idEmpleadoDespacha) {
-        return res.status(400).json({ success: false, mensaje: 'El código del empleado responsable es obligatorio.' });
-    }
     if (!idDestino || !Array.isArray(packs) || !packs.length) {
         return res.status(400).json({ success: false, mensaje: 'Selecciona al menos un paquete y el destino.' });
     }

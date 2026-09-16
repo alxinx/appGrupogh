@@ -3,7 +3,7 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
+checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
@@ -35,7 +35,7 @@ import { formularioImportaciones, procesarImportacionExcel } from '../controller
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
 import verificarCodigoEmpleadoAdmin from '../middlewares/verificarCodigoEmpleadoAdmin.js';
-import verificarPermisoEmpleado from '../middlewares/verificarPermisoEmpleado.js';
+import verificarPermisoEmpleado, { validarCodigoConPermiso } from '../middlewares/verificarPermisoEmpleado.js';
 import verificarPermisoSesion from '../middlewares/verificarPermisoSesion.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +63,7 @@ const pCli = perm('Clientes');
 const pTra = perm('Traslados');
 const pCfg = perm('Settings');
 const pDos = perm('Dosificación y Repartos');
+const validarEmpleadoDosificacion = validarCodigoConPermiso('Dosificación y Repartos', 'administrativo', 'EDIT', 'No tienes permiso para despachar desde dosificación.');
 import uploadImages, { MAX_IMAGENES } from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
 import { recibirQr } from '../middlewares/uploadQr.js';
@@ -294,7 +295,8 @@ routes.get('/dosificaciones/', pDos('READ'), homeDose); //DASHBOARD
 routes.get('/dosificaciones/new/', pDos('CREATE'), newDose);//Load paginna guardar
 routes.post('/dosificaciones/guardar', pDos('CREATE'), guardarDosificacion)
 routes.get('/dosificaciones/ver/:idDosificacion', pDos('READ'), verDosificacion)
-routes.post('/dosificaciones/trasladar', pDos('EDIT'), csrfProtection, trasladarPacks);
+routes.post('/dosificaciones/trasladar', pDos('EDIT'), csrfProtection, verificarCodigoEmpleadoAdmin, trasladarPacks);
+routes.get('/api/dosificaciones/empleado/validar/:codigo', pDos('READ'), apiRateLimit, validarEmpleadoDosificacion);
 
 
 
@@ -334,7 +336,6 @@ routes.get('/json/unicidad/:tipo/:valor', jsonUnicidad)
 routes.get('/json/personal/documento/:tipo/:numero', pPer('READ'), checkDocumentoPersonal);
 routes.get('/json/personal/email/:email', pPer('READ'), checkEmailPersonal);
 routes.get('/json/personal/lista', pPer('READ'), filterEmployeeListJson);
-routes.get('/json/personal/codigo/:codigo', pPer('READ'), buscarEmpleadoPorCodigo);
 routes.get('/json/permisos/recursos/:tipo', pPer('READ'), jsonPermisosRecursos);
 routes.get('/json/permisos/acciones', pPer('READ'), jsonPermisosAcciones);
 routes.get('/json/provedores/', pPro('READ'), filterSupplierListJson);
@@ -354,7 +355,7 @@ routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', pTie('READ'), getTi
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', pTie('READ'), getFacturasJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas/export', pTie('READ'), exportarFacturasTienda);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-abiertas', pTie('READ'), getCajasAbiertasPorFecha);
-routes.post('/api/tiendas/:idPuntoDeVenta/autorizar-factura-extemporanea', pTie('EDIT'), csrfProtection, autorizarFacturaExtemporanea);
+routes.post('/api/tiendas/:idPuntoDeVenta/autorizar-factura-extemporanea', pTie('EDIT'), csrfProtection, verificarCodigoEmpleadoAdmin, autorizarFacturaExtemporanea);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-cerradas', pTie('READ'), getCajasCerradasAdmin);
 routes.get('/api/tiendas/:idPuntoDeVenta/cierres-lista', pTie('READ'),  getCierresCajaListaJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/cierre/:idCajaTienda', pTie('READ'),           getCierreCajaDatosJSON);

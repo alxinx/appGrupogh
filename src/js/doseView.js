@@ -204,11 +204,12 @@ import { escaparHtml as esc } from './escaparHtml.js';
             const feedbackEmpleado = document.querySelector('#feedbackEmpleadoDespacha');
             const textareaNotas = document.querySelector('#notasTraslado');
 
-            let idEmpleadoDespacha = null;
+            // El código validado. Quién despacha lo resuelve el servidor contra la sesión.
+            let codigoDespacha = null;
             let busquedaTimer = null;
 
             const resetEmpleado = () => {
-                idEmpleadoDespacha = null;
+                codigoDespacha = null;
                 feedbackEmpleado.textContent = '';
                 feedbackEmpleado.className = 'text-xs ml-2 h-4';
             };
@@ -216,15 +217,15 @@ import { escaparHtml as esc } from './escaparHtml.js';
             const buscarEmpleado = async (codigo) => {
                 if (!codigo || codigo.length < 3) { resetEmpleado(); return; }
                 try {
-                    const res = await fetch(`/admin/json/personal/codigo/${codigo.trim().toUpperCase()}`);
+                    const res = await fetch(`/admin/api/dosificaciones/empleado/validar/${encodeURIComponent(codigo.trim().toUpperCase())}`);
                     const data = await res.json();
                     if (data.success) {
-                        idEmpleadoDespacha = data.idEmpleado;
+                        codigoDespacha = codigo.trim().toUpperCase();
                         feedbackEmpleado.textContent = `✓ ${data.nombre}`;
                         feedbackEmpleado.className = 'text-xs ml-2 h-4 text-emerald-600 font-semibold';
                     } else {
-                        idEmpleadoDespacha = null;
-                        feedbackEmpleado.textContent = '✗ Código no encontrado';
+                        codigoDespacha = null;
+                        feedbackEmpleado.textContent = `✗ ${data.mensaje || 'Código inválido'}`;
                         feedbackEmpleado.className = 'text-xs ml-2 h-4 text-red-500 font-semibold';
                     }
                 } catch (_) {
@@ -272,7 +273,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
                     alerta({ icon: 'error', title: 'Selecciona un destino', text: 'Debes elegir una bodega o almacén.' });
                     return;
                 }
-                if (!idEmpleadoDespacha) {
+                if (!codigoDespacha) {
                     alerta({ icon: 'error', title: 'Código requerido', text: 'Ingresa el código del empleado responsable.' });
                     inputCodigo.focus();
                     return;
@@ -291,10 +292,12 @@ import { escaparHtml as esc } from './escaparHtml.js';
                             'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
                         },
-                        body: JSON.stringify({ packs: selectedPacks, idDestino, idEmpleadoDespacha, notas })
+                        body: JSON.stringify({ packs: selectedPacks, idDestino, codigoEmpleado: codigoDespacha, notas })
                     });
 
                     const result = await res.json();
+                    // Cinco códigos inválidos cierran la sesión (verificarCodigoEmpleadoAdmin).
+                    if (result.logout) { window.location.href = '/'; return; }
                     if (result.success) {
                         window.open(`/admin/dosificaciones/comprobante/${result.idTraslado}`, '_blank');
                         window.location.reload();

@@ -1,4 +1,5 @@
-import { UserPermisos, PermisosRecursos, PermisosAcciones, Empleados } from '../models/index.js';
+import { UserPermisos, PermisosRecursos, PermisosAcciones } from '../models/index.js';
+import { empleadoDeLaSesion, usuarioTieneEmpleado, MENSAJE_SIN_EMPLEADO } from './verificarCodigoEmpleadoAdmin.js';
 
 // Cache en memoria de IDs de recursos y acciones (son datos estáticos seeded).
 // Evita re-queries en cada request.
@@ -61,18 +62,14 @@ export const validarCodigoConPermiso = (nombreRecurso, tipo, nombreAccion, mensa
     if (!codigo) return res.status(400).json({ success: false, mensaje: 'Código requerido.' });
 
     try {
-        const empleado = await Empleados.findOne({
-            where: { codigoEmpleado: codigo },
-            attributes: ['idEmpleado', 'idUsuario', 'PrimerNombre', 'PrimerApellido', 'estado']
-        });
-
-        // Mismo criterio que verificarCodigoEmpleadoAdmin: se bloquea a quien ya no es de
-        // confianza, no a quien está de licencia.
-        if (!empleado || ['suspendido', 'despedido'].includes(empleado.estado))
-            return res.json({ success: false, mensaje: 'Código de empleado inválido.' });
-
-        if (!empleado.idUsuario)
-            return res.json({ success: false, mensaje: 'Ese empleado no tiene acceso al sistema.' });
+        // Mismo criterio que verificarCodigoEmpleadoAdmin: solo vale el código de quien tiene la
+        // sesión. Si no, este GET servía para averiguar de quién es cualquier código.
+        const idUsuarioSesion = req.usuario?.idUsuario;
+        const empleado = await empleadoDeLaSesion(codigo, idUsuarioSesion);
+        if (!empleado) {
+            const mensaje = (await usuarioTieneEmpleado(idUsuarioSesion)) ? 'Código de empleado inválido.' : MENSAJE_SIN_EMPLEADO;
+            return res.json({ success: false, mensaje });
+        }
 
         const ids = await resolverIds(nombreRecurso, tipo, nombreAccion);
         if (!ids) return res.status(500).json({ success: false, mensaje: 'Configuración de permisos inválida.' });

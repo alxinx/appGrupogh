@@ -55,7 +55,7 @@
     "db:migrar-abono-caja-banco": "node ./seed/migracionAbonoCajaBanco.js",
     "db:migrar-pack-vendido": "node ./seed/migracionPackVendido.js",
     "db:migrar-traslado-devuelto": "node ./seed/migracionTrasladoDevuelto.js",
-    "test": "DB_NAME=grupogh_test REDIS_HOST= node --test --test-force-exit \"tests/**/*.test.js\""
+    "test": "DB_NAME=grupogh_test DB_HOST=127.0.0.1 REDIS_HOST= node --test --test-force-exit \"tests/**/*.test.js\""
   },
   "keywords": [
     "contable"

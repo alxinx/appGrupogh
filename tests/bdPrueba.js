@@ -54,9 +54,35 @@ const codigo = (prefijo) => `${prefijo}-${Date.now().toString(36)}-${++correlati
 export const resSimulada = () => ({
     statusCode: 200,
     body: undefined,
+    cookieBorrada: false,
     status(c) { this.statusCode = c; return this; },
-    json(b) { this.body = b; return this; }
+    json(b) { this.body = b; return this; },
+    clearCookie() { this.cookieBorrada = true; return this; }
 });
+
+// Un usuario del panel con su ficha de empleado (o sin ella). Las llaves foráneas de EMPLEADOS
+// piden un punto de venta real; en la transacción se apagan para no sembrar uno.
+export async function crearEmpleadoConUsuario({ estado = 'activo', conEmpleado = true } = {}) {
+    const idUsuario = randomUUID();
+    const idEmpleado = randomUUID();
+    const codigoEmpleado = String(10000 + Math.floor(Math.random() * 89999)) + (++correlativo);
+    await db.transaction(async (t) => {
+        await db.query('SET FOREIGN_KEY_CHECKS = 0', { transaction: t });
+        await db.query(
+            "INSERT INTO USUARIOS (idUsuario, nombreUsuario, emailUsuario, password, permisos, createdAt, updatedAt) VALUES (:id, 'Prueba', :email, 'x', 'ADMIN', NOW(), NOW())",
+            { replacements: { id: idUsuario, email: `${idUsuario}@prueba.test` }, transaction: t }
+        );
+        if (conEmpleado) {
+            await db.query(
+                `INSERT INTO EMPLEADOS (idEmpleado, idUsuario, idPuntoDeVenta, PrimerNombre, PrimerApellido, NumeroDocumento, emailEmpleado, fechaIngreso, codigoEmpleado, estado, createdAt, updatedAt)
+                 VALUES (:idEmpleado, :idUsuario, :pdv, 'Empleado', 'Prueba', :doc, :email, CURDATE(), :codigo, :estado, NOW(), NOW())`,
+                { replacements: { idEmpleado, idUsuario, pdv: TIENDA_A, doc: codigoEmpleado, email: `${idEmpleado}@prueba.test`, codigo: codigoEmpleado, estado }, transaction: t }
+            );
+        }
+        await db.query('SET FOREIGN_KEY_CHECKS = 1', { transaction: t });
+    });
+    return { idUsuario, idEmpleado: conEmpleado ? idEmpleado : null, codigoEmpleado: conEmpleado ? codigoEmpleado : null };
+}
 
 export const llamar = async (handler, req) => {
     const res = resSimulada();

@@ -17,6 +17,33 @@ const _logout = (res, mensaje) => {
     return res.status(401).json({ success: false, mensaje, logout: true });
 };
 
+const ESTADOS_BLOQUEADOS = ['suspendido', 'despedido'];
+export const MENSAJE_SIN_EMPLEADO = 'Tu usuario no está vinculado a un empleado. Pide que te vinculen en Personal para autorizar esta acción.';
+
+/**
+ * En el panel admin el código no identifica a "cualquier empleado": identifica a quien tiene la
+ * sesión abierta. Se busca por código Y por el usuario logueado, así que el código de otra
+ * persona no existe para esta sesión. Sin esto, un admin que puede ver Personal —donde se listan
+ * los códigos— autorizaba acciones con dinero e inventario a nombre de otro empleado.
+ *
+ * Devuelve el empleado, o null si el código no es de esta sesión o el empleado ya no es de
+ * confianza (se bloquea a suspendidos y despedidos, no a quien está de licencia).
+ */
+export async function empleadoDeLaSesion(codigo, idUsuario) {
+    const limpio = String(codigo || '').trim().toUpperCase();
+    if (!limpio || !idUsuario) return null;
+    const empleado = await Empleados.findOne({
+        where: { codigoEmpleado: limpio, idUsuario },
+        attributes: ['idEmpleado', 'idUsuario', 'PrimerNombre', 'PrimerApellido', 'codigoEmpleado', 'estado']
+    });
+    return empleado && !ESTADOS_BLOQUEADOS.includes(empleado.estado) ? empleado : null;
+}
+
+// Un usuario sin ficha de empleado no tiene código propio: se le dice por qué, en vez de
+// contarle intentos fallidos por algo que no puede corregir escribiendo.
+export const usuarioTieneEmpleado = async (idUsuario) =>
+    !!idUsuario && (await Empleados.count({ where: { idUsuario } })) > 0;
+
 const verificarCodigoEmpleadoAdmin = async (req, res, next) => {
     const userId = req.usuario?.idUsuario;
     if (!userId) return res.status(401).json({ success: false, mensaje: 'No autorizado.' });
@@ -36,17 +63,19 @@ const verificarCodigoEmpleadoAdmin = async (req, res, next) => {
     }
 
     try {
-        const empleado = await Empleados.findOne({
-            where: { codigoEmpleado: codigo },
-            attributes: ['idEmpleado', 'idUsuario', 'PrimerNombre', 'PrimerApellido', 'codigoEmpleado', 'estado']
-        });
+        const empleado = await empleadoDeLaSesion(codigo, userId);
 
-        // Se bloquea a quien ya no es de confianza, no a quien está de licencia: alguien
-        // en vacaciones puede estar cubriendo un turno. El mensaje es el mismo que para un
-        // código inexistente — no se le confirma a nadie qué códigos existen.
-        const habilitado = empleado && !['suspendido', 'despedido'].includes(empleado.estado);
+        if (!empleado && !(await usuarioTieneEmpleado(userId))) {
+            return res.status(403).json({ success: false, mensaje: MENSAJE_SIN_EMPLEADO });
+        }
 
-        if (!habilitado) {
+        // El código de otra persona, uno inexistente y el de un empleado dado de baja reciben
+        // el mismo mensaje y cuentan igual para el bloqueo: no se le confirma a nadie qué
+        // códigos existen. El intento con un código ajeno queda en el log.
+        if (!empleado) {
+            if (await Empleados.count({ where: { codigoEmpleado: codigo } })) {
+                console.warn(`[seguridad] El usuario ${userId} intentó autorizar ${req.method} ${req.originalUrl} con el código de otro empleado.`);
+            }
             const actual = reg ?? { count: 0, primeraFalla: Date.now() };
             actual.count++;
             _intentos.set(userId, actual);

@@ -199,6 +199,8 @@
                 body:    JSON.stringify({ idCajaTienda, cantidadFacturas: parseInt(cantidadFacturas), codigoEmpleado })
             });
             const json = await res.json();
+            // Cinco códigos inválidos cierran la sesión (verificarCodigoEmpleadoAdmin).
+            if (json.logout) { window.location.href = '/'; return; }
 
             if (!json.success) {
                 errMsg.textContent = json.mensaje || 'Error al autorizar.';

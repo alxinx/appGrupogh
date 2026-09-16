@@ -9037,28 +9037,18 @@ const getCajasAbiertasPorFecha = async (req, res) => {
 // ── Autorizar facturas extemporáneas ──────────────────────────────────────────
 const autorizarFacturaExtemporanea = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
-    const { idCajaTienda, cantidadFacturas, codigoEmpleado } = req.body;
+    const { idCajaTienda, cantidadFacturas } = req.body;
     try {
         const cantidad = parseInt(cantidadFacturas);
         if (!idCajaTienda || !cantidad || cantidad <= 0)
             return res.status(400).json({ success: false, mensaje: 'Datos inválidos.' });
-        if (!String(codigoEmpleado || '').trim())
-            return res.status(400).json({ success: false, mensaje: 'Código de empleado requerido.' });
 
         if (!(await _tienePermisoTiendas(req)))
             return res.status(403).json({ success: false, mensaje: 'Sin permiso para autorizar facturas extemporáneas.' });
 
-        // Buscar empleado por código (sin restricción de tienda)
-        const empleado = await Empleados.findOne({
-            where: { codigoEmpleado: String(codigoEmpleado).trim().toUpperCase() },
-            attributes: ['idEmpleado', 'idUsuario']
-        });
-        if (!empleado)
-            return res.status(400).json({ success: false, mensaje: 'Código de empleado no válido.' });
-
-        if (!empleado.idUsuario)
-            return res.status(403).json({ success: false, mensaje: 'El empleado no tiene usuario vinculado.' });
-
+        // El código ya lo validó verificarCodigoEmpleadoAdmin contra el usuario de la sesión:
+        // antes se buscaba "cualquier empleado con ese código", sin límite de intentos.
+        const empleado = req.empleadoVerificado;
         if (!(await _verificarPermisoEmpleadoAdmin(empleado.idUsuario)))
             return res.status(403).json({ success: false, mensaje: 'El empleado no tiene permisos administrativos sobre tiendas.' });
 
