@@ -27,20 +27,24 @@ import db from '../config/bd.js';
 export async function siguienteNumero(nombre, transaction) {
     if (!transaction) throw new Error(`siguienteNumero('${nombre}') requiere una transacción.`);
 
-    const [afectadas] = await db.query(
+    await db.query(
         'UPDATE SECUENCIAS SET valor = valor + 1 WHERE nombre = :nombre',
         { replacements: { nombre }, transaction }
     );
-    if (!afectadas) {
-        // La secuencia tiene que existir y estar sembrada con el máximo actual de la tabla;
-        // crearla al vuelo arrancaría desde cero y chocaría contra los registros existentes.
-        throw new Error(`La secuencia '${nombre}' no existe en SECUENCIAS. Hay que sembrarla antes de usarla.`);
-    }
 
+    // La ausencia de la secuencia se detecta acá y no por las filas afectadas del UPDATE: con
+    // el driver de mysql ese primer valor no es el contador de filas, así que la comprobación
+    // no se cumplía nunca y una secuencia sin sembrar reventaba más abajo con un
+    // "Cannot read properties of undefined", sin decir qué faltaba.
     const [filas] = await db.query(
         'SELECT valor FROM SECUENCIAS WHERE nombre = :nombre',
         { replacements: { nombre }, transaction }
     );
+    if (!filas.length) {
+        // La secuencia tiene que existir y estar sembrada con el máximo actual de la tabla;
+        // crearla al vuelo arrancaría desde cero y chocaría contra los registros existentes.
+        throw new Error(`La secuencia '${nombre}' no existe en SECUENCIAS. Hay que sembrarla antes de usarla.`);
+    }
     return Number(filas[0].valor);
 }
 

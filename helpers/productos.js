@@ -4,6 +4,7 @@ import Familia from '../models/Familia.js';
 import Atributos from '../models/Atributos.js';
 import VariacionesProducto from '../models/VariacionesProducto.js';
 import { normalizarFamilia } from './helpers.js';
+import { siguienteNumero } from './secuencias.js';
 
 // Compartido entre el alta manual de producto (adminControllers.js#saveProduct) y el
 // importador masivo de Excel (importacionesController.js). Antes vivían duplicadas: ya nos
@@ -38,16 +39,37 @@ export const slugUnico = async (base, { idProductoActual = null, transaction = n
     return `${limpio}-${Date.now().toString(36)}`;
 };
 
-export const normalizarSku13 = (valor) => String(valor || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9-_]/g, '')
-    .slice(0, 13);
-export const normalizarSku50 = (valor) => String(valor || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9-_]/g, '')
-    .slice(0, 50);
+// ─── SKU INTERNO ─────────────────────────────────────────────────────────────
+// El código de un producto se genera solo, con forma de EAN-13: prefijo 200 —del rango
+// 20-29, reservado por GS1 para uso interno, así que nunca choca con un código de fábrica—,
+// nueve dígitos del contador y el dígito verificador.
+//
+// El número sale de SECUENCIAS y no de un aleatorio ni de MAX+1: el UPDATE del contador
+// bloquea la fila hasta el commit, así que dos altas simultáneas no pueden recibir el mismo
+// número, y si la transacción se revierte el número vuelve y no se salta un correlativo. Por
+// eso se pide DENTRO de la transacción que guarda el producto.
+//
+// Al ser un EAN-13 válido lo lee cualquier escáner, y el verificador delata un dígito mal
+// tecleado o mal leído en vez de llevar a otro producto.
+const PREFIJO_SKU_INTERNO = '200';
+const DIGITOS_CONTADOR = 9;
+
+export const digitoVerificadorEan13 = (doceDigitos) => {
+    const suma = [...String(doceDigitos)]
+        .reduce((acc, d, i) => acc + Number(d) * (i % 2 === 0 ? 1 : 3), 0);
+    return String((10 - (suma % 10)) % 10);
+};
+
+export async function siguienteSkuInterno(transaction) {
+    const numero = await siguienteNumero('sku_producto', transaction);
+    const correlativo = String(numero).padStart(DIGITOS_CONTADOR, '0');
+    if (correlativo.length > DIGITOS_CONTADOR) {
+        throw new Error(`El contador de SKU pasó de ${DIGITOS_CONTADOR} dígitos: el código ya no entra en un EAN-13.`);
+    }
+    const cuerpo = `${PREFIJO_SKU_INTERNO}${correlativo}`;
+    return `${cuerpo}${digitoVerificadorEan13(cuerpo)}`;
+}
+
 
 // Resuelve el NOMBRE de una familia a su fila en FAMILIA, creándola si no existe.
 // Devuelve null cuando no hay nombre: el producto queda sin agrupar, que es válido.

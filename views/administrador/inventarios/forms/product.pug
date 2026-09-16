@@ -4,7 +4,6 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
     //- COLUMNA IZQUIERDA
     input(type="hidden", name="_csrf" value = csrfToken)
     input(type="hidden", name="idProducto" value=producto ? producto.idProducto : '')
-    input(type="hidden", name="variantes_sku" id="variantes_sku" value="{}")
     input(type="hidden", name="imagenes_color_nuevas" id="imagenes_color_nuevas" value="{}")
     input(type="hidden", name="imagenes_color_existentes" id="imagenes_color_existentes" value="{}")
 
@@ -57,11 +56,15 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                     i.fi-rr-barcode.pr-2
                     | Códigos y Familia
 
-        //- SKU
+        //- SKU — lo asigna el servidor al guardar (EAN-13 interno), no se digita ni se edita
         div(class="col-span-12 md:col-span-4")
             label.label SKU
-                input(class="field-text" type="text" name="sku" id="sku" maxlength="50" placeholder="Código interno" value = (producto && producto.sku) ? producto.sku : "")
-                #errorSku
+                if producto && producto.sku
+                    input(class="field-text bg-gray-50 text-gray-500 cursor-not-allowed" type="text" id="sku" value=producto.sku readonly)
+                else
+                    div(class="field-text bg-gray-50 text-gray-400 flex items-center gap-2")
+                        i.fi.fi-rr-barcode-read.text-base
+                        span(class="text-sm") Se genera automáticamente al guardar
 
         //- EAN
         div(class="col-span-12 md:col-span-4")
@@ -175,18 +178,18 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                 button#guardarColores(type="button" class="w-full mt-8 b btn btn-primary") Guardar Colores para esta Talla
 
 
-        //- MODAL DE CONFIRMACIÓN DE SKU AUTOGENERADO
+        //- MODAL DE CONFIRMACIÓN DE LAS COMBINACIONES DEL ALTA
         div#modalConfirmSku(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4")
             div(class="bg-white rounded-3xl p-8 w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto")
                 div.flex.justify-between.items-center.mb-6
-                    h2.h2 Confirma los SKU generados
+                    h2.h2 Confirma las combinaciones
                     button#cerrarModalSku(type="button" class="text-gray-400 cursor-pointer hover:text-red-500")
                         i.fi-rr-cross-circle.text-2xl
 
-                p(class="text-sm text-gray-500 mb-4") Detectamos varias combinaciones de talla y color. Revisa o ajusta el SKU de cada una antes de guardar.
+                p(class="text-sm text-gray-500 mb-4") Cada combinación de talla y color se guarda como un producto aparte y recibe su propio código al guardar.
 
                 div#listaSkuCombinaciones(class="space-y-2 mb-6")
-                    //- JS inyecta aquí un input por combinación
+                    //- JS inyecta aquí una fila por combinación
 
                 div(class="border-t border-gray-100 pt-4")
                     h3(class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3") Emparejar imágenes por color (opcional)

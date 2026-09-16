@@ -243,10 +243,8 @@
             } catch (error) { console.error(`Error validando ${tipo}:`, error); }
         };
 
-        const skuInput = document.getElementById('sku');
+        // El SKU no se valida acá: no se digita, lo asigna el servidor al guardar.
         const eanInput = document.getElementById('ean');
-        if(skuInput) skuInput.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
-        if(skuInput) skuInput.setAttribute('maxlength', '50');
         if(eanInput) eanInput.addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
 
     });
@@ -524,7 +522,7 @@ actualizarEstadoWeb();
         }
     }
 
-    // --- 8.1 CONFIRMACIÓN DE SKU AUTOGENERADO POR COMBINACIÓN ---
+    // --- 8.1 CONFIRMACIÓN DE LAS COMBINACIONES E IMÁGENES POR COLOR ---
     function nombreTallaPorId(idTalla) {
         const el = document.querySelector(`.talla-trigger[value="${idTalla}"]`);
         return el ? el.dataset.nombre : 'S/N';
@@ -560,89 +558,34 @@ actualizarEstadoWeb();
         return miniaturas;
     }
 
-    async function abrirModalConfirmacionSku(variantesActuales) {
+    function abrirModalConfirmacionSku(variantesActuales) {
         const modal = document.getElementById('modalConfirmSku');
         const listaSku = document.getElementById('listaSkuCombinaciones');
         const listaColores = document.getElementById('listaColoresImagenes');
-        // Sin tildes, sin espacios ni signos, en mayúscula: "Café" -> CAFE, "Body Mia" -> BODYMIA
-        const compactar = (txt) => (txt || '')
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const limitarSku = (txt, usados = new Set()) => {
-            const base = compactar(txt).slice(0, 13);
-            if (!base) return '';
-            let candidato = base;
-            let n = 2;
-            while (usados.has(candidato)) {
-                const sufijo = String(n++);
-                candidato = `${base.slice(0, 13 - sufijo.length)}${sufijo}`;
-            }
-            usados.add(candidato);
-            return candidato;
-        };
 
-        // La base sale del SKU escrito; si se dejó vacío (alta por combinaciones), del nombre
-        // del producto, que es lo que el operador ya tipeó.
-        const skuBase = compactar(document.getElementById('sku')?.value)
-                     || compactar(document.getElementById('nombreProducto')?.value)
-                     || 'PROD';
-
-        // 1. Construir combinaciones y SKU sugerido
+        // 1. Listar las combinaciones que se van a crear. El código de cada una lo asigna el
+        // servidor dentro de la transacción del alta, así que acá no hay nada que digitar ni
+        // que consultar contra la base: antes esta lista proponía un SKU por combinación y
+        // había que ir a preguntar si ya estaba tomado antes de poder abrir el modal.
         const combos = [];
         const coloresUnicos = new Set();
-        const tallasUnicas = new Set(Object.entries(variantesActuales)
-            .filter(([, c]) => (c || []).length).map(([idTalla]) => idTalla));
-        // Con una sola talla el color basta para distinguir. Con varias hay que incluirla o
-        // dos combinaciones del mismo color chocarían, y el SKU es único en la base.
-        const incluirTalla = tallasUnicas.size > 1;
-        const usados = new Set();
-        const porResolver = [];  // sugeridos, para contrastarlos contra la base
-
         Object.entries(variantesActuales).forEach(([idTalla, colores]) => {
             (colores || []).forEach(idColor => {
-                const color4 = compactar(nombreColorPorId(idColor)).slice(0, 4);
-                let sugerido = limitarSku(skuBase + color4 + (incluirTalla ? compactar(nombreTallaPorId(idTalla)) : ''), usados);
-                // Red de seguridad: dos colores que empiezan igual (VERDE BOTELLA / VERDE SECO
-                // -> ambos VERD) darían el mismo SKU. Se numera para que nunca salga repetido.
-                porResolver.push(sugerido);
-
                 combos.push({
                     idAtributos: `${idTalla}|${idColor}`,
                     nombreTalla: nombreTallaPorId(idTalla),
                     idColor,
-                    nombreColor: nombreColorPorId(idColor),
-                    skuSugerido: sugerido
+                    nombreColor: nombreColorPorId(idColor)
                 });
                 coloresUnicos.add(idColor);
             });
         });
 
-        // Los sugeridos podían chocar con SKU de productos ya guardados. Antes eso se
-        // descubría recién al guardar: la transacción entera fallaba con "SKU ya está en
-        // uso" y había que rehacer el modal a mano.
-        try {
-            const ocupados = new Set();
-            await Promise.all([...new Set(porResolver)].map(async sku => {
-                const r = await fetch(`/admin/json/sku/${encodeURIComponent(sku)}`);
-                if (r.ok) { const d = await r.json(); if (d?.idProducto) ocupados.add(sku); }
-            }));
-            if (ocupados.size) {
-                const tomados = new Set([...usados, ...ocupados]);
-                combos.forEach(c => {
-                    if (!ocupados.has(c.skuSugerido)) return;
-                    let n = 2, cand = `${c.skuSugerido}${n}`;
-                    while (tomados.has(cand)) { n++; cand = `${c.skuSugerido}${n}`; }
-                    tomados.add(cand);
-                    c.skuSugerido = cand;
-                });
-                window.showToast?.(`${ocupados.size} SKU sugerido(s) ya existían y se renumeraron.`, 'warning');
-            }
-        } catch (_) { /* sugerir es una ayuda: si la consulta falla, el modal igual abre */ }
-
         listaSku.innerHTML = combos.map(c => `
             <div class="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2">
+                <span class="w-4 h-4 rounded-full inline-block shadow-sm shrink-0" style="background-color:${codigoColorPorId(c.idColor)}"></span>
                 <span class="text-xs font-bold text-gray-500 flex-1">Talla ${c.nombreTalla} · ${c.nombreColor}</span>
-                <input type="text" maxlength="13" class="input-sku-combo field-text w-44 text-sm uppercase" data-key="${c.idAtributos}" value="${c.skuSugerido}">
+                <span class="text-[11px] text-gray-400 uppercase tracking-wide">Código automático</span>
             </div>
         `).join('');
 
@@ -763,29 +706,6 @@ actualizarEstadoWeb();
         document.getElementById('cerrarModalSku').onclick = cerrar;
 
         document.getElementById('confirmarSkuGuardar').onclick = () => {
-            const inputs = listaSku.querySelectorAll('.input-sku-combo');
-            const variantesSku = {};
-            const skusVistos = new Set();
-            let hayError = false;
-
-            inputs.forEach(input => {
-                const valor = input.value.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, '').slice(0, 13);
-                input.value = valor;
-                if (!valor || skusVistos.has(valor)) hayError = true;
-                skusVistos.add(valor);
-                variantesSku[input.dataset.key] = valor;
-            });
-
-            if (hayError) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'SKU inválidos',
-                    text: 'Cada combinación necesita un SKU único y no vacío.',
-                    confirmButtonColor: '#EC5FA3'
-                });
-                return;
-            }
-
             const imagenesColorNuevas = {};
             const imagenesColorExistentes = {};
             Object.entries(colorDeImagen).forEach(([key, idColor]) => {
@@ -794,7 +714,6 @@ actualizarEstadoWeb();
                 else imagenesColorExistentes[valor] = idColor;
             });
 
-            document.getElementById('variantes_sku').value = JSON.stringify(variantesSku);
             document.getElementById('imagenes_color_nuevas').value = JSON.stringify(imagenesColorNuevas);
             document.getElementById('imagenes_color_existentes').value = JSON.stringify(imagenesColorExistentes);
 
@@ -857,11 +776,7 @@ actualizarEstadoWeb();
         const totalCombos = Object.values(variantesActuales).reduce((acc, colores) => acc + (colores?.length || 0), 0);
 
         if (totalCombos > 1) {
-            // Es async: si algo falla adentro no puede quedar como rechazo sin atender.
-            abrirModalConfirmacionSku(variantesActuales).catch(err => {
-                console.error('abrirModalConfirmacionSku:', err);
-                Swal.fire('Error', 'No se pudo preparar la lista de SKU.', 'error');
-            });
+            abrirModalConfirmacionSku(variantesActuales);
             return;
         }
 
@@ -977,12 +892,9 @@ actualizarEstadoWeb();
 
     // --- ASIGNACIÓN DE EVENTOS (VITAL: Fuera de la función) ---
     document.addEventListener('DOMContentLoaded', () => {
-        const inputSku = document.getElementById('sku');
+        // Solo el EAN: el SKU se muestra de solo lectura porque lo asigna el servidor.
         const inputEan = document.getElementById('ean');
 
-        if (inputSku) {
-            inputSku.addEventListener('change', (e) => validarUnicidad(e.target, 'sku'));
-        }
         if (inputEan) {
             inputEan.addEventListener('change', (e) => validarUnicidad(e.target, 'ean'));
         }

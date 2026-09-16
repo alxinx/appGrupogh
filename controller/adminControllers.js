@@ -26,7 +26,7 @@ import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
 import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
 import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
 import { montoPositivo, montoNoNegativo, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
-import { generarSlugDe, slugUnico, normalizarSku13, normalizarSku50, resolverIdFamilia, obtenerAtributosOrdenadosPorUso } from '../helpers/productos.js'
+import { generarSlugDe, slugUnico, resolverIdFamilia, obtenerAtributosOrdenadosPorUso, siguienteSkuInterno } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col, literal } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
@@ -3955,23 +3955,6 @@ const postNuevaTienda = async (req, res) => {
 
 
 
-const skuUnico13 = async (base, { transaction = null, usados = new Set() } = {}) => {
-    const limpio = normalizarSku13(base);
-    if (!limpio) return '';
-
-    let candidato = limpio;
-    let n = 2;
-    while (usados.has(candidato) || await Productos.findOne({
-        where: { sku: candidato },
-        attributes: ['idProducto'],
-        ...(transaction ? { transaction } : {})
-    })) {
-        const sufijo = String(n++);
-        candidato = `${limpio.slice(0, 13 - sufijo.length)}${sufijo}`;
-    }
-    usados.add(candidato);
-    return candidato;
-};
 
 const saveProduct = async (req, res, next) => {
     const errores = validationResult(req);
@@ -3983,7 +3966,7 @@ const saveProduct = async (req, res, next) => {
 
 
     try {
-        const { idProducto, categorias, variantes_finales, imagenes_borrar, variantes_sku, imagenes_color_nuevas, imagenes_color_existentes } = req.body;
+        const { idProducto, categorias, variantes_finales, imagenes_borrar, imagenes_color_nuevas, imagenes_color_existentes } = req.body;
         const csrfToken = req.csrfToken();
 
         // 1. Sanitización de Datos
@@ -4056,7 +4039,6 @@ const saveProduct = async (req, res, next) => {
         // 1.1 Si hay más de una combinación talla+color, cada una es un PRODUCTO
         // independiente (su propio SKU, nombre y fotos) — no una variante de un mismo producto.
         const variacionesSeleccionadas = JSON.parse(variantes_finales || '{}');
-        const skuPorCombinacion = JSON.parse(variantes_sku || '{}');
         const combos = [];
         Object.entries(variacionesSeleccionadas).forEach(([talla, colores]) => {
             (colores || []).forEach(idColor => combos.push({ idTalla: talla, idColor, idAtributos: `${talla}|${idColor}` }));
@@ -4091,14 +4073,11 @@ const saveProduct = async (req, res, next) => {
 
             const t = await db.transaction();
             const idsCreados = [];
-            const skusUsados = new Set();
             try {
                 for (const combo of combos) {
-                    const skuCombo = await skuUnico13(skuPorCombinacion[combo.idAtributos], {
-                        transaction: t,
-                        usados: skusUsados
-                    });
-                    if (!skuCombo) throw new Error(`Falta el SKU para la combinación ${combo.idAtributos}`);
+                    // El código lo asigna el servidor desde SECUENCIAS: el navegador ya no
+                    // propone SKU ni puede escribirlos (ver helpers/productos.js).
+                    const skuCombo = await siguienteSkuInterno(t);
 
                     const nombreColor = nombrePorAtributo[combo.idColor] || '';
                     const nombreTalla = nombrePorAtributo[combo.idTalla] || '';
@@ -4182,7 +4161,9 @@ const saveProduct = async (req, res, next) => {
         const datosParaDB = {
             nombreProducto,
             slug: slugLibre,
-            sku: normalizarSku50(req.body.sku),
+            // El SKU no viaja en el formulario: al crear lo asigna el servidor (abajo) y al
+            // editar se conserva el que ya tiene el producto — renumerarlo dejaría inservibles
+            // las etiquetas impresas.
             ean: req.body.ean,
             idFamilia: idFamiliaParaDB,
             idCategoria: idCategoriaParaDB,
@@ -4208,9 +4189,12 @@ const saveProduct = async (req, res, next) => {
             // Actualizamos usando el objeto limpio
             await producto.update(datosParaDB);
         } else {
-
-            // Creamos usando el objeto limpio
-            producto = await Productos.create(datosParaDB);
+            // El código y el producto se confirman juntos: si la creación falla, el número
+            // del contador vuelve atrás con ella y no se salta un correlativo.
+            producto = await db.transaction(async (t) => Productos.create(
+                { ...datosParaDB, sku: await siguienteSkuInterno(t) },
+                { transaction: t }
+            ));
         }
 
         const idReal = producto.idProducto;
@@ -4225,7 +4209,7 @@ const saveProduct = async (req, res, next) => {
                 variacionesFinales.push({
                     idProducto: idReal,
                     idAtributos,
-                    sku: skuPorCombinacion[idAtributos] || null,
+                    sku: null,   // el código vive en el producto, no en la variación
                     valor: 0
                 });
             });
@@ -4262,7 +4246,8 @@ const saveProduct = async (req, res, next) => {
             const mapaColorNuevas = JSON.parse(imagenes_color_nuevas || '{}');
 
             const uploadPromises = req.files.map(async (file, index) => {
-                const nombreArchivo = `${req.body.sku}-${Date.now()}-${index}.webp`;
+                // El SKU del producto guardado, no el del body: ya no llega del formulario.
+                const nombreArchivo = `${producto.sku}-${Date.now()}-${index}.webp`;
                 const bufferOptimizado = await sharp(file.buffer)
                     .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
                     .webp({ quality: 80 })

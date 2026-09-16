@@ -3,6 +3,7 @@ import mysql from 'mysql2/promise';
 import db from '../config/bd.js';
 import { Traslados, DetalleTraslados, InsidenciaTraslado, Stock, Pack } from '../models/index.js';
 import { migrarTrasladoDevuelto } from '../seed/migracionTrasladoDevuelto.js';
+import { migrarSecuenciaSku } from '../seed/migracionSecuenciaSku.js';
 
 // Estos tests escriben, borran y recrean la base entera. El guard va antes de cualquier
 // consulta: si DB_NAME no es una base *_test, no se toca nada.
@@ -40,6 +41,9 @@ export async function prepararBaseDePrueba() {
         await conn.end();
     }
     await migrarTrasladoDevuelto();
+    // El contador de los SKU internos se siembra con su propia migración, igual que en una
+    // base real: así el test corre contra lo que de verdad se va a aplicar en producción.
+    await migrarSecuenciaSku();
 }
 
 export const cerrarBase = () => db.close();
