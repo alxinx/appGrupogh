@@ -581,20 +581,27 @@ const trasladarPacks = async (req, res) => {
     });
 };
 
+// Etiquetas de un lote o de la dosificación entera: sin :numLote en la ruta salen todos los
+// bultos, que es el botón "Imprimir todas las etiquetas" de la cabecera. Es la misma salida
+// (PDF de códigos de barras o planilla de códigos) sobre otro conjunto de paquetes, así que
+// no hay un segundo endpoint: cambia el filtro y el rótulo, no el documento.
 const imprimirEtiquetasLote = async (req, res) => {
     try {
         const { idDosificacion, numLote } = req.params;
+        const todos  = numLote === undefined;
+        const rotulo = todos ? 'todas' : `lote_${numLote}`;
 
         const packs = await Pack.findAll({
-            where: {
-                idDosificacion,
-                numLote
-            },
-            order: [['codigoEtiqueta', 'ASC']]
+            where: { idDosificacion, ...(todos ? {} : { numLote }) },
+            // Con todos los lotes juntos, el número de lote manda: cada tanda sale seguida y
+            // en orden, como se empaca en la mesa.
+            order: todos ? [['numLote', 'ASC'], ['codigoEtiqueta', 'ASC']] : [['codigoEtiqueta', 'ASC']]
         });
 
         if (!packs || packs.length === 0) {
-            return res.status(404).send('No se encontraron paquetes para este lote');
+            return res.status(404).send(todos
+                ? 'Esta dosificación todavía no tiene paquetes'
+                : 'No se encontraron paquetes para este lote');
         }
 
         // Planilla de códigos: los mismos paquetes que salen en el PDF, pero para quien
@@ -603,7 +610,7 @@ const imprimirEtiquetasLote = async (req, res) => {
         // `imprimirEtiquetaSKU` del listado de productos.
         if (req.query.format === 'excel') {
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="etiquetas_lote_${numLote}.xlsx"`);
+            res.setHeader('Content-Disposition', `attachment; filename="etiquetas_${rotulo}.xlsx"`);
 
             // Streaming sobre la respuesta, nunca el archivo entero en memoria (§11).
             const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: false });
@@ -621,7 +628,9 @@ const imprimirEtiquetasLote = async (req, res) => {
             encabezado.commit();
 
             for (const pack of packs) {
-                const fila = ws.addRow({ lote: `Lote - ${numLote}`, codigo: pack.codigoEtiqueta });
+                // El lote sale de cada bulto y no del parámetro: así la misma planilla sirve
+                // para un lote solo y para la dosificación entera.
+                const fila = ws.addRow({ lote: `Lote - ${pack.numLote}`, codigo: pack.codigoEtiqueta });
                 // El código va como texto: uno de solo dígitos perdería los ceros a la
                 // izquierda si Excel lo tomara por número. (El lote ya es texto por el
                 // rótulo "Lote - ", pero se declara igual para no depender de eso.)
@@ -644,7 +653,7 @@ const imprimirEtiquetasLote = async (req, res) => {
 
         // Configurar pipe a la respuesta
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=etiquetas_lote_${numLote}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename=etiquetas_${rotulo}.pdf`);
         doc.pipe(res);
 
         for (let i = 0; i < packs.length; i++) {
@@ -653,7 +662,7 @@ const imprimirEtiquetasLote = async (req, res) => {
             if (i > 0) doc.addPage();
 
             // Título/Info superior
-            doc.fontSize(10).font('Helvetica-Bold').text(`LOTE: ${numLote}`, 10, 15);
+            doc.fontSize(10).font('Helvetica-Bold').text(`LOTE: ${pack.numLote}`, 10, 15);
             //doc.fontSize(8).font('Helvetica').text(`ID: ${pack.codigoEtiqueta}`, 10, 28);
 
             try {

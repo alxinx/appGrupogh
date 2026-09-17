@@ -9,6 +9,18 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
             i(class="fi fi-rr-document")
             | Guía de Empaque
 
+    //- Las etiquetas de todos los lotes de una vez. Mismo botón que el de cada lote —pregunta
+    //- PDF o Excel y lo resuelve `imprimirEtiquetasLote`—, solo que sin acotar el lote.
+    if idDosificacion
+        button(
+            type="button"
+            class="btn-etiquetas btn btn-secondary flex items-center gap-2"
+            data-titulo="Etiquetas de toda la dosificación"
+            data-url=`/admin/dosificaciones/etiquetas/${idDosificacion}`
+        )
+            i(class="fi fi-rr-barcode-read")
+            | Imprimir todas las etiquetas
+
     a(href=`/admin/dosificaciones/new`)
         button(class="btn btn-danger flex items-center gap-2")
             span.fi-rr-warehouse-alt

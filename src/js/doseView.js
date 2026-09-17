@@ -407,13 +407,14 @@ import { escaparHtml as esc } from './escaparHtml.js';
         // El PDF trae una etiqueta por paquete con su código de barras, listo para
         // imprimir. El Excel trae la planilla de códigos del lote para pasarlos a otro
         // sistema. Los dos salen del mismo endpoint, que se ramifica por ?format.
-        document.querySelectorAll('.btn-etiquetas-lote').forEach(btn => {
+        // El mismo botón sirve para un lote y para toda la dosificación: cambia el data-url
+        // (sin numLote salen todas) y el título del diálogo, no el flujo.
+        document.querySelectorAll('.btn-etiquetas').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const url = btn.dataset.url;
-                const lote = btn.dataset.lote;
 
                 const eleccion = await Swal.fire({
-                    title: `Etiquetas del lote ${lote}`,
+                    title: btn.dataset.titulo || `Etiquetas del lote ${btn.dataset.lote}`,
                     html: '<p style="margin:0;font-size:14px;color:#64748b;">¿En qué formato las querés?</p>',
                     showDenyButton: true,
                     showCancelButton: true,

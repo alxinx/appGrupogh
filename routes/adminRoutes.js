@@ -396,6 +396,8 @@ routes.get('/dosificaciones/comprobante/:idTraslado', pDos('READ'), imprimirComp
 routes.get('/dosificaciones/guia/:idDosificacion', pDos('READ'), imprimirGuiaEmpaque);
 
 routes.get('/dosificaciones/etiquetas/:idDosificacion/:numLote', pDos('READ'), imprimirEtiquetasLote);
+// Sin :numLote, el mismo handler saca las etiquetas de todos los lotes de la dosificación.
+routes.get('/dosificaciones/etiquetas/:idDosificacion', pDos('READ'), imprimirEtiquetasLote);
 routes.get('/api/dosificaciones/:query', pDos('READ'), obtenerDosificacionesPaginadas)
 
 
