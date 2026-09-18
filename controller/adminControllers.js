@@ -4279,6 +4279,9 @@ const saveProduct = async (req, res, next) => {
         res.json({ success: true, mensaje: 'Producto procesado con éxito', idProducto: idReal });
 
     } catch (error) {
+        // Sin esto el 500 de abajo no dejaba rastro: el operador veía "Error interno del
+        // servidor" y en el log del servidor no había nada que buscar.
+        console.error('saveProduct:', error);
 
         if (error.name === 'SequelizeUniqueConstraintError') {
             // Nombrar el campo: con "un valor único ya está en uso" el usuario no sabe cuál
