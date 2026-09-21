@@ -24,11 +24,34 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
             input(type="number" id="unidadesPorPaquete" name="unidadesPorPaquete" min="1" max="36" value="12" class="field-text text-5xl bg-gray-100 cursor-not-allowed text-center opacity-75" readonly)
             p.helper-text(class="text-center") Doble clic para cambiar (máx. 36)
 
+            //- Se enciende solo cuando hay más referencias que unidades por bolsa: ahí ninguna
+            //- bolsa puede traer una de cada color. No bloquea nada — el reparto funciona
+            //- igual, rotando cuál falta en cada bolsa — pero conviene decirlo, y ofrecer
+            //- subir la capacidad para quien necesita el surtido completo en cada bulto.
+            //- El contenedor que se oculta va sin .alert a propósito: esa clase aplica
+            //- display:flex, que le gana al atributo `hidden` (regla del navegador), y el
+            //- aviso no se apagaría nunca. Envuelto así, el atributo funciona.
+            div#avisoReferencias(hidden)
+                div(class="alert alert-warning mt-3")
+                    div(class="alert-icon bg-amber-500")
+                        i.fi-rr-info
+                    div(class="flex-1")
+                        p.alert-text#avisoReferenciasTexto
+                        button#subirCapacidad(type="button" class="btn btn-secondary mt-2 text-xs")
+                            i.fi.fi-rr-box-open
+                            span#subirCapacidadTexto Subir capacidad
+
         //- SEPARADOR 100% (QUÉ VAMOS A DOSIFICAR)
-        div(class="col-span-12 -mx-6 px-6 pb-3 mt-2 border-b border-gray-100")
+        //- El botón de agregar va acá, junto al título, y no debajo de la tabla: ahí se
+        //- hundía con cada fila nueva y con 20 referencias había que bajar toda la lista
+        //- para cargar la siguiente. Arriba queda fijo, al lado de donde aparece la fila.
+        div(class="col-span-12 -mx-6 px-6 pb-3 mt-2 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap")
             h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
                 i.fi-rr-box-alt
                 | Qué Vamos a Dosificar
+            button(type="button" class="btn btn-secondary addMore flex items-center gap-2 text-sm" title="Agregar referencia")
+                i.fi-rr-plus-small
+                | Agregar producto
 
         div(class="col-span-12 overflow-x-auto")
             table(class="w-full text-sm")
@@ -54,10 +77,6 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                             button(type="button" class="btn btn-icon btn-remove-row hidden" title="Eliminar referencia")
                                 i.fi-rr-trash
 
-        div(class="col-span-12")
-            button(type="button" class="btn btn-secondary addMore flex items-center gap-2 text-sm" title="Agregar referencia")
-                i.fi-rr-plus-small
-                | Agregar producto
 
 
     //- COLUMNA DERECHA

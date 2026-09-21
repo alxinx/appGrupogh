@@ -5,6 +5,10 @@ import { calcularKitting } from './dosificador.js';
     const inputUnidades = document.querySelector('#unidadesPorPaquete');
     const contenedor = document.querySelector('#contenedor-productos');
 
+    // Tope de unidades por bolsa: el mismo que declara el input en la vista. Es el techo
+    // físico de la bolsa, no una regla de negocio.
+    const MAX_UNIDADES = 36;
+
     /* ==========================================
        1. GESTIÓN DE CAPACIDAD (Doble Clic)
        ========================================== */
@@ -17,7 +21,7 @@ import { calcularKitting } from './dosificador.js';
 
     inputUnidades.addEventListener('blur', function() {
         let valor = parseInt(this.value);
-        if (valor > 36 || valor <= 0 || isNaN(valor)) this.value = 12;
+        if (valor > MAX_UNIDADES || valor <= 0 || isNaN(valor)) this.value = 12;
         this.readOnly = true;
         this.classList.add('bg-gray-100', 'cursor-not-allowed', 'opacity-75');
         this.classList.remove('bg-white', 'border-blue-500');
@@ -29,13 +33,22 @@ import { calcularKitting } from './dosificador.js';
        ========================================== */
     document.addEventListener('click', (e) => {
         if (e.target.closest('.addMore')) {
-            const filasActuales = document.querySelectorAll('.fila-producto').length;
-            if (filasActuales >= parseInt(inputUnidades.value)) return Swal.fire('Límite alcanzado', '', 'warning');
-            
+            // No hay tope de referencias. Antes se cortaba en la capacidad de la bolsa
+            // ("Límite alcanzado"), pero el reparto no lo necesita: con 13 colores en bolsas
+            // de 12, cada bolsa lleva 12 unidades y el color que falta va rotando, así que
+            // los 13 quedan igual de repartidos en el lote. Lo único que no se puede es meter
+            // uno de cada color en la MISMA bolsa; eso lo avisa #avisoReferencias sin frenar
+            // la carga, y desde ahí se sube la capacidad quien necesite el surtido completo
+            // en cada bulto.
+
             const nuevaFila = document.querySelector('.fila-producto').cloneNode(true);
             nuevaFila.querySelectorAll('input').forEach(i => i.value = '');
-            nuevaFila.querySelector('.btn-remove-row').classList.remove('hidden');
-            contenedor.appendChild(nuevaFila);
+            // Arriba del todo, no al final: el botón "Agregar producto" está debajo de la
+            // tabla, así que con la fila nueva al final el operador tenía que bajar hasta
+            // ella para escribir el SKU, y con 20 referencias eso es media pantalla de scroll
+            // por producto. Acá la fila aparece donde ya está mirando.
+            contenedor.prepend(nuevaFila);
+            actualizarBotonesBorrar();
             nuevaFila.querySelector('.sku-input').focus();
             actualizarTodo();
         }
@@ -43,10 +56,20 @@ import { calcularKitting } from './dosificador.js';
         if (e.target.closest('.btn-remove-row')) {
             if (document.querySelectorAll('.fila-producto').length > 1) {
                 e.target.closest('.fila-producto').remove();
+                actualizarBotonesBorrar();
                 actualizarTodo();
             }
         }
     });
+
+    // La papelera se muestra en todas las filas mientras haya más de una. Antes solo se le
+    // quitaba la clase a la fila recién agregada, así que la fila original —que ahora queda
+    // al fondo— se quedaba sin botón para siempre.
+    function actualizarBotonesBorrar() {
+        const filas = document.querySelectorAll('.fila-producto');
+        filas.forEach(fila => fila.querySelector('.btn-remove-row')
+            ?.classList.toggle('hidden', filas.length === 1));
+    }
 
     /* ==========================================
    3. ESCUCHA GLOBAL DE EVENTOS (Separados)
@@ -137,9 +160,47 @@ document.addEventListener('change', async (e) => {
 
     function actualizarTodo() {
         validarFilasCompletas();
+        actualizarAvisoReferencias();
         actualizarMonitorDosificacion();
         procesarYMostrarKitting();
     }
+
+    /* ==========================================
+       AVISO DE REFERENCIAS vs. CAPACIDAD
+       Con más referencias que unidades por bolsa, ninguna bolsa puede traer una de cada
+       color. No es un error —el reparto rota cuál falta y todos quedan igual de repartidos
+       en el lote— pero quien empaca tiene que saberlo, y quien vende un surtido completo
+       por bulto necesita subir la capacidad. Es un aviso, no un bloqueo.
+       ========================================== */
+    const aviso       = document.querySelector('#avisoReferencias');
+    const avisoTexto  = document.querySelector('#avisoReferenciasTexto');
+    const btnSubirCap = document.querySelector('#subirCapacidad');
+    const btnSubirTxt = document.querySelector('#subirCapacidadTexto');
+
+    function actualizarAvisoReferencias() {
+        if (!aviso) return;
+        const referencias = document.querySelectorAll('.fila-producto').length;
+        const capacidad = parseInt(inputUnidades.value) || 12;
+
+        if (referencias <= capacidad) {
+            aviso.hidden = true;
+            return;
+        }
+
+        avisoTexto.textContent = `Hay ${referencias} referencias y la bolsa lleva ${capacidad} unidades: ninguna bolsa va a traer una de cada una. El reparto sigue siendo parejo —el color que falta va rotando entre bolsas—, pero si cada bulto tiene que llevar el surtido completo, subí las unidades por paquete.`;
+
+        // Por encima del tope físico de la bolsa ya no hay nada que ofrecer.
+        const alcanzable = referencias <= MAX_UNIDADES;
+        btnSubirCap.classList.toggle('hidden', !alcanzable);
+        if (alcanzable) btnSubirTxt.textContent = `Subir a ${referencias} unidades por paquete`;
+        aviso.hidden = false;
+    }
+
+    btnSubirCap?.addEventListener('click', () => {
+        const referencias = document.querySelectorAll('.fila-producto').length;
+        inputUnidades.value = Math.min(referencias, MAX_UNIDADES);
+        actualizarTodo();
+    });
 
    function validarFilasCompletas() {
     const filas = document.querySelectorAll('.fila-producto');
@@ -357,4 +418,7 @@ if (btnGuardar) {
         }
     });
 }
+
+// Estado inicial: una sola fila, sin papelera (no hay nada que borrar) y sin aviso.
+actualizarBotonesBorrar();
 })();
