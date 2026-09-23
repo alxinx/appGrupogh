@@ -95,35 +95,20 @@
         if (countTotal) countTotal.innerText = data.total || 0;
         if (!paginacionContainer) return;
 
-        // Usamos la lógica de rango de 5 que definimos
-        const totalPaginas = data.paginas;
-        const maxBotones = 5;
-        let inicio = Math.floor((paginaActual - 1) / maxBotones) * maxBotones + 1;
-        let fin = Math.min(inicio + maxBotones - 1, totalPaginas);
-
-        let htmlPaginacion = '';
-        // Botón Atrás
-        htmlPaginacion += `<button class="paginador ${paginaActual === 1 ? 'paginadorDeshabilidado' : 'paginadorInactivo'}" data-pagina="${paginaActual - 1}" ${paginaActual === 1 ? 'disabled' : ''}>«</button>`;
-        
-        for (let i = inicio; i <= fin; i++) {
-            htmlPaginacion += `<button class="paginador ${i === paginaActual ? 'paginadorActivo' : 'paginadorInactivo'}" data-pagina="${i}">${i}</button>`;
-        }
-
-        // Botón Siguiente
-        htmlPaginacion += `<button class="paginador ${paginaActual === totalPaginas || totalPaginas === 0 ? 'paginadorDeshabilidado' : 'paginadorInactivo'}" data-pagina="${paginaActual + 1}" ${paginaActual === totalPaginas || totalPaginas === 0 ? 'disabled' : ''}>»</button>`;
-        
-        paginacionContainer.innerHTML = htmlPaginacion;
+        // El paginador del proyecto (paginador.js), como los otros doce listados. Antes este
+        // archivo armaba sus propios botones con un bloque fijo de 5, así que era el único que
+        // no heredaba nada de lo que se le fue agregando al compartido: cuántas páginas entran
+        // según el ancho, la alineación, el deslizamiento al cambiar de bloque y el arreglo de
+        // los botones que se comprimían.
+        window.generarPaginacion('#paginacion-container', data.paginas || 0, paginaActual, (nuevaPagina) => {
+            paginaActual = nuevaPagina;
+            cargarDosificaciones();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
     }
 
     // --- DELEGACIÓN DE EVENTOS ---
     document.addEventListener('click', async (e) => {
-        // Clic en Paginación
-        if (e.target.matches('#paginacion-container button')) {
-            paginaActual = parseInt(e.target.dataset.pagina);
-            cargarDosificaciones();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
         // Clic en Ver Productos (Modal)
         if (e.target.closest('.btn-ver-productos')) {
             const id = e.target.closest('.btn-ver-productos').dataset.id;
