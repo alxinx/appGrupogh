@@ -22,23 +22,40 @@ block contenedor
                     //- FILTRO + TABLA
                     div(class="col-span-12 grid grid-cols-2 md:grid-cols-4 cards p-6")
 
-                        //- Buscador
-                        div(class="col-span-12 grid grid-cols-2 md:grid-cols-4 cards cardSearch")
-                            h3.h3.col-span-12
+                        //- Buscador + acciones sobre lo seleccionado, en una sola fila: son la
+                        //- barra de herramientas de la tabla, no dos bloques. Antes el buscador
+                        //- tenía 3/4 fijos y los botones 1/4, así que al aparecer el segundo no
+                        //- cabían, se apilaban y cada rótulo se partía en dos renglones.
+                        div(class="col-span-12 grid grid-cols-1 cards cardSearch")
+                            h3.h3.mb-3
                                 i.fi-rr-filter-list.mr-2
                                 | Filtra la lista
-                            div(class="col-span-12 p-2 md:col-span-3")
-                                div.input-group
+                            div(class="flex flex-wrap items-center gap-3")
+                                //- El buscador es lo elástico de la fila: cede ancho a medida que
+                                //- aparecen los botones y solo cuando ya no puede encogerse más
+                                //- (15rem, el ancho en que su placeholder sigue siendo legible) el
+                                //- grupo de acciones baja a su propio renglón.
+                                div(class="input-group flex-1 min-w-[15rem]")
                                     i.fi-rr-search.input-icon.input-icon-left
                                     input.input.input-has-icon-left(
                                         type="text"
                                         id="inv-search"
                                         placeholder="Busca por nombre, SKU, EAN o código de pack"
                                     )
-                            div(class="col-span-12 p-2 md:col-span-1 flex items-center justify-end")
-                                button(type="button" id="inv-trasladar-seleccionados" class="hidden btn btn-primary cursor-pointer")
-                                    i(class="fi fi-rr-convert-shapes mr-2")
-                                    span Trasladar packs#[span(data-conteo)]
+                                //- Contenedor y orden del estándar de acciones (components/accionesAdmin.pug):
+                                //- secundaria primero, acción principal al final. Desempacar aparece
+                                //- recién con dos packs marcados: para uno solo está la acción de su fila.
+                                //- `w-full md:w-auto`: en móvil el grupo ocupa su propio renglón y los
+                                //- botones se apilan dentro; en escritorio mide lo que miden los botones
+                                //- y comparte la fila con el buscador. Con `shrink-0` a secas el grupo no
+                                //- podía envolverse y se salía de la tarjeta.
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap w-full md:w-auto")
+                                    button(type="button" id="inv-desempacar-seleccionados" class="hidden btn btn-secondary gap-2 cursor-pointer")
+                                        i(class="fi fi-rr-box-open-full text-rose-600")
+                                        span Desempacar los seleccionados#[span(data-conteo)]
+                                    button(type="button" id="inv-trasladar-seleccionados" class="hidden btn btn-primary gap-2 cursor-pointer")
+                                        i(class="fi fi-rr-convert-shapes")
+                                        span Trasladar packs#[span(data-conteo)]
 
                         //- Tabla
                         div(class="overflow-x-auto col-span-12 grid grid-cols-1 md:grid-cols-1")
@@ -46,7 +63,7 @@ block contenedor
                                 thead(class="bg-gh-primarySoft border-b border-gh-primaryHover")
                                     tr
                                         th(class="p-4 text-center")
-                                            input(type="checkbox" id="inv-select-all" title="Seleccionar todos los packs visibles" class="w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover cursor-pointer")
+                                            input(type="checkbox" id="inv-select-all" title="Seleccionar todos los packs visibles" class="checkbox cursor-pointer")
                                         th(class="p-4 text-sm font-semibold text-gray-600") Imagen
                                         th(class="p-4 text-sm font-semibold text-gray-600") Producto
                                         th(class="p-4 text-sm font-semibold text-gray-600") Precio
@@ -63,66 +80,11 @@ block contenedor
                         div(class="col-span-12")
                             div#inv-paginacion
 
-    //- ══ MODAL TRASLADO ═════════════════════════════════════════════════════
-    div(id="modal-traslado" class="fixed inset-0 z-50 hidden")
-        div(id="modal-traslado-overlay" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm")
-        div(class="absolute inset-0 flex items-center justify-center p-4")
-            div(class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden")
-
-                div(class="flex items-center justify-between p-6 border-b border-slate-100")
-                    div(class="flex items-center gap-3")
-                        div(class="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600")
-                            i(class="fi fi-rr-convert-shapes")
-                        h3(class="text-lg font-bold text-slate-800") Trasladar packs
-                    button(type="button" id="tras-cancelar" class="text-slate-400 hover:text-slate-700 cursor-pointer")
-                        i(class="fi fi-rr-cross-small text-2xl")
-
-                div(class="p-6 space-y-4")
-                    div(class="flex items-center gap-3 bg-purple-50 rounded-2xl p-3")
-                        i(class="fi fi-rr-info text-purple-500")
-                        p(class="text-sm text-purple-700")
-                            | Vas a trasladar
-                            strong(id="tras-packs-count" class="mx-1") 0
-                            | pack(s) a la tienda seleccionada.
-
-                    div(class="space-y-2")
-                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Destino *
-                        div(class="relative")
-                            select(id="tras-destino" class="field-text")
-                                option(value="") Selecciona bodega o almacén...
-                            i(class="fi fi-rr-shop absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none")
-
-                    div(class="space-y-2")
-                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Código empleado responsable *
-                        div(class="relative")
-                            input(
-                                type="password"
-                                id="tras-empleado"
-                                placeholder="•••••"
-                                maxlength="5"
-                                autocomplete="one-time-code"
-                                class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-mono uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-purple-300/30 transition-all"
-                            )
-                            i(class="fi fi-rr-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none")
-                        div(id="tras-feedback-emp" class="text-xs ml-1 h-4")
-
-                    div(class="space-y-2")
-                        label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Notas
-                        textarea(
-                            id="tras-notas"
-                            rows="2"
-                            placeholder="Observaciones del traslado..."
-                            class="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-300/30 transition-all"
-                        )
-
-                div(class="p-6 bg-slate-50/50 border-t border-slate-100 flex gap-3")
-                    button(type="button" id="tras-cancelar" class="flex-1 btn btn-secondary py-3 cursor-pointer") Cancelar
-                    button(type="button" id="tras-confirmar" class="flex-1 btn btn-primary py-3 cursor-pointer")
-                        i(class="fi fi-rr-convert-shapes mr-2")
-                        | Confirmar Traslado
-
     input#csrf-token(type="hidden" value=csrfToken)
 
+    //- Hoja de la ventana de confirmación: la usan el desempaque y el traslado de packs, con
+    //- la misma forma con la que se confirma un abono o un egreso.
+    include ../../components/modalConfirmacion
     script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
     script(src="/js/helpers.js")
     script(src="/js/paginador.js")

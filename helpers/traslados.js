@@ -130,7 +130,9 @@ export async function bloquearYValidarTraslado(idTraslado, estadosPermitidos, tr
     return { traslado, detalles };
 }
 
-export async function bloquearYValidarPacks(idsPack, estadosPermitidos, transaction) {
+// `accion` es solo el verbo del mensaje de rechazo: el bloqueo y la validación son los mismos
+// para trasladar un bulto que para desempacarlo.
+export async function bloquearYValidarPacks(idsPack, estadosPermitidos, transaction, { accion = 'trasladar' } = {}) {
     const { filas, faltantes, invalidas } =
         await bloquearYValidar(Pack, 'idPack', idsPack, estadosPermitidos, transaction);
     if (faltantes.length) {
@@ -138,11 +140,55 @@ export async function bloquearYValidarPacks(idsPack, estadosPermitidos, transact
     }
     if (invalidas.length) {
         throw new TrasladoEstadoInvalidoError(
-            `No se puede trasladar: ${invalidas.map(p => `${p.codigoEtiqueta} está ${p.estado}`).join(', ')}.`,
+            `No se puede ${accion}: ${invalidas.map(p => `${p.codigoEtiqueta} está ${p.estado}`).join(', ')}.`,
             { idsPack: invalidas.map(p => p.idPack) }
         );
     }
     return filas;
+}
+
+/**
+ * Toma en exclusiva los packs que una tienda tiene sellados y comprueba que de verdad estén
+ * ahí. Lo comparten trasladar y desempacar: las dos sacan el mismo bulto del inventario de la
+ * tienda y compiten por la misma fila de STOCKS con la venta en el POS.
+ *
+ * @returns {{ packs: Array, filasStock: Array }} los packs bloqueados y sus filas de stock.
+ */
+export async function bloquearPacksDeTienda(idsPack, idPuntoVenta, transaction, { accion = 'trasladar' } = {}) {
+    // STOCKS antes que PACKS: es el orden en que los bloquea la venta de un pack en el POS
+    // (procesarFactura, paso 9.5). En orden inverso las dos pueden quedar esperándose.
+    const filasStock = await Stock.findAll({
+        where: { idPack: idsPack, idPuntoVenta, estadoInterno: 'CERRADO', cantidadExistente: { [Op.gt]: 0 } },
+        order: [['idStock', 'ASC']],
+        lock: transaction.LOCK.UPDATE,
+        transaction
+    });
+    const packs = await bloquearYValidarPacks(idsPack, ESTADOS_PACK_TRASLADABLE_TIENDA, transaction, { accion });
+
+    // Un pack en tránsito o que está en otra sede no tiene fila CERRADO en esta tienda.
+    const conStock = new Set(filasStock.map(s => s.idPack));
+    const ausentes = packs.filter(p => !conStock.has(p.idPack));
+    if (ausentes.length) {
+        throw new TrasladoRechazadoError(
+            `No están en el inventario de esta tienda: ${ausentes.map(p => p.codigoEtiqueta).join(', ')}.`,
+            { status: 409, idsPack: ausentes.map(p => p.idPack) }
+        );
+    }
+    return { packs, filasStock };
+}
+
+// Saca del inventario de la tienda las filas selladas de estos packs: el bulto deja de estar
+// disponible, pero la fila queda como historial. Devuelve cuántas movió — el llamador compara
+// contra lo que bloqueó, porque un 0 significa que otra caja se le adelantó (§9).
+export async function vaciarStockDePacks(idsPack, idPuntoVenta, transaction) {
+    const [movidas] = await Stock.update(
+        { cantidadExistente: 0, estadoInterno: 'SUELTO' },
+        {
+            where: { idPack: idsPack, idPuntoVenta, estadoInterno: 'CERRADO', cantidadExistente: { [Op.gt]: 0 } },
+            transaction
+        }
+    );
+    return movidas;
 }
 
 // Del navegador solo se toma el id del detalle: cantidades, pack y producto salen de la base.

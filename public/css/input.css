@@ -759,8 +759,13 @@
 
 
   /*CHECKBOX*/
+  /* `text-*` no pinta un checkbox nativo —eso lo hace el plugin de forms, que no está
+     instalado—, así que la marca salía en el azul del navegador en toda la app. Lo que sí
+     lo pinta es `accent-color`, como ya hace `.radio`. Va en gh-primaryHover y no en
+     gh-primary: la marca es un elemento gráfico y necesita 3:1 contra el blanco —#E24C95
+     da 3.7:1 y #F794C9 solo 2.1:1. */
   .checkbox {
-    @apply h-5 w-5 rounded border-gray-300 text-gh-primary focus:ring-2 focus:ring-gh-primary focus:ring-offset-2 transition;
+    @apply h-5 w-5 rounded border-gray-300 accent-gh-primaryHover focus:ring-2 focus:ring-gh-primary focus:ring-offset-2 transition;
   }
 
   .checkbox-label {
@@ -1261,8 +1266,14 @@
 
 
 
+  /* OJO: `.btn` está declarada dos veces en este archivo (la otra, más arriba) y es ÉSTA la
+     que gana — igual que pasa con `.h1`. Un cambio al botón va acá o no se ve.
+     `whitespace-nowrap`: sin esto la etiqueta se parte en dos renglones cuando el botón
+     queda en una columna angosta ("Desempacar los seleccionados" + su contador), y el botón
+     crece a lo alto y desalinea la fila. Un rótulo de botón no se envuelve nunca: si no
+     cabe, lo que cede es el contenedor. */
   .btn {
-    @apply inline-flex items-center rounded-gh shadow-md cursor-pointer justify-center h-11 px-6 text-sm font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed m-1;
+    @apply inline-flex items-center whitespace-nowrap rounded-gh shadow-md cursor-pointer justify-center h-11 px-6 text-sm font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed m-1;
   }
 
   .btn-primary {

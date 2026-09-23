@@ -40,6 +40,9 @@ style.
         font-variant-numeric: tabular-nums;
     }
     .gh-conf-cuenta { margin-top: 0.25rem; font-size: 0.8125rem; font-weight: 500; }
+    /* Sin monto en el medio, la línea de contexto queda pegada al distintivo: 0.25rem es la
+       separación correcta debajo de una cifra de 36px, no debajo de una píldora de 11px. */
+    .gh-conf-badge + .gh-conf-cuenta { margin-top: 0.625rem; }
     .gh-conf-cuenta strong { font-weight: 700; }
 
     /* Efecto sobre el saldo: la razón de ser de esta ventana. */
@@ -67,6 +70,80 @@ style.
     .gh-conf-fila dd { margin: 0; flex: 1; color: #1E293B; font-weight: 500; overflow-wrap: anywhere; }
     .gh-conf-fila dd.gh-conf-vacio { color: #94A3B8; font-weight: 400; }
     .gh-conf-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    /* Filas de la lista del cuerpo: cuadro de ícono + texto + un dato a la derecha. Es la
+       fila con la que el abono lista sus métodos de pago; acá deja de estar escrita con
+       estilos en línea dentro del JS para que cualquier ventana pueda armar una lista igual. */
+    .gh-conf-lista { padding: 1.125rem 1.5rem 0; max-height: 52vh; overflow-y: auto; }
+    .gh-conf-item {
+        display: flex; align-items: center; gap: 0.625rem;
+        margin-bottom: 0.625rem; padding: 0.75rem 0.875rem;
+        background: #F9FAFB; border-radius: 14px;
+    }
+    .gh-conf-item-icono {
+        width: 2rem; height: 2rem; border-radius: 10px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center; font-size: 0.875rem;
+    }
+    .gh-conf-item-texto { min-width: 0; flex: 1; }
+    .gh-conf-item-titulo {
+        margin: 0; font-size: 0.6875rem; font-weight: 800; color: #1F2937;
+        text-transform: uppercase; letter-spacing: .02em;
+    }
+    /* El subtítulo envuelve en vez de cortarse con puntos suspensivos: acá abajo va el
+       contenido del bulto, que es justamente lo que hay que poder leer antes de abrirlo —
+       con una sola línea recortada no se sabe qué prendas trae de la tercera en adelante.
+       La lista tiene su propio alto máximo con scroll, así que una fila alta no empuja el
+       pie de la ventana fuera de la pantalla. 11px y no 10: dejó de ser una etiqueta corta
+       para ser texto que se lee. */
+    .gh-conf-item-sub {
+        margin: 0; font-size: 0.6875rem; line-height: 1.45; color: #6B7280;
+        overflow-wrap: anywhere;
+    }
+    .gh-conf-item-derecha {
+        flex-shrink: 0; font-size: 0.75rem; font-weight: 700; color: #475569;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Total del pie y campo del código del responsable. */
+    .gh-conf-total {
+        display: flex; justify-content: space-between; align-items: baseline;
+        padding: 0.75rem 1.5rem; border-top: 1px solid #F1F5F9;
+    }
+    .gh-conf-total-label { font-size: 0.75rem; font-weight: 700; color: #64748B; }
+    .gh-conf-total-valor { font-size: 1.0625rem; font-weight: 800; color: #1E293B; font-variant-numeric: tabular-nums; }
+    .gh-conf-campo { padding: 0 1.5rem; }
+    .gh-conf-campo-label {
+        text-align: left; font-size: 0.75rem; font-weight: 600; color: #64748B;
+        margin: 0 1.5rem 0.5rem;
+    }
+    .gh-conf-input {
+        width: 100%; box-sizing: border-box; padding: 0.75rem 0.875rem;
+        font-size: 0.875rem; border: 1px solid #CBD5E1; border-radius: 10px; outline: none;
+        transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .gh-conf-input:focus {
+        border-color: var(--color-gh-primaryHover, #E24C95);
+        box-shadow: 0 0 0 3px rgb(226 76 149 / 0.12);
+    }
+    .gh-conf-estado {
+        text-align: left; font-size: 0.71875rem; font-weight: 600;
+        margin: 0.375rem 1.5rem 0; min-height: 0.875rem;
+    }
+    /* Una ventana con varios campos (destino, notas, código): cada etiqueta nueva se separa
+       del campo anterior, y queda más cerca de su propio campo que del de arriba. */
+    .gh-conf-campo + .gh-conf-campo-label,
+    .gh-conf-estado + .gh-conf-campo-label { margin-top: 0.875rem; }
+    .gh-conf-campo-label .gh-conf-opcional { font-weight: 500; color: #94A3B8; }
+    textarea.gh-conf-input { resize: none; line-height: 1.45; font-family: inherit; }
+    /* El select pierde la flecha del sistema —que cambia con cada navegador— y lleva la
+       misma del resto de la ventana, dibujada, del gris de los textos secundarios. */
+    select.gh-conf-input {
+        appearance: none; -webkit-appearance: none; background-color: #fff; cursor: pointer;
+        padding-right: 2.25rem;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2394A3B8'%3E%3Cpath d='M5.3 7.3a1 1 0 011.4 0L10 10.6l3.3-3.3a1 1 0 111.4 1.4l-4 4a1 1 0 01-1.4 0l-4-4a1 1 0 010-1.4z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1rem;
+    }
+    select.gh-conf-input:invalid { color: #94A3B8; }
 
     .gh-conf-aviso {
         margin: 1.125rem 1.75rem 0;
@@ -117,6 +194,18 @@ style.
     .gh-conf--neutro .gh-conf-confirmar       { background: var(--color-gh-primaryHover, #E24C95); }
     .gh-conf--neutro .gh-conf-confirmar:hover { background: #C43B7E; }
 
+    /* Variante morada: desempacar no mueve plata, así que no le toca ninguno de los colores
+       de arriba —ésos significan "entra" y "sale"—, pero tampoco es un trámite neutro. El
+       morado es el color con el que el inventario de tienda ya marca un pack: el distintivo
+       PACK de la tabla, el fondo de su fila y el ícono de su menú. La ventana sigue hablando
+       del mismo objeto que la fila desde la que se abrió. */
+    .gh-conf--pack .gh-conf-cabecera { background: #FAF5FF; }
+    .gh-conf--pack .gh-conf-badge    { background: #E9D5FF; color: #6B21A8; }
+    .gh-conf--pack .gh-conf-monto,
+    .gh-conf--pack .gh-conf-cuenta   { color: #7E22CE; }
+    .gh-conf--pack .gh-conf-confirmar       { background: #7E22CE; }
+    .gh-conf--pack .gh-conf-confirmar:hover { background: #6B21A8; }
+
     /* Variante ámbar: una transferencia de caja a una cuenta del negocio no es un
        gasto —la plata no se perdió, cambió de lugar—, y es el mismo ámbar con el
        que la tabla de egresos ya marca los traslados. Reservar el rojo para lo que
@@ -163,6 +252,10 @@ style.
         .gh-conf-fila     { flex-direction: column; gap: 0.125rem; }
         .gh-conf-fila dt  { flex-basis: auto; }
         .gh-conf-aviso    { margin: 1rem 1.25rem 0; }
+        .gh-conf-lista    { padding: 1rem 1.25rem 0; }
+        .gh-conf-total    { padding: 0.75rem 1.25rem; }
+        .gh-conf-campo    { padding: 0 1.25rem; }
+        .gh-conf-campo-label, .gh-conf-estado { margin-left: 1.25rem; margin-right: 1.25rem; }
         /* Apilados, y con Volver abajo: la acción que no se puede deshacer queda
            lejos del pulgar. `flex: 1` crece en el eje de la columna, así que el
            ancho hay que pedirlo aparte. */

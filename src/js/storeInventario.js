@@ -1,5 +1,7 @@
 import { tituloLista as tc } from '../../helpers/textoLista.js';
 import { crearSeleccionMultiple } from './seleccionMultiple.js';
+import { escaparHtml as esc } from './escaparHtml.js';
+import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion, activarVerificacionCodigo } from './modalConfirmacion.js';
 (function () {
     const csrfToken = document.getElementById('csrf-token')?.value || '';
     const R2 = 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/';
@@ -8,28 +10,29 @@ import { crearSeleccionMultiple } from './seleccionMultiple.js';
     let paginaActual    = 1;
     let busqueda        = '';
     let searchTimer     = null;
-    let empleadoVal     = null;
-    let empLookupTimer  = null;
-    let packsSeleccionados = [];
 
     // ─── REFERENCIAS DOM ─────────────────────────────────────────────────────
     const tbody       = document.getElementById('inv-tbody');
     const inputSearch = document.getElementById('inv-search');
 
-    const modalTras       = document.getElementById('modal-traslado');
-    const selDestino      = document.getElementById('tras-destino');
-    const inputEmpTras    = document.getElementById('tras-empleado');
-    const feedbackEmpTras = document.getElementById('tras-feedback-emp');
-    const inputNotasTras  = document.getElementById('tras-notas');
-    const btnConfirmTras  = document.getElementById('tras-confirmar');
-    const lblPacksCount   = document.getElementById('tras-packs-count');
-    const btnTrasladarSel = document.getElementById('inv-trasladar-seleccionados');
+    const btnTrasladarSel  = document.getElementById('inv-trasladar-seleccionados');
+    const btnDesempacarSel = document.getElementById('inv-desempacar-seleccionados');
 
     const seleccion = crearSeleccionMultiple({
         selectorCheckbox: '.checkbox-pack-inv',
         selectAll: document.getElementById('inv-select-all'),
-        boton: btnTrasladarSel
+        botones: [
+            { el: btnTrasladarSel },
+            // Con un solo pack marcado está la acción de su fila; el botón en masa aparece de dos
+            // en adelante, que es cuando ahorra abrir el menú una vez por bulto.
+            { el: btnDesempacarSel, minimo: 2 }
+        ]
     });
+
+    // Código y contenido de cada pack que pasó por la tabla. Hace falta guardarlo: la selección
+    // sobrevive a filtrar, así que al confirmar puede haber packs elegidos que ya no están
+    // pintados y de los que igual hay que mostrar el código.
+    const infoPacks = new Map();
 
     // ─── CARGAR INVENTARIO ───────────────────────────────────────────────────
     const loadInventario = async () => {
@@ -83,14 +86,20 @@ import { crearSeleccionMultiple } from './seleccionMultiple.js';
         const precio  = detalles.reduce((s, d) => s + (parseFloat(d.producto?.precioVentaMayorista || 0) * d.cantidad), 0);
         const contenido = detalles.map(d => `${tc(d.producto?.nombreProducto) || '—'} ×${d.cantidad}`).join(', ');
 
+        if (pack?.idPack) {
+            infoPacks.set(String(pack.idPack), {
+                codigo: pack.codigoEtiqueta || '—',
+                lineas: detalles.map(d => ({ nombre: tc(d.producto?.nombreProducto), cantidad: d.cantidad }))
+            });
+        }
+
         return `
         <tr class="border-b border-purple-100 hover:bg-purple-50/60 transition-colors bg-purple-50/30"
-            data-id-pack="${pack?.idPack || ''}"
-            data-detalles='${JSON.stringify(detalles.map(d => ({ nombre: d.producto?.nombreProducto, cantidad: d.cantidad })))}'>
+            data-id-pack="${pack?.idPack || ''}">
             <td class="p-4 text-center">
                 <input type="checkbox" value="${pack?.idPack || ''}" ${seleccion.estaMarcado(pack?.idPack) ? 'checked' : ''}
                        title="Seleccionar ${pack?.codigoEtiqueta || 'pack'}"
-                       class="checkbox-pack-inv w-4 h-4 rounded border-slate-200 text-gh-primaryHover focus:ring-gh-primaryHover cursor-pointer">
+                       class="checkbox-pack-inv checkbox cursor-pointer">
             </td>
             <td class="p-4">
                 <img src="/img/avatars/pack.webp" class="w-12 h-12 object-contain rounded-lg shadow-sm bg-purple-100 p-1">
@@ -120,9 +129,7 @@ import { crearSeleccionMultiple } from './seleccionMultiple.js';
                             <i class="fi fi-rr-convert-shapes text-purple-500"></i>Trasladar
                         </a></li>
                         <li><a class="btn-desempacar flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 text-red-500 cursor-pointer"
-                            data-id-pack="${pack?.idPack}"
-                            data-codigo="${pack?.codigoEtiqueta}"
-                            data-detalles='${JSON.stringify(detalles.map(d => ({ nombre: d.producto?.nombreProducto, cantidad: d.cantidad })))}'>
+                            data-id-pack="${pack?.idPack}">
                             <i class="fi fi-rr-box-open-full"></i>Desempacar
                         </a></li>
                     </ul>
@@ -168,10 +175,10 @@ import { crearSeleccionMultiple } from './seleccionMultiple.js';
 
     const bindAcciones = () => {
         document.querySelectorAll('.btn-desempacar').forEach(btn =>
-            btn.addEventListener('click', () => confirmarDesempacar(btn))
+            btn.addEventListener('click', () => confirmarDesempacar([btn.dataset.idPack]))
         );
         document.querySelectorAll('.btn-trasladar-pack').forEach(btn =>
-            btn.addEventListener('click', () => abrirModalTraslado([btn.dataset.idPack]))
+            btn.addEventListener('click', () => confirmarTraslado([btn.dataset.idPack]))
         );
         document.querySelectorAll('.accion-dropdown').forEach(dd => {
             const btn  = dd.querySelector('.btn-acciones');
@@ -211,156 +218,212 @@ import { crearSeleccionMultiple } from './seleccionMultiple.js';
 
     document.addEventListener('click', cerrarTodosMenus);
 
-    // ─── DESEMPACAR ───────────────────────────────────────────────────────────
-    const confirmarDesempacar = async (btn) => {
-        const idPack = btn.dataset.idPack;
-        const codigo = btn.dataset.codigo;
-        let detalles = [];
-        try { detalles = JSON.parse(btn.dataset.detalles); } catch {}
+    // ─── VENTANA DE PACKS ─────────────────────────────────────────────────────
+    // Desempacar y trasladar confirman lo mismo —qué bultos salen de este inventario y quién
+    // lo autoriza—, así que comparten una ventana: la de views/components/modalConfirmacion.pug,
+    // la misma con la que se confirma un abono o un egreso. Cambia el verbo, el total y los
+    // campos que cada una necesita (el traslado pide destino y notas).
+    //
+    // Uno o varios: el menú de la fila manda un solo id y los botones de selección mandan los
+    // marcados. El servidor resuelve cada acción en una transacción: o salen todos o ninguno.
+    const unidadesDe = (info) => (info?.lineas || []).reduce((s, l) => s + (parseInt(l.cantidad) || 0), 0);
 
-        const listaHtml = detalles.map(d =>
-            `<li class="text-sm py-0.5 text-left"><span class="font-semibold">${d.nombre || '—'}</span> <span class="text-gray-400">×${d.cantidad}</span></li>`
-        ).join('');
+    const listaHtml = (idsPack) => {
+        // Un solo pack: se listan sus prendas, que es lo que el operario va a tener en la mano.
+        if (idsPack.length === 1) {
+            return (infoPacks.get(idsPack[0])?.lineas || []).map(l => filaConfirmacion({
+                icono: 'fi-rr-tags', fondo: '#F1F5F9', color: '#475569',
+                titulo: esc(l.nombre || '—'),
+                derecha: `×${esc(l.cantidad)}`
+            })).join('');
+        }
+        // Varios: se listan los bultos y no sus prendas — diez packs de doce serían 120 filas.
+        return idsPack.map((id) => {
+            const info = infoPacks.get(id);
+            return filaConfirmacion({
+                icono: 'fi-rr-box-open-full', fondo: '#F3E8FF', color: '#7E22CE',
+                titulo: esc(info?.codigo || id),
+                sub: esc((info?.lineas || []).map(l => `${l.nombre || '—'} ×${l.cantidad}`).join(', ')),
+                derecha: `${unidadesDe(info)} u.`
+            });
+        }).join('');
+    };
 
-        const { value: codigoEmp } = await Swal.fire({
-            title:             `Desempacar ${codigo}`,
+    /**
+     * Abre la ventana y devuelve lo confirmado ({ codigoEmpleado, ...extras }) o null.
+     *
+     * @param campos   HTML de los campos propios de la acción; van antes del código de
+     *                 empleado, que es la firma y cierra la ventana.
+     * @param listo    condición extra para habilitar el botón (además del código verificado).
+     * @param recoger  lee los campos al confirmar: devuelve un objeto, o un texto con lo que falta.
+     */
+    const ventanaPacks = async ({ packs, icono, badge, contexto, totalLabel, confirmar, campos = '', listo = () => true, recoger = () => ({}) }) => {
+        let empleado = null;
+        const { value } = await Swal.fire(opcionesConfirmacion({
+            variante: 'pack',
             html: `
-                <p class="text-sm text-gray-500 mb-3">Esto separará el pack en productos individuales en stock:</p>
-                <ul class="list-disc list-inside mb-4">${listaHtml}</ul>
-                <label class="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1 text-left">Código empleado responsable *</label>
-                <input id="swal-emp" type="password" class="swal2-input font-mono tracking-widest" maxlength="5" placeholder="• • • • •" autocomplete="new-password">`,
-            showCancelButton:  true,
-            confirmButtonText: 'Confirmar desempacar',
-            cancelButtonText:  'Cancelar',
-            confirmButtonColor: '#E24C95',
-            focusConfirm: false,
+                <div class="gh-conf-html">
+                    ${cabeceraConfirmacion({ icono, badge, contexto })}
+                    <div class="gh-conf-lista">${listaHtml(packs)}</div>
+                    <div class="gh-conf-total">
+                        <span class="gh-conf-total-label">${totalLabel}</span>
+                        <span class="gh-conf-total-valor">${packs.reduce((s, id) => s + unidadesDe(infoPacks.get(id)), 0)}</span>
+                    </div>
+                    ${campos}
+                    <p class="gh-conf-campo-label">Código del empleado responsable:</p>
+                    <div class="gh-conf-campo">
+                        <input id="gh-packs-codigo" type="password" class="gh-conf-input"
+                               placeholder="Código de empleado" autocomplete="new-password">
+                    </div>
+                    <p id="gh-packs-estado" class="gh-conf-estado"></p>
+                </div>`,
+            showCancelButton: true,
+            confirmButtonText: confirmar,
+            cancelButtonText: 'Cancelar',
+            didOpen: (popup) => {
+                const boton = Swal.getConfirmButton();
+                const actualizar = () => { if (boton) boton.disabled = !(empleado && listo()); };
+                actualizar();
+                // Cualquier campo propio de la acción (el destino) vuelve a evaluar el botón.
+                popup.addEventListener('change', actualizar);
+                popup.addEventListener('input', actualizar);
+                activarVerificacionCodigo('gh-packs-codigo', 'gh-packs-estado', (emp) => { empleado = emp; actualizar(); });
+                (popup.querySelector('[data-foco]') || document.getElementById('gh-packs-codigo'))?.focus();
+            },
             preConfirm: () => {
-                const val = document.getElementById('swal-emp')?.value?.trim();
-                if (!val) { Swal.showValidationMessage('El código de empleado es obligatorio'); return false; }
-                return val;
+                const extras = recoger();
+                if (typeof extras === 'string') { Swal.showValidationMessage(extras); return false; }
+                if (!empleado) { Swal.showValidationMessage('Verificá el código del empleado.'); return false; }
+                return { codigoEmpleado: empleado.codigoEmpleado, ...extras };
+            }
+        }));
+        return value || null;
+    };
+
+    // POST de una acción sobre packs y su respuesta, igual para las dos.
+    const enviarPacks = async (url, body) => {
+        try {
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify(body)
+            });
+            const data = await r.json();
+            if (!data.success) {
+                Swal.fire({ icon: 'error', title: 'No se completó', text: data.mensaje || 'Error interno.', confirmButtonColor: '#7E22CE' });
+                return null;
+            }
+            seleccion.quitar(body.packs);
+            return data;
+        } catch {
+            Swal.fire({ icon: 'error', title: 'Error de conexión', confirmButtonColor: '#7E22CE' });
+            return null;
+        }
+    };
+
+    // ─── DESEMPACAR ───────────────────────────────────────────────────────────
+    const confirmarDesempacar = async (idsPack) => {
+        const packs = [...new Set(idsPack.map(String).filter(Boolean))];
+        if (!packs.length) return;
+        const unSolo = packs.length === 1;
+
+        const ok = await ventanaPacks({
+            packs,
+            icono: 'fi-rr-box-open-full',
+            badge: unSolo ? 'Desempacar pack' : `Desempacar ${packs.length} packs`,
+            contexto: unSolo
+                ? `<strong>${esc(infoPacks.get(packs[0])?.codigo || '')}</strong> se abre y sus prendas quedan sueltas en esta tienda.`
+                : `${packs.length} bultos se abren y sus prendas quedan sueltas en esta tienda.`,
+            totalLabel: 'Unidades que quedan sueltas',
+            confirmar: unSolo ? 'Desempacar' : `Desempacar los ${packs.length}`
+        });
+        if (!ok) return;
+
+        const unidades = packs.reduce((s, id) => s + unidadesDe(infoPacks.get(id)), 0);
+        const data = await enviarPacks('/store/inventario/desempacar', { packs, codigoEmpleado: ok.codigoEmpleado });
+        if (!data) return;
+        await Swal.fire({
+            icon: 'success',
+            title: unSolo ? 'Pack desempacado' : `${packs.length} packs desempacados`,
+            text: `${unidades} unidades quedaron disponibles en stock.`,
+            confirmButtonColor: '#7E22CE'
+        });
+        loadInventario();
+    };
+
+    btnDesempacarSel?.addEventListener('click', () => confirmarDesempacar([...seleccion.seleccionados]));
+
+    // ─── TRASLADAR ────────────────────────────────────────────────────────────
+    // Los destinos se piden una vez por visita: son las otras sedes, no cambian mientras se usa
+    // la pantalla.
+    let destinos = null;
+    const cargarDestinos = async () => {
+        if (destinos) return destinos;
+        try {
+            const r = await fetch('/store/json/destinos');
+            destinos = await r.json();
+        } catch {
+            destinos = null;
+        }
+        return destinos || [];
+    };
+
+    const confirmarTraslado = async (idsPack) => {
+        const packs = [...new Set(idsPack.map(String).filter(Boolean))];
+        if (!packs.length) return;
+        const unSolo = packs.length === 1;
+
+        const lista = await cargarDestinos();
+        if (!lista.length) {
+            Swal.fire({ icon: 'error', title: 'No hay destinos', text: 'No se pudieron cargar las sedes de destino.', confirmButtonColor: '#7E22CE' });
+            return;
+        }
+
+        const ok = await ventanaPacks({
+            packs,
+            icono: 'fi-rr-convert-shapes',
+            badge: unSolo ? 'Trasladar pack' : `Trasladar ${packs.length} packs`,
+            contexto: unSolo
+                ? `<strong>${esc(infoPacks.get(packs[0])?.codigo || '')}</strong> sale de esta tienda y queda en tránsito hasta que el destino lo reciba.`
+                : `${packs.length} bultos salen de esta tienda y quedan en tránsito hasta que el destino los reciba.`,
+            totalLabel: 'Unidades que salen',
+            confirmar: unSolo ? 'Trasladar' : `Trasladar los ${packs.length}`,
+            // `required` + opción vacía: el select se ve en gris mientras no hay destino
+            // (select:invalid en la hoja), como un placeholder.
+            campos: `
+                <p class="gh-conf-campo-label">Destino:</p>
+                <div class="gh-conf-campo">
+                    <select id="gh-traslado-destino" class="gh-conf-input" required data-foco>
+                        <option value="">Selecciona bodega o almacén…</option>
+                        ${lista.map(d => `<option value="${esc(d.idPuntoDeVenta)}">${esc(d.nombreComercial)}</option>`).join('')}
+                    </select>
+                </div>
+                <p class="gh-conf-campo-label">Notas <span class="gh-conf-opcional">(opcional)</span>:</p>
+                <div class="gh-conf-campo">
+                    <textarea id="gh-traslado-notas" class="gh-conf-input" rows="2" placeholder="Observaciones del traslado…"></textarea>
+                </div>`,
+            listo: () => !!document.getElementById('gh-traslado-destino')?.value,
+            recoger: () => {
+                const idDestino = document.getElementById('gh-traslado-destino')?.value;
+                if (!idDestino) return 'Elegí el destino.';
+                return { idDestino, notas: document.getElementById('gh-traslado-notas')?.value.trim() || '' };
             }
         });
+        if (!ok) return;
 
-        if (!codigoEmp) return;
-
-        try {
-            const r = await fetch('/store/inventario/desempacar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                body: JSON.stringify({ idPack, codigoEmpleado: codigoEmp.toUpperCase() })
-            });
-            const data = await r.json();
-            if (data.success) {
-                await Swal.fire({ icon: 'success', title: 'Pack desempacado', text: 'Los productos quedaron disponibles en stock.', confirmButtonColor: '#E24C95' });
-                loadInventario();
-            } else {
-                Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje || 'Error interno.', confirmButtonColor: '#E24C95' });
-            }
-        } catch {
-            Swal.fire({ icon: 'error', title: 'Error de conexión', confirmButtonColor: '#E24C95' });
-        }
+        const data = await enviarPacks('/store/inventario/trasladar', { packs, ...ok });
+        if (!data) return;
+        await Swal.fire({
+            icon: 'success',
+            title: `Traslado ${data.codigo}`,
+            text: unSolo ? 'Pack trasladado correctamente.' : `${packs.length} packs trasladados correctamente.`,
+            confirmButtonColor: '#7E22CE'
+        });
+        if (data.idTraslado) window.open(`/store/traslados/comprobante/${data.idTraslado}`, '_blank');
+        loadInventario();
     };
 
-    // ─── MODAL TRASLADO ───────────────────────────────────────────────────────
-    const abrirModalTraslado = async (packs) => {
-        packsSeleccionados = packs;
-        if (lblPacksCount) lblPacksCount.textContent = packs.length;
-        if (inputEmpTras)  inputEmpTras.value = '';
-        if (feedbackEmpTras) feedbackEmpTras.innerHTML = '';
-        if (inputNotasTras) inputNotasTras.value = '';
-        empleadoVal = null;
-
-        if (selDestino && selDestino.options.length <= 1) {
-            try {
-                const res      = await fetch('/store/json/destinos');
-                const destinos = await res.json();
-                destinos.forEach(d => {
-                    const opt = document.createElement('option');
-                    opt.value = d.idPuntoDeVenta;
-                    opt.text  = d.nombreComercial;
-                    selDestino.add(opt);
-                });
-            } catch {}
-        }
-
-        modalTras?.classList.remove('hidden');
-    };
-
-    const cerrarModalTraslado = () => {
-        modalTras?.classList.add('hidden');
-        if (selDestino) selDestino.value = '';
-    };
-
-    btnTrasladarSel?.addEventListener('click', () => abrirModalTraslado([...seleccion.seleccionados]));
-
-    document.querySelectorAll('#tras-cancelar').forEach(b => b.addEventListener('click', cerrarModalTraslado));
-    document.getElementById('modal-traslado-overlay')?.addEventListener('click', cerrarModalTraslado);
-
-    inputEmpTras?.addEventListener('input', () => {
-        clearTimeout(empLookupTimer);
-        empleadoVal = null;
-        const code = inputEmpTras.value.trim();
-        if (!code) { feedbackEmpTras.innerHTML = ''; return; }
-
-        feedbackEmpTras.innerHTML = `<span class="text-gray-400 text-xs"><i class="fi fi-rr-spinner animate-spin mr-1"></i>Buscando...</span>`;
-        empLookupTimer = setTimeout(async () => {
-            try {
-                const r = await fetch(`/store/json/personal/codigo/${encodeURIComponent(code.toUpperCase())}`);
-                const d = await r.json();
-                if (d.success) {
-                    empleadoVal = code.toUpperCase();
-                    feedbackEmpTras.innerHTML = `<span class="text-green-600 text-xs font-semibold"><i class="fi fi-rr-check mr-1"></i>${d.nombre}</span>`;
-                } else {
-                    feedbackEmpTras.innerHTML = `<span class="text-red-500 text-xs">No encontrado</span>`;
-                }
-            } catch {
-                feedbackEmpTras.innerHTML = `<span class="text-red-500 text-xs">Error al buscar</span>`;
-            }
-        }, 500);
-    });
-
-    btnConfirmTras?.addEventListener('click', async () => {
-        const idDestino = selDestino?.value;
-        if (!idDestino) { window.showToast?.('Selecciona un destino.', 'warning'); return; }
-        if (!empleadoVal) { window.showToast?.('Ingresa un código de empleado válido.', 'warning'); inputEmpTras?.focus(); return; }
-
-        btnConfirmTras.disabled  = true;
-        btnConfirmTras.textContent = 'Procesando...';
-
-        try {
-            const r = await fetch('/store/inventario/trasladar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                body: JSON.stringify({
-                    packs:          packsSeleccionados,
-                    idDestino,
-                    codigoEmpleado: empleadoVal,
-                    notas:          inputNotasTras?.value?.trim() || ''
-                })
-            });
-            const data = await r.json();
-            if (data.success) {
-                const n = packsSeleccionados.length;
-                seleccion.quitar(packsSeleccionados);
-                cerrarModalTraslado();
-                await Swal.fire({
-                    icon: 'success',
-                    title: `Traslado ${data.codigo}`,
-                    text: n === 1 ? 'Pack trasladado correctamente.' : `${n} packs trasladados correctamente.`,
-                    confirmButtonColor: '#E24C95'
-                });
-                if (data.idTraslado) window.open(`/store/traslados/comprobante/${data.idTraslado}`, '_blank');
-                loadInventario();
-            } else {
-                window.showToast?.(data.mensaje || 'Error al trasladar.', 'error');
-            }
-        } catch {
-            window.showToast?.('Error de conexión.', 'error');
-        } finally {
-            btnConfirmTras.disabled  = false;
-            btnConfirmTras.textContent = 'Confirmar Traslado';
-        }
-    });
+    btnTrasladarSel?.addEventListener('click', () => confirmarTraslado([...seleccion.seleccionados]));
 
     // ─── BUSCADOR ─────────────────────────────────────────────────────────────
     inputSearch?.addEventListener('input', () => {

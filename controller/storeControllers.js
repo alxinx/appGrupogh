@@ -37,9 +37,10 @@ import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
 import {
-    bloquearYValidarTraslado, bloquearYValidarPacks, detallesDelBody, filaDeTraslado,
+    bloquearYValidarTraslado, bloquearPacksDeTienda, vaciarStockDePacks,
+    detallesDelBody, filaDeTraslado,
     registrarEnvio, registrarRechazo, TrasladoRechazadoError,
-    ACTOR_JOB_EXPIRADOS, ESTADOS_PACK_TRASLADABLE_TIENDA, segundosMaximosEnTransito,
+    ACTOR_JOB_EXPIRADOS, segundosMaximosEnTransito,
     crearStockRow, recibirDevolucionTraslado, cargarDetalleTraslado, esOrigenProduccion
 } from '../helpers/traslados.js';
 import { resolverPagoWebParaFactura } from '../helpers/pagoWeb.js';
@@ -866,34 +867,47 @@ const getDestinosJSON = async (req, res) => {
     }
 };
 
+// Desempacar uno o varios packs. El menú de la fila manda `idPack` y el botón de selección
+// múltiple manda `packs`; el resto del flujo es el mismo, incluido el código de empleado que
+// exige la ruta. Es todo o nada: si uno del lote ya no está disponible no se abre ninguno,
+// porque una tanda a medias deja al operario adivinando qué bultos quedaron sin desarmar.
 const desempacarPackAPI = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
-    const { idPack } = req.body;
+    const crudos = Array.isArray(req.body?.packs) ? req.body.packs : [req.body?.idPack];
+    const idsPack = [...new Set(crudos.map(v => String(v ?? '').trim()).filter(Boolean))];
 
-    if (!idPack) {
+    if (!idsPack.length) {
         return res.status(400).json({ success: false, mensaje: 'idPack requerido.' });
-    }
-
-    // Leer los detalles ANTES de abrir la transacción para evitar lecturas inconsistentes
-    const detalles = await DetallesPack.findAll({ where: { idPack } });
-    console.log(`[desempacar] idPack=${idPack} — detalles encontrados: ${detalles.length}`, detalles.map(d => ({ idProducto: d.idProducto, cantidad: d.cantidad })));
-
-    if (!detalles.length) {
-        return res.status(400).json({ success: false, mensaje: 'El pack no tiene productos registrados.' });
     }
 
     const t = await db.transaction();
     try {
-        // 1. Marcar pack como DESEMPACADO
-        await Pack.update({ estado: 'DESEMPACADO' }, { where: { idPack }, transaction: t });
+        // El mismo bloqueo que el traslado desde tienda: sin él un pack ya DESEMPACADO se podía
+        // volver a desempacar y sus prendas entraban al inventario una segunda vez, de la nada.
+        const { packs, filasStock } = await bloquearPacksDeTienda(idsPack, idPdv, t, { accion: 'desempacar' });
 
-        // 2. Vaciar el registro de stock del pack (queda como historial)
-        await Stock.update(
-            { estadoInterno: 'SUELTO', cantidadExistente: 0 },
-            { where: { idPack, idPuntoVenta: idPdv }, transaction: t }
-        );
+        // Una sola consulta para todos los packs, no una por pack (§7).
+        const detalles = await DetallesPack.findAll({ where: { idPack: idsPack }, transaction: t });
+        const conDetalle = new Set(detalles.map(d => d.idPack));
+        const vacios = packs.filter(p => !conDetalle.has(p.idPack));
+        if (vacios.length) {
+            throw new TrasladoRechazadoError(
+                `Sin productos registrados: ${vacios.map(p => p.codigoEtiqueta).join(', ')}.`
+            );
+        }
 
-        // 3. Crear un registro de stock por cada línea de producto del pack
+        // 1. Marcar los packs como DESEMPACADO
+        await Pack.update({ estado: 'DESEMPACADO' }, { where: { idPack: idsPack }, transaction: t });
+
+        // 2. Vaciar el registro de stock de cada pack (queda como historial). Son las mismas
+        //    filas que se bloquearon arriba, así que si el número no coincide algo cambió por
+        //    debajo y la tanda entera se revierte (§9).
+        const vaciadas = await vaciarStockDePacks(idsPack, idPdv, t);
+        if (vaciadas !== filasStock.length) {
+            throw new TrasladoRechazadoError('Alguno de los paquetes dejó de estar disponible en esta tienda.', { status: 409 });
+        }
+
+        // 3. Crear un registro de stock por cada línea de producto de cada pack
         await Stock.bulkCreate(
             detalles.map(dp => ({
                 idPuntoVenta:      idPdv,
@@ -908,9 +922,15 @@ const desempacarPackAPI = async (req, res) => {
         );
 
         await t.commit();
-        return res.json({ success: true });
+        return res.json({ success: true, desempacados: packs.length });
     } catch (e) {
-        await t.rollback();
+        if (!t.finished) await t.rollback().catch(() => {});
+        // Un desempaque rechazado no se audita en INSIDENCIAS_TRASLADOS: esa tabla es de
+        // traslados y este pack puede no tener ninguno.
+        if (e instanceof TrasladoRechazadoError) {
+            console.warn(`[desempacar] rechazado (packs ${idsPack.join(', ')}): ${e.message}`);
+            return res.status(e.status).json({ success: false, mensaje: e.message });
+        }
         console.error('desempacarPackAPI:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
@@ -929,25 +949,7 @@ const trasladarDesdeStoreAPI = async (req, res) => {
     const t = await db.transaction();
     let traslado, nuevoCodigo;
     try {
-        // STOCKS antes que PACKS: es el orden en que los bloquea la venta de un pack en el POS
-        // (procesarFactura, paso 9.5). En orden inverso las dos pueden quedar esperándose.
-        const filasStock = await Stock.findAll({
-            where: { idPack: packs, idPuntoVenta: idPdv, estadoInterno: 'CERRADO', cantidadExistente: { [Op.gt]: 0 } },
-            order: [['idStock', 'ASC']],
-            lock: t.LOCK.UPDATE,
-            transaction: t
-        });
-        const recordsPacks = await bloquearYValidarPacks(packs, ESTADOS_PACK_TRASLADABLE_TIENDA, t);
-
-        // Un pack en tránsito o que está en otra sede no tiene fila CERRADO en esta tienda.
-        const conStock = new Set(filasStock.map(s => s.idPack));
-        const ausentes = recordsPacks.filter(p => !conStock.has(p.idPack));
-        if (ausentes.length) {
-            throw new TrasladoRechazadoError(
-                `No están en el inventario de esta tienda: ${ausentes.map(p => p.codigoEtiqueta).join(', ')}.`,
-                { status: 409, idsPack: ausentes.map(p => p.idPack) }
-            );
-        }
+        const { packs: recordsPacks } = await bloquearPacksDeTienda(packs, idPdv, t);
 
         ({ traslado, codigo: nuevoCodigo } = await _crearTraslado(idPdv, idDestino, empleado.idEmpleado, notas, t));
 
@@ -958,13 +960,7 @@ const trasladarDesdeStoreAPI = async (req, res) => {
                 cantidad:   1
             }, { transaction: t });
             await pack.update({ estado: 'TRASLADADO' }, { transaction: t });
-            const [movidas] = await Stock.update(
-                { cantidadExistente: 0, estadoInterno: 'SUELTO' },
-                {
-                    where: { idPack: pack.idPack, idPuntoVenta: idPdv, estadoInterno: 'CERRADO', cantidadExistente: { [Op.gt]: 0 } },
-                    transaction: t
-                }
-            );
+            const movidas = await vaciarStockDePacks([pack.idPack], idPdv, t);
             if (movidas === 0) {
                 throw new TrasladoRechazadoError(`El paquete ${pack.codigoEtiqueta} dejó de estar disponible en esta tienda.`, {
                     status: 409, idsPack: [pack.idPack]

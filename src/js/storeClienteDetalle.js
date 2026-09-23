@@ -1,4 +1,5 @@
 // Detalle de "Mis Clientes" en tienda (views/tienda/clientes/detalle.pug) — Abono Global.
+import { activarVerificacionCodigo } from './modalConfirmacion.js';
 // window.fmtCOP, window.initMoneyInput, window.parseMoney y el interceptor de logout de
 // fetch (data.logout === true) ya los trae helpers.js, cargado antes que este archivo.
 document.addEventListener('DOMContentLoaded', () => {
@@ -57,41 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(d => { if (d.success) window.__posCajaEnCuadre(d.enCuadre); })
         .catch(() => {});
 
-    // ── Verificación de código de empleado en vivo (mismo endpoint que el resto de tienda:
-    // /store/json/personal/validar/:codigo — solo confirma que pertenece a esta tienda; el
-    // permiso fino real de "Mis Clientes" EDIT lo exige el propio endpoint al enviar). ────
-    const activarVerificacionCodigo = (inputId, estadoId, onVerificado) => {
-        const input = document.getElementById(inputId);
-        const estado = document.getElementById(estadoId);
-        if (!input || !estado) return;
-
-        const setEstado = (tipo, texto) => {
-            estado.style.color = tipo === 'ok' ? '#10b981' : tipo === 'error' ? '#f43f5e' : '#94a3b8';
-            estado.textContent = texto;
-        };
-
-        // Habilitar "Continuar" es decisión del que llama (acá también hace falta un monto
-        // > 0, no solo el código) — este helper solo confirma o invalida el código.
-        let timer = null;
-        input.addEventListener('input', () => {
-            onVerificado(null);
-            clearTimeout(timer);
-            const codigo = input.value.trim();
-            if (!codigo) { setEstado('info', ''); return; }
-            setEstado('info', 'Verificando código...');
-            timer = setTimeout(async () => {
-                try {
-                    const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo)}`);
-                    const data = await r.json();
-                    if (!data.success) { setEstado('error', data.mensaje || 'Código inválido.'); return; }
-                    setEstado('ok', `✓ ${data.nombre || 'Empleado verificado'}`);
-                    onVerificado({ idEmpleado: data.idEmpleado, nombre: data.nombre, codigoEmpleado: codigo.toUpperCase() });
-                } catch (_) {
-                    setEstado('error', 'No se pudo verificar el código.');
-                }
-            }, 400);
-        });
-    };
+    // La verificación en vivo del código y el vestido de esta ventana salen de
+    // ./modalConfirmacion.js — los comparte con el desempaque de packs del inventario.
 
     // ── Entidades (bancos, billeteras, tarjetas, financieras) — mismo endpoint y misma
     // agrupación que el POS al pagar una factura (src/js/pos.js `cargarEntidades`). ──────
