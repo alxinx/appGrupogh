@@ -59,6 +59,8 @@ Thumbs.db
 
 # Documentos de diseño / notas internas
 .documents/
+seed/migracionIndicesInventario.js
+seed/migracionIndicesInventario.sql
 
 
 #CERTIFICADOS
