@@ -1,3 +1,9 @@
+import { adminSSE } from './sseCompartido.js';
+import { activarCajitasCodigo } from './codigoCajitas.js';
+
+// Todo campo de código de empleado del panel se ve en cajitas (ver codigoCajitas.js).
+activarCajitasCodigo();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Avisos del menú lateral del admin, en vivo.
 //
@@ -13,28 +19,13 @@
 (function () {
     'use strict';
 
-    // `window.adminSSE` (helpers.js) mantiene UNA conexión por pestaña y la comparte
-    // entre pantallas. No está en todas las páginas del panel, así que si no aparece se
-    // abre una propia. La suscripción se hace en DOMContentLoaded porque helpers.js es un
-    // script clásico al final del body: para entonces ya corrió, y así no se abren dos
-    // conexiones en las páginas que sí lo cargan.
+    // Una sola conexión SSE para todas las pestañas del navegador (sseCompartido.js). Se
+    // instala acá también porque helpers.js no está en todas las páginas del panel; si ya
+    // la instaló él, se reutiliza la misma.
     const suscribir = (evento, handler) => {
-        if (window.adminSSE) {
-            window.adminSSE.on(evento, handler);
-            window.adminSSE.connect();
-            return;
-        }
-        if (!window.__sseAlertas) {
-            window.__sseAlertas = new EventSource('/admin/sse');
-            // EventSource reintenta solo, pero deja la conexión anterior colgada. Cerrarla
-            // antes evita que se acumulen zombis en cada caída del servidor.
-            window.__sseAlertas.addEventListener('error', () => {
-                window.__sseAlertas.close();
-                window.__sseAlertas = null;
-                setTimeout(() => suscribir(evento, handler), 5000);
-            });
-        }
-        window.__sseAlertas.addEventListener(evento, handler);
+        const sse = adminSSE();
+        sse.on(evento, handler);
+        sse.connect();
     };
 
     // ── Campana ──────────────────────────────────────────────────────────────

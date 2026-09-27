@@ -40,6 +40,7 @@ import ClientesUbicacion from './ClientesUbicacion.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
+import PucEgresos from './PucEgresos.js'
 import TrasladoEfectivo from './TrasladoEfectivo.js'
 import TrasladoEfectivoHistorial from './TrasladoEfectivoHistorial.js'
 import Entidades from './Entidades.js'
@@ -387,6 +388,18 @@ PagosPedidoWeb.belongsTo(PedidosWeb, { foreignKey: 'idPedido', as: 'pedido' });
 Traslados.belongsTo(PedidosWeb, { foreignKey: 'idPedidoWeb', as: 'pedidoWeb' });
 PedidosWeb.hasMany(Traslados, { foreignKey: 'idPedidoWeb', as: 'traslados' });
 
+// PUC de egresos: una cuenta y sus subcuentas. `constraints: false` porque `padre` vale 0
+// en una cuenta raíz y la tabla no tiene llave foránea (ver models/PucEgresos.js).
+PucEgresos.hasMany(PucEgresos,   { foreignKey: 'padre', as: 'subcuentas',  constraints: false });
+PucEgresos.belongsTo(PucEgresos, { foreignKey: 'padre', as: 'cuentaPadre', constraints: false });
+
+// La subcuenta del PUC en la que se clasifica cada gasto: los egresos de tienda y los
+// egresos manuales de una caja o banco.
+PucEgresos.hasMany(Egresos,   { foreignKey: 'idPucEgreso', as: 'egresos' });
+Egresos.belongsTo(PucEgresos, { foreignKey: 'idPucEgreso', as: 'pucEgreso' });
+PucEgresos.hasMany(MovimientosCajasBancos,   { foreignKey: 'idPucEgreso', as: 'movimientos' });
+MovimientosCajasBancos.belongsTo(PucEgresos, { foreignKey: 'idPucEgreso', as: 'pucEgreso' });
+
 export {
   Usuarios,
   Departamentos,
@@ -402,7 +415,7 @@ export {
   CreditoDisponibleClienteHistorial, AbonoClienteCreditos,
   CajaTienda, Entidades, EntidadesQrHistorial,
   FacturaClientes, DetallesFactura, DetallesImpuestosFacturaCliente, DetallesPagosFactura,
-  Egresos,
+  Egresos, PucEgresos,
   PermisosRecursos, PermisosAcciones, UserPermisos,
   DetallesFacturaProvedores, CuentasPorPagar,
   BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb,

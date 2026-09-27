@@ -1,3 +1,4 @@
+import { pintarCodigo } from './codigoCajitas.js';
 import { tituloLista as tc } from '../../helpers/textoLista.js';
 import { crearSeleccionMultiple } from './seleccionMultiple.js';
 import { escaparHtml as esc } from './escaparHtml.js';
@@ -272,7 +273,7 @@ import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion, activarVe
                     ${campos}
                     <p class="gh-conf-campo-label">Código del empleado responsable:</p>
                     <div class="gh-conf-campo">
-                        <input id="gh-packs-codigo" type="password" class="gh-conf-input"
+                        <input id="gh-packs-codigo" data-codigo-empleado type="password" class="gh-conf-input"
                                placeholder="Código de empleado" autocomplete="new-password">
                     </div>
                     <p id="gh-packs-estado" class="gh-conf-estado"></p>
@@ -483,8 +484,10 @@ import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion, activarVe
                     empleadoValido = false;
                     setFeedback(d.mensaje || 'Sin permiso.', false);
                 }
+                pintarCodigo(inputEmp, d.success ? 'ok' : 'error');
             } catch {
                 setFeedback('Error de conexión.', false);
+                pintarCodigo(inputEmp, 'error');
             }
             checkBtn();
         }, 500);

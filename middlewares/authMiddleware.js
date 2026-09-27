@@ -33,8 +33,13 @@ const rutaProtegida = async (req, res, next)=>{
         return next(); // Pasa al siguiente middleware
 
     } catch (e) {
+        // Token vencido o adulterado, o la consulta del usuario falló. Antes este catch solo
+        // logueaba y no respondía: la petición quedaba colgada hasta que el navegador se
+        // rendía, y un fetch del panel (validar el código de empleado, por ejemplo) se
+        // quedaba esperando para siempre.
         console.error('Error en protegerRuta:', e.message);
-       // return res.redirect('/admin');
+        res.clearCookie('_token');
+        return res.redirect('/');
       }
 }
 

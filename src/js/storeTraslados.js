@@ -1,3 +1,4 @@
+import { pintarCodigo } from './codigoCajitas.js';
 import { tituloLista as tc } from '../../helpers/textoLista.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
@@ -54,8 +55,10 @@ import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
                     } else {
                         feedbackEl.innerHTML = `<span class="text-red-500 text-xs"><i class="fi fi-rr-cross-circle mr-1"></i>${d.mensaje || 'Sin permiso'}</span>`;
                     }
+                    pintarCodigo(inputEl, d.success ? 'ok' : 'error');
                 } catch {
                     feedbackEl.innerHTML = `<span class="text-red-500 text-xs">Error al buscar</span>`;
+                    pintarCodigo(inputEl, 'error');
                 }
             }, 500);
         });

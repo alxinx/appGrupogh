@@ -36,4 +36,19 @@ const cabecerasSeguridad = (req, res, next) => {
     next();
 };
 
+// Excepción puntual al DENY de arriba, para los PDF que se imprimen sin salir de la
+// pantalla (src/js/imprimirPdf.js): esa función carga el PDF en un iframe invisible del
+// propio sistema, y con DENY el navegador lo bloquea y pone en su lugar una página de
+// error, sobre la que no se puede imprimir.
+//
+// SAMEORIGIN y no quitar la cabecera: el sistema puede enmarcar su propio PDF, pero un
+// sitio ajeno sigue sin poder. Y un PDF no tiene botones que alguien pueda hacer
+// cliquear engañado, que es de lo que protege la cabecera.
+//
+// Se pone por ruta, después de cabecerasSeguridad, y pisa su valor.
+export const permitirMarcoPropio = (req, res, next) => {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    next();
+};
+
 export default cabecerasSeguridad;

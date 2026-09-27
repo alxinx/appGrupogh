@@ -1,0 +1,30 @@
+//- Lo que salió del cajón el día elegido, separado en gasto y traslado: un traslado no es
+//- plata gastada sino plata que cambió de lugar, y la barra partida lo deja a la vista.
+//- Los colores son los del listado de egresos de la tienda (rosa gasto, ámbar traslado).
+//- Clic → detalle del día en #modalPagosMetodo (adminStoreStats.js).
+div(class="tarjetaBase cursor-pointer" id="card-egresos-dia" role="button" tabindex="0" aria-label="Ver los egresos y traslados del día")
+
+    p(class="text-xs font-bold text-gh-primaryHover uppercase tracking-wider mb-2")
+        | Egresos y Traslados
+    div(class="flex items-end justify-between")
+        div
+            h3(
+                id="stat-egresos-dia"
+                data-val="0"
+                class="text-2xl sm:text-3xl font-bold text-slate-800 tabular-nums transition-colors duration-300"
+            ) —
+
+        div(class="w-10 h-10 rounded-full bg-rose-50 hidden sm:flex items-center justify-center text-rose-600")
+            i.fi-rr-exchange.text-2xl
+
+    div(class="mt-4 flex h-2.5 bg-slate-100 rounded-full overflow-hidden")
+        div(id="bar-egresos-gasto" class="h-full bg-rose-400" style="width:0%")
+        div(id="bar-egresos-traslado" class="h-full bg-amber-400" style="width:0%")
+
+    div(class="mt-2 flex items-center justify-between gap-2 text-[10px] font-bold tabular-nums")
+        span(class="text-rose-700")
+            | Egresos 
+            span(id="stat-egresos-gasto") —
+        span(class="text-amber-800")
+            | Traslados 
+            span(id="stat-egresos-traslado") —

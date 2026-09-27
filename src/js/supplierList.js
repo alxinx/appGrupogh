@@ -1,4 +1,5 @@
 import { tituloLista as tc } from '../../helpers/textoLista.js';
+import { imprimirPdf } from './imprimirPdf.js';
 
 (function () {
     const inputBusqueda = document.getElementById('busquedaProvedor');
@@ -306,7 +307,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 cargarFacturasPendientes();
                 Swal.fire({ icon: 'success', title: data.mensaje, timer: 2000, showConfirmButton: false });
                 if (data.idCuentaPorPagar) {
-                    window.open(`/admin/api/provedores/abono/${data.idCuentaPorPagar}/tirilla`, '_blank');
+                    imprimirPdf(`/admin/api/provedores/abono/${data.idCuentaPorPagar}/tirilla`);
                 }
             } else {
                 Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });

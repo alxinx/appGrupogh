@@ -1,3 +1,9 @@
+import { storeSSE } from './sseCompartido.js';
+import { activarCajitasCodigo, pintarCodigo } from './codigoCajitas.js';
+
+// Todo campo de código de empleado del panel se ve en cajitas (ver codigoCajitas.js).
+activarCajitasCodigo();
+
 (function () {
 
     // ─── TOAST ──────────────────────────────────────────────────────────────
@@ -101,15 +107,15 @@
     };
 
     // ─── SSE ─────────────────────────────────────────────────────────────────
-    let sseSource = null;
+    // Una sola conexión para todas las pestañas del navegador (sseCompartido.js): con una
+    // por pestaña, seis pestañas de la tienda agotaban el cupo de conexiones de Chrome y
+    // el POS dejaba de responder.
     let renotifyTimer = null;
 
     const conectarSSE = () => {
-        if (sseSource) sseSource.close();
+        const sseSource = storeSSE();
 
-        sseSource = new EventSource('/store/sse');
-
-        sseSource.addEventListener('state', (e) => {
+        sseSource.on('state', (e) => {
             const { pendientes, controversias } = JSON.parse(e.data);
             actualizarBanner(controversias);
 
@@ -117,7 +123,7 @@
             if (badge) badge.textContent = pendientes;
         });
 
-        sseSource.addEventListener('new_traslado', (e) => {
+        sseSource.on('new_traslado', (e) => {
             const { codigo, pendientes } = JSON.parse(e.data);
 
             // Notificación prominente con Swal
@@ -146,7 +152,7 @@
             }, 60 * 60 * 1000);
         });
 
-        sseSource.addEventListener('new_pedido_web', (e) => {
+        sseSource.on('new_pedido_web', (e) => {
             const { numeroPedido } = JSON.parse(e.data);
 
             Swal.fire({
@@ -164,7 +170,7 @@
             if (typeof window.__recargarPedidosWebPendientes === 'function') window.__recargarPedidosWebPendientes();
         });
 
-        sseSource.addEventListener('traslado_devuelto', (e) => {
+        sseSource.on('traslado_devuelto', (e) => {
             const { codigo } = JSON.parse(e.data);
             mostrarBannerDevuelto(codigo);
         });
@@ -176,7 +182,7 @@
         // venta, así que llega a las terminales de ESTA sede y a ninguna otra. Dentro de
         // la sede sí llega a todas: si avisara solo a la que abrió el cuadre, la
         // registradora de al lado seguiría vendiendo sobre la caja que se está contando.
-        sseSource.addEventListener('caja_en_cuadre', (e) => {
+        sseSource.on('caja_en_cuadre', (e) => {
             const { enCuadre } = JSON.parse(e.data);
             if (typeof window.__posCajaEnCuadre === 'function') window.__posCajaEnCuadre(enCuadre);
             showToast(enCuadre
@@ -184,26 +190,24 @@
                 : 'La caja volvió a estar disponible: ya se puede vender.', enCuadre ? 'warning' : 'success', 8000);
         });
 
-        sseSource.addEventListener('traslado_resuelto', (e) => {
+        sseSource.on('traslado_resuelto', (e) => {
             const d = JSON.parse(e.data);
             pendientesTraslado.push(d);
             pintarAlertaTraslados();
             avisarTrasladoResuelto(d);
         });
 
-        sseSource.addEventListener('new_egreso', (e) => {
+        sseSource.on('new_egreso', (e) => {
             const data = JSON.parse(e.data);
             if (typeof window.onNuevoEgreso === 'function') window.onNuevoEgreso(data);
         });
 
-        sseSource.addEventListener('permissions_update', (e) => {
+        sseSource.on('permissions_update', (e) => {
             const { carpetasPermitidas } = JSON.parse(e.data);
             actualizarMenu(carpetasPermitidas);
         });
 
-        sseSource.onerror = () => {
-            setTimeout(conectarSSE, 5000);
-        };
+        sseSource.connect();
     };
 
     // ─── TRASLADO DE EFECTIVO RESUELTO SIN ENTRAR COMPLETO ───────────────────
@@ -495,8 +499,10 @@
                     } else {
                         setInfo(d.mensaje || 'No pertenece a esta tienda', false);
                     }
+                    pintarCodigo(inputCodigo, d.success ? 'ok' : 'error');
                 } catch (_) {
                     setInfo('Error al verificar', false);
+                    pintarCodigo(inputCodigo, 'error');
                 }
             }, 400);
         });

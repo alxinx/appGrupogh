@@ -1,3 +1,4 @@
+import { campoCodigoEmpleado, codigoRequerido, pintarCodigo } from './codigoCajitas.js';
 (function () {
     'use strict';
 
@@ -231,6 +232,7 @@
             if (!el) return;
             el.style.color  = estado === 'ok' ? '#10b981' : estado === 'error' ? '#f43f5e' : '#94a3b8';
             el.textContent  = texto;
+            pintarCodigo('gh-input-codigo-empleado', estado === 'info' ? null : estado);
         };
 
         const verificarCodigo = async (codigo) => {
@@ -301,7 +303,7 @@
                         Código del empleado que autoriza:
                     </p>
                     <div style="padding: 0 1.75rem;">
-                        <input id="gh-input-codigo-empleado" type="password" placeholder="Código de empleado" autocomplete="off" value="${esc(codigoInicial)}"
+                        <input id="gh-input-codigo-empleado" data-codigo-empleado type="password" placeholder="Código de empleado" autocomplete="off" value="${esc(codigoInicial)}"
                                style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; outline:none;" />
                     </div>
                     <p id="gh-credito-codigo-estado" style="text-align:left; font-size:11.5px; font-weight:600; margin:6px 1.75rem 0; min-height:14px;"></p>
@@ -463,11 +465,9 @@
                     <p style="text-align:left; font-size:12px; color:#64748b; margin:1.125rem 1.75rem 4px;">
                         Se reactiva con el mismo saldo — no se agrega valor nuevo.<br>Código del empleado que autoriza:
                     </p>
+                    ${campoCodigoEmpleado('gh-codigo-reactivar')}
                 </div>`,
-            input: 'password',
-            inputPlaceholder: 'Código de empleado',
-            inputAttributes: { autocomplete: 'off', 'aria-label': 'Código de empleado', style: 'margin: 0 1.75rem; width: calc(100% - 3.5rem);' },
-            inputValidator: (v) => (!v || !v.trim()) && 'Ingresá el código del empleado.',
+            preConfirm: () => codigoRequerido('gh-codigo-reactivar'),
             showCancelButton: true,
             confirmButtonText: 'Reactivar crédito',
             cancelButtonText: 'Cancelar',

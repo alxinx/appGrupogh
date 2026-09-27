@@ -67,6 +67,14 @@ const Egresos = db.define('EGRESOS', {
         references: { model: 'TRASLADO_EFECTIVO', key: 'idTrasladosEfectivo' }
     },
 
+    // Cuenta o subcuenta del PUC de egresos en la que se clasifica este egreso. Nulo en
+    // los egresos anteriores a la clasificación y en los que todavía no se clasificaron.
+    idPucEgreso: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'PUC_EGRESOS', key: 'id' }
+    },
+
     referencia: {
         type: DataTypes.STRING(50),
         allowNull: true
@@ -120,7 +128,9 @@ const Egresos = db.define('EGRESOS', {
         // El cuadre de caja y el total del día suman por estado dentro de una tienda.
         { name: 'idx_egresos_pdv_estado', fields: ['idPuntoDeVenta', 'estado'] },
         // "¿Qué egreso generó este traslado?", que es la pregunta al rechazarlo.
-        { name: 'idx_egresos_traslado', fields: ['idTrasladoEfectivo'] }
+        { name: 'idx_egresos_traslado', fields: ['idTrasladoEfectivo'] },
+        // Egresos de una cuenta del PUC (reportes por cuenta).
+        { name: 'idx_egresos_puc', fields: ['idPucEgreso'] }
     ]
 });
 

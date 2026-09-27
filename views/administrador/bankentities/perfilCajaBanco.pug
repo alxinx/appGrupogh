@@ -1,5 +1,7 @@
 extends ../../layout/index
 block contenedor
+    //- Arriba de todo: Pug define los mixins en orden y el formulario lo usa más abajo.
+    include ../../components/selectPucEgreso
     //- Formateo local de pesos. Los montos llegan como número desde el controlador de
     //- demostración; cuando esto se conecte, llegarán como DECIMAL (string) y este mismo
     //- helper sirve igual porque Number() maneja las dos formas.
@@ -204,6 +206,9 @@ block contenedor
                                                             //- escribió el operador. Sin esto, un "INGRESO SALDO
                                                             //- INICIAL" grita en medio de la tabla.
                                                             p(class="text-sm font-bold text-slate-800 leading-tight")= tc(mov.descripcion)
+                                                            //- La subcuenta del PUC del egreso, debajo de lo que escribió el operador.
+                                                            if mov.puc
+                                                                p(class="mt-0.5 text-[11px] text-slate-400")= mov.puc
 
                                                         td(class="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap")= mov.referencia || '—'
 
@@ -318,6 +323,13 @@ block contenedor
                                             div(class="relative")
                                                 span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm pointer-events-none") $
                                                 input#mov-monto(type="text" name="valor" placeholder="0" inputmode="numeric" autocomplete="off" class="w-full pl-8 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors")
+
+                                        //- En qué subcuenta del PUC se clasifica un egreso. Solo se muestra
+                                        //- con Egreso elegido: un ingreso no la lleva. Obligatoria; el
+                                        //- servidor la vuelve a validar al guardar.
+                                        div#mov-bloque-puc(class="space-y-1 hidden")
+                                            label(for="mov-puc" class="text-xs font-bold text-slate-500 block") Cuenta PUC *
+                                            +selectPucEgreso({ id: 'mov-puc', grupos: gruposPuc, clases: 'w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors' })
 
                                         div(class="space-y-1")
                                             label(for="mov-referencia" class="text-xs font-bold text-slate-500 block")
@@ -562,19 +574,6 @@ block contenedor
                 font-size: 0.75rem; color: #92400E;
             }
 
-            .gh-tras-emp {
-                width: 100%; margin-top: 0.25rem;
-                padding: 0.625rem 0.75rem;
-                border: 1px solid #E2E8F0; border-radius: var(--radius-gh, 12px);
-                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-                font-size: 0.9375rem; letter-spacing: 0.25em; text-transform: uppercase;
-                color: #1E293B; background: #fff;
-            }
-            .gh-tras-emp:focus {
-                outline: none; border-color: var(--color-gh-primary, #F794C9);
-                box-shadow: 0 0 0 3px rgb(247 148 201 / 0.25);
-            }
-
             .gh-tras-emp-estado {
                 min-height: 1rem; margin-top: 0.25rem;
                 font-size: 0.6875rem; font-weight: 600; color: #64748B;
@@ -684,9 +683,21 @@ block contenedor
                 const INGRESO = ['border-emerald-300', 'ring-2', 'ring-emerald-100', 'shadow-lg', 'shadow-emerald-500/20'];
                 const EGRESO  = ['border-rose-300',    'ring-2', 'ring-rose-100',    'shadow-lg', 'shadow-rose-500/20'];
                 const esEgreso = () => document.getElementById('mov-tipo-egreso')?.checked;
+
+                // Cuenta PUC: solo en un egreso, y ahí es obligatoria. Son cerca de 300
+                // subcuentas, así que el <select> se vuelve buscable (helpers.js). El
+                // servidor la vuelve a validar al guardar.
+                const bloquePuc   = document.getElementById('mov-bloque-puc');
+                const selPuc      = document.getElementById('mov-puc');
+                const pucBuscable = window.enhanceSelectBuscable(selPuc, { placeholder: 'Buscar por código o nombre...' });
+                const textoPuc    = () => selPuc?.value ? selPuc.selectedOptions[0].textContent : '';
+
                 const pintarTipo = () => {
                     card.classList.remove(...INGRESO, ...EGRESO);
                     card.classList.add(...(esEgreso() ? EGRESO : INGRESO));
+                    bloquePuc?.classList.toggle('hidden', !esEgreso());
+                    // Al pasar a ingreso se descarta: un ingreso no se clasifica en el PUC.
+                    if (!esEgreso() && selPuc) { selPuc.value = ''; pucBuscable.refresh(); }
                 };
                 document.querySelectorAll('input[name="mov-tipo"]').forEach(r => r.addEventListener('change', pintarTipo));
                 pintarTipo();
@@ -759,7 +770,10 @@ block contenedor
                                 ? '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-emerald-100 text-emerald-700"><i class="fi fi-rr-arrow-down text-[10px]"></i>Ingreso</span>'
                                 : '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap bg-rose-100 text-rose-700"><i class="fi fi-rr-arrow-up text-[10px]"></i>Egreso</span>'}
                         </td>
-                        <td class="px-3 py-3"><p class="text-sm font-bold text-slate-800 leading-tight">${esc(tc(m.descripcion))}</p></td>
+                        <td class="px-3 py-3">
+                            <p class="text-sm font-bold text-slate-800 leading-tight">${esc(tc(m.descripcion))}</p>
+                            ${m.puc ? `<p class="mt-0.5 text-[11px] text-slate-400">${esc(m.puc)}</p>` : ''}
+                        </td>
                         <td class="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">${esc(m.referencia || '—')}</td>
                         <td class="px-3 py-3 text-right whitespace-nowrap">
                             <span class="text-sm font-bold ${m.tipo === 'ingreso' ? 'text-emerald-600' : 'text-rose-600'}">${m.tipo === 'ingreso' ? pesos(m.valor) : '-' + pesos(m.valor)}</span>
@@ -914,7 +928,7 @@ block contenedor
                                     ${adjuntos}
 
                                     <label class="gh-tras-rotulo" for="tras-emp">Código de empleado *</label>
-                                    <input id="tras-emp" class="gh-tras-emp" type="password" maxlength="5"
+                                    <input id="tras-emp" data-codigo-empleado type="password" maxlength="5"
                                            inputmode="numeric" autocomplete="one-time-code"
                                            placeholder="Ej: 00123">
                                     <p id="tras-emp-estado" class="gh-tras-emp-estado"></p>
@@ -983,14 +997,17 @@ block contenedor
                                         if (d.success) {
                                             estado.textContent = `✓ ${tc(d.nombre)} puede resolver traslados`;
                                             estado.className = 'gh-tras-emp-estado gh-tras-emp-ok';
+                                            window.pintarCodigo?.(campoEmp, 'ok');
                                             habilitar(true);
                                         } else {
                                             estado.textContent = d.mensaje || 'Código inválido.';
                                             estado.className = 'gh-tras-emp-estado gh-tras-emp-mal';
+                                            window.pintarCodigo?.(campoEmp, 'error');
                                         }
                                     } catch (_) {
                                         estado.textContent = 'No se pudo verificar el código.';
                                         estado.className = 'gh-tras-emp-estado gh-tras-emp-mal';
+                                        window.pintarCodigo?.(campoEmp, 'error');
                                     }
                                 }, 400);
                             });
@@ -1214,7 +1231,7 @@ block contenedor
                         ? `${comprobantes.length} archivo${comprobantes.length === 1 ? '' : 's'}: ${comprobantes.map(f => esc(f.name)).join(', ')}`
                         : 'Ninguno';
 
-                    const { isConfirmed } = await Swal.fire({
+                    const { isConfirmed, value: codigoEmpleado } = await Swal.fire({
                         html: `
                             <div class="gh-conf-html">
                                 <div class="gh-conf-cabecera">
@@ -1240,6 +1257,7 @@ block contenedor
 
                                 <dl class="gh-conf-detalle">
                                     ${fila('Fecha', esc(fechaLarga(fecha)))}
+                                    ${esIngreso ? '' : fila('Cuenta PUC', esc(textoPuc()))}
                                     ${fila('Descripción', esc(descripcion))}
                                     ${fila('Referencia', referencia ? `<span class="gh-conf-mono">${esc(referencia)}</span>` : 'Sin referencia', !referencia)}
                                     ${fila('Comprobantes', soportes, !comprobantes.length)}
@@ -1249,6 +1267,16 @@ block contenedor
                                     <i class="fi fi-rr-lock"></i>
                                     <span>Una vez asentado no se puede editar ni eliminar. Para corregirlo habría que registrar un movimiento en sentido contrario.</span>
                                 </p>
+
+                                <!-- Mismo campo que al aceptar un traslado: el movimiento queda a
+                                     nombre de quien escribe su código, y el servidor exige que
+                                     sea el del usuario con la sesión abierta. -->
+                                <label class="gh-conf-campo-label" for="mov-emp">Tu código de empleado *</label>
+                                <div class="gh-conf-campo">
+                                    <input id="mov-emp" data-codigo-empleado class="gh-conf-input" type="password" maxlength="5"
+                                           inputmode="numeric" autocomplete="one-time-code" placeholder="Código de empleado">
+                                </div>
+                                <p id="mov-emp-estado" class="gh-conf-estado"></p>
                             </div>`,
                         showCancelButton: true,
                         confirmButtonText: esIngreso ? 'Registrar ingreso' : 'Registrar egreso',
@@ -1268,10 +1296,13 @@ block contenedor
                         // Solo la entrada es propia. La salida la maneja SweetAlert2 con su `swal2-hide`:
                         // una clase de cierre propia que comparta @keyframes con la de entrada no
                         // dispara `animationend` y deja el contenedor tapando la página.
-                        showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' }
+                        showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
+                        // Sin código la ventana no se cierra (codigoCajitas.js). El aviso va en
+                        // el párrafo de estado: `showValidationMessage` rompería el estilo.
+                        preConfirm: () => window.codigoRequerido('mov-emp', 'mov-emp-estado')
                     });
 
-                    return isConfirmed;
+                    return isConfirmed ? codigoEmpleado : null;
                 };
 
                 // ── GUARDAR MOVIMIENTO ────────────────────────────────────
@@ -1299,11 +1330,14 @@ block contenedor
                         return Swal.fire({ icon: 'warning', title: 'Falta el monto', text: 'Ingresá un valor mayor que cero.', confirmButtonColor: '#EC5FA3' });
                     if (!descripcion)
                         return Swal.fire({ icon: 'warning', title: 'Falta la descripción', text: 'Contá de qué se trata el movimiento.', confirmButtonColor: '#EC5FA3' });
+                    if (esEgreso() && !selPuc?.value)
+                        return Swal.fire({ icon: 'warning', title: 'Falta la cuenta PUC', text: 'Elegí en qué subcuenta del PUC se clasifica el egreso.', confirmButtonColor: '#EC5FA3' });
 
                     const referencia = document.getElementById('mov-referencia').value.trim();
                     const comprobantes = [...(inputArchivos.files || [])];
 
-                    if (!await confirmarMovimiento({ tipo: esEgreso() ? 'egreso' : 'ingreso', valor, fecha, descripcion, referencia, comprobantes })) return;
+                    const codigoEmpleado = await confirmarMovimiento({ tipo: esEgreso() ? 'egreso' : 'ingreso', valor, fecha, descripcion, referencia, comprobantes });
+                    if (!codigoEmpleado) return;
 
                     const fd = new FormData();
                     fd.append('tipo', esEgreso() ? 'egreso' : 'ingreso');
@@ -1311,6 +1345,8 @@ block contenedor
                     fd.append('valor', valor);
                     fd.append('descripcion', descripcion);
                     fd.append('referencia', referencia);
+                    fd.append('codigoEmpleado', codigoEmpleado);
+                    if (esEgreso()) fd.append('idPucEgreso', selPuc.value);
                     comprobantes.forEach(f => fd.append('comprobantes', f));
 
                     btnGuardar.disabled = true; btnGuardar.textContent = 'Guardando...';
@@ -1319,6 +1355,8 @@ block contenedor
                             method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd
                         });
                         const d = await r.json();
+                        // Cinco códigos fallidos cierran la sesión: no hay nada que reintentar.
+                        if (d.logout) { window.location.href = '/'; return; }
                         if (!d.success) throw new Error(d.mensaje || 'No se pudo registrar.');
 
                         await Swal.fire({

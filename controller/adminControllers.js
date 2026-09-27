@@ -29,7 +29,7 @@ import { montoPositivo, montoNoNegativo, sanitizarHTML, getAvailability, normali
 import { generarSlugDe, slugUnico, resolverIdFamilia, obtenerAtributosOrdenadosPorUso, siguienteSkuInterno } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
 import { Sequelize, Op, where, fn, col, literal } from "sequelize";
-import { _generarPDFCuadre, _calcularTransaccionesCaja } from './storeControllers.js';
+import { _generarPDFCuadre, _calcularTransaccionesCaja, _efectivoDisponibleParaTraslado } from './storeControllers.js';
 import { resolverIds, validarCodigoConPermiso } from '../middlewares/verificarPermisoEmpleado.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
 import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
@@ -39,6 +39,7 @@ import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFa
 import { round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
 import { subirComprobantes, borrarComprobantes, urlComprobante } from '../helpers/comprobantesMovimiento.js';
+import { listarSubcuentasPuc, subcuentaPucValida, MENSAJE_PUC_REQUERIDA, INCLUDE_PUC, etiquetaPuc } from '../helpers/pucEgresos.js';
 import { crearTirilla, fmtCOP, fmtFecha, fmtHora } from '../helpers/tirilla.js';
 
 
@@ -51,6 +52,22 @@ const _hoyRango = () => {
     const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
     const fin    = new Date(); fin.setHours(23, 59, 59, 999);
     return { inicio, fin };
+};
+
+// El día que pide la ficha de una tienda (`?fecha=YYYY-MM-DD`), o hoy si no pide ninguno.
+// Devuelve null para una fecha mal escrita o futura: no hay nada que mostrar de mañana.
+//
+// Mismo criterio de "día" que _hoyRango —la zona horaria del servidor—, para que el día
+// de hoy elegido en el selector dé exactamente los mismos números que antes. Si el
+// servidor no corre en America/Bogota, los dos hay que normalizarlos juntos (CLAUDE.md §10).
+const _rangoDia = (fecha) => {
+    const hoy = _hoyRango();
+    if (!fecha) return { ...hoy, esHoy: true };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return null;
+    const inicio = new Date(`${fecha}T00:00:00`);
+    if (isNaN(inicio.getTime()) || inicio > hoy.inicio) return null;
+    const fin = new Date(`${fecha}T23:59:59.999`);
+    return { inicio, fin, esHoy: inicio.getTime() === hoy.inicio.getTime() };
 };
 
 // Resuelve el rango de fechas de un cierre de caja. Retorna { caja, inicio, fin } o null.
@@ -5271,14 +5288,118 @@ const imprimirEtiquetaSKU = async (req, res) => {
 };
 
 // ─── STATS DETALLE TIENDA HOY ─────────────────────────────────────────────────
+// Lo que salió del cajón en un día, separado en gasto y traslado: un traslado no es plata
+// gastada, es plata que cambió de lugar, y sumarlos en un solo número sin desglose
+// esconde esa diferencia (ver EGRESOS.tipo).
+const _egresosDelDia = async (idPuntoDeVenta, { inicio, fin }) => {
+    const filas = await Egresos.findAll({
+        where: { idPuntoDeVenta, createdAt: { [Op.between]: [inicio, fin] } },
+        attributes: ['tipo', [fn('SUM', col('valorEgreso')), 'total'], [fn('COUNT', col('idEgreso')), 'cantidad']],
+        group: ['tipo'],
+        raw: true
+    });
+    const por = Object.fromEntries(filas.map((f) => [f.tipo, f]));
+    const egresos   = parseFloat(por.Egreso?.total)   || 0;
+    const traslados = parseFloat(por.Traslado?.total) || 0;
+    return {
+        total: egresos + traslados,
+        egresos,
+        traslados,
+        cantidad: (parseInt(por.Egreso?.cantidad) || 0) + (parseInt(por.Traslado?.cantidad) || 0)
+    };
+};
+
+// Efectivo de venta que hay (o hubo) en el cajón, SIN la base: lo recaudado en efectivo
+// menos lo que salió en efectivo. Es el mismo número que la tienda ve como tope para
+// transferir, porque sale de las mismas funciones del cuadre (storeControllers.js).
+//
+//   · hoy con la caja abierta → lo que hay ahora en el cajón ('abierta')
+//   · un día con caja ya cerrada → lo que había al cerrar cada turno de ese día, sumado
+//     ('cerrada'): es lo que el operador entregó
+//   · sin caja ese día → 'sin-caja'
+//
+// Se llama una vez por día consultado, con una o dos cajas: el Promise.all no crece con
+// ningún listado.
+const _efectivoDelDia = async (idPuntoDeVenta, { inicio, fin, esHoy }) => {
+    if (esHoy) {
+        const vivo = await _efectivoDisponibleParaTraslado(idPuntoDeVenta);
+        if (vivo.hayCaja) {
+            return { estado: 'abierta', recaudado: vivo.recaudado, salidas: vivo.egresosEfectivo, disponible: vivo.disponible };
+        }
+    }
+
+    const cajas = await CajaTienda.findAll({
+        where: { idPuntoDeVenta, fechaApertura: { [Op.between]: [inicio, fin] }, fechaCierre: { [Op.ne]: null } },
+        attributes: ['fechaApertura', 'fechaCierre'],
+        order: [['fechaApertura', 'ASC']],
+        raw: true
+    });
+    if (!cajas.length) return { estado: 'sin-caja', recaudado: 0, salidas: 0, disponible: 0 };
+
+    // 'liquidada': al cerrar la caja, lo del turno queda liquidado (mismo criterio que el
+    // PDF del cuadre de una caja cerrada).
+    const turnos = await Promise.all(cajas.map((c) =>
+        _calcularTransaccionesCaja(idPuntoDeVenta, new Date(c.fechaApertura), new Date(c.fechaCierre), 'liquidada')));
+    const recaudado = turnos.reduce((s, t) => s + t.sEfectivo, 0);
+    const salidas   = turnos.reduce((s, t) => s + t.sEgresosEfectivo, 0);
+    return { estado: 'cerrada', recaudado, salidas, disponible: Math.max(0, recaudado - salidas) };
+};
+
+// GET /admin/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle?fecha=YYYY-MM-DD
+// Las tarjetas de la ficha de la tienda para un día (hoy si no se pide ninguno). Las
+// claves `ventasHoy` y `pagos` se conservan: son las mismas que trae el evento SSE
+// `store_stats_detail`, y el navegador las pinta con la misma función.
 const getTiendaStatsHoyDetalle = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
+    const rango = _rangoDia(req.query.fecha);
+    if (!rango) return res.status(422).json({ success: false, mensaje: 'Fecha inválida.' });
     try {
-        const { inicio } = _hoyRango();
-        const { ventas: ventasHoy, pagos } = await ventasYPagosPeriodo({ idPuntoDeVenta, desde: inicio });
-        return res.json({ success: true, ventasHoy, pagos });
+        const [{ ventas, pagos }, egresosDia, efectivo] = await Promise.all([
+            ventasYPagosPeriodo({ idPuntoDeVenta, desde: rango.inicio, hasta: rango.fin }),
+            _egresosDelDia(idPuntoDeVenta, rango),
+            _efectivoDelDia(idPuntoDeVenta, rango)
+        ]);
+        return res.json({ success: true, esHoy: rango.esHoy, ventasHoy: ventas, pagos, egresosDia, efectivo });
     } catch (e) {
         console.error('getTiendaStatsHoyDetalle:', e);
+        return res.status(500).json({ success: false });
+    }
+};
+
+// GET /admin/api/tiendas/:idPuntoDeVenta/egresos-dia?fecha=YYYY-MM-DD
+// El detalle detrás de la tarjeta "Egresos y Traslados". Tope de filas: es el día de una
+// sola tienda, pero ningún listado se trae sin límite (CLAUDE.md §11).
+const EGRESOS_DIA_MAX = 500;
+const getEgresosDiaTienda = async (req, res) => {
+    const { idPuntoDeVenta } = req.params;
+    const rango = _rangoDia(req.query.fecha);
+    if (!rango) return res.status(422).json({ success: false, mensaje: 'Fecha inválida.' });
+    try {
+        const filas = await Egresos.findAll({
+            where: { idPuntoDeVenta, createdAt: { [Op.between]: [rango.inicio, rango.fin] } },
+            attributes: ['idEgreso', 'createdAt', 'tipo', 'descripcion', 'referencia', 'valorEgreso', 'metodoPago'],
+            include: [
+                { model: Empleados,    as: 'empleado',         attributes: ['PrimerNombre', 'PrimerApellido'], required: false },
+                { model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco'],                required: false },
+                INCLUDE_PUC
+            ],
+            order: [['createdAt', 'ASC'], ['idEgreso', 'ASC']],
+            limit: EGRESOS_DIA_MAX
+        });
+        const movimientos = filas.map((e) => ({
+            hora:        new Date(e.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+            tipo:        e.tipo,
+            descripcion: e.descripcion ? tituloLista(e.descripcion) : '—',
+            referencia:  e.referencia || '—',
+            valor:       parseFloat(e.valorEgreso) || 0,
+            detalle:     e.tipo === 'Traslado'
+                ? (e.cajaBancoDestino ? `→ ${tituloLista(e.cajaBancoDestino.nombreCajaBanco)}` : 'Traslado')
+                : (etiquetaPuc(e.pucEgreso) || 'Sin cuenta PUC'),
+            responsable: e.empleado ? tituloLista(`${e.empleado.PrimerNombre} ${e.empleado.PrimerApellido}`) : '—'
+        }));
+        return res.json({ success: true, movimientos, total: movimientos.reduce((s, m) => s + m.valor, 0) });
+    } catch (e) {
+        console.error('getEgresosDiaTienda:', e);
         return res.status(500).json({ success: false });
     }
 };
@@ -5289,12 +5410,15 @@ const getPagosHoyPorMetodo = async (req, res) => {
     const metodo = decodeURIComponent(metodoPago);
     if (!METODOS_PAGO.includes(metodo)) return res.status(400).json({ success: false, mensaje: 'Método inválido' });
 
-    try {
-        const { inicio: hoy } = _hoyRango();
+    // El día de las tarjetas: el detalle tiene que mostrar el mismo que la tarjeta en la
+    // que se hizo clic.
+    const rango = _rangoDia(req.query.fecha);
+    if (!rango) return res.status(422).json({ success: false, mensaje: 'Fecha inválida.' });
 
+    try {
         const facturasHoy = await FacturaClientes.findAll({
             attributes: ['idFacturaCliente', 'prefijo', 'numeroFactura', 'horaEmision'],
-            where: { idPuntoDeVenta, createdAt: { [Op.gte]: hoy } },
+            where: { idPuntoDeVenta, createdAt: { [Op.between]: [rango.inicio, rango.fin] } },
             raw: true
         });
 
@@ -5327,7 +5451,7 @@ const getPagosHoyPorMetodo = async (req, res) => {
         // desaparecía por completo de este desglose; con solo un abono y ninguna factura
         // nueva, la función ni siquiera llegaba a buscarlos: cortaba con movimientos: []
         // apenas facturasHoy salía vacío).
-        const abonosHoy = await buscarAbonosPeriodo({ idPuntoDeVenta, metodoPago: metodo, desde: hoy });
+        const abonosHoy = await buscarAbonosPeriodo({ idPuntoDeVenta, metodoPago: metodo, desde: rango.inicio, hasta: rango.fin });
         for (const a of abonosHoy) {
             movimientos.push({
                 nroFactura: `${a.factura?.prefijo || ''}${a.factura?.numeroFactura || '—'} (Abono)`,
@@ -6024,7 +6148,7 @@ const listarMovimientosCuenta = async (idCajaBanco, { cursor = null, desde = nul
     const filtroPagina = posicion ? { ...where, ...antesDe(posicion) } : where;
     const filas = await MovimientosCajasBancos.findAll({
         where: filtroPagina,
-        include: [{ model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'], required: false }],
+        include: [{ model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'], required: false }, INCLUDE_PUC],
         order: ORDEN_LIBRO,
         limit: MOVIMIENTOS_POR_PAGINA + 1
     });
@@ -6087,6 +6211,9 @@ const listarMovimientosCuenta = async (idCajaBanco, { cursor = null, desde = nul
             tipo:         m.tipo,
             descripcion:  m.descripcion || 'Movimiento',
             referencia:   m.referencia,
+            // Subcuenta del PUC de un egreso; nula en los ingresos y en lo anterior a la
+            // clasificación.
+            puc:          etiquetaPuc(m.pucEgreso),
             valor,
             saldo,
             usuario:      m.empleado ? `${m.empleado.PrimerNombre} ${m.empleado.PrimerApellido}` : '—',
@@ -6632,7 +6759,7 @@ const verPerfilCajaBanco = async (req, res) => {
         const inicioMes = new Date();
         inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
 
-        const [totales, delMes, { movimientos, cursorSiguiente }, trasladosPendientes, cajasDestino] = await Promise.all([
+        const [totales, delMes, { movimientos, cursorSiguiente }, trasladosPendientes, cajasDestino, gruposPuc] = await Promise.all([
             MovimientosCajasBancos.findAll({
                 where: { idCajaBanco: cuenta.idCajaBanco },
                 attributes: [[SUMA_CON_SIGNO, 'saldo']],
@@ -6675,7 +6802,9 @@ const verPerfilCajaBanco = async (req, res) => {
                     order: [['nombreCajaBanco', 'ASC'], ['idCajaBanco', 'ASC']],
                     raw: true
                 })
-                : []
+                : [],
+            // Subcuentas del PUC para clasificar un egreso manual.
+            listarSubcuentasPuc()
         ]);
 
         const porTipo = Object.fromEntries(delMes.map(r => [r.tipo, r]));
@@ -6699,6 +6828,7 @@ const verPerfilCajaBanco = async (req, res) => {
             cursorSiguiente,
             trasladosPendientes,
             cajasDestino,
+            gruposPuc,
             filtros: { desde: '', hasta: '', ahora: iso(ahora).slice(0, 16) }
         });
     } catch (e) {
@@ -6760,19 +6890,18 @@ const crearMovimientoCuenta = async (req, res) => {
 
         // Quién lo registra. El movimiento apunta a un EMPLEADO, no al usuario del panel:
         // es la ficha de la persona, que sobrevive a que se le desactive la cuenta.
-        //
-        // El libro es append-only: una fila mal atribuida no se corrige después. Por eso,
-        // si el usuario del panel no tiene ficha de empleado, no se registra a nombre de
-        // nadie más — se corta acá.
-        const empleado = await Empleados.findOne({
-            attributes: ['idEmpleado'],
-            where: { idUsuario: req.usuario.idUsuario }
-        });
-        if (!empleado) {
-            return res.status(422).json({
-                success: false,
-                mensaje: 'Tu usuario no tiene una ficha de empleado asociada, así que el movimiento no puede quedar a tu nombre. Pedí que te la creen antes de registrar movimientos.'
-            });
+        // La resolvió verificarCodigoEmpleadoAdmin a partir del código que escribió, y ese
+        // middleware solo acepta el código del usuario con la sesión abierta: nadie asienta
+        // a nombre de otro, y un usuario sin ficha no llega hasta acá.
+        const empleado = req.empleadoVerificado;
+
+        // Un egreso se clasifica en una subcuenta del PUC, y es obligatoria. Se valida
+        // antes de subir los comprobantes: si falta, no se sube nada a R2. Un ingreso no
+        // la lleva, aunque la petición traiga una.
+        let puc = null;
+        if (tipo === 'egreso') {
+            puc = await subcuentaPucValida(req.body.idPucEgreso);
+            if (!puc) return res.status(422).json({ success: false, mensaje: MENSAJE_PUC_REQUERIDA });
         }
 
         // El id se genera antes de subir para poder nombrar los archivos con él.
@@ -6807,7 +6936,8 @@ const crearMovimientoCuenta = async (req, res) => {
 
             await MovimientosCajasBancos.create({
                 idMovimiento, idCajaBanco, idEmpleado: empleado.idEmpleado,
-                fecha, tipo, valor, referencia, descripcion
+                fecha, tipo, valor, referencia, descripcion,
+                idPucEgreso: puc?.id ?? null
             }, { transaction: t });
 
             if (docs.length) await Documentacion.bulkCreate(docs, { transaction: t });
@@ -7325,18 +7455,24 @@ const exportarMovimientosCuenta = async (req, res) => {
             pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
         });
 
+        // Las celdas de cada fila se nombran por `key` y no por letra: agregar una
+        // columna (como la de la cuenta PUC) corría todas las letras de la derecha, y
+        // cualquier 'F' que se escapara pintaba el formato de pesos en la columna ajena.
         ws.columns = [
             { key: 'fecha',       width: 13 },
             { key: 'hora',        width: 10 },
             { key: 'tipo',        width: 12 },
-            { key: 'descripcion', width: 46 },
+            { key: 'descripcion', width: 40 },
+            { key: 'puc',         width: 34 },
             { key: 'referencia',  width: 18 },
             { key: 'valor',       width: 17 },
             { key: 'saldo',       width: 17 },
             { key: 'usuario',     width: 24 }
         ];
+        const COLUMNAS = ws.columns.length;
+        const letra = (key) => ws.getColumn(key).letter;
 
-        const { banda, casillas } = crearAyudasHoja(ws, 8);
+        const { banda, casillas } = crearAyudasHoja(ws, COLUMNAS);
 
         // ── 1. Banner y nombre de la cuenta ──────────────────────────────────
         // El banner dice qué abarca el archivo: sin eso, dos exportaciones de la misma
@@ -7392,14 +7528,14 @@ const exportarMovimientosCuenta = async (req, res) => {
         }
 
         // ── 4. Encabezado de la tabla ────────────────────────────────────────
-        const cabecera = ws.addRow(['Fecha', 'Hora', 'Tipo', 'Descripción', 'Referencia', 'Valor', 'Saldo', 'Registrado por']);
+        const cabecera = ws.addRow(['Fecha', 'Hora', 'Tipo', 'Descripción', 'Cuenta PUC', 'Referencia', 'Valor', 'Saldo', 'Registrado por']);
         cabecera.height = 22;
         cabecera.eachCell((celda) => {
             celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.blanco } };
             celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
             celda.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
         });
-        ['F', 'G'].forEach(c => { cabecera.getCell(c).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }; });
+        ['valor', 'saldo'].forEach(k => { cabecera.getCell(k).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }; });
         cabecera.commit();
 
         const filaPrimeraDeDatos = cabecera.number + 1;
@@ -7414,7 +7550,7 @@ const exportarMovimientosCuenta = async (req, res) => {
         for (;;) {
             const tanda = await MovimientosCajasBancos.findAll({
                 where: cursor ? { ...where, ...despuesDe(cursor) } : where,
-                include: [{ model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'], required: false }],
+                include: [{ model: Empleados, as: 'empleado', attributes: ['PrimerNombre', 'PrimerApellido'], required: false }, INCLUDE_PUC],
                 order: [['fecha', 'ASC'], ['idMovimiento', 'ASC']],
                 limit: TANDA_EXPORT
             });
@@ -7431,6 +7567,8 @@ const exportarMovimientosCuenta = async (req, res) => {
                     f,
                     esIngreso ? 'Ingreso' : 'Egreso',
                     tituloLista(m.descripcion || ''),
+                    // Solo los egresos clasificados la tienen; un ingreso no lleva cuenta PUC.
+                    etiquetaPuc(m.pucEgreso) || '',
                     m.referencia || '',
                     // El signo lo lleva el valor para que la barra de datos salga hacia la
                     // derecha en los ingresos y hacia la izquierda en los egresos.
@@ -7447,29 +7585,30 @@ const exportarMovimientosCuenta = async (req, res) => {
                     if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
                 });
 
-                fila.getCell('A').numFmt = 'dd/mm/yyyy';
-                fila.getCell('B').numFmt = 'hh:mm AM/PM';
+                fila.getCell('fecha').numFmt = 'dd/mm/yyyy';
+                fila.getCell('hora').numFmt  = 'hh:mm AM/PM';
 
                 // La columna Tipo lleva el mismo código de color que el badge en pantalla.
-                const cTipo = fila.getCell('C');
+                const cTipo = fila.getCell('tipo');
                 cTipo.font = { name: 'Calibri', size: 10, bold: true, color: { argb: esIngreso ? XLS.ingresoTinta : XLS.egresoTinta } };
                 cTipo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: esIngreso ? XLS.ingresoFondo : XLS.egresoFondo } };
                 cTipo.alignment = { vertical: 'middle', horizontal: 'center' };
 
-                fila.getCell('D').font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.tinta } };
-                fila.getCell('E').font = { name: 'Consolas', size: 9, color: { argb: XLS.apagado } };
+                fila.getCell('descripcion').font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.tinta } };
+                fila.getCell('puc').font         = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
+                fila.getCell('referencia').font  = { name: 'Consolas', size: 9, color: { argb: XLS.apagado } };
 
-                const cValor = fila.getCell('F');
+                const cValor = fila.getCell('valor');
                 cValor.numFmt = FORMATO_PESOS;
                 cValor.font = { name: 'Calibri', size: 10, bold: true, color: { argb: esIngreso ? XLS.ingresoTinta : XLS.egresoTinta } };
                 cValor.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
 
-                const cSaldo = fila.getCell('G');
+                const cSaldo = fila.getCell('saldo');
                 cSaldo.numFmt = FORMATO_PESOS;
                 cSaldo.font = { name: 'Calibri', size: 10, bold: true, color: { argb: saldo < 0 ? XLS.negativo : XLS.tinta } };
                 cSaldo.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
 
-                fila.getCell('H').font = { name: 'Calibri', size: 10, color: { argb: XLS.apagado } };
+                fila.getCell('usuario').font = { name: 'Calibri', size: 10, color: { argb: XLS.apagado } };
 
                 fila.commit();
                 escritas++;
@@ -7491,7 +7630,7 @@ const exportarMovimientosCuenta = async (req, res) => {
             // cae en el centro y cada movimiento se lee contra el más grande del periodo.
             const escala = mayor > 0 ? mayor : 1;
             ws.addConditionalFormatting({
-                ref: `F${filaPrimeraDeDatos}:F${ultimaFila}`,
+                ref: `${letra('valor')}${filaPrimeraDeDatos}:${letra('valor')}${ultimaFila}`,
                 rules: [{
                     type: 'dataBar', gradient: true, priority: 2,
                     color: { argb: 'FF10B981' },
@@ -7499,7 +7638,7 @@ const exportarMovimientosCuenta = async (req, res) => {
                 }]
             });
 
-            ws.autoFilter = { from: { row: cabecera.number, column: 1 }, to: { row: ultimaFila, column: 8 } };
+            ws.autoFilter = { from: { row: cabecera.number, column: 1 }, to: { row: ultimaFila, column: COLUMNAS } };
         }
 
         ws.commit();
@@ -9095,6 +9234,7 @@ export {
     adminSseConnect,
     getTiendasStatsHoy,
     getTiendaStatsHoyDetalle,
+    getEgresosDiaTienda,
     getFacturasJSON, exportarFacturasTienda,
     getCajasAbiertasPorFecha,
     autorizarFacturaExtemporanea,

@@ -1,4 +1,6 @@
+import { pintarCodigo } from './codigoCajitas.js';
 import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../../helpers/descripcionEgreso.js';
+import { imprimirPdf } from './imprimirPdf.js';
 
 (function () {
     'use strict';
@@ -31,6 +33,15 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
     const ayudaMetodo    = document.getElementById('egr-ayuda-metodo');
 
     const metodoElegido = () => document.querySelector('input[name="egr-metodo"]:checked')?.value || 'Efectivo';
+
+    // ── Cuenta PUC del gasto ──────────────────────────────────────────────────
+    // Obligatoria en un egreso; una transferencia no la lleva. Son cerca de 300
+    // subcuentas, así que el <select> se vuelve buscable (enhanceSelectBuscable, de
+    // helpers.js). El servidor la vuelve a validar al guardar.
+    const bloquePuc  = document.getElementById('egr-bloque-puc');
+    const selPuc     = document.getElementById('egr-puc');
+    const pucBuscable = window.enhanceSelectBuscable?.(selPuc, { placeholder: 'Buscar por código o nombre...' }) || { refresh() {} };
+    const textoPuc   = () => selPuc?.value ? selPuc.selectedOptions[0].textContent : '';
 
     // El formulario se renombra entero según lo que se esté registrando: un egreso del
     // cajón o una transferencia desde una cuenta. Es el mismo registro, pero para el
@@ -232,6 +243,8 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
         if (valorEscrito() <= 0)              faltan.push('el valor');
         else if (electronico && !validarTope()) faltan.push('un valor dentro del disponible');
 
+        if (!electronico && !selPuc?.value) faltan.push('la cuenta PUC');
+
         if (electronico) {
             if (!selEntidad?.value) faltan.push('la cuenta destino');
             if (destinoEsCuenta()) {
@@ -303,6 +316,8 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
     const pintarMetodo = () => {
         const electronico = metodoElegido() === 'Electronico';
         bloqueEntidad?.classList.toggle('hidden', !electronico);
+        bloquePuc?.classList.toggle('hidden', electronico);
+        if (electronico && selPuc) { selPuc.value = ''; pucBuscable.refresh(); }
         if (ayudaMetodo) ayudaMetodo.textContent = electronico
             ? 'Saca el efectivo del cajón y lo consigna en una cuenta del negocio.'
             : 'Sale del cajón de la tienda.';
@@ -327,6 +342,7 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
     });
     inputValor.addEventListener('input', () => { validarTope(); revisar(); });
     inputReferencia?.addEventListener('input', revisar);
+    selPuc?.addEventListener('change', revisar);
     inputDescripcion?.addEventListener('input', () => { pintarAyudaDescripcion(); revisar(); });
     pintarMetodo();
     inputValor.addEventListener('keydown', (e) => {
@@ -376,11 +392,13 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
                 if (json.success) {
                     feedbackEmp.textContent = `✓ ${json.nombre}`;
                     feedbackEmp.className = 'text-xs ml-1 h-4 text-emerald-600';
+                    pintarCodigo(e.target, 'ok');
                     setEmpleadoOk(true);
                     nombreEmpleado = json.nombre;
                 } else {
                     feedbackEmp.textContent = json.mensaje || 'Empleado no encontrado';
                     feedbackEmp.className = 'text-xs ml-1 h-4 text-red-500';
+                    pintarCodigo(e.target, 'error');
                 }
             } catch (_) {}
         }, 400);
@@ -471,6 +489,12 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
             ? `<p class="egr-destino"><i class="fi fi-rr-arrow-right text-[9px]"></i>${escapar(e.destino)}</p>`
             : '';
 
+        // En qué subcuenta del PUC se clasificó el gasto. Las transferencias y lo anterior
+        // a la clasificación no tienen, y ahí la línea no se pinta.
+        const puc = e.puc
+            ? `<p class="egr-puc" title="Cuenta PUC"><i class="fi fi-rr-book-alt text-[9px]"></i>${escapar(e.puc)}</p>`
+            : '';
+
         return `
             <tr class="egr-fila">
                 <td class="egr-c-fecha">
@@ -481,6 +505,7 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
                     ${titulo}
                     <div class="egr-meta">${separadas}</div>
                     ${destino}
+                    ${puc}
                 </td>
                 <td class="egr-c-quien"><span class="egr-quien" title="${e.responsable ? escapar(e.responsable) : ''}">${e.responsable ? escapar(e.responsable) : '—'}</span></td>
                 <td class="egr-c-valor"><span class="egr-valor egr-valor--${sabor}">$${fmtMoney(e.valor)}</span></td>
@@ -762,6 +787,7 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
                                 // vuelva atrás a buscar un campo que no hacía falta llenar.
                                 : `La asigna el sistema (${metodoPago === 'Electronico' ? 'TRA' : 'EGR'}-…)`,
                             !referencia)}
+                        ${esTraslado ? '' : fila('Cuenta PUC', esc(textoPuc()))}
                         ${fila('Descripción', descripcion ? esc(descripcion) : 'Sin descripción', !descripcion)}
                         ${destinoEsCuenta() ? fila('Comprobante', comprobante ? esc(comprobante.name) : 'Ninguno', !comprobante) : ''}
                     </dl>
@@ -868,7 +894,7 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
                 res = await fetch('/store/storebehivors/expenses/crear', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-                    body: JSON.stringify({ valorEgreso: valor, referencia, codigoEmpleado, descripcion, metodoPago, idCajaBanco })
+                    body: JSON.stringify({ valorEgreso: valor, referencia, codigoEmpleado, descripcion, metodoPago, idCajaBanco, idPucEgreso: selPuc?.value || '' })
                 });
             }
             const json = await res.json();
@@ -880,14 +906,16 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
 
             // El traslado tiene su propio comprobante, con el código y los dos renglones
             // de firma; el egreso en efectivo abre el suyo.
-            window.open(esTraslado
+            // Se imprime sin salir de la pantalla (imprimirPdf.js).
+            imprimirPdf(esTraslado
                 ? `/store/storebehivors/expenses/traslado/${json.idTrasladoEfectivo}/pdf`
-                : `/store/storebehivors/expenses/${json.idEgreso}/pdf`, '_blank');
+                : `/store/storebehivors/expenses/${json.idEgreso}/pdf`);
 
             inputValor.value = '';
             document.getElementById('egr-referencia').value = '';
             document.getElementById('egr-empleado').value = '';
             if (inputDescripcion) inputDescripcion.value = '';
+            if (selPuc) { selPuc.value = ''; pucBuscable.refresh(); }
             pintarAyudaDescripcion();
             document.getElementById('egr-metodo-efectivo').checked = true;
             limpiarComprobante();

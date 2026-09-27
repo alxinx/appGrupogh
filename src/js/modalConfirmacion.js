@@ -1,3 +1,4 @@
+import { pintarCodigo } from './codigoCajitas.js';
 // Ventana de confirmación del proyecto — la hoja de estilos vive en
 // views/components/modalConfirmacion.pug y hay que incluirla en la vista que la use.
 //
@@ -41,12 +42,17 @@ export const opcionesConfirmacion = ({ variante = 'neutro', ...resto } = {}) => 
 });
 
 /**
- * Cabecera tintada: el distintivo con el tipo de movimiento y una línea de contexto.
- * El color lo pone la variante, no el llamador — para eso están las clases.
+ * Cabecera tintada: el distintivo con el tipo de movimiento, el monto en grande si lo hay,
+ * y una línea de contexto. El color lo pone la variante, no el llamador — para eso están
+ * las clases.
+ *
+ * `idMonto` sirve para una ventana que actualiza el monto mientras se escribe (un
+ * formulario dentro de la ventana, como el egreso olvidado del cuadre).
  */
-export const cabeceraConfirmacion = ({ icono, badge, contexto }) => `
+export const cabeceraConfirmacion = ({ icono, badge, monto = null, idMonto = null, contexto }) => `
     <div class="gh-conf-cabecera">
         <span class="gh-conf-badge">${icono ? `<i class="fi ${icono}"></i>` : ''}${badge}</span>
+        ${monto !== null ? `<p class="gh-conf-monto"${idMonto ? ` id="${idMonto}"` : ''}>${monto}</p>` : ''}
         ${contexto ? `<p class="gh-conf-cuenta">${contexto}</p>` : ''}
     </div>`;
 
@@ -86,6 +92,7 @@ export function activarVerificacionCodigo(inputId, estadoId, onVerificado, { acc
     const setEstado = (tipo, texto) => {
         estado.style.color = tipo === 'ok' ? '#10b981' : tipo === 'error' ? '#f43f5e' : '#94a3b8';
         estado.textContent = texto;
+        pintarCodigo(input, tipo === 'info' ? null : tipo);
     };
 
     let timer = null;

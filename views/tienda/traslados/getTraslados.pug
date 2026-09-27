@@ -155,7 +155,7 @@ block contenedor
                                 //- Credencial operativa: autoriza mover mercancía y se digita
                                 //- con gente alrededor. Ver nota en dose/views/modalTraslado.pug
                                 //- sobre por qué "one-time-code" y no "off".
-                                input#nt-codigo-empleado(
+                                input#nt-codigo-empleado(data-codigo-empleado 
                                     type="password"
                                     placeholder="••••••"
                                     maxlength="10"
@@ -211,7 +211,7 @@ block contenedor
                             label(class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1") Código empleado que recibe *
                             div(class="input-group")
                                 i(class="input-icon input-icon-left fi fi-rr-user")
-                                input#lb-codigo-empleado(
+                                input#lb-codigo-empleado(data-codigo-empleado 
                                     type="password"
                                     placeholder="Ej: 12345"
                                     maxlength="5"

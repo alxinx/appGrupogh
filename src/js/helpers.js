@@ -1,3 +1,5 @@
+import { adminSSE } from './sseCompartido.js';
+
 // Intercepta todas las respuestas fetch: si el servidor devuelve logout:true
 // (límite de intentos fallidos de código de empleado), muestra aviso y cierra sesión.
 (function () {
@@ -180,31 +182,10 @@ window.iconoDoc = (fmt) => {
     return 'fi-rr-document';
 };
 
-// ─── SSE ADMIN: conexión única compartida por pestaña ─────────────────────────
-// Antes de reconectar SIEMPRE cierra la conexión anterior (si no, EventSource
-// reintenta solo en segundo plano y se acumulan conexiones zombi en cada
-// caída — p.ej. cada reinicio de nodemon en dev — degradando navegador/SO).
-(function () {
-    let sse = null;
-    const listeners = [];
-
-    const conectar = () => {
-        if (sse) sse.close();
-        sse = new EventSource('/admin/sse');
-        listeners.forEach(([evento, handler]) => sse.addEventListener(evento, handler));
-        sse.addEventListener('error', () => setTimeout(conectar, 5000));
-    };
-
-    window.adminSSE = {
-        on(evento, handler) {
-            listeners.push([evento, handler]);
-            if (sse) sse.addEventListener(evento, handler);
-        },
-        connect() {
-            if (!sse) conectar();
-        }
-    };
-})();
+// ─── SSE ADMIN: una conexión para todas las pestañas ─────────────────────────
+// Ver src/js/sseCompartido.js: la comparten todas las pestañas del navegador, no solo
+// las pantallas de una misma pestaña.
+adminSSE();
 
 window.crearItemDocTienda = (a) => {
     const li = document.createElement('li');

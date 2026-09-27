@@ -1,3 +1,4 @@
+import { pintarCodigo } from './codigoCajitas.js';
 import { crearSeleccionMultiple } from './seleccionMultiple.js';
 import { montarHistorialTraslado } from './historialTraslado.js';
 import { pillEstadoTraslado } from './estadoTraslado.js';
@@ -223,10 +224,12 @@ import { escaparHtml as esc } from './escaparHtml.js';
                         codigoDespacha = codigo.trim().toUpperCase();
                         feedbackEmpleado.textContent = `✓ ${data.nombre}`;
                         feedbackEmpleado.className = 'text-xs ml-2 h-4 text-emerald-600 font-semibold';
+                        pintarCodigo(inputCodigo, 'ok');
                     } else {
                         codigoDespacha = null;
                         feedbackEmpleado.textContent = `✗ ${data.mensaje || 'Código inválido'}`;
                         feedbackEmpleado.className = 'text-xs ml-2 h-4 text-red-500 font-semibold';
+                        pintarCodigo(inputCodigo, 'error');
                     }
                 } catch (_) {
                     resetEmpleado();

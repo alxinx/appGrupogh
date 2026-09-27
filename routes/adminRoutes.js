@@ -4,7 +4,7 @@ const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
 checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
-adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
+adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getEgresosDiaTienda, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
 getPagosHoyPorMetodo,
@@ -30,7 +30,7 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR IMPORTACIONES:
-import { formularioImportaciones, procesarImportacionExcel } from '../controller/importacionesController.js'
+import { formularioImportaciones, procesarImportacionExcel, descargarPlantillaImportacion } from '../controller/importacionesController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
@@ -71,6 +71,7 @@ import qrUploadRateLimit from '../middlewares/qrUploadRateLimit.js';
 import apiRateLimit from '../middlewares/apiRateLimit.js';
 import { subirComprobantesMovimiento } from '../middlewares/uploadComprobantes.js';
 import uploadExcel from '../middlewares/uploadExcel.js';
+import { permitirMarcoPropio } from '../middlewares/cabecerasSeguridad.js';
 
 
 
@@ -157,10 +158,16 @@ routes.post('/bankentities/cajas/:idCajaBanco/editar', pBan('EDIT'), csrfProtect
 routes.get('/bankentities/cajas/:idCajaBanco/movimientos', pBan('READ'), getMovimientosCuentaJSON);
 routes.get('/bankentities/cajas/:idCajaBanco/movimientos/export', pBan('READ'), exportarMovimientosCuenta);
 // Los comprobantes van en memoria antes de subirse a R2, por eso el límite de multer.
-routes.post('/bankentities/cajas/:idCajaBanco/movimientos', pBan('CREATE'), csrfProtection, subirComprobantesMovimiento, crearMovimientoCuenta);
+// Ingreso o egreso manual. Pide el código de empleado igual que aceptar un traslado: el
+// movimiento queda a nombre de una persona, y el código tiene que ser el del usuario con la
+// sesión abierta (verificarCodigoEmpleadoAdmin). Va DESPUÉS de multer porque el código
+// viaja en el mismo multipart que los comprobantes y antes de eso req.body está vacío.
+routes.post('/bankentities/cajas/:idCajaBanco/movimientos', pBan('CREATE'), csrfProtection, subirComprobantesMovimiento, verificarCodigoEmpleadoAdmin, crearMovimientoCuenta);
 // Comprobante en PDF de un movimiento: sirve tanto para el que se registra a mano acá
 // como para el ingreso que genera un abono a crédito.
-routes.get('/bankentities/movimientos/:idMovimiento/tirilla', pBan('READ'), getTirillaMovimientoCuenta);
+// `permitirMarcoPropio`: estos tres PDF se imprimen desde un iframe invisible sin abrir
+// pestaña (src/js/imprimirPdf.js), y el X-Frame-Options: DENY general lo bloquearía.
+routes.get('/bankentities/movimientos/:idMovimiento/tirilla', pBan('READ'), permitirMarcoPropio, getTirillaMovimientoCuenta);
 routes.post('/bankentities/toggle/:id', pBan('EDIT'), csrfProtection, toggleEntidad);
 routes.get('/bankentities/detallesEntidad/:idEntidad', pBan('READ'), csrfProtection, verDetallesEntidad);
 routes.post('/bankentities/editar/:idEntidad', pBan('EDIT'), csrfProtection, editarEntidad);
@@ -181,7 +188,7 @@ routes.post('/provedores/editar/:idProveedor', pPro('EDIT'), csrfProtection, act
 routes.get('/api/provedores/facturas-pendientes', pPro('READ'), getFacturasPendientesProveedores);
 routes.get('/api/provedores/factura/:idFacturaPro/detalle', pPro('READ'), getDetalleFacturaPendiente);
 routes.post('/api/provedores/factura/:idFacturaPro/abonar', pPro('EDIT'), registrarAbonoProveedor);
-routes.get('/api/provedores/abono/:idCuentaPorPagar/tirilla', pPro('READ'), getTirillaAbonoProveedor);
+routes.get('/api/provedores/abono/:idCuentaPorPagar/tirilla', pPro('READ'), permitirMarcoPropio, getTirillaAbonoProveedor);
 
 
 //EMPLEADOS
@@ -239,7 +246,7 @@ routes.post('/api/clientes/:idCliente/facturas/:idFacturaCliente/abonar', pCli('
 routes.post('/api/clientes/:idCliente/credito/abono-global', pCli('EDIT'), subirComprobantesMovimiento, verificarCodigoEmpleadoAdmin, abonoGlobalCliente);
 // Comprobante en PDF del abono. `:id` acepta el id de un abono puntual o el lote de un
 // abono global — el papel que se le entrega al cliente es el mismo documento.
-routes.get('/api/clientes/abonos/:id/tirilla', pCli('READ'), getTirillaAbonoCliente);
+routes.get('/api/clientes/abonos/:id/tirilla', pCli('READ'), permitirMarcoPropio, getTirillaAbonoCliente);
 
 // "Pedidos y Reparto" nunca tuvo pantalla: el lugar del menú lo tomó Traslados.
 routes.get('/pedidos', (req, res) => res.redirect('/admin/traslados'));
@@ -259,6 +266,7 @@ routes.post('/traslados/:idTraslado/recibir-devolucion',
     recibirDevolucionAdmin);
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
 routes.get('/configuracion/importaciones', pCfg('READ'), formularioImportaciones);
+routes.get('/configuracion/importaciones/plantilla', pCfg('READ'), descargarPlantillaImportacion);
 routes.post('/configuracion/importaciones',
     pCfg('CREATE'),
     uploadExcel.single('archivo'),
@@ -352,6 +360,8 @@ routes.get('/sse', adminSseConnect);
 routes.get('/api/tiendas/stats-hoy', pTie('READ'), getTiendasStatsHoy);
 routes.get('/api/personal/:idEmpleado/stats-mes', pPer('READ'), getStatsVendedorMes);
 routes.get('/api/tiendas/:idPuntoDeVenta/stats-hoy-detalle', pTie('READ'), getTiendaStatsHoyDetalle);
+// Detalle de la tarjeta "Egresos y Traslados" de la ficha de la tienda (?fecha=).
+routes.get('/api/tiendas/:idPuntoDeVenta/egresos-dia', pTie('READ'), getEgresosDiaTienda);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', pTie('READ'), getFacturasJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas/export', pTie('READ'), exportarFacturasTienda);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-abiertas', pTie('READ'), getCajasAbiertasPorFecha);

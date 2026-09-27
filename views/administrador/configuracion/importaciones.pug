@@ -25,6 +25,9 @@ block contenedor
                                         button(class="btn btn-secondary flex items-center gap-2")
                                             i(class="fi fi-rr-arrow-left")
                                             | Volver
+                                    a(href="/admin/configuracion/importaciones/plantilla" download class="btn btn-secondary flex items-center gap-2")
+                                        i(class="fi fi-rr-download")
+                                        | Descargar plantilla
 
                             form(id="formImportacion" class="col-span-12 grid grid-cols-12 gap-6 items-start mt-4" enctype="multipart/form-data")
                                 input(type="hidden" id="csrfImportaciones" value=csrfToken)
@@ -41,7 +44,7 @@ block contenedor
                                             i.fi-rr-info
                                         div(class="flex-1")
                                             p.alert-title Formato esperado
-                                            p.alert-text Hoja llamada "CODIGOS", con nombre, SKU, familia, color, precios, categoría y talla en las mismas columnas de siempre.
+                                            p.alert-text Hoja llamada "CODIGOS", con nombre, SKU, familia, color, precios, categoría y talla en las mismas columnas de siempre. Si no tenés el archivo, usá "Descargar plantilla": trae los colores, tallas y subcategorías válidas como listas desplegables.
 
                                     div(class="relative group mt-1")
                                         input(type="file" id="archivoExcel" name="archivo" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".xlsx,.xlsm")
@@ -60,7 +63,7 @@ block contenedor
                                             i.fi-rr-list-check
                                             | Campos que se pueden dejar vacíos
 
-                                    p(class="text-xs text-gray-400 -mt-2") Nombre, SKU, color y talla son siempre obligatorios — no aparecen acá porque nunca se pueden saltar. Lo que marques abajo se guarda en 0 o vacío si la fila no lo trae; lo que dejes sin marcar bloquea esa fila y queda en el informe.
+                                    p(class="text-xs text-gray-400 -mt-2") Nombre, SKU, color y talla son siempre obligatorios — no aparecen acá porque nunca se pueden saltar. Si hay filas sin SKU, al importar el sistema te pregunta si querés que los genere. Lo que marques abajo se guarda en 0 o vacío si la fila no lo trae; lo que dejes sin marcar bloquea esa fila y queda en el informe.
 
                                     div(class="flex flex-col gap-3")
                                         label(class="checkbox-group")

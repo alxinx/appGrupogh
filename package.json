@@ -47,6 +47,8 @@
     "db:eliminar-cajas": "node ./seed/migracionEliminarCajas.js",
     "db:migrar-costo": "node ./seed/migracionCostoProducto.js",
     "db:migrar-impuestos-factura": "node ./seed/migracionImpuestosFactura.js",
+    "db:migrar-puc-egresos": "node ./seed/migracionPucEgresos.js",
+    "db:migrar-egreso-puc": "node ./seed/migracionEgresoPuc.js",
     "db:migrar-abono-cliente-creditos": "node ./seed/migracionAbonoClienteCreditos.js",
     "db:migrar-abono-entidad-crediticia": "node ./seed/migracionAbonoEntidadCrediticia.js",
     "db:migrar-unico-credito-disponible": "node ./seed/migracionUnicoCreditoDisponibleCliente.js",

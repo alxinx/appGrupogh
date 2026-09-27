@@ -531,10 +531,16 @@ actualizarEstadoWeb();
         const el = document.querySelector(`.color-checkbox[value="${idColor}"]`);
         return el ? el.dataset.nombre : 'Color';
     }
-    function codigoColorPorId(idColor) {
+    // Los círculos de un color tal como se ven en el selector: uno, o dos cuando el color
+    // es una combinación (codigo1 + codigo2, ej. Rosado + Camel). Antes se tomaba solo el
+    // primero y la combinación se veía de un único tono en la confirmación.
+    function circulosColorPorId(idColor, extraClases = '') {
         const el = document.querySelector(`.color-checkbox[value="${idColor}"]`);
-        const swatch = el?.closest('label')?.querySelector('div[style*="background-color"]');
-        return swatch ? swatch.style.backgroundColor : '#ccc';
+        const swatches = Array.from(el?.closest('label')?.querySelectorAll('div[style*="background-color"]') || []);
+        const tonos = swatches.length ? swatches.map(sw => sw.style.backgroundColor) : ['#ccc'];
+        return tonos.map(tono =>
+            `<span class="w-4 h-4 rounded-full inline-block shadow-sm ${extraClases}" style="background-color:${tono}"></span>`
+        ).join('');
     }
 
     // Miniaturas actualmente en preview-container: nuevas (dataset.fileName) o existentes (.btn-delete-existente[data-id])
@@ -583,7 +589,7 @@ actualizarEstadoWeb();
 
         listaSku.innerHTML = combos.map(c => `
             <div class="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2">
-                <span class="w-4 h-4 rounded-full inline-block shadow-sm shrink-0" style="background-color:${codigoColorPorId(c.idColor)}"></span>
+                ${circulosColorPorId(c.idColor, 'shrink-0')}
                 <span class="text-xs font-bold text-gray-500 flex-1">Talla ${c.nombreTalla} · ${c.nombreColor}</span>
                 <span class="text-[11px] text-gray-400 uppercase tracking-wide">Código automático</span>
             </div>
@@ -609,7 +615,7 @@ actualizarEstadoWeb();
             listaColores.innerHTML = Array.from(coloresUnicos).map(idColor => `
                 <div class="border border-gray-100 rounded-xl p-3">
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="w-4 h-4 rounded-full inline-block shadow-sm" style="background-color:${codigoColorPorId(idColor)}"></span>
+                        ${circulosColorPorId(idColor)}
                         <span class="text-xs font-bold uppercase">${nombreColorPorId(idColor)}</span>
                         <span class="contador-color text-[10px] text-gray-400" data-contador="${idColor}"></span>
                     </div>

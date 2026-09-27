@@ -1,3 +1,4 @@
+import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
 (function () {
     'use strict';
 
@@ -455,11 +456,9 @@
             html: `${html}
                 <p style="text-align:left; font-size:12px; color:#64748b; margin:14px 0 4px;">
                     Código del empleado que autoriza:
-                </p>`,
-            input: 'password',
-            inputPlaceholder: 'Código de empleado',
-            inputAttributes: { autocomplete: 'off', 'aria-label': 'Código de empleado' },
-            inputValidator: (v) => (!v || !v.trim()) && 'Ingresá el código del empleado.',
+                </p>
+                    ${campoCodigoEmpleado('gh-codigo-pedido', '0')}`,
+            preConfirm: () => codigoRequerido('gh-codigo-pedido'),
             showCancelButton: true,
             confirmButtonText: textoConfirmar,
             cancelButtonText: 'Volver',
@@ -519,7 +518,7 @@
                 <label style="display:block; text-align:left; font-size:12px; color:#64748b; margin:14px 0 4px;">
                     Código del empleado que autoriza:
                 </label>
-                <input id="swal-codigo" type="password" class="swal2-input" style="margin:0; width:100%;"
+                <input id="swal-codigo" data-codigo-empleado type="password" class="swal2-input" style="margin:0; width:100%;"
                        placeholder="Código de empleado" autocomplete="off">`,
             didOpen: () => {
                 // El valor llega precargado con el total; el operador solo lo toca si difiere.

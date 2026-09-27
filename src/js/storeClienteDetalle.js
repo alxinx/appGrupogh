@@ -1,5 +1,6 @@
 // Detalle de "Mis Clientes" en tienda (views/tienda/clientes/detalle.pug) — Abono Global.
 import { activarVerificacionCodigo } from './modalConfirmacion.js';
+import { imprimirPdf } from './imprimirPdf.js';
 // window.fmtCOP, window.initMoneyInput, window.parseMoney y el interceptor de logout de
 // fetch (data.logout === true) ya los trae helpers.js, cargado antes que este archivo.
 document.addEventListener('DOMContentLoaded', () => {
@@ -241,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <p style="text-align:left;font-size:12px;font-weight:600;color:#64748b;margin:0 1.5rem 8px;">Código del empleado que recibe:</p>
                     <div style="padding: 0 1.5rem;">
-                        <input id="gh-input-codigo-abono-st" type="password" placeholder="Código de empleado" autocomplete="off"
+                        <input id="gh-input-codigo-abono-st" data-codigo-empleado type="password" placeholder="Código de empleado" autocomplete="off"
                                style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:14px;border:1px solid #cbd5e1;border-radius:10px;outline:none;" />
                     </div>
                     <p id="gh-estado-codigo-abono-st" style="text-align:left;font-size:11.5px;font-weight:600;margin:6px 1.5rem 0;min-height:14px;"></p>
@@ -415,10 +416,15 @@ document.addEventListener('DOMContentLoaded', () => {
             // Dos comprobantes: el voucher del abono (todas las facturas tocadas, cómo se
             // pagó) y, por cada factura afectada, su tirilla — ya trae abajo el historial de
             // abonos y el saldo (o "PAZ Y SALVO" si quedó cancelada).
-            window.open(`/store/clientes/${datos.idCliente}/abono/${data.loteAbonoGlobal}/voucher`, '_blank');
+            //
+            // Se imprimen sin salir de la pantalla (imprimirPdf.js), uno tras otro. Se
+            // espera a que terminen ANTES de recargar: la recarga cancelaría las pendientes.
+            imprimirPdf(`/store/clientes/${datos.idCliente}/abono/${data.loteAbonoGlobal}/voucher`);
+            let impresiones = Promise.resolve();
             (data.facturas || []).forEach(f => {
-                window.open(`/store/facturas/${f.idFacturaCliente}/tirilla`, '_blank');
+                impresiones = imprimirPdf(`/store/facturas/${f.idFacturaCliente}/tirilla`);
             });
+            await impresiones;
 
             await Swal.fire({ icon: 'success', title: 'Abono registrado', text: data.mensaje, timer: 2600, showConfirmButton: false });
             window.location.reload();

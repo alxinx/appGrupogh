@@ -1,0 +1,26 @@
+//- ── SELECTOR DE CUENTA PUC ──────────────────────────────────────────────────
+//- La subcuenta del PUC en la que se clasifica un gasto. Lo usan el formulario de
+//- egresos de la tienda y el de movimientos de una caja o banco del admin; la lista la
+//- arma helpers/pucEgresos.js (listarSubcuentasPuc) y la valida el servidor al guardar.
+//-
+//- Son cerca de 300 subcuentas: cada pantalla lo convierte en buscable con
+//- window.enhanceSelectBuscable (helpers.js), cuyos estilos vienen del include de abajo.
+//- La lista buscable no muestra los <optgroup>, así que cada opción lleva también el
+//- nombre de su cuenta: el nombre de una subcuenta se puede repetir entre cuentas, y así
+//- además se puede buscar por la cuenta ("personal" trae todos los gastos de personal).
+//-
+//-     include ../../components/selectPucEgreso
+//-     +selectPucEgreso({ id: 'egr-puc', grupos: gruposPuc, clases: '...' })
+include selectBuscable
+
+mixin selectPucEgreso(opts)
+    - var o = opts || {}
+    - var grupos = o.grupos || []
+    select(id=o.id class=o.clases)
+        option(value="") Seleccionar...
+        each c in grupos
+            optgroup(label=`${c.codigo} · ${c.nombre}`)
+                each s in c.subcuentas
+                    option(value=s.id)= `${s.codigo} · ${s.nombre} (${c.nombre})`
+    if !grupos.length
+        p(class="text-[10px] font-bold text-amber-600 mt-1") No hay cuentas PUC activas para clasificar el gasto.

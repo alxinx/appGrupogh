@@ -169,8 +169,8 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                                 //- Circulito de color 
                                 div(class="w-4 h-4 rounded-full  shadow-sm" style=`background-color: ${atributo.codigo1 || '#ccc'}`)
 
-                                if atributo.codigo2 != NULL
-                                    div(class="w-4 h-4 rounded-full  shadow-sm" style=`background-color: ${atributo.codig2 || '#ccc'}`)
+                                if atributo.codigo2
+                                    div(class="w-4 h-4 rounded-full  shadow-sm" style=`background-color: ${atributo.codigo2}`)
 
 
                                 span(class="text-sm font-medium")= atributo.valor

@@ -1,3 +1,5 @@
+import { pintarCodigo } from './codigoCajitas.js';
+import { imprimirPdf } from './imprimirPdf.js';
 import ciiuData from '../json/ciiu.json';
 import { tituloLista as tc } from '../../helpers/textoLista.js';
 
@@ -510,8 +512,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         clearTimeout(buscarTimer);
         if (inputCodigo) inputCodigo.value = '';
         limpiarCatalogo();
-        // Best-effort: la tirilla se abre en otra pestaña y puede llevarse el foco. Si
-        // vuelve a esta, el lector de barras escribe donde tiene que escribir.
+        // Best-effort: la ventana de impresión de la tirilla se lleva el foco. Cuando se
+        // cierra, el lector de barras tiene que escribir donde corresponde.
         inputCodigo?.focus();
     };
 
@@ -2594,6 +2596,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                     empleadoActual = null;
                     mostrarBadgeEmpleado(false, '');
                 }
+                pintarCodigo('fv-empleado-codigo', data.success ? 'ok' : 'error');
             } catch {
                 empleadoActual = null;
                 ocultarBadgeEmpleado();
@@ -3211,8 +3214,9 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                     return;
                 }
 
-                // Éxito → abrir tirilla y dejar el POS listo para una nueva orden
-                window.open(`/store/facturas/${data.idFacturaCliente}/tirilla`, '_blank');
+                // Éxito → imprimir la tirilla sin salir del POS (imprimirPdf.js) y dejarlo
+                // listo para una nueva orden.
+                imprimirPdf(`/store/facturas/${data.idFacturaCliente}/tirilla`, { alTerminar: () => inputCodigo?.focus() });
                 cerrarFV();
                 cart.clear();
                 packsEnOrden.clear();

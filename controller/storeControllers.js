@@ -15,6 +15,7 @@ import {
 import { Op, fn, col, literal } from 'sequelize';
 import { sincronizarReservas, liberarReservas, demandaDeOtrosJson, ajustarPorStock, reconciliarPorVenta } from '../helpers/reservasCarrito.js';
 import { validarDescripcionEgreso } from '../helpers/descripcionEgreso.js';
+import { listarSubcuentasPuc, subcuentaPucValida, MENSAJE_PUC_REQUERIDA, INCLUDE_PUC, etiquetaPuc } from '../helpers/pucEgresos.js';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { fileURLToPath } from 'url';
@@ -3234,20 +3235,25 @@ const getExpensesPage = async (req, res) => {
     //
     // Una cuenta inactiva no aparece: el perfil de la cuenta ya bloquea sus movimientos,
     // así que ofrecerla acá sería ofrecer un destino que después rechaza el asiento.
-    const cuentas = await CajasYBancos.findAll({
-        where: { estado: true },
-        attributes: ['idCajaBanco', 'nombreCajaBanco', 'tipo', 'referencia'],
-        // Cajas primero: consignar de un cajón a otro es lo más frecuente y lo más
-        // inmediato. Un ORDER BY alfabético dejaba 'banco' arriba de 'caja'.
-        order: [[literal("FIELD(tipo, 'caja', 'banco', 'billetera')"), 'ASC'], ['nombreCajaBanco', 'ASC']],
-        raw: true
-    });
+    const [cuentas, gruposPuc] = await Promise.all([
+        CajasYBancos.findAll({
+            where: { estado: true },
+            attributes: ['idCajaBanco', 'nombreCajaBanco', 'tipo', 'referencia'],
+            // Cajas primero: consignar de un cajón a otro es lo más frecuente y lo más
+            // inmediato. Un ORDER BY alfabético dejaba 'banco' arriba de 'caja'.
+            order: [[literal("FIELD(tipo, 'caja', 'banco', 'billetera')"), 'ASC'], ['nombreCajaBanco', 'ASC']],
+            raw: true
+        }),
+        // Subcuentas del PUC para clasificar el gasto.
+        listarSubcuentasPuc()
+    ]);
 
     return res.render('./tienda/storebehivors/expenses', {
         pagina: 'Egresos',
         csrfToken: req.csrfToken(),
         currentPath: '/storebehivors/expenses',
-        cuentas
+        cuentas,
+        gruposPuc
     });
 };
 
@@ -3289,7 +3295,10 @@ const cuadrarCajaPage = async (req, res) => {
     return res.render('./tienda/storebehivors/cuadrarCaja', {
         pagina: 'Cuadre de Caja',
         csrfToken: req.csrfToken(),
-        currentPath: '/storebehivors/'
+        currentPath: '/storebehivors/',
+        // Para el egreso olvidado, que pasa por el mismo endpoint que el formulario de
+        // egresos y exige la misma cuenta PUC.
+        gruposPuc: await listarSubcuentasPuc()
     });
 };
 
@@ -3988,6 +3997,14 @@ const crearEgreso = async (req, res) => {
     const metodo = metodoPago === 'Electronico' ? 'Electronico' : 'Efectivo';
     let cuentaDestino = null;
 
+    // Un gasto se clasifica en una subcuenta del PUC, y es obligatoria. Una transferencia
+    // no la lleva: la plata no se gastó, cambió de cuenta.
+    let puc = null;
+    if (metodo === 'Efectivo') {
+        puc = await subcuentaPucValida(req.body.idPucEgreso);
+        if (!puc) return res.status(422).json({ success: false, mensaje: MENSAJE_PUC_REQUERIDA });
+    }
+
     if (metodo === 'Electronico') {
         if (!idCajaBanco) {
             return res.status(400).json({ success: false, mensaje: 'Indicá a qué cuenta se transfiere.' });
@@ -4044,6 +4061,7 @@ const crearEgreso = async (req, res) => {
             descripcion: desc.valor,
             metodoPago: metodo,
             idCajaBanco: cuentaDestino?.idCajaBanco || null,
+            idPucEgreso: puc?.id ?? null,
             tipo: tipoEgreso,
             estado: 'pendiente'
         }, { transaction: t }));
@@ -4060,7 +4078,8 @@ const crearEgreso = async (req, res) => {
                 empleado: { PrimerNombre: empleado.nombre },
                 cajaBancoDestino: cuentaDestino
                     ? { nombreCajaBanco: cuentaDestino.nombreCajaBanco, referencia: cuentaDestino.referencia }
-                    : null
+                    : null,
+                pucEgreso: puc
             }),
             egresosHoy:   totales.egresos,
             trasladosHoy: totales.traslados
@@ -4349,13 +4368,17 @@ const filaEgreso = (e) => {
             ? (destino.referencia
                 ? `${tituloLista(destino.nombreCajaBanco)} — ${destino.referencia}`
                 : tituloLista(destino.nombreCajaBanco))
-            : null
+            : null,
+        // La subcuenta del PUC en la que se clasificó el gasto. Nula en las
+        // transferencias y en lo registrado antes de la clasificación.
+        puc:         etiquetaPuc(e.pucEgreso)
     };
 };
 
 const INCLUDES_EGRESO = [
     { model: Empleados,    as: 'empleado',         attributes: ['PrimerNombre', 'PrimerApellido'],       required: false },
-    { model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco', 'referencia'],        required: false }
+    { model: CajasYBancos, as: 'cajaBancoDestino', attributes: ['nombreCajaBanco', 'referencia'],        required: false },
+    INCLUDE_PUC
 ];
 
 const getEgresosJSON = async (req, res) => {
@@ -5436,6 +5459,7 @@ export {
     getCuadrePDF,
     _generarPDFCuadre,
     _calcularTransaccionesCaja,
+    _efectivoDisponibleParaTraslado,
     getSalesPage,
     getVentasMes,
     getDetalleDia,

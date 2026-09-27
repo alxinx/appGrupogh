@@ -1,3 +1,4 @@
+import { pintarCodigo } from './codigoCajitas.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { montarHistorialTraslado, fmtFechaHora, chipCodigo } from './historialTraslado.js';
 import { pillEstadoTraslado } from './estadoTraslado.js';
@@ -343,8 +344,10 @@ import { pillEstadoTraslado } from './estadoTraslado.js';
                 codigoValido = !!d.success;
                 mBtnRecibir.disabled = !codigoValido;
                 marcarCodigo(d.success ? 'text-emerald-600' : 'text-rose-500', d.success ? `✓ ${d.nombre}` : (d.mensaje || 'Código inválido.'));
+                pintarCodigo(mCodigo, d.success ? 'ok' : 'error');
             } catch {
                 marcarCodigo('text-rose-500', 'No se pudo verificar el código.');
+                pintarCodigo(mCodigo, 'error');
             }
         }, 400);
     });

@@ -134,6 +134,13 @@ style.
     .gh-conf-campo + .gh-conf-campo-label,
     .gh-conf-estado + .gh-conf-campo-label { margin-top: 0.875rem; }
     .gh-conf-campo-label .gh-conf-opcional { font-weight: 500; color: #94A3B8; }
+    /* Un campo debajo del detalle y el aviso (la ventana de un movimiento de caja o banco)
+       se alinea con ellos y con los botones, que van a 1.75rem y no a 1.5rem: si no, el
+       input sobresale unos píxeles de la columna que forman el aviso y los botones. */
+    .gh-conf-aviso ~ .gh-conf-campo { padding: 0 1.75rem; }
+    .gh-conf-aviso ~ .gh-conf-campo-label,
+    .gh-conf-aviso ~ .gh-conf-estado { margin-left: 1.75rem; margin-right: 1.75rem; }
+    .gh-conf-aviso + .gh-conf-campo-label { margin-top: 1.125rem; }
     textarea.gh-conf-input { resize: none; line-height: 1.45; font-family: inherit; }
     /* El select pierde la flecha del sistema —que cambia con cada navegador— y lleva la
        misma del resto de la ventana, dibujada, del gris de los textos secundarios. */
@@ -256,6 +263,9 @@ style.
         .gh-conf-total    { padding: 0.75rem 1.25rem; }
         .gh-conf-campo    { padding: 0 1.25rem; }
         .gh-conf-campo-label, .gh-conf-estado { margin-left: 1.25rem; margin-right: 1.25rem; }
+        .gh-conf-aviso ~ .gh-conf-campo { padding: 0 1.25rem; }
+        .gh-conf-aviso ~ .gh-conf-campo-label,
+        .gh-conf-aviso ~ .gh-conf-estado { margin-left: 1.25rem; margin-right: 1.25rem; }
         /* Apilados, y con Volver abajo: la acción que no se puede deshacer queda
            lejos del pulgar. `flex: 1` crece en el eje de la columna, así que el
            ancho hay que pedirlo aparte. */

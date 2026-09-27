@@ -1,6 +1,8 @@
 extends ../../layout/index
 
 block contenedor
+    //- Arriba de todo: Pug define los mixins en orden y el formulario lo usa más abajo.
+    include ../../components/selectPucEgreso
     div(class="fixed inset-0 flex" style="background:#F4E8FF")
         include ../partials/leftMenu
 
@@ -166,6 +168,13 @@ block contenedor
                                     p#egr-error-valor(class="hidden text-[10px] font-bold text-red-500 mt-1")
 
 
+                                //- En qué subcuenta del PUC se clasifica el gasto. Obligatoria en un
+                                //- egreso; una transferencia no la lleva (la plata no se gastó, cambió
+                                //- de cuenta), así que storeEgresos.js oculta el bloque en ese modo.
+                                div#egr-bloque-puc(class="space-y-1")
+                                    label(for="egr-puc" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") Cuenta PUC *
+                                    +selectPucEgreso({ id: 'egr-puc', grupos: gruposPuc, clases: 'w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all' })
+
                                 div#egr-bloque-entidad(class="space-y-1 hidden")
                                     label(for="egr-entidad" class="text-xs font-bold text-slate-500 uppercase tracking-wider block") ¿Con qué cuenta? *
                                     select#egr-entidad(class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-all")
@@ -236,6 +245,7 @@ block contenedor
                                         input(
                                             type="password"
                                             id="egr-empleado"
+                                            data-codigo-empleado
                                             placeholder="Ej: 00123"
                                             maxlength="5"
                                             autocomplete="one-time-code"
@@ -395,7 +405,7 @@ block contenedor
 
         /* A dónde fue la plata va en su propia línea: encadenarlo con un separador deja
            el punto medio colgando al final del renglón cuando la línea se parte. */
-        .egr-destino {
+        .egr-destino, .egr-puc {
             display: flex; align-items: center; gap: 0.25rem;
             margin-top: 0.1875rem; font-size: 0.6875rem; color: #64748B;
         }

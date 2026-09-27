@@ -74,6 +74,15 @@ const MovimientosCajasBancos = db.define('MOVIMIENTOS_CAJAS_BANCOS', {
         }
     },
 
+    // Subcuenta del PUC de egresos en la que se clasifica un egreso. Nula en los ingresos
+    // y en los egresos anteriores a la clasificación; para los egresos manuales nuevos la
+    // exige el servidor (crearMovimientoCuenta).
+    idPucEgreso: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'PUC_EGRESOS', key: 'id' }
+    },
+
     // DECIMAL, nunca FLOAT: es dinero. El signo lo da `tipo`, así que el valor siempre
     // es positivo — un "egreso de -5000" sería un ingreso disfrazado y rompería
     // cualquier suma por tipo.

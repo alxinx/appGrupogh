@@ -1,3 +1,5 @@
+import { campoCodigoEmpleado, codigoRequerido, pintarCodigo } from './codigoCajitas.js';
+import { imprimirPdf } from './imprimirPdf.js';
 // Panel de estado de crédito de un cliente (views/administrador/customers/views/creditoCliente.pug).
 // window.fmtCOP, window.initMoneyInput, window.parseMoney y el interceptor de logout de
 // fetch (data.logout === true) ya los trae helpers.js; window.valorEnLetras lo trae
@@ -77,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const setEstado = (tipo, texto) => {
             estado.style.color = tipo === 'ok' ? '#10b981' : tipo === 'error' ? '#f43f5e' : '#94a3b8';
             estado.textContent = texto;
+            pintarCodigo(input, tipo === 'info' ? null : tipo);
         };
 
         let timer = null;
@@ -134,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         Código del empleado que autoriza:
                     </p>
                     <div style="padding: 0 1.75rem;">
-                        <input id="gh-input-codigo-aumentar" type="password" placeholder="Código de empleado" autocomplete="off"
+                        <input id="gh-input-codigo-aumentar" data-codigo-empleado type="password" placeholder="Código de empleado" autocomplete="off"
                                style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; outline:none;" />
                     </div>
                     <p id="gh-estado-codigo-aumentar" style="text-align:left; font-size:11.5px; font-weight:600; margin:6px 1.75rem 0; min-height:14px;"></p>
@@ -267,11 +270,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p style="text-align:left; font-size:12px; color:#64748b; margin:1.125rem 1.75rem 4px;">
                         Código del empleado que autoriza:
                     </p>
+                    ${campoCodigoEmpleado('gh-codigo-suspender')}
                 </div>`,
-            input: 'password',
-            inputPlaceholder: 'Código de empleado',
-            inputAttributes: { autocomplete: 'off', 'aria-label': 'Código de empleado', style: 'margin: 0 1.75rem; width: calc(100% - 3.5rem);' },
-            inputValidator: (v) => (!v || !v.trim()) && 'Ingresá el código del empleado.',
+            preConfirm: () => codigoRequerido('gh-codigo-suspender'),
             showCancelButton: true,
             confirmButtonText: 'Suspender crédito',
             cancelButtonText: 'Volver',
@@ -374,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <p style="text-align:left; font-size:12px; font-weight:600; color:#64748b; margin:1.125rem 1.75rem 8px;">Código del empleado que recibe:</p>
                     <div style="padding: 0 1.75rem;">
-                        <input id="gh-input-codigo-abono" type="password" placeholder="Código de empleado" autocomplete="off"
+                        <input id="gh-input-codigo-abono" data-codigo-empleado type="password" placeholder="Código de empleado" autocomplete="off"
                                style="width:100%; box-sizing:border-box; padding:12px 14px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; outline:none;" />
                     </div>
                     <p id="gh-estado-codigo-abono" style="text-align:left; font-size:11.5px; font-weight:600; margin:6px 1.75rem 0; min-height:14px;"></p>
@@ -504,10 +505,10 @@ document.addEventListener('DOMContentLoaded', () => {
     //   · Ingreso → que esa plata quedó asentada en el libro de la caja o el banco.
     //
     // Son documentos distintos y los dos hacen falta: el primero lo firma el cliente, el
-    // segundo es el respaldo contable de la cuenta. Se abren en pestaña nueva porque los
-    // endpoints los sirven inline, listos para imprimir.
+    // segundo es el respaldo contable de la cuenta. Se imprimen sin salir de la pantalla
+    // (imprimirPdf.js), y se espera a que terminen: quien llama recarga después, y la
+    // recarga cancelaría la impresión.
     const confirmarConComprobantes = async ({ titulo, texto, idAbono, idMovimiento }) => {
-        const abrir = (url) => window.open(url, '_blank', 'noopener');
 
         const r = await Swal.fire({
             icon: 'success',
@@ -516,8 +517,8 @@ document.addEventListener('DOMContentLoaded', () => {
                    <p style="font-size:12.5px;color:#94a3b8;margin:0;">Se generaron dos comprobantes.</p>`,
             showDenyButton: !!idMovimiento,
             showCancelButton: true,
-            confirmButtonText: 'Comprobante de abono',
-            denyButtonText: 'Comprobante de ingreso',
+            confirmButtonText: 'Imprimir comprobante de abono',
+            denyButtonText: 'Imprimir comprobante de ingreso',
             cancelButtonText: 'Cerrar',
             reverseButtons: true,
             buttonsStyling: false,
@@ -529,8 +530,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        if (r.isConfirmed && idAbono)      abrir(`/admin/api/clientes/abonos/${idAbono}/tirilla`);
-        if (r.isDenied    && idMovimiento) abrir(`/admin/bankentities/movimientos/${idMovimiento}/tirilla`);
+        if (r.isConfirmed && idAbono)      await imprimirPdf(`/admin/api/clientes/abonos/${idAbono}/tirilla`);
+        if (r.isDenied    && idMovimiento) await imprimirPdf(`/admin/bankentities/movimientos/${idMovimiento}/tirilla`);
     };
 
     document.querySelectorAll('.btn-abonar-factura').forEach(btn => {

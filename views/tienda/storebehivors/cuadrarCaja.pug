@@ -1,6 +1,14 @@
 extends ../../layout/index
 
 block contenedor
+    //- Arriba de todo: Pug define los mixins en orden y la plantilla de abajo lo usa.
+    include ../../components/selectPucEgreso
+    include ../../components/modalConfirmacion
+    //- El selector de cuenta PUC del egreso olvidado. La ventana la arma storeCuadrarCaja.js
+    //- en el navegador, así que el <select> se renderiza acá —con el mismo mixin que el
+    //- formulario de egresos— y la ventana lo copia de esta plantilla al abrirse.
+    template#tpl-puc-egreso
+        +selectPucEgreso({ id: 'me-puc', grupos: gruposPuc, clases: 'gh-conf-input' })
     div(class="fixed inset-0 flex" style="background:#F4E8FF")
         include ../partials/leftMenu
 
@@ -351,7 +359,7 @@ block contenedor
                                 div(class="flex-1 min-w-0")
                                     label(for="cc-codigo-empleado" class="cc-label block mb-1.5") Código del vendedor / autorización
                                     div(class="relative")
-                                        input#cc-codigo-empleado(
+                                        input#cc-codigo-empleado(data-codigo-empleado 
                                             type="password"
                                             placeholder="Ingresa tu código"
                                             maxlength="10"

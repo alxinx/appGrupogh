@@ -16,14 +16,44 @@ block contenedor
                                 include  ./headers/headerStore.pug
                                 include  ./headers/actionBtns.pug
 
-                            //- STATS — 6 cards en 2 filas × 3 columnas
-                            div(class="col-span-12 grid grid-cols-2 md:grid-cols-3 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+                            //- STATS — 8 tarjetas en 2 filas × 4 columnas, todas del día elegido
+                            //- en el selector de arriba (adminStoreStats.js). Hoy se actualizan
+                            //- en vivo; un día pasado queda fijo.
+                            div(class="col-span-12 grid grid-cols-2 md:grid-cols-4 gap-4 border-b-1 pb-4 border-dotted border-b-gray-400")
+
+                                //- Selector del día. Va a lo ancho de la grilla y sin tarjeta: es
+                                //- el encabezado de la franja, no un dato más.
+                                div(class="col-span-2 md:col-span-4 flex flex-wrap items-center justify-between gap-3 pb-1")
+                                    div(class="min-w-0")
+                                        h2(class="text-lg font-semibold text-slate-800 tracking-tight") Resumen del día
+                                        div(class="flex items-center gap-2 mt-0.5")
+                                            p(id="stats-dia-texto" class="text-sm text-slate-500 first-letter:uppercase") —
+                                            //- Solo con hoy elegido: dice que las cifras se mueven solas.
+                                            //- `hidden` va en este contenedor y no junto a `inline-flex`: en el CSS
+                                            //- compilado inline-flex gana y el aviso no se ocultaba en un día pasado.
+                                            span(id="stats-en-vivo" class="hidden")
+                                                span(class="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full")
+                                                    span(class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse")
+                                                    | En vivo
+
+                                    div(class="flex items-center gap-2")
+                                        div(class="flex items-center gap-0.5 bg-white border border-gh-grayBorder rounded-gh p-1 shadow-sm")
+                                            button(type="button" id="stats-dia-anterior" aria-label="Día anterior" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-gh-primarySoft hover:text-gh-primaryHover focus-visible:outline-2 focus-visible:outline-gh-primary transition-colors cursor-pointer")
+                                                i(class="fi fi-rr-angle-small-left text-base leading-none")
+                                            label(for="stats-fecha" class="sr-only") Día a consultar
+                                            input(type="date" id="stats-fecha" class="h-8 px-2 text-sm font-semibold text-slate-700 bg-transparent rounded-lg tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-gh-primary/40 cursor-pointer" style="accent-color: var(--color-gh-primaryHover)")
+                                            button(type="button" id="stats-dia-siguiente" aria-label="Día siguiente" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-gh-primarySoft hover:text-gh-primaryHover focus-visible:outline-2 focus-visible:outline-gh-primary transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-500")
+                                                i(class="fi fi-rr-angle-small-right text-base leading-none")
+                                        button(type="button" id="stats-hoy" class="btn btn-secondary disabled:opacity-40 disabled:cursor-not-allowed") Hoy
+
                                 include ./stats/dailySales.pug
                                 include ./stats/cashRegister.pug
                                 include ./stats/debitAndCardRegister.pug
                                 include ./stats/wallets.pug
                                 include ./stats/creditEntity.pug
                                 include ./stats/creditCard.pug
+                                include ./stats/egresosTraslados.pug
+                                include ./stats/efectivoDisponible.pug
 
                             div(class="col-span-12 grid grid-cols-12 items-start")
                                 //COLUMNA 1
@@ -51,7 +81,7 @@ block contenedor
                     p(class="text-sm text-slate-400 text-center py-6") Cargando...
                 div(class="px-6 py-4 border-t border-gray-100 flex items-center justify-between")
                     span(class="text-xs text-slate-500")
-                        | Total:
+                        | Total: 
                         strong#modalPagosTotal(class="text-slate-800") —
                     button.cerrar-modal-pagos(class="px-4 py-2 bg-gh-primary text-white rounded-xl text-sm font-semibold hover:bg-gh-primaryHover transition-colors") Cerrar
 

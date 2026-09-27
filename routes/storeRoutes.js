@@ -71,6 +71,7 @@ import verificarPermisoEmpleado   from '../middlewares/verificarPermisoEmpleado.
 import verificarPermisoSesion     from '../middlewares/verificarPermisoSesion.js';
 import apiRateLimit from '../middlewares/apiRateLimit.js';
 import uploadMixed from '../middlewares/uploadMixed.js';
+import { permitirMarcoPropio } from '../middlewares/cabecerasSeguridad.js';
 
 const routes = express.Router();
 const csrfProtection = csrf({ cookie: true });
@@ -100,7 +101,7 @@ routes.post('/clientes/:idCliente/abono-global',
     verificarCodigoEmpleado,
     verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
     abonoGlobalClienteStore);
-routes.get('/clientes/:idCliente/abono/:loteAbonoGlobal/voucher', getVoucherAbonoPDF);
+routes.get('/clientes/:idCliente/abono/:loteAbonoGlobal/voucher', permitirMarcoPropio, getVoucherAbonoPDF);
 routes.get('/inventario/perfilProducto/:idProducto', csrfProtection, getPerfilProducto);
 
 // SSE (sin CSRF — es GET long-lived)
@@ -164,7 +165,10 @@ routes.post('/caja/abrir', csrfProtection, verificarCodigoEmpleado, verificarPer
 
 // Facturas
 routes.post('/facturas/procesar', csrfProtection, verificarPermisoSesion('Pos de venta', 'vendedor', 'CREATE'), procesarFactura);
-routes.get('/facturas/:id/tirilla', getTirillaPDF);
+// `permitirMarcoPropio` (SAMEORIGIN) en los PDF que se imprimen desde un iframe
+// invisible sin abrir pestaña (src/js/imprimirPdf.js): esta tirilla y, más abajo, el
+// voucher de abono, el comprobante de egreso y el de transferencia.
+routes.get('/facturas/:id/tirilla', permitirMarcoPropio, getTirillaPDF);
 
 // Storebehivors — cuadre de caja
 routes.get('/storebehivors/', csrfProtection, cuadrarCajaPage);
@@ -182,7 +186,7 @@ routes.get('/storebehivors/expenses', csrfProtection, getExpensesPage);
 routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
 routes.get('/storebehivors/expenses/efectivo-disponible', getEfectivoDisponible);
 routes.get('/storebehivors/expenses/json', getEgresosJSON);
-routes.get('/storebehivors/expenses/:idEgreso/pdf', getEgresoComprobantePDF);
+routes.get('/storebehivors/expenses/:idEgreso/pdf', permitirMarcoPropio, getEgresoComprobantePDF);
 routes.post('/storebehivors/expenses/crear', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), crearEgreso);
 
 // Traslado de efectivo a una caja o cuenta del negocio. Ruta aparte del egreso normal
@@ -199,7 +203,7 @@ routes.post('/storebehivors/expenses/traslado',
     verificarCodigoEmpleado,
     verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
     crearTrasladoEfectivo);
-routes.get('/storebehivors/expenses/traslado/:idTraslado/pdf', getTrasladoEfectivoPDF);
+routes.get('/storebehivors/expenses/traslado/:idTraslado/pdf', permitirMarcoPropio, getTrasladoEfectivoPDF);
 
 // Avisos de traslados que no entraron completos. Se consultan al cargar cualquier
 // pantalla de la tienda: el evento SSE solo llega si el navegador estaba abierto, y esto
