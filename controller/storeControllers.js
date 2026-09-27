@@ -49,6 +49,7 @@ import { resolverPacksParaVenta, buscarPacksVendibles } from '../helpers/packsVe
 import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, pagosATransBucket, creditoClienteResumen, financiadoPorFactura, METODOS_ABONO, METODOS_ABONO_CON_ENTIDAD } from '../helpers/abonosCredito.js';
 import { round2 as _round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
+import { TIPOS_DOC_CLIENTE, resolverUbicacionDane, toPascal } from '../helpers/clientes.js';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
 
@@ -1965,12 +1966,8 @@ const getMunicipiosStoreJSON = async (req, res) => {
     }
 };
 
-// Mismo set que CLIENTES.tipoDocumento (ENUM).
-const TIPOS_DOC_CLIENTE = ['CC', 'CE', 'TI', 'NIT', 'PP', 'PPT', 'PEP'];
-
 const guardarCliente = async (req, res) => {
     const {
-        idCliente: idClienteExistente,
         tipo_persona: tipo_personaRaw,
         tipoDocumento, numero_doc, digito_verif,
         razon_social, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
@@ -1978,7 +1975,7 @@ const guardarCliente = async (req, res) => {
         regimen_fiscal, responsabilidad_fiscal,
         gran_contribuyente, autorretenedor, agente_retencion, obligado_aduanero,
         ciiu, descripcion_ciiu, fecha_rut,
-        idDepartamento, nombreDepartamento, idMunicipio, nombreMunicipio, direccion
+        idDepartamento, idMunicipio, direccion
     } = req.body;
 
     if (!tipoDocumento || !numero_doc) {
@@ -1988,55 +1985,94 @@ const guardarCliente = async (req, res) => {
         return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido.' });
     }
 
+    // Departamento y ciudad son obligatorios y se validan contra el DANE ANTES de abrir la
+    // transacción: un cliente sin ellos no se registra. Los nombres salen del catálogo, no
+    // del texto del select que manda el navegador.
+    let ubicacion;
+    try {
+        ubicacion = await resolverUbicacionDane(idDepartamento, idMunicipio);
+    } catch (e) {
+        console.error('guardarCliente – ubicación:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al validar la ubicación.' });
+    }
+    if (!ubicacion.ok) return res.status(400).json({ success: false, mensaje: ubicacion.mensaje });
+
+    // Si el documento ya existe, la tienda EDITA; si no, CREA. Se resuelve antes de abrir
+    // la transacción porque de eso depende qué campos se aceptan.
+    let existente;
+    try {
+        existente = await Clientes.findOne({ where: { numero_doc: numero_doc.trim() } });
+    } catch (e) {
+        console.error('guardarCliente – búsqueda:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al buscar el cliente.' });
+    }
+
+    // El Cliente Genérico es el de las ventas sin factura: no se renombra desde una caja.
+    if (existente?.idCliente === '0') {
+        return res.status(400).json({ success: false, mensaje: 'El Cliente Genérico no se puede modificar.' });
+    }
+
+    // La edición desde la tienda solo toca nombre, email, ciudad y dirección. El resto
+    // (tipo y número de documento, teléfono, datos tributarios, RUT) es del administrador:
+    // se ignora aunque venga en el body, porque el bloqueo del modal es solo comodidad.
+    // Qué campos son "el nombre" lo decide el cliente guardado, no la pestaña del modal, y
+    // con la misma regla con la que el modal elige la pestaña: un NIT lleva razón social
+    // aunque sea de una persona natural (así se importaron, con los nombres en null).
+    const esEmpresaGuardada = existente?.tipo_persona === 'J' || existente?.tipoDocumento === 'NIT';
+    if (existente) {
+        const nombreVacio = esEmpresaGuardada
+            ? !razon_social?.trim()
+            : (!primer_nombre?.trim() || !primer_apellido?.trim());
+        if (nombreVacio) {
+            return res.status(400).json({
+                success: false,
+                mensaje: esEmpresaGuardada ? 'La razón social es requerida.' : 'El primer nombre y el primer apellido son requeridos.'
+            });
+        }
+    }
+
     const tipo_persona = tipo_personaRaw || (tipoDocumento === 'NIT' ? 'J' : 'N');
     const esEmpresa    = tipo_persona === 'J';
     const toBool       = (v) => v === 'true' || v === true;
-    const toTitle      = (s) => s ? s.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : null;
 
     const t = await db.transaction();
     let idCliente;
+    let guardado;
 
     try {
-        const datosBase = {
-            tipo_persona,
-            tipoDocumento,
-            numero_doc:       numero_doc.trim(),
-            digito_verif:     digito_verif || null,
-            razon_social:     toTitle(razon_social),
-            primer_nombre:    toTitle(primer_nombre),
-            segundo_nombre:   toTitle(segundo_nombre),
-            primer_apellido:  toTitle(primer_apellido),
-            segundo_apellido: toTitle(segundo_apellido),
-            email:            email?.trim().toLowerCase() || null,
-            telefono:         telefono?.trim() || null,
-            activo:           true
-        };
-
-        // Si viene con un idCliente cargado, verificar si el doc sigue siendo el mismo
-        const clienteCargado = (idClienteExistente && idClienteExistente !== '0')
-            ? await Clientes.findOne({ where: { idCliente: idClienteExistente }, attributes: ['idCliente', 'numero_doc'], transaction: t })
-            : null;
-
-        const mismoDoc = clienteCargado && clienteCargado.numero_doc.trim() === numero_doc.trim();
-
-        if (mismoDoc) {
-            // Mismo documento → actualizar el cliente existente
-            await clienteCargado.update(datosBase, { transaction: t });
-            idCliente = clienteCargado.idCliente;
+        if (existente) {
+            const editables = esEmpresaGuardada
+                ? { razon_social: toPascal(razon_social) }
+                : {
+                    primer_nombre:    toPascal(primer_nombre),
+                    segundo_nombre:   toPascal(segundo_nombre),
+                    primer_apellido:  toPascal(primer_apellido),
+                    segundo_apellido: toPascal(segundo_apellido)
+                };
+            editables.email = email?.trim().toLowerCase() || null;
+            await existente.update(editables, { transaction: t });
+            idCliente = existente.idCliente;
+            guardado  = existente;
         } else {
-            // Documento distinto o cliente nuevo → buscar por doc o crear
-            const existente = await Clientes.findOne({ where: { numero_doc: numero_doc.trim() }, transaction: t });
-            if (existente) {
-                await existente.update(datosBase, { transaction: t });
-                idCliente = existente.idCliente;
-            } else {
-                const nuevo = await Clientes.create(datosBase, { transaction: t });
-                idCliente = nuevo.idCliente;
-            }
+            guardado = await Clientes.create({
+                tipo_persona,
+                tipoDocumento,
+                numero_doc:       numero_doc.trim(),
+                digito_verif:     digito_verif || null,
+                razon_social:     toPascal(razon_social),
+                primer_nombre:    toPascal(primer_nombre),
+                segundo_nombre:   toPascal(segundo_nombre),
+                primer_apellido:  toPascal(primer_apellido),
+                segundo_apellido: toPascal(segundo_apellido),
+                email:            email?.trim().toLowerCase() || null,
+                telefono:         telefono?.trim() || null,
+                activo:           true
+            }, { transaction: t });
+            idCliente = guardado.idCliente;
         }
 
-        // Tributario (solo si empresa)
-        if (esEmpresa && regimen_fiscal) {
+        // Tributario (solo al crear, y solo si es empresa)
+        if (!existente && esEmpresa && regimen_fiscal) {
             const tribExist = await ClientesTributario.findOne({ where: { idCliente }, transaction: t });
             // Los códigos llegan como arreglo desde el formulario. Se normalizan a la
             // cadena "O-13,O-15" que guarda la columna, filtrando contra la lista válida:
@@ -2058,7 +2094,7 @@ const guardarCliente = async (req, res) => {
                 agente_retencion:   toBool(agente_retencion),
                 obligado_aduanero:  toBool(obligado_aduanero),
                 ciiu:               ciiu || null,
-                descripcion_ciiu:   toTitle(descripcion_ciiu),
+                descripcion_ciiu:   toPascal(descripcion_ciiu),
                 fecha_rut:          fecha_rut || null
             };
             if (tribExist) {
@@ -2068,16 +2104,16 @@ const guardarCliente = async (req, res) => {
             }
         }
 
-        // Ubicación
-        if (idDepartamento || direccion) {
+        // Ubicación (ya validada contra el DANE arriba: siempre hay depto y ciudad)
+        {
             const ubExist = await ClientesUbicacion.findOne({ where: { idCliente, es_principal: true }, transaction: t });
             const ubData = {
-                idDepartamento:    idDepartamento || null,
-                nombreDepartamento: nombreDepartamento || null,
-                idMunicipio:       idMunicipio || null,
-                nombreMunicipio:   nombreMunicipio || null,
-                direccion:         direccion || null,
-                es_principal:      true
+                idDepartamento:     ubicacion.idDepartamento,
+                nombreDepartamento: ubicacion.nombreDepartamento,
+                idMunicipio:        ubicacion.idMunicipio,
+                nombreMunicipio:    ubicacion.nombreMunicipio,
+                direccion:          direccion?.trim() || null,
+                es_principal:       true
             };
             if (ubExist) {
                 await ubExist.update(ubData, { transaction: t });
@@ -2086,8 +2122,8 @@ const guardarCliente = async (req, res) => {
             }
         }
 
-        // RUT
-        if (req.file) {
+        // RUT (solo al crear: sobre un cliente existente lo carga el administrador)
+        if (!existente && req.file) {
             const file = req.file;
             const ext  = file.originalname.split('.').pop().toLowerCase();
             const isImage = file.mimetype.startsWith('image/');
@@ -2119,22 +2155,25 @@ const guardarCliente = async (req, res) => {
         }
 
         await t.commit();
-
-        const nombreDisplay = esEmpresa
-            ? (razon_social || `${primer_nombre || ''} ${primer_apellido || ''}`.trim())
-            : `${primer_nombre || ''} ${primer_apellido || ''}`.trim();
-
-        return res.json({
-            success: true,
-            idCliente,
-            nombre:    nombreDisplay,
-            documento: `${tipoDocumento} ${numero_doc.trim()}`
-        });
     } catch (e) {
-        await t.rollback();
+        if (!t.finished) await t.rollback().catch(() => {});
         console.error('guardarCliente:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al guardar el cliente.' });
     }
+
+    // Lo que se muestra sale de lo guardado, no del body: en una edición el tipo y el
+    // documento son los del cliente, aunque el navegador haya mandado otros.
+    const nombreDisplay = (guardado.tipo_persona === 'J' || guardado.tipoDocumento === 'NIT')
+        ? (guardado.razon_social || `${guardado.primer_nombre || ''} ${guardado.primer_apellido || ''}`.trim())
+        : `${guardado.primer_nombre || ''} ${guardado.primer_apellido || ''}`.trim();
+
+    return res.json({
+        success:   true,
+        idCliente,
+        editado:   Boolean(existente),
+        nombre:    nombreDisplay,
+        documento: `${guardado.tipoDocumento} ${guardado.numero_doc}`
+    });
 };
 
 const getEntidadesJSON = async (req, res) => {

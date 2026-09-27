@@ -1,4 +1,6 @@
 extends ../../layout/index
+
+include ../../components/cristalBloqueo
 block contenedor
     //- Arriba de todo: Pug define los mixins en orden y el formulario lo usa más abajo.
     include ../../components/selectPucEgreso
@@ -255,6 +257,12 @@ block contenedor
                                         ) Cargar más
 
                                 //- REGISTRAR MOVIMIENTO
+                                //- `puedeAdmin` lo expone middlewares/permisosAdmin.js para todas
+                                //- las vistas del panel. Si faltara, se asume que sí puede: esto es
+                                //- comodidad, y quien decide de verdad es pBan('CREATE') en la ruta.
+                                //- Mismo criterio que views/partials/leftMenu.pug.
+                                - const puedeCrearMovimiento = typeof puedeAdmin === 'function' ? puedeAdmin('Bancos', 'CREATE') : true
+
                                 //- El resplandor del borde sigue al tipo elegido: verde para
                                 //- ingreso, rojo para egreso. Es la señal de qué se va a
                                 //- registrar, visible sin leer los botones.
@@ -262,8 +270,20 @@ block contenedor
                                 //- confirmación muestra contra qué cuenta se va a asentar y en
                                 //- cuánto queda: con varias cajas abiertas en pestañas, equivocarse
                                 //- de cuenta es el error fácil de cometer y difícil de deshacer.
+                                //- `bloqueo-anfitrion` da el position:relative que ancla el cristal
+                                //- —la misma clase que usa el POS— y va por cualquiera de los dos
+                                //- motivos. `overflow-hidden` para que respete las esquinas.
+                                - const formularioSellado = !cuenta.estado || !puedeCrearMovimiento
+                                //- `data-requiere-permiso` es lo único que hace falta para que el
+                                //- cristal aparezca o se vaya EN VIVO si le cambian los permisos
+                                //- con la pantalla abierta (src/js/permisosEnVivo.js). El servidor
+                                //- pinta el estado inicial; esto cubre lo que pase después.
                                 div#card-movimiento(
-                                    class=`bg-white rounded-2xl p-6 border transition-all duration-300 ${cuenta.estado ? '' : 'gh-card-bloqueada'}`
+                                    data-requiere-permiso="Bancos:CREATE"
+                                    data-bloqueo-titulo="Sin permiso para registrar"
+                                    data-bloqueo-texto="Tu usuario puede consultar esta cuenta, pero no registrar ingresos ni egresos."
+                                    data-bloqueo-pista="Lo habilita un administrador en Personal."
+                                    class=`bg-white rounded-2xl p-6 border transition-all duration-300 ${formularioSellado ? 'bloqueo-anfitrion overflow-hidden' : ''}`
                                     data-saldo=resumen.saldo
                                     data-cuenta=cuenta.nombreCajaBanco
                                     data-referencia=cuenta.referencia || ''
@@ -271,27 +291,33 @@ block contenedor
                                     data-cajas=JSON.stringify(cajasDestino || [])
                                     data-activa=cuenta.estado ? '1' : '0'
                                 )
-                                    //- ── CUENTA INACTIVA ───────────────────────────────
-                                    //- El cristal tapa el formulario, pero lo que de verdad lo
-                                    //- inhabilita es `inert`: sin eso los campos se siguen
-                                    //- alcanzando con el tabulador y se puede escribir a ciegas
-                                    //- detrás del velo. Y aun así, la garantía está en el
-                                    //- servidor, que rechaza el movimiento con 422.
-                                    if !cuenta.estado
-                                        div(class="gh-bloqueo")
-                                            div(class="gh-bloqueo-panel")
-                                                div(class="gh-bloqueo-icono")
-                                                    i(class="fi fi-rr-lock")
-                                                p(class="gh-bloqueo-titulo")= `${cuenta.tipo === 'caja' ? 'Caja' : 'Cuenta'} inactiva`
-                                                p(class="gh-bloqueo-texto") No se pueden registrar ingresos ni egresos hasta que se active.
-                                                p(class="gh-bloqueo-pista")
-                                                    i(class="fi fi-rr-edit")
-                                                    | Activala desde "Editar información".
+                                    //- ── FORMULARIO SELLADO ────────────────────────────
+                                    //- Dos motivos distintos usan el MISMO cristal que el POS
+                                    //- cuando la caja está en cuadre (components/cristalBloqueo):
+                                    //- la cuenta está inactiva, o este usuario no puede crear.
+                                    //-
+                                    //- El cristal tapa, pero lo que inhabilita es `inert`: sin eso
+                                    //- los campos se siguen alcanzando con el tabulador y se puede
+                                    //- escribir a ciegas detrás del velo. Y aun así, la garantía
+                                    //- está en el servidor: la cuenta inactiva se rechaza con 422
+                                    //- y la falta de permiso con 403 en pBan('CREATE').
+                                    //-
+                                    //- El permiso manda sobre el estado de la cuenta: a quien no
+                                    //- puede crear no tiene sentido decirle que active la cuenta,
+                                    //- porque activarla pide EDIT, que tampoco va a tener.
+                                    if !puedeCrearMovimiento
+                                        +cristalBloqueo('Sin permiso para registrar',
+                                            'Tu usuario puede consultar esta cuenta, pero no registrar ingresos ni egresos.',
+                                            { pista: 'Lo habilita un administrador en Personal.', iconoPista: 'fi-rr-user-gear' })
+                                    else if !cuenta.estado
+                                        +cristalBloqueo(`${cuenta.tipo === 'caja' ? 'Caja' : 'Cuenta'} inactiva`,
+                                            'No se pueden registrar ingresos ni egresos hasta que se active.',
+                                            { pista: 'Activala desde "Editar información".', iconoPista: 'fi-rr-edit' })
 
                                     h2(class="text-lg font-bold text-slate-800") Registrar movimiento
                                     p(class="text-sm text-slate-400 mb-5") Ingresa un nuevo ingreso o egreso
 
-                                    form#form-movimiento(class="space-y-4" inert=!cuenta.estado)
+                                    form#form-movimiento(class="space-y-4" inert=formularioSellado)
                                         input(type="hidden" name="_csrf" value=csrfToken)
 
                                         //- Ingreso o egreso: define el sentido del movimiento.
@@ -407,51 +433,8 @@ block contenedor
             }
             .gh-form-sellado i { color: #94A3B8; font-size: 0.875rem; flex-shrink: 0; margin-top: 0.0625rem; }
             .gh-form-sellado b { color: #1E293B; }
-            /* ── CUENTA INACTIVA: FORMULARIO SELLADO ───────────────────────── */
-            .gh-card-bloqueada { position: relative; overflow: hidden; }
-
-            .gh-bloqueo {
-                position: absolute; inset: 0; z-index: 5;
-                display: flex; align-items: center; justify-content: center;
-                padding: 1.5rem;
-                /* Vidrio: el desenfoque es fuerte pero el tinte deja pasar la forma del
-                   formulario, así se ve QUÉ está sellado y no solo que hay algo detrás.
-                   El degradado en diagonal imita cómo la luz cae sobre un panel real; un
-                   tinte plano se lee como un velo gris. */
-                background: linear-gradient(148deg, rgb(255 255 255 / 0.58) 0%, rgb(241 245 249 / 0.40) 55%, rgb(255 255 255 / 0.52) 100%);
-                backdrop-filter: blur(14px) saturate(150%);
-                -webkit-backdrop-filter: blur(14px) saturate(150%);
-                /* El filo claro del borde superior es lo que hace leer la capa como vidrio
-                   y no como opacidad: es el reflejo del canto. */
-                box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.85),
-                            inset 0 0 0 1px rgb(255 255 255 / 0.45);
-            }
-
-            /* Sin backdrop-filter (navegadores viejos) el tinte translúcido dejaría el
-               formulario legible detrás. Ahí se cae a un velo casi sólido: se pierde el
-               efecto, no la función. */
-            @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-                .gh-bloqueo { background: rgb(248 250 252 / 0.96); }
-            }
-            .gh-bloqueo-panel {
-                max-width: 17rem; text-align: center;
-                display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
-            }
-            .gh-bloqueo-icono {
-                width: 3.25rem; height: 3.25rem; margin-bottom: 0.25rem;
-                border-radius: 999px; display: grid; place-items: center;
-                background: #FFF1F2; border: 1px solid #FECDD3; color: #9F1239;
-                font-size: 1.125rem;
-                box-shadow: 0 6px 16px -8px rgb(159 18 57 / 0.35);
-            }
-            .gh-bloqueo-titulo { font-size: 1rem; font-weight: 700; color: #1E293B; margin: 0; }
-            .gh-bloqueo-texto  { font-size: 0.8125rem; line-height: 1.5; color: #475569; margin: 0; }
-            .gh-bloqueo-pista {
-                display: inline-flex; align-items: center; gap: 0.375rem;
-                margin: 0.375rem 0 0; padding: 0.375rem 0.625rem;
-                border-radius: 999px; background: #F1F5F9;
-                font-size: 0.6875rem; font-weight: 600; color: #64748B;
-            }
+            /* El cristal que sella este formulario es `.bloqueo-*` de input.css, el
+               mismo del POS. Antes esta vista tenía su propia copia con otro nombre. */
 
             .gh-form-error {
                 margin: 0 1.75rem; padding: 0.625rem 0.75rem;

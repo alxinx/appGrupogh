@@ -1,0 +1,104 @@
+extends ../../layout/index
+block contenedor
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //HEADER
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                div(class="w-full flex flex-col md:flex-row md:items-center md:justify-start gap-6")
+                                    div(class="flex justify-center md:items-center gap-4")
+                                        div(class="w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
+                                            i(class="fi fi-rr-users-alt text-3xl text-white")
+                                    div(class="flex flex-col gap-1")
+                                        h1.h1 #{subPagina}
+                                        div(class="flex items-center gap-2 text-sm text-gray-500 mt-1")
+                                            span Sube el Excel de clientes y creá sus datos, ubicación y régimen
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(href="/admin/configuracion")
+                                        button(class="btn btn-secondary flex items-center gap-2")
+                                            i(class="fi fi-rr-arrow-left")
+                                            | Volver
+                                    a(href="/admin/configuracion/clientes/plantilla" download class="btn btn-secondary flex items-center gap-2")
+                                        i(class="fi fi-rr-download")
+                                        | Descargar plantilla
+
+                            form(id="formImportarClientes" class="col-span-12 grid grid-cols-12 gap-6 items-start mt-4" enctype="multipart/form-data")
+                                input(type="hidden" id="csrfImportarClientes" value=csrfToken)
+
+                                //COLUMNA IZQUIERDA — ARCHIVO
+                                div(class="col-span-12 md:col-span-7 cards cardsWhite grid-cols-1 p-6 flex flex-col gap-4")
+                                    div(class="-mx-6 px-6 pb-3 border-b border-gray-100")
+                                        h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
+                                            i.fi-rr-cloud-upload-alt
+                                            | Archivo Excel
+
+                                    div(class="alert alert-info")
+                                        div(class="alert-icon")
+                                            i.fi-rr-info
+                                        div(class="flex-1")
+                                            p.alert-title Formato esperado
+                                            p.alert-text Una fila por cliente en la hoja <b>Clientes</b>, con el mismo encabezado de la plantilla. Los códigos de departamento y ciudad son DIVIPOLA del DANE. Si no tenés el archivo, usá "Descargar plantilla".
+
+                                    div(class="relative group mt-1")
+                                        input(type="file" id="archivoClientes" name="archivo" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".xlsx,.xlsm")
+                                        div(id="dropzoneClientes" class="inputUpload")
+                                            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-3 text-purple-500")
+                                                i.fi-rr-file-spreadsheet.text-2xl
+                                            span(class="text-sm font-bold text-gray-600") Sube o arrastrá el Excel
+                                            span(class="text-xs text-gray-400 mt-1") .xlsx o .xlsm — un archivo
+
+                                    div(id="resumenClientes" class="hidden")
+
+                                //COLUMNA DERECHA — QUÉ SE VA A HACER
+                                div(class="col-span-12 md:col-span-5 cards cardsWhite grid-cols-1 p-6 flex flex-col gap-4")
+                                    div(class="-mx-6 px-6 pb-3 border-b border-gray-100")
+                                        h2(class="text-base font-semibold text-gray-700 flex items-center gap-2")
+                                            i.fi-rr-list-check
+                                            | Qué se va a crear
+
+                                    //- Las tres tablas que toca un alta de cliente, las mismas que
+                                    //- escribe el formulario del panel — helpers/clientes.js.
+                                    p(class="text-xs text-gray-400 -mt-2") Cada fila del Excel crea un cliente con su régimen tributario y, si trae dirección, su ubicación principal.
+
+                                    div(class="flex flex-col gap-2 text-sm text-gray-600")
+                                        div(class="flex items-start gap-2")
+                                            i(class="fi fi-rr-user text-gh-primaryHover mt-0.5")
+                                            span Datos del cliente: documento, nombres o razón social, correo
+                                        div(class="flex items-start gap-2")
+                                            i(class="fi fi-rr-phone-call text-gh-primaryHover mt-0.5")
+                                            span El teléfono sale de la columna <b>Celular</b>; los fijos no se importan
+                                        div(class="flex items-start gap-2")
+                                            i(class="fi fi-rr-receipt text-gh-primaryHover mt-0.5")
+                                            span Régimen tributario: "Régimen común" es responsable de IVA; vacío, no responsable
+                                        div(class="flex items-start gap-2")
+                                            i(class="fi fi-rr-marker text-gh-primaryHover mt-0.5")
+                                            span Ubicación principal, con el municipio resuelto por su código DANE
+
+                                    div(class="alert alert-warning mt-2")
+                                        div(class="alert-icon bg-amber-500")
+                                            i.fi-rr-info
+                                        div(class="flex-1")
+                                            p.alert-title Un documento, un cliente
+                                            p.alert-text El número de documento es único. Una fila cuyo documento ya exista queda en el informe y no se duplica.
+
+                                    div(class="alert alert-warning")
+                                        div(class="alert-icon bg-amber-500")
+                                            i.fi-rr-shield-check
+                                        div(class="flex-1")
+                                            p.alert-title Los NIT se verifican contra el RUT
+                                            p.alert-text Si el archivo trae la hoja <b>Verificación NIT</b>, un NIT con texto en "Observación" no se importa: su razón social no coincide con la del RUT. Queda en el informe con el motivo.
+
+                                div(class="col-span-12")
+                                    button(type="submit" id="btnImportarClientes" class="btn btn-primary w-full" disabled)
+                                        i.fi-rr-disk
+                                        | Importar clientes
+
+                    script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+                    script(src="/js/importarClientes.js" type="module")

@@ -1,4 +1,5 @@
 import { adminSSE } from './sseCompartido.js';
+import './permisosEnVivo.js';   // sella/libera en vivo lo que declare data-requiere-permiso
 import { activarCajitasCodigo } from './codigoCajitas.js';
 
 // Todo campo de código de empleado del panel se ve en cajitas (ver codigoCajitas.js).

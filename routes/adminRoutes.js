@@ -30,7 +30,7 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR IMPORTACIONES:
-import { formularioImportaciones, procesarImportacionExcel, descargarPlantillaImportacion } from '../controller/importacionesController.js'
+import { formularioImportaciones, procesarImportacionExcel, descargarPlantillaImportacion, formularioImportarClientes, procesarImportacionClientes, descargarPlantillaClientes } from '../controller/importacionesController.js'
 
 
 import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
@@ -272,6 +272,17 @@ routes.post('/configuracion/importaciones',
     uploadExcel.single('archivo'),
     csrfProtection,
     procesarImportacionExcel);
+
+// Importación de clientes desde el export de EFFI. Mismo orden de middlewares que la de
+// productos: multer antes de csrfProtection porque en multipart el body —y con él el token—
+// solo existe después de que multer lo parsea.
+routes.get('/configuracion/clientes', pCfg('READ'), formularioImportarClientes);
+routes.get('/configuracion/clientes/plantilla', pCfg('READ'), descargarPlantillaClientes);
+routes.post('/configuracion/clientes',
+    pCfg('CREATE'),
+    uploadExcel.single('archivo'),
+    csrfProtection,
+    procesarImportacionClientes);
 
 
 routes.get('/frontend', baseFrondend);

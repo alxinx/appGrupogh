@@ -208,6 +208,10 @@
             if (!document.getElementById('numero_doc_empresa')?.value.trim()) return Swal.fire({ icon: 'warning', title: 'Campo requerido', text: 'Ingresa el NIT.', confirmButtonColor: '#EC5FA3' });
         }
 
+        // Departamento y ciudad son obligatorios; el servidor los revalida contra el DANE.
+        if (!deptoSelect?.value)     return Swal.fire({ icon: 'warning', title: 'Campo requerido', text: 'Selecciona el departamento.', confirmButtonColor: '#EC5FA3' });
+        if (!municipioSelect?.value) return Swal.fire({ icon: 'warning', title: 'Campo requerido', text: 'Selecciona el municipio.', confirmButtonColor: '#EC5FA3' });
+
         const fd = new FormData(form);
 
         if (tipoPersona === 'J') {

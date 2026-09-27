@@ -16,7 +16,9 @@ import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
 import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos } from "../models/index.js";
+import { crearClienteCompleto, toPascal, TIPOS_DOC_CLIENTE_NATURAL, resolverUbicacionDane } from '../helpers/clientes.js';
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
+import { avisarCambioDePermisos } from '../helpers/permisosEnVivo.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
 import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
@@ -1516,7 +1518,6 @@ const newCliente = async (req, res) => {
 // Mismo vocabulario que CLIENTES.tipoDocumento (ENUM) y que EMPLEADOS.TipoDocumento —
 // NIT queda fuera porque para persona natural nunca se envía (esEmpresa lo fuerza a NIT
 // más abajo), y así el 400 explica bien qué pasó en vez de dejar que la caiga el ENUM.
-const TIPOS_DOC_CLIENTE_NATURAL = ['CC', 'CE', 'TI', 'PP', 'PPT', 'PEP'];
 
 // ─── NUEVO CLIENTE — GUARDAR ──────────────────────────────────────────────────
 const saveCliente = async (req, res) => {
@@ -1549,9 +1550,15 @@ const saveCliente = async (req, res) => {
         return res.status(500).json({ success: false, mensaje: 'Error al validar el documento.' });
     }
 
-    const toPascal = (str) => str
-        ? str.trim().replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        : null;
+    // Departamento y ciudad son obligatorios y se validan contra el DANE (helpers/clientes.js).
+    let ubicacionDane;
+    try {
+        ubicacionDane = await resolverUbicacionDane(idDepartamento, idMunicipio);
+    } catch (e) {
+        console.error('saveCliente – ubicación:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al validar la ubicación.' });
+    }
+    if (!ubicacionDane.ok) return res.status(400).json({ success: false, mensaje: ubicacionDane.mensaje });
 
     let t = null;
     const uploadedKeys = [];
@@ -1559,10 +1566,11 @@ const saveCliente = async (req, res) => {
     try {
         t = await db.transaction();
 
-        // 1. Crear cliente
-        const cliente = await Clientes.create({
+        // Las tres tablas del alta (cliente + tributario + ubicación) las escribe el helper
+        // que comparte con la importación masiva — helpers/clientes.js.
+        const idCliente = await crearClienteCompleto({
             tipo_persona:     tipo_persona || 'N',
-            tipoDocumento:   esEmpresa ? 'NIT' : (tipoDocumento || 'CC'),
+            tipoDocumento:    esEmpresa ? 'NIT' : (tipoDocumento || 'CC'),
             numero_doc:       numero_doc.trim(),
             digito_verif:     esEmpresa ? (digito_verif?.trim() || null) : null,
             razon_social:     esEmpresa ? toPascal(razon_social) : null,
@@ -1573,15 +1581,6 @@ const saveCliente = async (req, res) => {
             email:            email?.trim().toLowerCase() || null,
             telefono:         telefono?.trim() || null,
             genero:           !esEmpresa ? (genero || null) : null,
-            activo:           true,
-            credito:          false
-        }, { transaction: t });
-
-        const idCliente = cliente.idCliente;
-
-        // 2. Datos tributarios
-        await ClientesTributario.create({
-            idCliente,
             regimen_fiscal:     regimen_fiscal || '49',
             gran_contribuyente: condicion_tributaria === 'gran_contribuyente',
             autorretenedor:     condicion_tributaria === 'autorretenedor',
@@ -1589,26 +1588,16 @@ const saveCliente = async (req, res) => {
             obligado_aduanero:  condicion_tributaria === 'obligado_aduanero',
             ciiu:               ciiu?.trim() || null,
             descripcion_ciiu:   toPascal(descripcion_ciiu),
-            fecha_rut:          fecha_rut || null
-        }, { transaction: t });
-
-        // 3. Ubicación
-        if (idDepartamento || direccion?.trim()) {
-            const [deptoRow, munRow] = await Promise.all([
-                idDepartamento ? Departamentos.findOne({ where: { id: idDepartamento }, raw: true }) : null,
-                idMunicipio    ? Municipios.findOne({ where: { id: idMunicipio }, raw: true })        : null
-            ]);
-            await ClientesUbicacion.create({
-                idCliente,
-                idDepartamento:     idDepartamento || null,
-                nombreDepartamento: deptoRow?.nombre || null,
-                idMunicipio:        idMunicipio || null,
-                nombreMunicipio:    munRow?.nombre || null,
-                direccion:          toPascal(direccion),
-                codigo_postal:      codigo_postal?.trim() || null,
-                es_principal:       true
-            }, { transaction: t });
-        }
+            fecha_rut:          fecha_rut || null,
+            ubicacion: {
+                idDepartamento:     ubicacionDane.idDepartamento,
+                nombreDepartamento: ubicacionDane.nombreDepartamento,
+                idMunicipio:        ubicacionDane.idMunicipio,
+                nombreMunicipio:    ubicacionDane.nombreMunicipio,
+                direccion:     toPascal(direccion),
+                codigo_postal: codigo_postal?.trim() || null
+            }
+        }, t);
 
         // 4. Documentos (solo si vienen archivos)
         const archivos = req.files?.documentos || [];
@@ -1676,7 +1665,7 @@ const editarClienteForm = async (req, res) => {
 
         let municipios = [];
         if (ubicacion?.idDepartamento) {
-            municipios = await Municipios.findAll({ where: { departamento_id: ubicacion.idDepartamento }, raw: true });
+            municipios = await Municipios.findAll({ where: { departamento_id: ubicacion.idDepartamento }, order: [['nombre', 'ASC']], raw: true });
         }
 
         let condicion_tributaria = null;
@@ -1735,9 +1724,14 @@ const updateCliente = async (req, res) => {
         return res.status(500).json({ success: false, mensaje: 'Error al validar el documento.' });
     }
 
-    const toPascal = (str) => str
-        ? str.trim().replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        : null;
+    let ubicacionDane;
+    try {
+        ubicacionDane = await resolverUbicacionDane(idDepartamento, idMunicipio);
+    } catch (e) {
+        console.error('updateCliente – ubicación:', e);
+        return res.status(500).json({ success: false, mensaje: 'Error al validar la ubicación.' });
+    }
+    if (!ubicacionDane.ok) return res.status(400).json({ success: false, mensaje: ubicacionDane.mensaje });
 
     let t = null;
     const uploadedKeys = [];
@@ -1778,22 +1772,19 @@ const updateCliente = async (req, res) => {
             await ClientesTributario.create(tributarioData, { transaction: t });
         }
 
-        if (idDepartamento || direccion?.trim()) {
-            const [deptoRow, munRow] = await Promise.all([
-                idDepartamento ? Departamentos.findOne({ where: { id: idDepartamento }, raw: true }) : null,
-                idMunicipio    ? Municipios.findOne({ where: { id: idMunicipio }, raw: true })        : null
-            ]);
+        // Ubicación ya validada contra el DANE arriba: siempre hay depto y ciudad.
+        {
             const ubicData = {
                 idCliente,
-                idDepartamento:     idDepartamento || null,
-                nombreDepartamento: deptoRow?.nombre || null,
-                idMunicipio:        idMunicipio || null,
-                nombreMunicipio:    munRow?.nombre || null,
+                idDepartamento:     ubicacionDane.idDepartamento,
+                nombreDepartamento: ubicacionDane.nombreDepartamento,
+                idMunicipio:        ubicacionDane.idMunicipio,
+                nombreMunicipio:    ubicacionDane.nombreMunicipio,
                 direccion:          toPascal(direccion),
                 codigo_postal:      codigo_postal?.trim() || null,
                 es_principal:       true
             };
-            const ubic = await ClientesUbicacion.findOne({ where: { idCliente, es_principal: true } });
+            const ubic = await ClientesUbicacion.findOne({ where: { idCliente, es_principal: true }, transaction: t });
             if (ubic) {
                 await ubic.update(ubicData, { transaction: t });
             } else {
@@ -3528,6 +3519,8 @@ const buscarEmpleadoPorCodigo = async (req, res) => {
 };
 
 const saveEmployee = async (req, res) => {
+    // Se llena si el alta crea permisos; el aviso sale recién después del commit.
+    let avisarAlTerminar = null;
     const {
         PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
         TipoDocumento, NumeroDocumento, fechaNacimiento, direccionResidencia,
@@ -3645,6 +3638,9 @@ const saveEmployee = async (req, res) => {
                     idAccion,
                 }));
                 await UserPermisos.bulkCreate(filas, { transaction: t });
+                // El aviso va después del commit, más abajo: acá todavía estamos dentro de
+                // la transacción y los permisos no existen para nadie más.
+                avisarAlTerminar = usuarioCreado.idUsuario;
             }
         }
 
@@ -3681,6 +3677,9 @@ const saveEmployee = async (req, res) => {
         }
 
         await t.commit();
+        // Después del commit y fuera del try de la transacción (CLAUDE.md §9): un aviso que
+        // falle no puede dejar la petición colgada sobre una transacción ya cerrada.
+        avisarCambioDePermisos(avisarAlTerminar);
         res.json({ success: true, mensaje: 'Empleado registrado con éxito. Código: ' + codigoEmpleado });
 
     } catch (error) {
@@ -4325,6 +4324,7 @@ const municipiosJson = async (req, res) => {
     const municipio = await Municipios.findAll({
         where: { departamento_id: departamentoId },
         attributes: ['id', 'nombre'],
+        order: [['nombre', 'ASC']],
         raw: true
     })
     return res.json(municipio)
@@ -5471,16 +5471,24 @@ const getPagosHoyPorMetodo = async (req, res) => {
 
 // ─── ADMIN SSE ───────────────────────────────────────────────────────────────
 const adminSseConnect = (req, res) => {
+    const idUsuario = req.usuario?.idUsuario;
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
     addClient('__ADMIN__', res);
+    // Canal propio del usuario, igual que en el SSE de tienda: por acá llegan los cambios
+    // de permisos, que son de la persona y no del panel. Sin esta línea el evento se
+    // emitía pero el panel no estaba suscrito y no se enteraba nunca.
+    if (idUsuario) addClient(idUsuario, res);
+
     const hb = setInterval(() => res.write(': ping\n\n'), 25000);
     req.on('close', () => {
         clearInterval(hb);
         removeClient('__ADMIN__', res);
+        if (idUsuario) removeClient(idUsuario, res);
     });
 };
 
@@ -5895,27 +5903,12 @@ const actualizarEmpleado = async (req, res) => {
             (!teniRol && tieneRol)  ? usuarioNuevo?.idUsuario :
             (teniRol)               ? empleadoActual?.idUsuario : null;
 
-        if (idUsuarioCambiado) {
-            (async () => {
-                try {
-                    const rows = await UserPermisos.findAll({
-                        where: { idUsuario: idUsuarioCambiado },
-                        include: [{
-                            model: PermisosRecursos,
-                            as: 'recurso',
-                            where: { tipo: 'vendedor', folder: { [Op.not]: null } },
-                            attributes: ['folder']
-                        }],
-                        attributes: [],
-                        raw: true
-                    });
-                    const carpetasPermitidas = [...new Set(
-                        rows.map(r => r['recurso.folder']).filter(Boolean)
-                    )];
-                    broadcast(idUsuarioCambiado, 'permissions_update', { carpetasPermitidas });
-                } catch (_) {}
-            })();
-        }
+        // El aviso sale por el usuario que de verdad cambió: el que acaba de recibir rol, el
+        // que ya lo tenía y le movieron los permisos, o el del empleado editado. Antes solo
+        // se disparaba si el ROL cambiaba, así que tocar solo las casillas de permisos no
+        // avisaba a nadie: la persona seguía con la pantalla como estaba.
+        const idUsuarioAvisar = idUsuarioCambiado || empleadoActual?.idUsuario || usuarioNuevo?.idUsuario;
+        avisarCambioDePermisos(idUsuarioAvisar);
 
         // ── 8. BORRAR FOTO ANTERIOR DE R2 (post-commit, best-effort) ─────────────
         if (nuevaFotoKey && empleadoActual.imagen) {

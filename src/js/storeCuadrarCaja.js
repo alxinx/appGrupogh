@@ -1,6 +1,7 @@
 import { pintarCodigo, codigoRequerido } from './codigoCajitas.js';
 import { opcionesConfirmacion, cabeceraConfirmacion, activarVerificacionCodigo } from './modalConfirmacion.js';
 import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../../helpers/descripcionEgreso.js';
+import { cristalBloqueo } from './cristalBloqueo.js';
 (function () {
     // ── Utilidades ───────────────────────────────────────────────────────────
     const fmt   = (n) => '$' + Math.round(n).toLocaleString('es-CO');
@@ -291,13 +292,8 @@ import { validarDescripcionEgreso, contarPalabras, MINIMO_PALABRAS } from '../..
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF() }
     }).then(r => r.json()).catch(() => ({ success: false }));
 
-    const cristalHTML = (titulo, texto, accion) => `
-        <div class="bloqueo-cristal">
-            <img src="/img/avatars/seguro.webp" alt="" class="bloqueo-icono">
-            <p class="bloqueo-titulo">${titulo}</p>
-            <p class="bloqueo-texto">${texto}</p>
-            ${accion ? `<button type="button" id="cc-btn-desbloquear" class="bloqueo-accion">${accion}</button>` : ''}
-        </div>`;
+    const cristalHTML = (titulo, texto, accion) =>
+        cristalBloqueo({ titulo, texto, accion, idAccion: accion ? 'cc-btn-desbloquear' : null });
 
     const bloquearConteo = () => {
         const tarjeta = $('cc-tarjeta-operador');

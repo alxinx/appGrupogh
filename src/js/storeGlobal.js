@@ -1,4 +1,5 @@
 import { storeSSE } from './sseCompartido.js';
+import './permisosEnVivo.js';   // sella/libera en vivo lo que declare data-requiere-permiso
 import { activarCajitasCodigo, pintarCodigo } from './codigoCajitas.js';
 
 // Todo campo de código de empleado del panel se ve en cajitas (ver codigoCajitas.js).
@@ -203,8 +204,13 @@ activarCajitasCodigo();
         });
 
         sseSource.on('permissions_update', (e) => {
-            const { carpetasPermitidas } = JSON.parse(e.data);
-            actualizarMenu(carpetasPermitidas);
+            // El evento pasó a traer los permisos completos y las carpetas separadas por
+            // tipo (helpers/permisosEnVivo.js). Acá interesan las de 'vendedor', que son
+            // las del menú de tienda. Se acepta la forma vieja por si queda un cliente
+            // cargado de antes del despliegue.
+            const d = JSON.parse(e.data);
+            const carpetas = d.carpetas?.vendedor || d.carpetasPermitidas;
+            if (Array.isArray(carpetas)) actualizarMenu(carpetas);
         });
 
         sseSource.connect();

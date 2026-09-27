@@ -167,6 +167,10 @@
   to   { opacity: 1; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .bloqueo-cristal { animation: none; }
+}
+
 .bloqueo-icono {
   width: 5rem;
   height: 5rem;
@@ -187,6 +191,22 @@
   max-width: 22rem;
   font-size: 0.8125rem;
   line-height: 1.5;
+  color: #5B21B6;
+}
+
+/* Píldora al pie con el siguiente paso: qué hacer para destrabarlo. Venía de la copia
+   que tenía el perfil de caja y ahora la puede usar cualquier cristal. */
+.bloqueo-pista {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0.125rem 0 0;
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.75);
+  border: 1px solid rgb(221 214 254 / 0.9);
+  font-size: 0.6875rem;
+  font-weight: 700;
   color: #5B21B6;
 }
 
@@ -845,6 +865,9 @@
   }
   .cli-campo:hover  { @apply border-slate-300; }
   .cli-campo:focus  { @apply outline-none border-gh-primary ring-2 ring-gh-primary/25; }
+  /* Campo que en una edición desde la tienda solo cambia un administrador. */
+  .cli-campo:disabled { @apply bg-slate-50 text-slate-400 cursor-not-allowed; }
+  .cli-bloqueado      { @apply opacity-50 pointer-events-none; }
 
   /* El icono ocupa el flanco izquierdo, así que el texto arranca después de él. */
   .cli-con-icono { @apply pl-10; }

@@ -1,6 +1,5 @@
 import { Departamentos, Municipios, Categorias, Atributos, VariacionesProducto, Productos , CategoriasDeProvedores} from "../models/index.js";
 //import nombresData from "./departamentosData.js";
-//import municipios from "./municipiosData.js";
 //import nombresData from "./atributos.js";
 //import nombresData from "./categorias.js";
 import categoriaProvedores from './categoriasProvedores.js';

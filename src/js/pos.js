@@ -2,6 +2,7 @@ import { pintarCodigo } from './codigoCajitas.js';
 import { imprimirPdf } from './imprimirPdf.js';
 import ciiuData from '../json/ciiu.json';
 import { tituloLista as tc } from '../../helpers/textoLista.js';
+import { cristalBloqueo } from './cristalBloqueo.js';
 
 (function () {
 
@@ -626,12 +627,11 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     // 409 al facturar con la caja en 'auditoria'.
     let cajaEnCuadre = false;
 
-    const cristalCuadre = () => `
-        <div class="bloqueo-cristal" id="pos-bloqueo-cuadre">
-            <img src="/img/avatars/seguro.webp" alt="" class="bloqueo-icono">
-            <p class="bloqueo-titulo">Caja en cierre</p>
-            <p class="bloqueo-texto">Se está cuadrando la caja. No se pueden registrar ventas hasta que termine el conteo.</p>
-        </div>`;
+    const cristalCuadre = () => cristalBloqueo({
+        id: 'pos-bloqueo-cuadre',
+        titulo: 'Caja en cierre',
+        texto: 'Se está cuadrando la caja. No se pueden registrar ventas hasta que termine el conteo.'
+    });
 
     const pintarBloqueoCuadre = () => {
         const panel = document.getElementById('drop-zone')?.firstElementChild;
@@ -1495,6 +1495,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const TAB_INACTIVE = ['text-slate-500'];
 
     let tabActivo = 'natural'; // 'natural' | 'empresa'
+    // Documento del cliente existente cargado en el modal; null = se está creando uno nuevo.
+    let docClienteCargado = null;
 
     const TIPOS_EMPRESA  = new Set(['CC', 'NIT']);
     const TODOS_LOS_TIPOS = ['CC', 'CE', 'TI', 'NIT', 'PP', 'DE'];
@@ -1513,6 +1515,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     };
 
     const switchTab = (tab) => {
+        // Con un cliente cargado la pestaña la fija su tipo: cambiarla es cambiar el tipo
+        // de persona, y eso lo edita un administrador. El guard deja pasar la llamada de
+        // llenarFormCliente, que corre antes de bloquear.
+        if (docClienteCargado !== null && tab !== tabActivo) return;
         tabActivo = tab;
         ['natural', 'empresa'].forEach(t => {
             const btn = document.getElementById(`tab-btn-${t}`);
@@ -1747,7 +1753,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const cargarMunicipios = async (deptoId, selectedId = '') => {
         const sel = document.getElementById('cli-municipio');
         if (!sel || !deptoId) return;
-        sel.innerHTML = '<option>Cargando...</option>';
+        sel.innerHTML = '<option value="">Cargando...</option>';
         BUSCABLES['cli-municipio']?.refresh();
         try {
             const resp = await fetch(`/store/json/municipios/${deptoId}`);
@@ -1806,6 +1812,31 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         else       { el.classList.add('hidden');                              vacio?.classList.remove('hidden'); }
     });
 
+    // ── Cliente existente: la tienda solo edita nombre, email, ciudad y dirección ──
+    //
+    // El resto (documento, teléfono, datos tributarios, RUT) lo edita un administrador.
+    // Esto es solo para que el formulario no mienta: el servidor ignora esos campos en
+    // una edición aunque lleguen (guardarCliente).
+    const CAMPOS_SOLO_ADMIN = ['cli-tipo-doc', 'cli-telefono-n', 'cli-telefono-e', 'cli-digito-verif',
+        'cli-regimen', 'cli-ciiu', 'cli-desc-ciiu', 'cli-fecha-rut', 'cli-rut-file'];
+    const AVISO_NORMAL = document.getElementById('cli-aviso-titulo')?.textContent || '';
+    const AVISO_EDICION = 'Cliente registrado: desde la tienda solo se cambian nombre, email, ciudad y dirección. El resto lo edita un administrador.';
+    const bloquearCamposAdmin = (doc) => {
+        docClienteCargado = doc;
+        const bloquear = doc !== null;
+        CAMPOS_SOLO_ADMIN.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = bloquear;
+        });
+        modalCliente?.querySelectorAll('.cli-trib-sw, .cli-resp-chk').forEach(el => { el.disabled = bloquear; });
+        modalCliente?.querySelectorAll('.cli-trib, .cli-resp, .cli-archivo, .cli-tab')
+            .forEach(el => el.classList.toggle('cli-bloqueado', bloquear));
+        const titulo = document.getElementById('cli-aviso-titulo');
+        if (titulo) titulo.textContent = bloquear ? AVISO_EDICION : AVISO_NORMAL;
+        // R-99-PN deshabilita a las demás por su cuenta: al liberar hay que reaplicarla.
+        if (!bloquear) aplicarReglaR99();
+    };
+
     // ── Llenar formulario cuando se encuentra cliente ─────────────────────────
     const llenarFormCliente = (cli) => {
         const fill = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
@@ -1814,6 +1845,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         fill('cli-numero-doc', cli.numero_doc);
 
         const esEmpresa = cli.tipo_persona === 'J' || cli.tipoDocumento === 'NIT';
+        bloquearCamposAdmin(null);   // libera la pestaña por si quedó otro cliente cargado
         switchTab(esEmpresa ? 'empresa' : 'natural');
 
         if (esEmpresa) {
@@ -1859,6 +1891,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         const h = document.getElementById('cli-id-hidden');
         if (h) h.value = cli.idCliente;
 
+        bloquearCamposAdmin(String(cli.numero_doc || '').trim());
         actualizarHeaderModal();
     };
 
@@ -1908,6 +1941,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         document.getElementById('cli-rut-nombre')?.classList.add('hidden');
         document.getElementById('cli-rut-nombre-vacio')?.classList.remove('hidden');
 
+        bloquearCamposAdmin(null);
         switchTab('natural');
     };
 
@@ -1919,6 +1953,8 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     inputNumDoc?.addEventListener('input', () => {
         clearTimeout(docTimer);
         const val = inputNumDoc.value.trim();
+        // Otro documento ya no es el cliente cargado: es un alta, con todos los campos.
+        if (docClienteCargado !== null && val !== docClienteCargado) bloquearCamposAdmin(null);
         if (val.length < 5) return;
         docLoader?.classList.remove('hidden');
         docTimer = setTimeout(async () => {
@@ -1944,6 +1980,13 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
         const numerDoc = getVal('cli-numero-doc');
         if (!numerDoc) { window.showToast?.('El número de documento es requerido', 'warning'); return; }
+
+        // Departamento y ciudad son obligatorios. El servidor igual los valida contra el
+        // DANE; esto solo evita el viaje de ida y vuelta.
+        const deptoSel = document.getElementById('cli-departamento');
+        const munSel   = document.getElementById('cli-municipio');
+        if (!deptoSel?.value) { window.showToast?.('Selecciona el departamento del cliente', 'warning'); return; }
+        if (!munSel?.value)   { window.showToast?.('Selecciona la ciudad del cliente', 'warning'); return; }
 
         const fd = new FormData();
         fd.append('idCliente',      idCliModal);
@@ -1978,13 +2021,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             fd.append('telefono', getVal('cli-telefono-n'));
         }
 
-        const deptoSel = document.getElementById('cli-departamento');
-        const munSel   = document.getElementById('cli-municipio');
-        fd.append('idDepartamento',     deptoSel?.value || '');
-        fd.append('nombreDepartamento', deptoSel?.options[deptoSel?.selectedIndex]?.text || '');
-        fd.append('idMunicipio',        munSel?.value  || '');
-        fd.append('nombreMunicipio',    munSel?.options[munSel?.selectedIndex]?.text || '');
-        fd.append('direccion',          getVal('cli-direccion'));
+        // Solo los códigos DANE: los nombres los resuelve el servidor desde el catálogo.
+        fd.append('idDepartamento', deptoSel.value);
+        fd.append('idMunicipio',    munSel.value);
+        fd.append('direccion',      getVal('cli-direccion'));
 
         const rutFile = document.getElementById('cli-rut-file')?.files?.[0];
         if (rutFile) fd.append('rut', rutFile);
@@ -2473,13 +2513,13 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             if (!cajaEnCuadre) { puesto?.remove(); return; }
             if (puesto) return;
 
-            panel.insertAdjacentHTML('beforeend', `
-                <div class="bloqueo-cristal" id="fv-bloqueo-cuadre">
-                    <img src="/img/avatars/seguro.webp" alt="" class="bloqueo-icono">
-                    <p class="bloqueo-titulo">Caja en cierre</p>
-                    <p class="bloqueo-texto">Se está cuadrando la caja. Esta venta no se puede registrar hasta que termine el conteo; la orden queda armada y podrás cobrarla apenas se libere.</p>
-                    <button type="button" class="bloqueo-accion" id="fv-bloqueo-cerrar">Entendido</button>
-                </div>`);
+            panel.insertAdjacentHTML('beforeend', cristalBloqueo({
+                id: 'fv-bloqueo-cuadre',
+                titulo: 'Caja en cierre',
+                texto: 'Se está cuadrando la caja. Esta venta no se puede registrar hasta que termine el conteo; la orden queda armada y podrás cobrarla apenas se libere.',
+                accion: 'Entendido',
+                idAccion: 'fv-bloqueo-cerrar'
+            }));
 
             panel.querySelector('#fv-bloqueo-cerrar')?.addEventListener('click', cerrarFV);
         };

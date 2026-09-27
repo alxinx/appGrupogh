@@ -28,7 +28,7 @@
     "db:migrar-clientes-pep": "node ./seed/migracionClientesPep.js",
     "db:migrar-clientes-credito-historial": "node ./seed/migracionClientesCreditoHistorial.js",
     "db:migrar-credito-disponible-cliente": "node ./seed/migracionCreditoDisponibleCliente.js",
-    "db:migrar-municipios-colombia": "node ./seed/migracionMunicipiosColombia.js",
+    "db:migrar-municipios-dane": "node ./seed/migracionMunicipiosDane.js",
     "db:migrar-pedidos-web-dane": "node ./seed/migracionPedidosWebUbicacionDane.js",
     "db:migrar-credito-en-tienda": "node ./seed/migracionCreditoEnTienda.js",
     "db:migrar-traslado-efectivo": "node ./seed/migracionTrasladoEfectivo.js",

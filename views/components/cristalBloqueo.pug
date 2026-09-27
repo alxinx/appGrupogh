@@ -1,0 +1,40 @@
+//- ── CRISTAL DE BLOQUEO ──────────────────────────────────────────────────────
+//- Lámina de vidrio esmerilado sobre algo que no se puede usar ahora mismo. El
+//- contenido se sigue viendo detrás, así queda claro QUÉ está bloqueado en vez de
+//- dejar un hueco o esconderlo.
+//-
+//- Los estilos son `.bloqueo-*` de public/css/input.css, los MISMOS que ya usan el
+//- POS (caja en cuadre), el modal de Finalizar Venta y el cuadre de caja, que arman
+//- este marcado desde JavaScript. Este mixin es para las vistas que lo renderiza el
+//- servidor, para que no lo escriban a mano.
+//-
+//- El contenedor tiene que llevar `bloqueo-anfitrion` —le da el position: relative
+//- que el cristal necesita— y conviene `overflow-hidden` para que el cristal respete
+//- las esquinas redondeadas de la tarjeta.
+//-
+//- IMPORTANTE: el cristal solo TAPA. Lo que de verdad inhabilita un formulario es el
+//- atributo `inert`, porque sin él los campos se siguen alcanzando con el tabulador y
+//- se puede escribir a ciegas detrás del velo. Y ni el cristal ni `inert` son la
+//- garantía: eso es el servidor.
+//-
+//- Uso:
+//-     include ../../components/cristalBloqueo
+//-     +cristalBloqueo('Caja inactiva', 'No se pueden registrar movimientos.')
+//-     +cristalBloqueo('Sin permiso', 'Tu usuario no puede registrar.', {
+//-         pista: 'Lo habilita un administrador en Personal.', iconoPista: 'fi-rr-user-gear' })
+//-
+//- Opciones: `pista` (píldora al pie), `iconoPista`, `imagen` (por defecto el candado
+//- de /img/avatars/seguro.webp) e `id`.
+mixin cristalBloqueo(titulo, texto, opciones = {})
+    div(class="bloqueo-cristal" id=opciones.id)
+        img(src=opciones.imagen || '/img/avatars/seguro.webp' alt="" class="bloqueo-icono")
+        p(class="bloqueo-titulo")= titulo
+        if texto
+            p(class="bloqueo-texto")= texto
+        if opciones.pista
+            p(class="bloqueo-pista")
+                if opciones.iconoPista
+                    i(class=`fi ${opciones.iconoPista}`)
+                = opciones.pista
+        if block
+            block

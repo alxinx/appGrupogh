@@ -48,6 +48,7 @@ export default {
         storePedidosWeb     : '/src/js/storePedidosWeb.js',
         adminAlertas        : '/src/js/adminAlertas.js',
         importaciones       : '/src/js/importaciones.js',
+        importarClientes : '/src/js/importarClientes.js',
         storeClienteDetalle : '/src/js/storeClienteDetalle.js'
     },
     output: {

@@ -1,3 +1,4 @@
+import { montarDropzoneExcel } from './dropzoneExcel.js';
 const CSRF_TOKEN = document.getElementById('csrfImportaciones')?.value || '';
 
 (() => {
@@ -9,24 +10,11 @@ const CSRF_TOKEN = document.getElementById('csrfImportaciones')?.value || '';
     const btnImportar = document.getElementById('btnImportar');
     if (!form || !inputArchivo || !btnImportar) return;
 
-    const textoOriginal = dropzoneTexto.innerHTML;
+    // El texto inicial del recuadro, para devolverlo cuando la importación termina y se
+    // limpia el formulario. montarDropzoneExcel lo reemplaza por el nombre del archivo.
+    const textoOriginal = dropzoneTexto?.innerHTML;
 
-    inputArchivo.addEventListener('change', () => {
-        const archivo = inputArchivo.files?.[0];
-        if (!archivo) {
-            dropzoneTexto.innerHTML = textoOriginal;
-            btnImportar.disabled = true;
-            return;
-        }
-        dropzoneTexto.innerHTML = `
-            <div class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-3 text-emerald-500">
-                <i class="fi-rr-file-spreadsheet text-2xl"></i>
-            </div>
-            <span class="text-sm font-bold text-gray-700">${archivo.name}</span>
-            <span class="text-xs text-gray-400 mt-1">${(archivo.size / 1024).toFixed(0)} KB — click o soltá otro archivo para cambiarlo</span>
-        `;
-        btnImportar.disabled = false;
-    });
+    montarDropzoneExcel({ input: inputArchivo, zona: dropzoneTexto, boton: btnImportar });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -126,7 +114,7 @@ const CSRF_TOKEN = document.getElementById('csrfImportaciones')?.value || '';
             });
 
             form.reset();
-            dropzoneTexto.innerHTML = textoOriginal;
+            if (dropzoneTexto && textoOriginal !== undefined) dropzoneTexto.innerHTML = textoOriginal;
         } catch (error) {
             Swal.fire('Error', error.message || 'No se pudo procesar la importación.', 'error');
         } finally {

@@ -59,9 +59,14 @@ export const resSimulada = () => ({
     statusCode: 200,
     body: undefined,
     cookieBorrada: false,
+    headers: {},
     status(c) { this.statusCode = c; return this; },
     json(b) { this.body = b; return this; },
-    clearCookie() { this.cookieBorrada = true; return this; }
+    clearCookie() { this.cookieBorrada = true; return this; },
+    // Los endpoints que devuelven un archivo (informes .xlsx, tirillas) responden con
+    // send() y dejan los totales en headers, no en el JSON.
+    setHeader(k, v) { this.headers[k] = String(v); return this; },
+    send(b) { this.body = b; return this; }
 });
 
 // Un usuario del panel con su ficha de empleado (o sin ella). Las llaves foráneas de EMPLEADOS
