@@ -221,8 +221,10 @@ Clientes.hasMany(ClientesUbicacion, { foreignKey: 'idCliente', as: 'ubicaciones'
 ClientesUbicacion.belongsTo(Clientes, { foreignKey: 'idCliente' });
 
 // Constancia del registro desde el formulario público (autorizaciones Ley 1581)
-Clientes.hasMany(ClientesRegistroWeb, { foreignKey: 'idCliente', as: 'registrosWeb' });
-ClientesRegistroWeb.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
+// RESTRICT y no CASCADE: MySQL no dispara triggers en un borrado en cascada, así que con
+// CASCADE borrar un cliente se llevaría la constancia sin que el trigger lo impida.
+Clientes.hasMany(ClientesRegistroWeb, { foreignKey: 'idCliente', as: 'registrosWeb', onDelete: 'RESTRICT', onUpdate: 'CASCADE' });
+ClientesRegistroWeb.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente', onDelete: 'RESTRICT', onUpdate: 'CASCADE' });
 
 // Caja tienda
 Empleados.hasMany(CajaTienda, { foreignKey: 'idEmpleadoApertura', as: 'cajasApertura' });
