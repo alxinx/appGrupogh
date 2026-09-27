@@ -13,6 +13,28 @@ import { validarImagen, aWebp } from './imagenSegura.js';
 // esto corta por tamaño del archivo ya en memoria.
 export const MAX_BYTES_COMPROBANTE = (parseInt(process.env.MAX_MB_COMPROBANTE) || 5) * 1024 * 1024;
 
+// Un PDF puede llevar código: JavaScript, acciones que lanzan programas, archivos adjuntos
+// o formularios XFA. Ningún comprobante, RUT ni documento legítimo que recibimos necesita
+// eso, así que un PDF que lo declare se rechaza entero. Los nombres PDF pueden venir con
+// caracteres escapados en hexadecimal (/J#61vaScript), por eso se decodifican antes de
+// buscar. No es un antivirus: es un filtro de lo que un documento de oficina nunca trae.
+const MARCAS_PDF_ACTIVO = ['/javascript', '/js', '/launch', '/embeddedfile', '/embeddedfiles',
+    '/richmedia', '/xfa', '/submitform', '/importdata', '/gotoe'];
+
+const pdfSinContenidoActivo = (buffer) => {
+    const texto = buffer.toString('latin1')
+        .replace(/#([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+        .toLowerCase();
+    // Nombre PDF seguido de un delimitador: '/js' no debe coincidir con '/jsonfoo'.
+    return !MARCAS_PDF_ACTIVO.some(m => new RegExp(`${m.replace('/', '\\/')}(?![a-z0-9])`).test(texto));
+};
+
+/** Mismo criterio que usa `subirComprobantes`, expuesto para validar antes de subir. */
+export const esPdfSeguro = (buffer) =>
+    buffer.slice(0, 5).toString('ascii') === '%PDF-'
+    && buffer.lastIndexOf('%%EOF') > 0
+    && pdfSinContenidoActivo(buffer);
+
 /**
  * Sube los comprobantes a R2 y devuelve las filas de DOCUMENTACION listas para insertar.
  *
@@ -26,7 +48,7 @@ export const MAX_BYTES_COMPROBANTE = (parseInt(process.env.MAX_MB_COMPROBANTE) |
  * @param prefijo       prefijo del Key en R2 ('mov', 'abono'...)
  * @returns { docs, subidos } — filas a insertar y Keys ya subidas
  */
-export async function subirComprobantes({ archivos = [], idPropietario, pertenece, prefijo = 'mov' }) {
+export async function subirComprobantes({ archivos = [], idPropietario, pertenece, prefijo = 'mov', carpeta = 'transacciones' }) {
     const subidos = [];
     const docs = [];
 
@@ -38,6 +60,9 @@ export async function subirComprobantes({ archivos = [], idPropietario, pertenec
 
         let cuerpo, contentType, extension;
         if (esPdf) {
+            if (!esPdfSeguro(file.buffer)) {
+                throw Object.assign(new Error(`"${file.originalname}": el PDF está dañado o trae contenido no permitido (scripts, adjuntos o formularios activos).`), { publico: true });
+            }
             cuerpo      = file.buffer;
             contentType = 'application/pdf';
             extension   = 'pdf';
@@ -56,7 +81,7 @@ export async function subirComprobantes({ archivos = [], idPropietario, pertenec
             extension   = 'webp';
         }
 
-        const r2Key = `documentacion/transacciones/${prefijo}-${idPropietario}-${Date.now()}-${idx}.${extension}`;
+        const r2Key = `documentacion/${carpeta}/${prefijo}-${idPropietario}-${Date.now()}-${idx}.${extension}`;
 
         await new Upload({
             client: s3Client,

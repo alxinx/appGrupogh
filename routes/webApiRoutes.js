@@ -1,5 +1,8 @@
 import express from 'express';
-import apiRateLimit, { escrituraPublicaRateLimit, trackingRateLimit } from '../middlewares/apiRateLimit.js';
+import apiRateLimit, { escrituraPublicaRateLimit, trackingRateLimit, crearRateLimit } from '../middlewares/apiRateLimit.js';
+import { exigirTurnstile } from '../middlewares/turnstile.js';
+import { recibirRutRegistroWeb } from '../middlewares/uploadComprobantes.js';
+import { consultarDocumentoRegistro, registrarClienteWeb } from '../controller/registroClienteWebController.js';
 import { recibirComprobante } from '../middlewares/uploadComprobante.js';
 import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, darDeBajaInteresado, getPaginaBySlug, getPuntosVenta, getDepartamentosPublico, getMunicipiosPublico, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi, subirComprobantePagoWeb, sincronizarReservasWeb, demandaCarritoWeb } from '../controller/webApiController.js';
 
@@ -54,5 +57,25 @@ routes.get('/pagos/qr/:idEntidad', getQrPagoPublico);
 // Comprobante de la transferencia por QR. Público (el checkout no tiene sesión), acotado
 // en el controlador a pedidos 'pendiente_pago' con metodoPago='qr' y con rate limit por IP.
 routes.post('/pedidos/:idPedido/comprobante', escrituraPublicaRateLimit, recibirComprobante, subirComprobantePagoWeb);
+
+// ── Registro público de clientes (grupogh.co/formularios/registroClientes) ──
+//
+// Abierto a internet, así que va en capas y en este orden: rate limit por IP (barato,
+// en memoria) → Turnstile de Cloudflare (token en el header, verificado ANTES de leer el
+// body con archivos) → multer con topes chicos → validación campo por campo.
+// La consulta de documento revela si alguien es cliente: por eso también exige Turnstile.
+const consultaRegistroRateLimit = crearRateLimit({
+    limite: () => parseInt(process.env.REGISTRO_CONSULTAS_PER_MIN) || 10,
+    nombre: 'registro-consulta',
+    mensaje: 'Demasiadas consultas seguidas. Espera un momento e inténtalo de nuevo.'
+});
+const registroRateLimit = crearRateLimit({
+    limite: () => parseInt(process.env.REGISTRO_ENVIOS_POR_10MIN) || 10,
+    ventanaMs: 10 * 60 * 1000,
+    nombre: 'registro-cliente',
+    mensaje: 'Demasiados registros desde esta conexión. Inténtalo más tarde.'
+});
+routes.post('/registro-clientes/consulta', consultaRegistroRateLimit, exigirTurnstile('registro_cliente'), consultarDocumentoRegistro);
+routes.post('/registro-clientes', registroRateLimit, exigirTurnstile('registro_cliente'), recibirRutRegistroWeb, registrarClienteWeb);
 
 export default routes;

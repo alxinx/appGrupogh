@@ -19,7 +19,7 @@ dotenv.config();
 // `trust proxy` en 1, req.ip ya debería resolver lo mismo vía X-Forwarded-For, pero
 // CF-Connecting-IP no depende de la cantidad de saltos configurada — queda como fuente
 // primaria y req.ip como respaldo si algún día la app deja de estar detrás de Cloudflare.
-const ipDe = (req) => req.headers['cf-connecting-ip'] || req.ip || req.socket?.remoteAddress || 'unknown';
+export const ipDe = (req) => req.headers['cf-connecting-ip'] || req.ip || req.socket?.remoteAddress || 'unknown';
 
 /**
  * @param {object}  opciones

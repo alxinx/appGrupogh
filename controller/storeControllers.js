@@ -49,7 +49,7 @@ import { resolverPacksParaVenta, buscarPacksVendibles } from '../helpers/packsVe
 import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, pagosATransBucket, creditoClienteResumen, financiadoPorFactura, METODOS_ABONO, METODOS_ABONO_CON_ENTIDAD } from '../helpers/abonosCredito.js';
 import { round2 as _round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
-import { TIPOS_DOC_CLIENTE, resolverUbicacionDane, toPascal } from '../helpers/clientes.js';
+import { TIPOS_DOC_CLIENTE, resolverUbicacionDane, toPascal, normalizarResponsabilidades } from '../helpers/clientes.js';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
 
@@ -2074,21 +2074,10 @@ const guardarCliente = async (req, res) => {
         // Tributario (solo al crear, y solo si es empresa)
         if (!existente && esEmpresa && regimen_fiscal) {
             const tribExist = await ClientesTributario.findOne({ where: { idCliente }, transaction: t });
-            // Los códigos llegan como arreglo desde el formulario. Se normalizan a la
-            // cadena "O-13,O-15" que guarda la columna, filtrando contra la lista válida:
-            // un código inventado en el navegador no puede terminar en una factura.
-            const CODIGOS_DIAN = ['O-13', 'O-15', 'O-23', 'O-47', 'R-99-PN'];
-            const responsabilidades = (Array.isArray(responsabilidad_fiscal)
-                ? responsabilidad_fiscal
-                : String(responsabilidad_fiscal || '').split(','))
-                .map(c => String(c).trim().toUpperCase())
-                .filter(c => CODIGOS_DIAN.includes(c));
-
             const tribData = {
                 regimen_fiscal,
-                // Nulo y no cadena vacía: "todavía no se declaró" es distinto de haber
-                // declarado R-99-PN, que es decir que no aplica ninguna.
-                responsabilidad_fiscal: responsabilidades.length ? [...new Set(responsabilidades)].join(',') : null,
+                // Filtrada contra la lista DIAN; nula si no se declaró ninguna.
+                responsabilidad_fiscal: normalizarResponsabilidades(responsabilidad_fiscal),
                 gran_contribuyente: toBool(gran_contribuyente),
                 autorretenedor:     toBool(autorretenedor),
                 agente_retencion:   toBool(agente_retencion),

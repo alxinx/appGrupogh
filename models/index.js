@@ -37,6 +37,7 @@ import CreditoDisponibleClienteHistorial from './CreditoDisponibleClienteHistori
 import AbonoClienteCreditos from './AbonoClienteCreditos.js'
 import ClientesTributario from './ClientesTributario.js'
 import ClientesUbicacion from './ClientesUbicacion.js'
+import ClientesRegistroWeb from './ClientesRegistroWeb.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -218,6 +219,10 @@ ClientesTributario.belongsTo(Clientes, { foreignKey: 'idCliente' });
 
 Clientes.hasMany(ClientesUbicacion, { foreignKey: 'idCliente', as: 'ubicaciones' });
 ClientesUbicacion.belongsTo(Clientes, { foreignKey: 'idCliente' });
+
+// Constancia del registro desde el formulario público (autorizaciones Ley 1581)
+Clientes.hasMany(ClientesRegistroWeb, { foreignKey: 'idCliente', as: 'registrosWeb' });
+ClientesRegistroWeb.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente' });
 
 // Caja tienda
 Empleados.hasMany(CajaTienda, { foreignKey: 'idEmpleadoApertura', as: 'cajasApertura' });
@@ -430,4 +435,5 @@ export {
   PagosPedidoWeb,
   Familia,
   ReservasCarrito,
+  ClientesRegistroWeb,
 }

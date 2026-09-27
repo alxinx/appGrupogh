@@ -27,6 +27,7 @@
     "db:migrar-clientes-tipo-doc": "node ./seed/migracionClientesTipoDocumento.js",
     "db:migrar-clientes-pep": "node ./seed/migracionClientesPep.js",
     "db:migrar-clientes-credito-historial": "node ./seed/migracionClientesCreditoHistorial.js",
+    "db:migrar-registro-web": "node ./seed/migracionClientesRegistroWeb.js",
     "db:migrar-credito-disponible-cliente": "node ./seed/migracionCreditoDisponibleCliente.js",
     "db:migrar-municipios-dane": "node ./seed/migracionMunicipiosDane.js",
     "db:migrar-pedidos-web-dane": "node ./seed/migracionPedidosWebUbicacionDane.js",

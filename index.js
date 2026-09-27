@@ -78,7 +78,9 @@ app.use(cookieParser());
 app.use('/api/web', (req, res, next) => {
     res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    // X-Turnstile-Token: el token anti-bots del registro público de clientes viaja en un
+    // header para verificarse antes de leer el body (middlewares/turnstile.js).
+    res.set('Access-Control-Allow-Headers', 'Content-Type, X-Turnstile-Token');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
 });

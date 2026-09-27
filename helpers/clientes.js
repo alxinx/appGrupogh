@@ -21,6 +21,38 @@ export const TIPOS_DOC_CLIENTE_NATURAL = ['CC', 'CE', 'TI', 'PP', 'PPT', 'PEP'];
 export const REGIMEN_RESPONSABLE_IVA = '48';
 export const REGIMEN_NO_RESPONSABLE_IVA = '49';
 
+// Responsabilidades fiscales DIAN que puede declarar un cliente. R-99-PN significa "no
+// aplica ninguna", así que no puede ir junto con las demás.
+export const CODIGOS_RESPONSABILIDAD_FISCAL = ['O-13', 'O-15', 'O-23', 'O-47', 'R-99-PN'];
+
+/**
+ * Normaliza lo que llega del formulario (arreglo o "O-13,O-15") a la cadena que guarda
+ * CLIENTES_TRIBUTARIO.responsabilidad_fiscal, descartando cualquier código que no esté en
+ * la lista: un código inventado en el navegador no puede terminar en una factura.
+ * Devuelve null si no queda ninguno — "no declarado" no es lo mismo que R-99-PN.
+ */
+export const normalizarResponsabilidades = (valor) => {
+    const codigos = (Array.isArray(valor) ? valor : String(valor ?? '').split(','))
+        .map(c => String(c).trim().toUpperCase())
+        .filter(c => CODIGOS_RESPONSABILIDAD_FISCAL.includes(c));
+    return codigos.length ? [...new Set(codigos)].join(',') : null;
+};
+
+/**
+ * Dígito de verificación de un NIT, con el algoritmo de la DIAN (módulo 11 sobre los
+ * pesos oficiales). Sirve para detectar un NIT mal digitado: el DV que trae el RUT tiene
+ * que coincidir con el que sale del número. Devuelve null si el NIT no es numérico.
+ */
+const PESOS_DV = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+export const calcularDvNit = (nit) => {
+    const limpio = String(nit ?? '').trim();
+    if (!/^\d{1,15}$/.test(limpio)) return null;
+    const suma = [...limpio].reverse()
+        .reduce((acc, d, i) => acc + Number(d) * PESOS_DV[i], 0);
+    const residuo = suma % 11;
+    return String(residuo > 1 ? 11 - residuo : residuo);
+};
+
 /**
  * 'JUAN pérez' → 'Juan Pérez'. Los nombres se guardan así en todo el panel.
  *
@@ -90,12 +122,16 @@ export const crearClienteCompleto = async (datos, transaction) => {
         tipo_persona, tipoDocumento, numero_doc, digito_verif,
         razon_social, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
         email, telefono, genero,
-        regimen_fiscal, gran_contribuyente, autorretenedor, agente_retencion, obligado_aduanero,
+        regimen_fiscal, responsabilidad_fiscal,
+        gran_contribuyente, autorretenedor, agente_retencion, obligado_aduanero,
         ciiu, descripcion_ciiu, fecha_rut,
-        ubicacion
+        ubicacion, idCliente: idClienteFijo
     } = datos;
 
     const cliente = await Clientes.create({
+        // Opcional: quien necesita el id antes del insert (para nombrar sus archivos en R2)
+        // lo genera y lo pasa. Si no viene, lo genera Sequelize.
+        ...(idClienteFijo && { idCliente: idClienteFijo }),
         tipo_persona: tipo_persona || 'N',
         tipoDocumento: tipoDocumento || 'CC',
         numero_doc,
@@ -117,6 +153,7 @@ export const crearClienteCompleto = async (datos, transaction) => {
     await ClientesTributario.create({
         idCliente,
         regimen_fiscal: regimen_fiscal || REGIMEN_NO_RESPONSABLE_IVA,
+        responsabilidad_fiscal: normalizarResponsabilidades(responsabilidad_fiscal),
         gran_contribuyente: Boolean(gran_contribuyente),
         autorretenedor: Boolean(autorretenedor),
         agente_retencion: Boolean(agente_retencion),
