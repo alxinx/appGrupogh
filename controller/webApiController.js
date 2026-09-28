@@ -756,7 +756,14 @@ export const getDepartamentosPublico = async (req, res) => {
 // público de clientes para llenar la descripción sola al escribir el código.
 export const getCiiuPublico = (req, res) => {
     const descripcion = descripcionCiiu(req.params.codigo);
-    if (!descripcion) return res.status(404).json({ success: false, mensaje: 'No encontramos ese código CIIU.' });
+    // El catálogo casi nunca cambia: el navegador y Cloudflare guardan cada código un día y
+    // la mayoría de las consultas no llegan a este servidor. Un código inexistente se guarda
+    // solo 5 minutos, por si se corrige el catálogo.
+    if (!descripcion) {
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.status(404).json({ success: false, mensaje: 'No encontramos ese código CIIU.' });
+    }
+    res.set('Cache-Control', 'public, max-age=86400');
     return res.json({ success: true, codigo: req.params.codigo, descripcion });
 };
 
