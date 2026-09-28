@@ -9,6 +9,7 @@ import {
 } from '../helpers/clientes.js';
 import { subirComprobantes, borrarComprobantes } from '../helpers/comprobantesMovimiento.js';
 import { ipDe } from '../middlewares/apiRateLimit.js';
+import { descripcionCiiu } from '../helpers/ciiu.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Registro público de clientes — grupogh.co/formularios/registroClientes
@@ -183,9 +184,12 @@ export const registrarClienteWeb = async (req, res) => {
             return fallo('R-99-PN significa que no aplica ninguna: no puede ir junto con otras.', 'responsabilidad_fiscal');
         }
 
+        // La actividad económica sale del catálogo CIIU, nunca del formulario: en la web el
+        // campo es de solo lectura y se llena solo con el código.
         const ciiu = texto(b.ciiu);
         if (ciiu && !RE_CIIU.test(ciiu)) return fallo('El código CIIU son 4 dígitos.', 'ciiu');
-        const descripcion_ciiu = texto(b.descripcion_ciiu).slice(0, 200);
+        const descripcion_ciiu = ciiu ? descripcionCiiu(ciiu) : null;
+        if (ciiu && !descripcion_ciiu) return fallo('Ese código CIIU no existe. Revísalo en tu RUT.', 'ciiu');
 
         const fecha_rut = texto(b.fecha_rut);
         if (fecha_rut) {
@@ -199,7 +203,7 @@ export const registrarClienteWeb = async (req, res) => {
             regimen_fiscal:         regimen,
             responsabilidad_fiscal: responsabilidades,
             ciiu:                   ciiu || null,
-            descripcion_ciiu:       descripcion_ciiu ? toPascal(descripcion_ciiu) : null,
+            descripcion_ciiu:       descripcion_ciiu,
             fecha_rut:              fecha_rut || null
         };
     }

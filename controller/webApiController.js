@@ -1,4 +1,5 @@
 import { Op, fn, col, literal } from 'sequelize';
+import { descripcionCiiu } from '../helpers/ciiu.js';
 import db from '../config/bd.js';
 import {
     BannersWeb, CenefasWeb, SeccionesWeb, PopupWeb, EtiquetasWeb,
@@ -749,6 +750,14 @@ export const getDepartamentosPublico = async (req, res) => {
         console.error('webApi.getDepartamentosPublico:', e);
         return res.status(500).json({ error: 'Error al obtener departamentos' });
     }
+};
+
+// GET /api/web/ciiu/:codigo — actividad económica de un código CIIU: la usa el registro
+// público de clientes para llenar la descripción sola al escribir el código.
+export const getCiiuPublico = (req, res) => {
+    const descripcion = descripcionCiiu(req.params.codigo);
+    if (!descripcion) return res.status(404).json({ success: false, mensaje: 'No encontramos ese código CIIU.' });
+    return res.json({ success: true, codigo: req.params.codigo, descripcion });
 };
 
 // GET /api/web/municipios/:idDepartamento — cascada del select de municipio en el

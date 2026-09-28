@@ -4,7 +4,7 @@ import { exigirTurnstile } from '../middlewares/turnstile.js';
 import { recibirRutRegistroWeb } from '../middlewares/uploadComprobantes.js';
 import { consultarDocumentoRegistro, registrarClienteWeb } from '../controller/registroClienteWebController.js';
 import { recibirComprobante } from '../middlewares/uploadComprobante.js';
-import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, darDeBajaInteresado, getPaginaBySlug, getPuntosVenta, getDepartamentosPublico, getMunicipiosPublico, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi, subirComprobantePagoWeb, sincronizarReservasWeb, demandaCarritoWeb } from '../controller/webApiController.js';
+import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, darDeBajaInteresado, getPaginaBySlug, getPuntosVenta, getDepartamentosPublico, getMunicipiosPublico, getCiiuPublico, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi, subirComprobantePagoWeb, sincronizarReservasWeb, demandaCarritoWeb } from '../controller/webApiController.js';
 
 import { listarEntidadesQrPublico, getQrPagoPublico } from '../controller/qrPagoControllers.js';
 
@@ -41,6 +41,7 @@ routes.get('/puntos-venta',        getPuntosVenta);
 // usa el admin, sin sesión.
 routes.get('/departamentos',              getDepartamentosPublico);
 routes.get('/municipios/:idDepartamento', getMunicipiosPublico);
+routes.get('/ciiu/:codigo',              getCiiuPublico);
 routes.post('/interesado',         escrituraPublicaRateLimit, postInteresado);
 routes.get('/interesado/baja',     darDeBajaInteresado);
 routes.post('/visitante/track',        trackingRateLimit, trackVisita);
