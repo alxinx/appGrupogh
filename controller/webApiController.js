@@ -130,7 +130,10 @@ export const getConfig = async (req, res) => {
             popup: popup ? popup.toJSON() : null,
             etiquetas: etiquetas.map(e => e.toJSON()),
             wholesaleMinQty: parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6,
-            wholesaleGlobal: process.env.WHOLESALE_PRICE_GLOBAL !== 'false'
+            wholesaleGlobal: process.env.WHOLESALE_PRICE_GLOBAL !== 'false',
+            // WhatsApp de soporte (config/marca.js): lo usa el registro de clientes para su
+            // enlace de ayuda. Solo dígitos con indicativo; null si no está configurado.
+            soporteWhatsapp: SOPORTE_WHATSAPP ? String(SOPORTE_WHATSAPP).replace(/\D/g, '') : null
         });
     } catch (e) {
         console.error('webApi.getConfig:', e);

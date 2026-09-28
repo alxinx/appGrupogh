@@ -90,6 +90,6 @@ export const exigirTurnstile = (accion) => async (req, res, next) => {
     if (valido) return next();
     return res.status(403).json({
         success: false,
-        mensaje: 'No pudimos confirmar que eres una persona. Recarga la página e inténtalo de nuevo.'
+        mensaje: 'No pudimos hacer la verificación de seguridad. Inténtalo de nuevo; lo que llevas escrito no se pierde.'
     });
 };
