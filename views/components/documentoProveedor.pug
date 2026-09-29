@@ -1,0 +1,37 @@
+//- Tipo y número de documento de un proveedor. Lo usan el alta (supplier/forms/supplier.pug)
+//- y la edición (supplier/ver.pug), para que los dos formularios pidan y validen lo mismo.
+//-
+//- El comportamiento lo pone src/js/documentoProveedor.js sobre [data-documento-proveedor]:
+//- la etiqueta cambia según el tipo, con NIT aparece la aclaración del dígito de verificación
+//- y el número se consulta en vivo contra los proveedores existentes. El servidor lo vuelve a
+//- validar al guardar (validarDocumentoProveedor en adminControllers.js).
+//-
+//- opts.tipos        TIPOS_DOCUMENTO (helpers/tiposDocumento.js)
+//- opts.tipo         tipo actual ('CC' por defecto)
+//- opts.numero       número actual
+//- opts.nombre       name del campo del número ('nit' en el alta, 'taxIdSupplier' en la edición)
+//- opts.idProveedor  en la edición, para no marcarlo como duplicado de sí mismo
+//- opts.claseTipo   ancho de la columna del tipo en la grilla del formulario
+//- opts.claseNumero ancho de la columna del número
+//-
+//- No trae grilla propia: el contenedor es `display: contents`, así que sus dos columnas
+//- entran directo en la grilla de 12 del formulario y se alinean con las demás filas.
+mixin documentoProveedor(opts)
+  - const tipoActual = opts.tipo || 'CC'
+  - const claseTipo = opts.claseTipo || 'col-span-12 md:col-span-3'
+  - const claseNumero = opts.claseNumero || 'col-span-12 md:col-span-3'
+  div(class="contents" data-documento-proveedor data-excluir=opts.idProveedor || '')
+    div(class=claseTipo)
+      label.label Tipo de documento
+        select.field-text(name="tipoDocumento" data-tipo-documento)
+          each t in (opts.tipos || [])
+            option(value=t.valor selected=t.valor === tipoActual)= t.etiqueta
+    div(class=claseNumero)
+      label.label
+        span(data-etiqueta-numero) Nro. identificación
+        input.field-text(type="text" name=opts.nombre value=opts.numero || '' autocomplete="off" maxlength="20"
+          placeholder="Sin puntos ni espacios" data-numero-documento)
+      p(class="hidden text-xs text-slate-500 mt-1 pl-1 leading-snug" data-ayuda-nit)
+        i(class="fi fi-rr-info mr-1")
+        | Sin el dígito de verificación: solo los números antes del guion.
+      p(class="hidden text-xs font-semibold text-red-600 mt-1 pl-1 leading-snug" role="alert" data-aviso-documento)

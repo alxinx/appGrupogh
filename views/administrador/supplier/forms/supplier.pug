@@ -1,4 +1,7 @@
 include ../../../components/selectBuscable.pug
+include ../../../components/modalConfirmacion.pug
+include ../../../components/documentoProveedor.pug
+include ../../../components/cuentasBancariasProveedor.pug
 
 form(action="", method="post" id="formularioProvedor" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
 
@@ -24,10 +27,7 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
                 input(class="field-text" type="text" name="razonSocial" id="razonSocial" placeholder="Cómo se llama el provedor?" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
                 #divError
 
-        div(class="col-span-12 md:col-span-6")
-            label.label NIT O IDENTIFICACIÓN
-                input(class="field-text" type="text" name="nit" id="nit" placeholder="Nro de  NIT o Cédula" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
-                #divError
+        +documentoProveedor({ tipos: tiposDocumento, nombre: 'nit' })
         //-Departamento
         div(class="col-span-12 md:col-span-3")
             label.label Departamento
@@ -51,25 +51,12 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
 
 
 
-        //- Ciudad
+        //- Ciudad: la llena ubicacionProveedor.js con las del departamento elegido.
         div(class="col-span-12 md:col-span-3")
             label.label Ciudad
                 div(class="select-wrapper")
-                    select(name="ciudadSelect" id="ciudadSelect" class = (errores && errores.ciudad) ? "field-textfield-text-error" : "field-text")
-                        if ciudades
-                            option(value="") -- Seleccione Ciudad --
-                            each ciudad in ciudades
-                                option(
-                                    value=ciudad.id
-                                    selected=(dato && dato.ciudad == ciudad.id) ? true : false
-                                )= ciudad.nombre                        
-                        else 
-                            option(value="") -- Seleccione Depto primero --
-                        span.select-icon
-                            i.fi-rr-chevron-double-down
-                    if errores && errores.ciudad
-                        p(class="label-error pl-2.5")=errores.ciudad
-                            i.fi-rr-light-emergency-on
+                    select(name="ciudadSelect" id="ciudadSelect" class="field-text" disabled)
+                        option(value="") Elige primero el departamento
                     span.select-icon
                         i.fi-rr-chevron-double-down
 
@@ -113,6 +100,14 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
         div(class="col-span-12 md:col-span-6")
             label.label Teléfono
                 input(class="field-text" type="text" id="telefonoContacto" name="telefonoContacto" placeholder="444-44-44" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
+
+        //- SEPARADOR 100% CUENTAS BANCARIAS
+        div(class="col-span-12 -mx-6 mt-4")
+            div(class="border-b border-gray-200 w-full")
+                h1.h1(class="text-left pl-11 flex items-center text-gray-700")
+                    i.fi-rr-bank.mr-2
+                    | CUENTAS BANCARIAS
+        +cuentasBancariasProveedor({ clase: 'col-span-12 flex flex-col' })
            
     //- COLUMNA DERECHA
     div(class="col-span-12 cards cardsWhite md:col-span-4 flex flex-col gap-4")

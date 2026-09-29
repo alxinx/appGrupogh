@@ -160,6 +160,30 @@ style.
         font-size: 0.75rem; line-height: 1.45; color: #475569;
     }
     .gh-conf-aviso i { color: #94A3B8; font-size: 0.875rem; flex-shrink: 0; margin-top: 0.0625rem; }
+    .gh-conf-aviso strong { font-weight: 700; color: inherit; }
+    /* Aviso que pide una acción antes de confirmar (la cuenta de pago de un proveedor que
+       cambió). Ámbar y no rojo: no es un error ni plata que sale, es "verifica primero". */
+    .gh-conf-aviso--alerta { background: #FFFBEB; border-color: #FDE68A; color: #78350F; }
+    .gh-conf-aviso--alerta i { color: #B45309; }
+    /* Un aviso seguido de otro, o después de una lista, no repite el margen completo. */
+    .gh-conf-lista + .gh-conf-aviso { margin-top: 0.5rem; }
+
+    /* Título de un grupo del cuerpo (las cuentas de un proveedor), con su conteo a la
+       derecha. Va pegado a su lista: está más cerca de lo que titula que de lo de arriba. */
+    .gh-conf-seccion {
+        display: flex; justify-content: space-between; align-items: baseline;
+        margin: 1.25rem 1.5rem 0; padding-top: 1rem; border-top: 1px solid #F1F5F9;
+        font-size: 0.75rem; font-weight: 700; color: #334155;
+    }
+    .gh-conf-seccion span { font-size: 0.6875rem; font-weight: 600; color: #64748B; }
+    .gh-conf-seccion + .gh-conf-lista { padding-top: 0.625rem; }
+    /* El número de una cuenta es lo que hay que releer dígito por dígito. */
+    .gh-conf-numero { font-size: 0.75rem; font-weight: 600; color: #1E293B; letter-spacing: 0.02em; }
+    .gh-conf-principal {
+        display: inline-block; padding: 0.1875rem 0.5rem; border-radius: 999px;
+        background: #FDE7F2; color: #A3306A;
+        font-size: 0.625rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    }
 
     .gh-conf-acciones { display: flex; padding: 1.25rem 1.75rem 1.75rem; gap: 0.625rem; margin: 0; }
     .gh-conf-btn {

@@ -1,4 +1,5 @@
 import { Op, fn, col, literal } from 'sequelize';
+import { TIPOS_DOC_CLIENTE_NATURAL } from '../helpers/clientes.js';
 import { descripcionCiiu } from '../helpers/ciiu.js';
 import db from '../config/bd.js';
 import {
@@ -28,7 +29,8 @@ import { WEB_STORE_URL, SOPORTE_EMAIL, SOPORTE_WHATSAPP } from '../config/marca.
 // Mismo set que CLIENTES.tipoDocumento (ENUM) — faltaba PPT acá, así que un comprador con
 // Permiso por Protección Temporal no podía pasar esta validación aunque el checkout no
 // tuviera ningún otro problema.
-const TIPOS_DOC_NATURAL = ['CC', 'CE', 'TI', 'PP', 'PPT', 'PEP'];
+// Mismos tipos que el formulario del panel para una persona natural (src/json/tipoIdentificacionPersonas.json).
+const TIPOS_DOC_NATURAL = TIPOS_DOC_CLIENTE_NATURAL;
 const TIPOS_DOC_JURIDICA = ['NIT'];
 
 // Texto que ve el comprador cuando su documento ya estaba registrado con otro correo/teléfono.

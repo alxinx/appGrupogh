@@ -1,0 +1,1 @@
+(()=>{"use strict";const e={banco:"Banco",billetera:"Billetera Virtual",Banco:"Banco","Billetera Virtual":"Billetera Virtual"};window.filtrarEntidadesFinancieras=(a,t)=>{if(!a)return;const i=e[t]||null;[...a.options].forEach(e=>{if(!e.value)return;const a=!i||e.dataset.tipo===i;e.hidden=!a,e.disabled=!a}),a.selectedOptions[0]?.hidden&&(a.value=""),a.buscable?.refresh()}})();

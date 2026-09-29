@@ -1,26 +1,9 @@
 [
-  {
-    "codigo": "CC",
-    "descripcion": "Cédula de Ciudadanía"
-  },
-  {
-    "codigo": "CE",
-    "descripcion": "Cédula de Extranjería"
-  },
-  {
-    "codigo": "TI",
-    "descripcion": "Tarjeta de Identidad"
-  },
-  {
-    "codigo": "NIT",
-    "descripcion": "NIT"
-  },
-  {
-    "codigo": "PP",
-    "descripcion": "Pasaporte"
-  },
-  {
-    "codigo": "PPT",
-    "descripcion": "Permiso por Protección Temporal (PPT)"
-  }
+  { "codigo": "CC",  "descripcion": "Cédula de ciudadanía" },
+  { "codigo": "CE",  "descripcion": "Cédula de extranjería" },
+  { "codigo": "TI",  "descripcion": "Tarjeta de identidad" },
+  { "codigo": "NIT", "descripcion": "NIT" },
+  { "codigo": "PP",  "descripcion": "Pasaporte" },
+  { "codigo": "PPT", "descripcion": "Permiso por Protección Temporal (PPT)" },
+  { "codigo": "PEP", "descripcion": "Permiso Especial de Permanencia (PEP)" }
 ]

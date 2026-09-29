@@ -1,4 +1,5 @@
 extends ../../layout/index
+include ../../components/entidadFinanciera.pug
 block contenedor
     body(class="bg-gray-100 min-h-screen")
         main(class="flex-1 overflow-y-auto")
@@ -105,27 +106,27 @@ block contenedor
                                     form#form-editar-entidad(class="flex flex-col gap-4 px-4 pb-4")
                                         input(type="hidden" name="_csrf" value=csrfToken)
 
+                                        //- Primero el tipo: banco y billetera se eligen del catálogo, el
+                                        //- resto se escribe (mismo criterio que el alta en listado.pug).
+                                        - const claseCampo = 'w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors'
+                                        - const conCatalogo = ['Banco', 'Billetera Virtual'].includes(entidad.tipoEntidad)
+                                        - const enCatalogo = (entidadesFinancieras || []).some(e => e.nombre === entidad.nombreEntidad && e.tipo === entidad.tipoEntidad)
                                         div
-                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Nombre
-                                            input#input-nombre-entidad(
-                                                type="text"
-                                                name="nombreEntidad"
-                                                value=entidad.nombreEntidad
-                                                maxlength="100"
-                                                autocomplete="off"
-                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
-                                            )
-
-                                        div
-                                            label(class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Tipo de entidad
-                                            select#input-tipo-entidad(
-                                                name="tipoEntidad"
-                                                class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300/40 transition-colors"
-                                            )
+                                            label(for="input-tipo-entidad" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Tipo de entidad
+                                            select#input-tipo-entidad(name="tipoEntidad" class=claseCampo)
                                                 option(value="Banco" selected=entidad.tipoEntidad === 'Banco') Banco
                                                 option(value="Billetera Virtual" selected=entidad.tipoEntidad === 'Billetera Virtual') Billetera Virtual
                                                 option(value="Entidad Crediticia" selected=entidad.tipoEntidad === 'Entidad Crediticia') Entidad Crediticia
                                                 option(value="Tarjeta Credito" selected=entidad.tipoEntidad === 'Tarjeta Credito') Tarjeta Crédito
+
+                                        div#campo-entidad-catalogo(class=conCatalogo ? '' : 'hidden')
+                                            label(for="input-entidad-catalogo" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Banco o billetera
+                                            //- Un nombre guardado antes del catálogo (Wompi) se conserva como opción.
+                                            +selectEntidadFinanciera({ id: 'input-entidad-catalogo', valor: 'nombre', clase: claseCampo, elegido: entidad.nombreEntidad, extra: (conCatalogo && !enCatalogo) ? { valor: entidad.nombreEntidad, etiqueta: entidad.nombreEntidad + ' (nombre actual)', tipo: entidad.tipoEntidad } : null })
+
+                                        div#campo-entidad-libre(class=conCatalogo ? 'hidden' : '')
+                                            label(for="input-nombre-entidad" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1") Nombre
+                                            input#input-nombre-entidad(type="text" name="nombreEntidad" value=entidad.nombreEntidad maxlength="100" autocomplete="off" class=claseCampo)
 
                                         div(class="flex items-center justify-between px-3 py-3 bg-white rounded-xl border border-slate-200")
                                             div
@@ -150,6 +151,7 @@ block contenedor
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script(src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js")
         script(src="/js/paginador.js")
+        script(src="/js/entidadFinanciera.js")
         script.
             (function () {
                 const csrf       = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -253,13 +255,24 @@ block contenedor
                 });
 
                 // ── EDITAR ENTIDAD ────────────────────────────────────────────
+                // Banco o billetera: del catálogo. Lo demás se escribe.
+                const selTipoEntidad = document.getElementById('input-tipo-entidad');
+                const selCatalogo    = document.getElementById('input-entidad-catalogo');
+                const conCatalogo    = () => ['Banco', 'Billetera Virtual'].includes(selTipoEntidad.value);
+                window.filtrarEntidadesFinancieras?.(selCatalogo, selTipoEntidad.value);
+                selTipoEntidad.addEventListener('change', () => {
+                    document.getElementById('campo-entidad-catalogo').classList.toggle('hidden', !conCatalogo());
+                    document.getElementById('campo-entidad-libre').classList.toggle('hidden', conCatalogo());
+                    window.filtrarEntidadesFinancieras?.(selCatalogo, selTipoEntidad.value);
+                });
+
                 document.getElementById('btn-guardar-edicion').addEventListener('click', async () => {
-                    const nombre  = document.getElementById('input-nombre-entidad').value.trim();
-                    const tipo    = document.getElementById('input-tipo-entidad').value;
+                    const tipo    = selTipoEntidad.value;
+                    const nombre  = conCatalogo() ? selCatalogo.value : document.getElementById('input-nombre-entidad').value.trim();
                     const recibir = document.getElementById('switch-recibir-pagos').checked;
                     const btn     = document.getElementById('btn-guardar-edicion');
 
-                    if (!nombre) return Swal.fire({ icon: 'warning', title: 'Falta el nombre', text: 'Ingresa el nombre de la entidad.', confirmButtonColor: '#EC5FA3' });
+                    if (!nombre) return Swal.fire({ icon: 'warning', title: conCatalogo() ? 'Falta el banco' : 'Falta el nombre', text: conCatalogo() ? 'Elige el banco o la billetera de la lista.' : 'Ingresa el nombre de la entidad.', confirmButtonColor: '#EC5FA3' });
 
                     btn.disabled    = true;
                     btn.textContent = 'Guardando...';

@@ -1,7 +1,8 @@
+import { confirmarProveedor } from './confirmarProveedor.js';
+
 
 (function () {
     // Referencias al DOM
-    const nitInput = document.getElementById('nit');
     const form = document.getElementById('formularioProvedor');
     const fileInput = document.getElementById('upload-images');
     const previewContainer = document.getElementById('preview-container');
@@ -10,31 +11,8 @@
     // DataTransfer para manejar los archivos
     const dt = new DataTransfer();
 
-    // 1. VALIDACIÓN DE NIT EN TIEMPO REAL
-    if (nitInput) {
-        nitInput.addEventListener('blur', async function () {
-            const nit = this.value.trim();
-            if (nit.length > 3) {
-                try {
-                    const response = await fetch(`/admin/api/check-nit/${nit}`);
-                    const data = await response.json();
-
-                    if (data.exists) {
-                        Swal.fire({
-                            icon: 'error',
-                            title: '¡NIT Duplicado!',
-                            text: 'Este número de identificación ya se encuentra registrado en el sistema.',
-                            confirmButtonColor: '#7e22ce'
-                        });
-                        this.value = '';
-                        this.focus();
-                    }
-                } catch (error) {
-                    console.error('Error validando NIT:', error);
-                }
-            }
-        });
-    }
+    // 1. El tipo y número de documento (etiqueta, aviso del NIT y consulta de duplicados)
+    //    los maneja documentoProveedor.js, compartido con la edición del proveedor.
 
     // 2. PREVISUALIZACIÓN Y MANEJO DE ARCHIVOS
     if (fileInput) {
@@ -153,7 +131,10 @@
                 return;
             }
 
-            // B. Preparar Datos
+            // B. Confirmación: resumen del proveedor y de las cuentas a las que se le pagará.
+            if (!(await confirmarProveedor(form, { modo: 'alta' }))) return;
+
+            // C. Preparar Datos
             const formData = new FormData(form);
             // El input file ya tiene los archivos correctos gracias a dt sync
 
@@ -177,6 +158,15 @@
                     });
 
                     form.reset();
+                    // Tras el reset el tipo vuelve a CC: se avisa al campo para que ajuste su etiqueta.
+                    form.querySelector('[data-tipo-documento]')?.dispatchEvent(new Event('change'));
+                    // Un campo oculto no vuelve a su valor original con reset(): las cuentas se
+                    // vacían a mano y el bloque se vuelve a pintar.
+                    const cajaCuentas = form.querySelector('[data-cuentas-proveedor]');
+                    if (cajaCuentas) {
+                        cajaCuentas.querySelector('[data-cuentas-json]').value = '[]';
+                        cajaCuentas.dispatchEvent(new Event('reiniciar'));
+                    }
                     dt.items.clear(); // Limpiar DataTransfer
                     previewContainer.innerHTML = '';
 
@@ -199,47 +189,7 @@
         });
     }
 
-    // Selectores anidados (Departamento -> Ciudad), buscables (window.enhanceSelectBuscable, helpers.js)
-    const departamentoSelect = document.getElementById('departamentoSelect');
-    const ciudadSelect = document.getElementById('ciudadSelect');
-
-    window.enhanceSelectBuscable?.(departamentoSelect, { placeholder: 'Escribe o elige un departamento' });
-    const ciudadBuscable = window.enhanceSelectBuscable?.(ciudadSelect, { placeholder: 'Escribe o elige una ciudad' });
-
-    if (departamentoSelect && ciudadSelect) {
-        departamentoSelect.addEventListener('change', async function (e) {
-            const departamentoId = e.target.value;
-            ciudadSelect.innerHTML = '<option value="">-- Cargando --</option>';
-            ciudadBuscable?.refresh();
-
-            if (departamentoId === '') {
-                ciudadSelect.innerHTML = '<option value="">-- Seleccione Dpto --</option>';
-                ciudadSelect.disabled = true;
-                ciudadBuscable?.refresh();
-                return;
-            }
-            try {
-                const url = `/admin/json/municipios/${departamentoId}`;
-                const res = await fetch(url);
-                const municipios = await res.json();
-
-                ciudadSelect.innerHTML = '<option value="">-- Seleccione Ciudad --</option>';
-
-                municipios.forEach(m => {
-                    const option = document.createElement('option');
-                    option.value = m.id;
-                    option.textContent = m.nombre;
-                    if (ciudadSelect.dataset.selected == m.id) option.selected = true;
-                    ciudadSelect.appendChild(option);
-                });
-                ciudadSelect.disabled = false;
-            } catch (err) { console.error(err); }
-            ciudadBuscable?.refresh();
-        });
-
-        if (departamentoSelect.value !== '') {
-            departamentoSelect.dispatchEvent(new Event('change'));
-        }
-    }
+    // Departamento → ciudad: listas cerradas, las maneja ubicacionProveedor.js (compartido
+    // con la edición del proveedor).
 
 })();

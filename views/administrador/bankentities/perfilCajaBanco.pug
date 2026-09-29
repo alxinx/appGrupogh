@@ -1365,6 +1365,17 @@ block contenedor
                 //
                 // Ocultar los campos acá es comodidad, no seguridad: quién puede editarlos
                 // lo decide el servidor cada vez, y vuelve a comprobarlo al guardar.
+                // Catálogo de bancos y billeteras (src/json/entidadesFinancieras.json, en
+                // app.locals). Una cuenta de banco o billetera dice de cuál es.
+                const ENTIDADES_FINANCIERAS = !{JSON.stringify(entidadesFinancieras || []).replace(/</g, '\\u003c')};
+                const TIPO_ENTIDAD_DE_CUENTA = { banco: 'Banco', billetera: 'Billetera Virtual' };
+                const opcionesEntidad = (tipoCuenta, elegida) =>
+                    '<option value="">Selecciona el banco o la billetera</option>' +
+                    ENTIDADES_FINANCIERAS
+                        .filter(e => e.tipo === TIPO_ENTIDAD_DE_CUENTA[tipoCuenta])
+                        .map(e => `<option value="${esc(e.codigo)}" ${e.codigo === elegida ? 'selected' : ''}>${esc(e.nombre)}</option>`)
+                        .join('');
+
                 const TIPOS_CUENTA = [
                     { valor: 'caja',      etiqueta: 'Caja',      icono: 'fi-rr-cash' },
                     { valor: 'banco',     etiqueta: 'Banco',     icono: 'fi-rr-bank' },
@@ -1383,6 +1394,18 @@ block contenedor
 
                     const c = datos.cuenta;
                     const editable = datos.puedeEditarEstructura;
+                    const entidadActual = ENTIDADES_FINANCIERAS.find(e => e.codigo === c.codigoEntidadFinanciera);
+
+                    // Banco o billetera: editable si el servidor lo permite; si no, fijo y a la vista.
+                    const bloqueEntidad = datos.puedeCambiarEntidad
+                        ? `<div class="gh-form-campo" id="ed-campo-entidad" style="${c.tipo === 'caja' ? 'display:none' : ''}">
+                               <label class="gh-form-label" for="ed-entidad">Banco o billetera</label>
+                               <select id="ed-entidad" class="gh-form-input">${opcionesEntidad(c.tipo, c.codigoEntidadFinanciera)}</select>
+                           </div>`
+                        : `<p class="gh-form-sellado">
+                               <i class="fi fi-rr-lock"></i>
+                               <span>El banco (<b>${esc(entidadActual?.nombre || c.codigoEntidadFinanciera)}</b>) quedó fijo: esta cuenta ya tiene movimientos asentados.</span>
+                           </p>`;
 
                     const bloqueEstructura = editable
                         ? `<div class="gh-form-campo">
@@ -1436,6 +1459,7 @@ block contenedor
                                     </div>
 
                                     ${bloqueEstructura}
+                                    ${bloqueEntidad}
                                 </div>
 
                                 <p id="ed-error" class="gh-form-error" style="display:none;margin-top:1rem"></p>
@@ -1457,7 +1481,17 @@ block contenedor
                         // una clase de cierre propia que comparta @keyframes con la de entrada no
                         // dispara `animationend` y deja el contenedor tapando la página.
                         showClass: { popup: 'gh-conf-entra', backdrop: 'swal2-backdrop-show' },
-                        didOpen: () => document.getElementById('ed-nombre')?.focus(),
+                        didOpen: () => {
+                            document.getElementById('ed-nombre')?.focus();
+                            // Al cambiar el tipo, el banco se filtra (o se oculta para una caja).
+                            document.querySelectorAll('input[name="ed-tipo"]').forEach(r => r.addEventListener('change', () => {
+                                const campo = document.getElementById('ed-campo-entidad');
+                                const sel = document.getElementById('ed-entidad');
+                                if (!campo || !sel) return;
+                                campo.style.display = r.value === 'caja' ? 'none' : '';
+                                sel.innerHTML = opcionesEntidad(r.value, sel.value);
+                            }));
+                        },
                         showLoaderOnConfirm: true,
                         allowOutsideClick: () => !Swal.isLoading(),
                         preConfirm: async () => {
@@ -1480,6 +1514,12 @@ block contenedor
                             if (editable) {
                                 cuerpo.tipo = document.querySelector('input[name="ed-tipo"]:checked').value;
                                 cuerpo.referencia = document.getElementById('ed-referencia').value.trim();
+                            }
+                            const tipoFinal = cuerpo.tipo || c.tipo;
+                            const selEntidad = document.getElementById('ed-entidad');
+                            if (tipoFinal !== 'caja' && selEntidad) {
+                                if (!selEntidad.value) return fallar('Elegí el banco o la billetera de la cuenta.');
+                                cuerpo.codigoEntidadFinanciera = selEntidad.value;
                             }
 
                             try {

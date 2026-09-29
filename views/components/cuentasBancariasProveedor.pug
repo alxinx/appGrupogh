@@ -1,0 +1,70 @@
+//- Cuentas bancarias de un proveedor (PROVEDORES_CUENTAS_BANCARIAS), en el alta
+//- (supplier/forms/supplier.pug) y la edición (supplier/ver.pug).
+//-
+//- src/js/cuentasProveedor.js pinta una fila por cuenta desde la plantilla, filtra el tipo
+//- de cuenta según el banco elegido y deja todo como JSON en el campo oculto
+//- `cuentasBancarias`, que es lo que viaja con el formulario. El servidor lo revalida
+//- completo (helpers/cuentasBancariasProveedor.js).
+//-
+//- opts.cuentas  cuentas guardadas (en la edición)
+//- opts.clase    clases del contenedor en la grilla del formulario
+include ./entidadFinanciera.pug
+
+mixin cuentasBancariasProveedor(opts)
+  - const guardadas = (opts.cuentas || []).map(c => ({ codigoEntidadFinanciera: c.codigoEntidadFinanciera, tipoCuenta: c.tipoCuenta, tipoLlaveBreb: c.tipoLlaveBreb || '', numeroCuenta: c.numeroCuenta, titular: c.titular || '', tipoDocumentoTitular: c.tipoDocumentoTitular || '', documentoTitular: c.documentoTitular || '', principal: Boolean(c.principal) }))
+  - const tiposTitular = (tiposDocumento || []).filter(t => t.valor !== 'TI')
+  //- Los formatos del número (y de cada llave Bre-B) viajan desde helpers/catalogos.js: el
+  //- navegador acota con las mismas reglas que valida el servidor.
+  div(class=opts.clase data-cuentas-proveedor data-formatos=JSON.stringify(formatosNumeroCuenta || {}))
+    input(type="hidden" name="cuentasBancarias" value=JSON.stringify(guardadas) data-cuentas-json)
+    div(class="flex flex-col gap-3" data-cuentas-lista)
+    p(class="hidden text-xs text-gray-500 py-2" data-cuentas-vacio) Todavía no tiene cuentas registradas. Agrégalas para saber a dónde pagarle.
+    button(type="button" class="btn btn-secondary mt-3 self-start" data-agregar-cuenta)
+      i(class="fi fi-rr-add")
+      | Agregar cuenta
+
+    template(data-plantilla-cuenta)
+      div(class="rounded-xl border border-gray-200 bg-white p-4 grid grid-cols-12 gap-3" data-cuenta)
+        div(class="col-span-12 md:col-span-4")
+          label.label Banco o billetera
+            +selectEntidadFinanciera({ valor: 'codigo', clase: 'field-text', incluirBreB: true })
+        //- Con Bre-B el tipo de cuenta es siempre "llave": en su lugar se elige el tipo de llave.
+        div(class="col-span-12 md:col-span-3" data-bloque-tipo-cuenta)
+          label.label Tipo de cuenta
+            select.field-text(data-tipo-cuenta)
+              option(value="") Selecciona
+              each t in (tiposCuentaBancaria || [])
+                option(value=t.codigo)= t.descripcion
+        div(class="col-span-12 md:col-span-3 hidden" data-bloque-tipo-llave)
+          label.label Tipo de llave
+            select.field-text(data-tipo-llave)
+              option(value="") Selecciona
+              each t in (tiposLlaveBreb || [])
+                option(value=t.codigo data-formato=JSON.stringify(t))= t.descripcion
+        div(class="col-span-12 md:col-span-3")
+          label.label
+            span(data-etiqueta-numero-cuenta) Número de cuenta
+            input.field-text(type="text" inputmode="numeric" maxlength="20" autocomplete="off" placeholder="Solo números" data-numero-cuenta)
+          p(class="hidden mt-1 text-xs text-red-600" data-error-numero-cuenta)
+        div(class="col-span-12 md:col-span-2 flex items-end justify-between gap-2 pb-1")
+          label(class="flex items-center gap-1.5 text-xs font-semibold text-gray-600 cursor-pointer")
+            input(type="radio" data-principal)
+            | Principal
+          button(type="button" class="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" aria-label="Quitar esta cuenta" data-quitar-cuenta)
+            i(class="fi fi-rr-trash")
+        div(class="col-span-12")
+          label(class="inline-flex items-center gap-2 text-xs text-gray-600 cursor-pointer")
+            input(type="checkbox" data-otro-titular)
+            | La cuenta está a nombre de otra persona
+        div(class="col-span-12 hidden grid grid-cols-12 gap-3" data-bloque-titular)
+          div(class="col-span-12 md:col-span-6")
+            label.label Nombre del titular
+              input.field-text(type="text" maxlength="150" autocomplete="off" placeholder="Nombre completo" data-titular)
+          div(class="col-span-12 md:col-span-3")
+            label.label Tipo de documento
+              select.field-text(data-tipo-doc-titular)
+                each t in tiposTitular
+                  option(value=t.valor)= t.etiqueta
+          div(class="col-span-12 md:col-span-3")
+            label.label Nro. de documento
+              input.field-text(type="text" maxlength="20" autocomplete="off" placeholder="Sin puntos ni espacios" data-doc-titular)

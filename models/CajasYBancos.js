@@ -46,6 +46,15 @@ const CajasYBancos = db.define('CAJAS_Y_BANCOS', {
         }
     },
 
+    // Banco o billetera de la cuenta: código del catálogo src/json/entidadesFinancieras.json
+    // (helpers/catalogos.js). Obligatorio para una cuenta de tipo banco o billetera nueva y
+    // NULL para una caja de efectivo; las cuentas anteriores al catálogo quedan en NULL hasta
+    // que se les asigne desde la edición.
+    codigoEntidadFinanciera: {
+        type: DataTypes.STRING(40),
+        allowNull: true
+    },
+
     // Número de cuenta, celular de la billetera o el código interno de la caja.
     // Es único, pero opcional: una caja de efectivo no tiene ninguna referencia.
     referencia: {

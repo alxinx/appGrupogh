@@ -15,18 +15,24 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos } from "../models/index.js";
 import { crearClienteCompleto, toPascal, TIPOS_DOC_CLIENTE_NATURAL, resolverUbicacionDane } from '../helpers/clientes.js';
+import { TIPOS_DOCUMENTO_PROVEEDOR, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR, CATALOGO_TIPOS_DOCUMENTO, validarDocumento, normalizarNumeroDocumento } from '../helpers/tiposDocumento.js';
+import { validarCuentasBancarias } from '../helpers/cuentasBancariasProveedor.js';
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import { avisarCambioDePermisos } from '../helpers/permisosEnVivo.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
 import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
-import responsabiliidadFiscal from '../src/json/responsabilidadFiscal.json' with { type: 'json' };
-import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with {type: 'json'}
-import tipoFacturas from '../src/json/tipoFacturas.json' with {type: 'json'}
-import tipoIdentificacion from '../src/json/tipoIdentificacionPersonas.json' with {type: 'json'}
-import contratosLaborales from '../src/json/contratosLaborales.json' with {type: 'json'}
+// Catálogos fijos (src/json/) por su único punto de acceso. Se conservan los nombres locales
+// de siempre —incluida la errata de responsabiliidadFiscal— porque así los leen las vistas.
+import {
+    RESPONSABILIDADES_FISCALES as responsabiliidadFiscal,
+    TIPOS_PERSONA_JURIDICA as tipoPersonaJuridica,
+    TIPOS_FACTURA as tipoFacturas,
+    CONTRATOS_LABORALES as contratosLaborales,
+    buscarEntidadFinanciera, entidadFinancieraPorNombre, TIPO_CUENTA_POR_TIPO_ENTIDAD, TIPOS_CUENTA_BANCARIA
+} from '../helpers/catalogos.js';
 import { montoPositivo, montoNoNegativo, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
 import { generarSlugDe, slugUnico, resolverIdFamilia, obtenerAtributosOrdenadosPorUso, siguienteSkuInterno } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
@@ -3423,10 +3429,8 @@ const newSupplier = async (req, res) => {
 
         categoriasProvedores,
         departamentos,
-        ciudades
-
-
-
+        ciudades,
+        tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR
     })
 
 }
@@ -4603,7 +4607,10 @@ const verProveedor = async (req, res) => {
         const [proveedor, categoriasProvedores, departamentos] = await Promise.all([
             Provedores.findOne({
                 where: { idProveedor },
-                include: [{ model: CategoriasDeProvedores, as: 'categorias', through: { attributes: [] } }]
+                include: [
+                    { model: CategoriasDeProvedores, as: 'categorias', through: { attributes: [] } },
+                    { model: ProvedoresCuentasBancarias, as: 'cuentasBancarias', separate: true, order: [['principal', 'DESC'], ['createdAt', 'ASC']] }
+                ]
             }),
             CategoriasDeProvedores.findAll(),
             Departamentos.findAll({ raw: true })
@@ -4656,6 +4663,7 @@ const verProveedor = async (req, res) => {
             categoriasProvedores,
             departamentos,
             facturas,
+            tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR,
             csrfToken: req.csrfToken(),
             currentPath: req.path
         });
@@ -4676,23 +4684,55 @@ const actualizarProveedor = async (req, res) => {
         const proveedor = await Provedores.findOne({ where: { idProveedor } });
         if (!proveedor) return res.status(404).json({ success: false, mensaje: 'Proveedor no encontrado.' });
 
-        await proveedor.update({
-            razonSocial:       razonSocial?.trim()       || proveedor.razonSocial,
-            emailProvedor:     emailProvedor?.trim()     || proveedor.emailProvedor,
-            telefonoProvedor:  telefonoProvedor?.trim()  || proveedor.telefonoProvedor,
-            telefonoContacto:  telefonoContacto?.trim()  || proveedor.telefonoContacto,
-            nombreContacto:    nombreContacto?.trim()    || proveedor.nombreContacto,
-            direccionProvedor: direccionProvedor?.trim() || proveedor.direccionProvedor,
-            ciudad:            ciudad?.trim()            || proveedor.ciudad,
-            departamento:      departamento?.trim()      || proveedor.departamento,
-        });
+        // Tipo y número: formato y que no lo tenga OTRO proveedor (él mismo queda excluido).
+        const documento = await validarDocumentoProveedor(req.body.tipoDocumento, taxIdSupplier, idProveedor);
+        if (documento.error) return res.status(400).json({ success: false, mensaje: documento.error });
 
-        // Actualizar categorías
-        const cats = Array.isArray(categorias) ? categorias : (categorias ? [categorias] : []);
-        const catObjs = cats.length > 0
-            ? await CategoriasDeProvedores.findAll({ where: { idCategoria: cats } })
-            : [];
-        await proveedor.setCategorias(catObjs);
+        // Departamento y ciudad del catálogo DANE: se guardan los códigos, como en el alta.
+        const ubicacion = await resolverUbicacionDane(departamento, ciudad);
+        if (!ubicacion.ok) return res.status(400).json({ success: false, mensaje: ubicacion.mensaje });
+
+        // Cuentas bancarias: solo se tocan si el formulario las mandó.
+        const reemplazarCuentas = req.body.cuentasBancarias !== undefined;
+        const cuentasBancarias = reemplazarCuentas ? validarCuentasBancarias(req.body.cuentasBancarias) : { cuentas: [] };
+        if (cuentasBancarias.error) return res.status(400).json({ success: false, mensaje: cuentasBancarias.error });
+
+        // Proveedor, categorías y cuentas se escriben juntos: si una parte falla, no queda
+        // el proveedor actualizado con sus cuentas a medias.
+        await db.transaction(async (t) => {
+
+            await proveedor.update({
+                tipoDocumento:     documento.tipoDocumento,
+                taxIdSupplier:     documento.numero,
+                razonSocial:       razonSocial?.trim()       || proveedor.razonSocial,
+                emailProvedor:     emailProvedor?.trim()     || proveedor.emailProvedor,
+                telefonoProvedor:  telefonoProvedor?.trim()  || proveedor.telefonoProvedor,
+                telefonoContacto:  telefonoContacto?.trim()  || proveedor.telefonoContacto,
+                nombreContacto:    nombreContacto?.trim()    || proveedor.nombreContacto,
+                direccionProvedor: direccionProvedor?.trim() || proveedor.direccionProvedor,
+                ciudad:            ubicacion.idMunicipio,
+                departamento:      ubicacion.idDepartamento,
+            }, { transaction: t });
+
+            // Actualizar categorías
+            const cats = Array.isArray(categorias) ? categorias : (categorias ? [categorias] : []);
+            const catObjs = cats.length > 0
+                ? await CategoriasDeProvedores.findAll({ where: { idCategoria: cats }, transaction: t })
+                : [];
+            await proveedor.setCategorias(catObjs, { transaction: t });
+
+            // Cuentas: las anteriores quedan borradas lógicamente (paranoid) y se crean las
+            // nuevas. Así se conserva a qué cuenta se le pagaba antes.
+            if (reemplazarCuentas) {
+                await ProvedoresCuentasBancarias.destroy({ where: { idProveedor }, transaction: t });
+                if (cuentasBancarias.cuentas.length) {
+                    await ProvedoresCuentasBancarias.bulkCreate(
+                        cuentasBancarias.cuentas.map(c => ({ ...c, idProveedor })),
+                        { transaction: t }
+                    );
+                }
+            }
+        });
 
         return res.json({ success: true, mensaje: 'Proveedor actualizado correctamente.' });
     } catch (error) {
@@ -4701,15 +4741,55 @@ const actualizarProveedor = async (req, res) => {
     }
 };
 
+// Tipos de documento de un empleado: el catálogo del proyecto acotado a lo que acepta la
+// columna EMPLEADOS.TipoDocumento (su ENUM no tiene PEP). Se lee del modelo para que el
+// formulario nunca ofrezca un tipo que la base rechazaría al guardar.
+const CODIGOS_TIPO_DOCUMENTO_EMPLEADO = Empleados.getAttributes().TipoDocumento.values;
+const tipoIdentificacion = CATALOGO_TIPOS_DOCUMENTO.filter(t => CODIGOS_TIPO_DOCUMENTO_EMPLEADO.includes(t.codigo));
+
+// ── Documento de un proveedor ────────────────────────────────────────────────
+// Busca otro proveedor con ese número, INCLUIDOS los eliminados: taxIdSupplier es único en
+// la base aunque la fila esté borrada lógicamente (paranoid), así que un eliminado también
+// bloquea el número. `idExcluir` deja fuera al proveedor que se está editando.
+const buscarProveedorPorDocumento = (numero, idExcluir = null) => Provedores.findOne({
+    where: {
+        taxIdSupplier: numero,
+        ...(idExcluir && { idProveedor: { [Op.ne]: idExcluir } })
+    },
+    attributes: ['idProveedor', 'razonSocial', 'deletedAt'],
+    paranoid: false
+});
+
+/** Tipo + número válidos (helpers/tiposDocumento.js) y libres. `{ tipoDocumento, numero }` o `{ error }`. */
+const validarDocumentoProveedor = async (tipo, numero, idExcluir = null) => {
+    const doc = validarDocumento(tipo, numero, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR);
+    if (doc.error) return doc;
+    const otro = await buscarProveedorPorDocumento(doc.numero, idExcluir);
+    if (otro) {
+        return {
+            error: otro.deletedAt
+                ? `Ese número pertenece a un proveedor eliminado (${otro.razonSocial}).`
+                : `Ese número ya está registrado para el proveedor ${otro.razonSocial}.`
+        };
+    }
+    return doc;
+};
+
+// GET /admin/api/check-nit/:nit?excluir=<idProveedor> — consulta en vivo del formulario.
 const checkNitSupplier = async (req, res) => {
-    const { nit } = req.params;
+    const numero = normalizarNumeroDocumento(req.params.nit);
+    const excluir = typeof req.query.excluir === 'string' && req.query.excluir ? req.query.excluir : null;
+    if (!numero) return res.json({ exists: false });
     try {
-        const existing = await Provedores.findOne({ where: { taxIdSupplier: nit } });
-        // Retornamos true si existe, false si no
-        return res.json({ exists: !!existing });
+        const otro = await buscarProveedorPorDocumento(numero, excluir);
+        return res.json({
+            exists:      Boolean(otro),
+            razonSocial: otro?.razonSocial ?? null,
+            eliminado:   Boolean(otro?.deletedAt)
+        });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: 'Error al verificar NIT' });
+        console.error('checkNitSupplier:', error);
+        return res.status(500).json({ error: 'Error al verificar el documento' });
     }
 };
 
@@ -4730,8 +4810,32 @@ const saveSupplier = async (req, res) => {
     }
 
     if (!razonSocial || !nit || categoriasArray.length === 0) {
-        return res.status(400).json({ success: false, mensaje: 'Faltan datos obligatorios (Razón Social, NIT o Categorías).' });
+        return res.status(400).json({ success: false, mensaje: 'Faltan datos obligatorios (razón social, número de identificación o categorías).' });
     }
+
+    // Tipo y número de documento: formato y que no lo tenga otro proveedor.
+    let documento;
+    try {
+        documento = await validarDocumentoProveedor(req.body.tipoDocumento, nit);
+    } catch (e) {
+        console.error('saveSupplier – documento:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo verificar el número de identificación.' });
+    }
+    if (documento.error) return res.status(400).json({ success: false, mensaje: documento.error });
+
+    // Departamento y ciudad del catálogo DANE, con la ciudad dentro del departamento.
+    let ubicacion;
+    try {
+        ubicacion = await resolverUbicacionDane(departamentoSelect, ciudadSelect);
+    } catch (e) {
+        console.error('saveSupplier – ubicación:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo validar la ubicación.' });
+    }
+    if (!ubicacion.ok) return res.status(400).json({ success: false, mensaje: ubicacion.mensaje });
+
+    // Cuentas bancarias (opcionales): banco del catálogo, tipo y número válidos, una principal.
+    const cuentasBancarias = validarCuentasBancarias(req.body.cuentasBancarias);
+    if (cuentasBancarias.error) return res.status(400).json({ success: false, mensaje: cuentasBancarias.error });
 
     const t = await db.transaction();
     const uploadedFiles = []; // Track uploaded files for rollback
@@ -4740,13 +4844,14 @@ const saveSupplier = async (req, res) => {
         // 2. Crear Provedor
         const nuevoProvedor = await Provedores.create({
             razonSocial,
-            taxIdSupplier: nit,
+            tipoDocumento: documento.tipoDocumento,
+            taxIdSupplier: documento.numero,
             nombreContacto,
             telefonoContacto,
             emailProvedor,
             direccionProvedor,
-            departamento: departamentoSelect,
-            ciudad: ciudadSelect,
+            departamento: ubicacion.idDepartamento,
+            ciudad: ubicacion.idMunicipio,
             estado: true
         }, { transaction: t });
 
@@ -4755,6 +4860,14 @@ const saveSupplier = async (req, res) => {
         // 3. Asociar Categorías
         if (categoriasArray.length > 0) {
             await nuevoProvedor.addCategorias(categoriasArray, { transaction: t });
+        }
+
+        // 3b. Cuentas bancarias, en la misma transacción que el proveedor
+        if (cuentasBancarias.cuentas.length) {
+            await ProvedoresCuentasBancarias.bulkCreate(
+                cuentasBancarias.cuentas.map(c => ({ ...c, idProveedor })),
+                { transaction: t }
+            );
         }
 
         // 4. Procesar Documentos (Upload to R2)
@@ -4778,7 +4891,7 @@ const saveSupplier = async (req, res) => {
             await Promise.all(req.files.map(async (file, index) => {
                 const isImage = file.mimetype.startsWith('image/');
                 const ext = file.originalname.split('.').pop();
-                const nombreArchivo = `doc-${nit}-${Date.now()}-${index}.${isImage ? 'webp' : ext}`;
+                const nombreArchivo = `doc-${documento.numero}-${Date.now()}-${index}.${isImage ? 'webp' : ext}`;
                 const r2Key = `documentacion/provedores/${nombreArchivo}`;
 
                 let bufferToUpload = file.buffer;
@@ -4845,7 +4958,7 @@ const saveSupplier = async (req, res) => {
         }
 
         if (error.name === 'SequelizeUniqueConstraintError') {
-            return res.status(400).json({ success: false, mensaje: 'El NIT ya existe en la base de datos.' });
+            return res.status(400).json({ success: false, mensaje: 'Ese número de identificación ya está registrado para otro proveedor.' });
         }
         res.status(500).json({ success: false, mensaje: 'Error interno del servidor al guardar proveedor' });
     }
@@ -5695,7 +5808,7 @@ const actualizarEmpleado = async (req, res) => {
     if (!PrimerNombre?.trim())  errores.PrimerNombre  = 'El primer nombre es requerido';
     if (!PrimerApellido?.trim()) errores.PrimerApellido = 'El primer apellido es requerido';
 
-    const tiposDocValidos = ['CC', 'CE', 'TI', 'NIT', 'PP', 'PPT'];
+    const tiposDocValidos = CODIGOS_TIPO_DOCUMENTO_EMPLEADO;
     if (!TipoDocumento || !tiposDocValidos.includes(TipoDocumento))
         errores.TipoDocumento = 'Selecciona un tipo de documento válido';
     if (!NumeroDocumento?.trim())
@@ -8060,12 +8173,16 @@ const getCajaBancoEditar = async (req, res) => {
         return res.json({
             success: true,
             puedeEditarEstructura: !tieneMovimientos,
+            // El banco se puede asignar si todavía no tiene (cuentas anteriores al catálogo)
+            // o si no hay movimientos; ver editarCajaBanco.
+            puedeCambiarEntidad: !tieneMovimientos || !cuenta.codigoEntidadFinanciera,
             cuenta: {
                 idCajaBanco:     cuenta.idCajaBanco,
                 nombreCajaBanco: cuenta.nombreCajaBanco,
                 tipo:            cuenta.tipo,
                 referencia:      cuenta.referencia,
-                estado:          cuenta.estado
+                estado:          cuenta.estado,
+                codigoEntidadFinanciera: cuenta.codigoEntidadFinanciera
             }
         });
     } catch (e) {
@@ -8128,6 +8245,25 @@ const editarCajaBanco = async (req, res) => {
 
         // Los validadores del modelo corren dentro del update: es la barrera que no
         // depende de que la ruta tenga puesto el express-validator correcto.
+        // Banco o billetera de la cuenta (catálogo). Se puede asignar si todavía no tiene
+        // —cuentas anteriores al catálogo— o si no hay movimientos. Con movimientos y un banco
+        // ya asignado queda fijo, igual que el tipo: cambiarlo reescribiría el historial.
+        const tipoFinal = cambios.tipo ?? cuenta.tipo;
+        if (tipoFinal === 'caja') {
+            cambios.codigoEntidadFinanciera = null;
+        } else if (req.body.codigoEntidadFinanciera !== undefined) {
+            const entidad = entidadFinancieraDeCuenta(tipoFinal, req.body.codigoEntidadFinanciera);
+            if (entidad.error) {
+                await t.rollback();
+                return res.status(422).json({ success: false, mensaje: entidad.error });
+            }
+            if (tieneMovimientos && cuenta.codigoEntidadFinanciera && entidad.codigo !== cuenta.codigoEntidadFinanciera) {
+                await t.rollback();
+                return res.status(409).json({ success: false, mensaje: 'El banco de esta cuenta quedó fijo: ya tiene movimientos asentados.' });
+            }
+            cambios.codigoEntidadFinanciera = entidad.codigo;
+        }
+
         await cuenta.update(cambios, { transaction: t });
         await t.commit();
 
@@ -8162,6 +8298,18 @@ const editarCajaBanco = async (req, res) => {
     }
 };
 
+// Banco o billetera de una cuenta de CAJAS_Y_BANCOS (catálogo en helpers/catalogos.js).
+// Devuelve { codigo } —null para una caja de efectivo— o { error }.
+const entidadFinancieraDeCuenta = (tipoCuenta, codigo) => {
+    if (tipoCuenta === 'caja') return { codigo: null };
+    const e = buscarEntidadFinanciera(codigo);
+    if (!e) return { error: 'Elegí el banco o la billetera de la lista.' };
+    if (TIPO_CUENTA_POR_TIPO_ENTIDAD[e.tipo] !== tipoCuenta) {
+        return { error: `${e.nombre} es ${e.tipo === 'Banco' ? 'un banco' : 'una billetera'}: no coincide con el tipo de la cuenta.` };
+    }
+    return { codigo: e.codigo };
+};
+
 // ─── CAJAS Y BANCOS ───────────────────────────────────────────────────────────
 // POST /admin/bankentities/cajas/crear
 const crearCajaBanco = async (req, res) => {
@@ -8180,6 +8328,11 @@ const crearCajaBanco = async (req, res) => {
             referencia:      req.body.referencia ? String(req.body.referencia).trim() : null,
             estado:          req.body.estado === true || req.body.estado === 'true'
         };
+
+        // Banco o billetera: del catálogo y del mismo tipo que la cuenta. Una caja no lleva.
+        const entidad = entidadFinancieraDeCuenta(datos.tipo, req.body.codigoEntidadFinanciera);
+        if (entidad.error) return res.status(422).json({ success: false, mensaje: entidad.error });
+        datos.codigoEntidadFinanciera = entidad.codigo;
 
         // Segunda barrera: los validadores del modelo corren igual dentro de create().
         const creada = await CajasYBancos.create(datos);
@@ -8212,12 +8365,25 @@ const crearCajaBanco = async (req, res) => {
     }
 };
 
+// Un banco o una billetera se elige del catálogo (helpers/catalogos.js): el nombre tiene que
+// ser uno de los suyos y del mismo tipo, para que "Bancolombia" no aparezca escrito de tres
+// formas. Las entidades crediticias y las tarjetas siguen con nombre libre. `nombreActual`
+// deja pasar, al editar, un nombre guardado antes del catálogo (Wompi, por ejemplo).
+const TIPOS_ENTIDAD_CON_CATALOGO = ['Banco', 'Billetera Virtual'];
+const MENSAJE_ENTIDAD_CATALOGO = 'Elige el banco o la billetera de la lista.';
+const nombreEntidadValido = (nombre, tipo, nombreActual = null) =>
+    !TIPOS_ENTIDAD_CON_CATALOGO.includes(tipo)
+    || Boolean(entidadFinancieraPorNombre(nombre, tipo))
+    || (nombreActual !== null && nombre === nombreActual);
+
 const crearEntidad = async (req, res) => {
     try {
         const { nombreEntidad, tipoEntidad, recibirPagosPos } = req.body;
         const tiposValidos = ['Banco', 'Billetera Virtual', 'Entidad Crediticia', 'Tarjeta Credito'];
         if (!nombreEntidad?.trim() || !tiposValidos.includes(tipoEntidad))
             return res.status(422).json({ success: false, mensaje: 'Datos inválidos.' });
+        if (!nombreEntidadValido(nombreEntidad.trim(), tipoEntidad))
+            return res.status(422).json({ success: false, mensaje: MENSAJE_ENTIDAD_CATALOGO });
 
         const entidad = await Entidades.create({
             nombreEntidad: nombreEntidad.trim(),
@@ -8273,7 +8439,15 @@ const editarEntidad = async (req, res) => {
         if (!nombreEntidad?.trim() || !tiposValidos.includes(tipoEntidad))
             return res.status(422).json({ success: false, mensaje: 'Datos inválidos.' });
 
-        const [updated] = await Entidades.update(
+        const actual = await Entidades.findByPk(idEntidad, { attributes: ['nombreEntidad'], raw: true });
+        if (!actual) return res.status(404).json({ success: false, mensaje: 'Entidad no encontrada.' });
+        if (!nombreEntidadValido(nombreEntidad.trim(), tipoEntidad, actual.nombreEntidad))
+            return res.status(422).json({ success: false, mensaje: MENSAJE_ENTIDAD_CATALOGO });
+
+        // La existencia ya se comprobó arriba. No se mira el número de filas afectadas: MySQL
+        // devuelve 0 cuando los valores no cambian, y eso respondía "no encontrada" al
+        // guardar sin modificar nada.
+        await Entidades.update(
             {
                 nombreEntidad: nombreEntidad.trim(),
                 tipoEntidad,
@@ -8281,7 +8455,6 @@ const editarEntidad = async (req, res) => {
             },
             { where: { idEntidad } }
         );
-        if (!updated) return res.status(404).json({ success: false, mensaje: 'Entidad no encontrada.' });
         return res.json({ success: true, mensaje: 'Entidad actualizada correctamente.' });
     } catch (e) {
         console.error('editarEntidad:', e);

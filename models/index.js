@@ -11,6 +11,7 @@ import Familia from './Familia.js'
 import ReservasCarrito from './ReservasCarrito.js'
 import Imagenes from './imagenes.js'; import Documentacion from './Documentacion.js'
 import Provedores from './Provedores.js'; import CategoriasDeProvedores from './CategoriasDeProvedores.js'
+import ProvedoresCuentasBancarias from './ProvedoresCuentasBancarias.js'
 import Traslados from './Traslados.js'; import DetalleTraslados from './DetalleTraslados.js'
 import InsidenciaTraslado from './InsidenciasTraslados.js'
 import Egresos from './Egresos.js'
@@ -149,6 +150,10 @@ Imagenes.belongsTo(Productos, {
   foreignKey: 'idProducto'
 });
 
+
+// Cuentas bancarias de un proveedor (a dónde se le paga).
+Provedores.hasMany(ProvedoresCuentasBancarias, { foreignKey: 'idProveedor', as: 'cuentasBancarias', onDelete: 'CASCADE' });
+ProvedoresCuentasBancarias.belongsTo(Provedores, { foreignKey: 'idProveedor', as: 'proveedor', onDelete: 'CASCADE' });
 
 Provedores.belongsToMany(CategoriasDeProvedores, {
   through: 'PROVEDOR_CATEGORIAS',
@@ -438,4 +443,5 @@ export {
   Familia,
   ReservasCarrito,
   ClientesRegistroWeb,
+  ProvedoresCuentasBancarias,
 }

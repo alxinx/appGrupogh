@@ -1,4 +1,6 @@
 import express from "express";
+import { TIPOS_DOCUMENTO } from './helpers/tiposDocumento.js';
+import { RESPONSABILIDADES_FISCALES, ENTIDADES_FINANCIERAS, TIPOS_CUENTA_BANCARIA, TIPOS_LLAVE_BREB, FORMATOS_NUMERO_CUENTA } from './helpers/catalogos.js';
 import csrf from "csurf";
 import dotenv from 'dotenv';
 import cookieParser from "cookie-parser";
@@ -45,6 +47,15 @@ if (!Number.isFinite(TRUST_PROXY)) {
 // Formateo de nombres en listados: disponible como tc() en cualquier vista Pug.
 // Es solo presentación — no altera lo que está guardado.
 app.locals.tc = tituloLista;
+
+// Catálogos que usan formularios de varias áreas (el modal de clientes del POS vive en el
+// layout de la tienda y se pinta en todas sus pantallas). Fuente: src/json/.
+app.locals.tiposDocumento = TIPOS_DOCUMENTO;
+app.locals.responsabilidadesFiscales = RESPONSABILIDADES_FISCALES;
+app.locals.entidadesFinancieras = ENTIDADES_FINANCIERAS;
+app.locals.tiposCuentaBancaria = TIPOS_CUENTA_BANCARIA;
+app.locals.tiposLlaveBreb = TIPOS_LLAVE_BREB;
+app.locals.formatosNumeroCuenta = FORMATOS_NUMERO_CUENTA;
 
 // Conexión a la Base de Datos
 try {

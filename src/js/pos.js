@@ -1499,7 +1499,6 @@ import { cristalBloqueo } from './cristalBloqueo.js';
     let docClienteCargado = null;
 
     const TIPOS_EMPRESA  = new Set(['CC', 'NIT']);
-    const TODOS_LOS_TIPOS = ['CC', 'CE', 'TI', 'NIT', 'PP', 'DE'];
 
     const filtrarTipoDoc = (tab) => {
         const sel = document.getElementById('cli-tipo-doc');

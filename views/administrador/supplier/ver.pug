@@ -1,4 +1,6 @@
 extends ../../layout/index
+include ../../components/documentoProveedor.pug
+include ../../components/cuentasBancariasProveedor.pug
 block contenedor
     body(class="bg-gray-100 min-h-screen")
         main(class="flex-1 overflow-y-auto")
@@ -23,7 +25,7 @@ block contenedor
                                         img(src="/img/avatars/suppliers.webp" alt="Proveedor" class="w-8 h-8 object-contain")
                                     div
                                         h1(class="font-bold text-slate-800 text-lg leading-tight")= proveedor.razonSocial
-                                        p(class="text-xs text-slate-400") NIT #{proveedor.taxIdSupplier}
+                                        p(class="text-xs text-slate-400") #{proveedor.tipoDocumento} #{proveedor.taxIdSupplier}
                                 div(class="flex items-center gap-3")
                                     if proveedor.estado
                                         span(class="text-xs font-bold px-3 py-1.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1.5")
@@ -51,14 +53,11 @@ block contenedor
                                                 i(class="fi fi-rr-id-card text-purple-400")
                                                 h2(class="font-bold text-slate-700 text-sm") Datos básicos
 
-                                        div(class="col-span-12 md:col-span-8")
+                                        div(class="col-span-12 md:col-span-6")
                                             label.label Razón social *
                                                 input.field-text(type="text" name="razonSocial" value=proveedor.razonSocial placeholder="Nombre del proveedor")
 
-                                        div(class="col-span-12 md:col-span-4")
-                                            label.label NIT / Identificación
-                                                input.field-text(type="text" value=proveedor.taxIdSupplier disabled class="field-text opacity-60 cursor-not-allowed bg-gray-50")
-                                                p(class="text-[10px] text-gray-400 mt-1 pl-1") El NIT no puede modificarse
+                                        +documentoProveedor({ tipos: tiposDocumento, tipo: proveedor.tipoDocumento, numero: proveedor.taxIdSupplier, nombre: 'taxIdSupplier', idProveedor: proveedor.idProveedor })
 
                                         //- ── Contacto ────────────────────────────────────────────────
                                         div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
@@ -91,16 +90,22 @@ block contenedor
                                         div(class="col-span-12 md:col-span-4")
                                             label.label Departamento
                                                 div(class="select-wrapper")
+                                                    //- El valor es el código DANE, igual que en el alta. Se acepta también el
+                                                    //- nombre para preseleccionar filas viejas que lo guardaron así.
                                                     select.field-text(name="departamento" id="departamentoSelect")
                                                         option(value="") Selecciona el departamento
                                                         each depto in departamentos
-                                                            option(value=depto.nombre selected=proveedor.departamento === depto.nombre)= depto.nombre
+                                                            option(value=depto.id selected=(String(proveedor.departamento).trim() === String(depto.id) || String(proveedor.departamento).trim() === depto.nombre))= depto.nombre
                                                     span.select-icon
                                                         i.fi-rr-chevron-double-down
 
                                         div(class="col-span-12 md:col-span-4")
                                             label.label Ciudad
-                                                input.field-text(type="text" name="ciudad" value=proveedor.ciudad placeholder="Bogotá")
+                                                div(class="select-wrapper")
+                                                    select.field-text(name="ciudad" id="ciudadSelect" data-selected=String(proveedor.ciudad || '').trim() disabled)
+                                                        option(value="") Cargando ciudades…
+                                                    span.select-icon
+                                                        i.fi-rr-chevron-double-down
 
                                         div(class="col-span-12 md:col-span-4")
                                             label.label Dirección
@@ -120,6 +125,14 @@ block contenedor
                                                             checked=categoriasActivas.includes(cat.idCategoria)
                                                             class="categoria-checkbox checkbox")
                                                         span(class="text-xs font-bold text-gray-700 uppercase")= cat.nombre
+
+                                        //- ── Cuentas bancarias ───────────────────────────────────────
+                                        div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100 mt-2")
+                                            div(class="flex items-center gap-2 px-6")
+                                                i(class="fi fi-rr-bank text-purple-400")
+                                                h2(class="font-bold text-slate-700 text-sm") Cuentas bancarias
+
+                                        +cuentasBancariasProveedor({ cuentas: proveedor.cuentasBancarias, clase: 'col-span-12 flex flex-col' })
 
                                         //- ── Guardar ─────────────────────────────────────────────────
                                         div(class="col-span-12 flex justify-end pt-2 border-t border-gray-100 mt-2")
@@ -174,9 +187,18 @@ block contenedor
                                                                 span(class="ml-auto text-slate-400 font-normal") #{f.nroAbonos} abono#{f.nroAbonos !== 1 ? 's' : ''}
 
                 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+                //- Estilos del buscador de departamento/ciudad (window.enhanceSelectBuscable).
+                include ../../components/selectBuscable.pug
+                include ../../components/modalConfirmacion.pug
+                script(src="/js/helpers.js")
+                script(src="/js/documentoProveedor.js")
+                script(src="/js/ubicacionProveedor.js")
+                script(src="/js/cuentasProveedor.js")
+                script(src="/js/confirmarProveedor.js")
                 script.
                     document.getElementById('form-proveedor').addEventListener('submit', async function(e) {
                         e.preventDefault();
+                        if (!(await window.confirmarProveedor(this, { modo: 'edicion' }))) return;
                         const btn = document.getElementById('btn-guardar');
                         btn.disabled = true;
                         btn.innerHTML = '<i class="fi fi-rr-spinner animate-spin"></i> Guardando...';
@@ -198,6 +220,9 @@ block contenedor
                             });
                             const data = await resp.json();
                             if (data.success) {
+                                // Lo guardado pasa a ser el punto de comparación de la próxima confirmación.
+                                const cuentas = this.querySelector('[data-cuentas-json]');
+                                if (cuentas) cuentas.defaultValue = cuentas.value;
                                 Swal.fire({ icon: 'success', title: data.mensaje, timer: 2000, showConfirmButton: false });
                             } else {
                                 Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });

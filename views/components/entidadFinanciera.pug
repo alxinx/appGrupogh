@@ -1,0 +1,24 @@
+//- Select de bancos y billeteras del catálogo (src/json/entidadesFinancieras.json, en
+//- app.locals.entidadesFinancieras). Lo usan: crear y editar una entidad de pago, crear una
+//- cuenta de Cajas y Bancos y las cuentas de un proveedor. src/js/entidadFinanciera.js lo
+//- filtra por tipo (Banco / Billetera Virtual) cuando el formulario tiene un selector de tipo.
+//-
+//- opts.id        id del select
+//- opts.nombre    name del campo
+//- opts.valor     'codigo' (cuentas: se guarda el código) o 'nombre' (entidades: se guarda el nombre)
+//- opts.elegido   valor actual, para preseleccionar
+//- opts.tipo      si viene, solo se pintan las de ese tipo
+//- opts.incluirBreB  suma Bre-B (tipo 'Bre-B'): solo las cuentas de un proveedor. Una entidad
+//-                de pago o una cuenta propia no pueden ser Bre-B.
+//- opts.clase     clases del select
+//- opts.extra     { valor, etiqueta, tipo }: una opción fuera del catálogo que se conserva
+//-                (una entidad guardada antes del catálogo, como Wompi), elegida
+mixin selectEntidadFinanciera(opts)
+  - const campo = opts.valor === 'nombre' ? 'nombre' : 'codigo'
+  select(id=opts.id name=opts.nombre class=opts.clase data-entidad-financiera)
+    option(value="") Selecciona el banco o la billetera
+    if opts.extra
+      option(value=opts.extra.valor data-tipo=opts.extra.tipo selected)= opts.extra.etiqueta
+    each e in (entidadesFinancieras || [])
+      if (opts.tipo ? e.tipo === opts.tipo : (opts.incluirBreB || e.tipo !== 'Bre-B'))
+        option(value=e[campo] data-tipo=e.tipo selected=(opts.elegido && opts.elegido === e[campo]))= e.nombre

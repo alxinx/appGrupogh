@@ -1,4 +1,6 @@
 import { Clientes, ClientesTributario, ClientesUbicacion, Departamentos, Municipios } from '../models/index.js';
+import { CODIGOS_TIPO_DOCUMENTO } from './tiposDocumento.js';
+import { RESPONSABILIDADES_FISCALES } from './catalogos.js';
 
 // Alta de un cliente: las TRES tablas que toca, en un solo lugar.
 //
@@ -11,10 +13,10 @@ import { Clientes, ClientesTributario, ClientesUbicacion, Departamentos, Municip
 // Acá se arma el registro y se escribe.
 
 /** Todo el ENUM de CLIENTES.tipoDocumento. */
-export const TIPOS_DOC_CLIENTE = ['CC', 'CE', 'TI', 'NIT', 'PP', 'PPT', 'PEP'];
+export const TIPOS_DOC_CLIENTE = CODIGOS_TIPO_DOCUMENTO;
 
 /** Los que puede llevar una persona natural en el formulario del panel (sin NIT). */
-export const TIPOS_DOC_CLIENTE_NATURAL = ['CC', 'CE', 'TI', 'PP', 'PPT', 'PEP'];
+export const TIPOS_DOC_CLIENTE_NATURAL = CODIGOS_TIPO_DOCUMENTO.filter(c => c !== 'NIT');
 
 // Códigos DIAN de CLIENTES_TRIBUTARIO.regimen_fiscal. El 49 es el default histórico del
 // formulario: la mayoría de los clientes de mostrador no son responsables de IVA.
@@ -23,7 +25,8 @@ export const REGIMEN_NO_RESPONSABLE_IVA = '49';
 
 // Responsabilidades fiscales DIAN que puede declarar un cliente. R-99-PN significa "no
 // aplica ninguna", así que no puede ir junto con las demás.
-export const CODIGOS_RESPONSABILIDAD_FISCAL = ['O-13', 'O-15', 'O-23', 'O-47', 'R-99-PN'];
+// Catálogo en helpers/catalogos.js (src/json/responsabilidadFiscal.json).
+export const CODIGOS_RESPONSABILIDAD_FISCAL = RESPONSABILIDADES_FISCALES.map(r => r.codigo);
 
 /**
  * Normaliza lo que llega del formulario (arreglo o "O-13,O-15") a la cadena que guarda
@@ -82,8 +85,8 @@ export const toPascal = (str) => (str
 export const resolverUbicacionDane = async (idDepartamento, idMunicipio, transaction) => {
     const idDep = String(idDepartamento ?? '').trim();
     const idMun = String(idMunicipio ?? '').trim();
-    if (!idDep) return { ok: false, mensaje: 'Selecciona el departamento del cliente.' };
-    if (!idMun) return { ok: false, mensaje: 'Selecciona la ciudad del cliente.' };
+    if (!idDep) return { ok: false, mensaje: 'Selecciona el departamento.' };
+    if (!idMun) return { ok: false, mensaje: 'Selecciona la ciudad.' };
 
     const [deptoRow, munRow] = await Promise.all([
         Departamentos.findOne({ where: { id: idDep }, attributes: ['id', 'nombre'], raw: true, transaction }),

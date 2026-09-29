@@ -4,12 +4,13 @@ import db from '../config/bd.js';
 import { Clientes, Documentacion, ClientesRegistroWeb } from '../models/index.js';
 import {
     crearClienteCompleto, resolverUbicacionDane, toPascal, calcularDvNit,
-    normalizarResponsabilidades, TIPOS_DOC_CLIENTE,
+    normalizarResponsabilidades,
     REGIMEN_RESPONSABLE_IVA, REGIMEN_NO_RESPONSABLE_IVA
 } from '../helpers/clientes.js';
 import { subirComprobantes, borrarComprobantes } from '../helpers/comprobantesMovimiento.js';
 import { ipDe } from '../middlewares/apiRateLimit.js';
 import { descripcionCiiu } from '../helpers/ciiu.js';
+import { validarDocumento } from '../helpers/tiposDocumento.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Registro público de clientes — grupogh.co/formularios/registroClientes
@@ -33,17 +34,6 @@ import { descripcionCiiu } from '../helpers/ciiu.js';
 // agrega una versión nueva acá y en el formulario: la constancia guarda cuál se aceptó.
 const VERSIONES_AUTORIZACION = ['2026-09'];
 
-// Formato de cada tipo de documento, después de quitar espacios, puntos y guiones.
-const FORMATO_DOC = {
-    CC:  /^\d{5,10}$/,
-    TI:  /^\d{8,11}$/,
-    NIT: /^\d{6,10}$/,
-    CE:  /^[A-Z0-9]{4,12}$/,
-    PP:  /^[A-Z0-9]{5,15}$/,
-    PPT: /^[A-Z0-9]{5,15}$/,
-    PEP: /^[A-Z0-9]{5,15}$/
-};
-
 const RE_NOMBRE       = /^[\p{L}][\p{L} '.-]{0,99}$/u;
 const RE_RAZON_SOCIAL = /^[\p{L}\p{N}][\p{L}\p{N} .,&'()/-]{1,199}$/u;
 const RE_EMAIL        = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
@@ -52,21 +42,10 @@ const RE_CIIU         = /^\d{4}$/;
 const RE_FECHA        = /^\d{4}-\d{2}-\d{2}$/;
 
 const texto = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '');
-const normalizarDoc = (v) => texto(v).replace(/[\s.-]/g, '').toUpperCase();
 const esVerdadero = (v) => v === true || v === 'true' || v === 'on' || v === '1';
 
 const MENSAJE_YA_REGISTRADO =
     'Este documento ya está registrado en Grupo GH. No necesitas registrarte de nuevo: en la tienda te facturamos con tus datos.';
-
-/** Normaliza y valida tipo + número de documento. Devuelve `{ tipoDocumento, numero }` o `{ error }`. */
-const validarDocumento = (tipoRaw, numeroRaw) => {
-    const tipoDocumento = texto(tipoRaw).toUpperCase();
-    if (!TIPOS_DOC_CLIENTE.includes(tipoDocumento)) return { error: 'Tipo de documento inválido.' };
-    const numero = normalizarDoc(numeroRaw);
-    if (!numero) return { error: 'Ingresa tu número de documento.' };
-    if (!FORMATO_DOC[tipoDocumento].test(numero)) return { error: 'El número de documento no tiene un formato válido.' };
-    return { tipoDocumento, numero };
-};
 
 // ─── CONSULTA: ¿este documento ya es cliente? ────────────────────────────────
 //
@@ -74,7 +53,7 @@ const validarDocumento = (tipoRaw, numeroRaw) => {
 // está registrado. Revela si un documento es cliente, así que va detrás de Turnstile y de
 // un rate limit propio: consultarlo en masa exige resolver un reto por cada documento.
 export const consultarDocumentoRegistro = async (req, res) => {
-    const doc = validarDocumento(req.body?.tipoDocumento, req.body?.numero_doc);
+    const doc = validarDocumento(texto(req.body?.tipoDocumento), texto(req.body?.numero_doc));
     if (doc.error) return res.status(400).json({ success: false, mensaje: doc.error });
 
     try {
@@ -111,7 +90,7 @@ export const registrarClienteWeb = async (req, res) => {
     if (!['N', 'J'].includes(tipo_persona)) return fallo('Tipo de persona inválido.');
     const esEmpresa = tipo_persona === 'J';
 
-    const doc = validarDocumento(b.tipoDocumento, b.numero_doc);
+    const doc = validarDocumento(texto(b.tipoDocumento), texto(b.numero_doc));
     if (doc.error) return fallo(doc.error, 'numero_doc');
     if (esEmpresa && doc.tipoDocumento !== 'NIT') return fallo('Una empresa se registra con su NIT.', 'tipoDocumento');
     const conNit = doc.tipoDocumento === 'NIT';

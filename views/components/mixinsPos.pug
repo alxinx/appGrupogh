@@ -118,7 +118,8 @@ mixin modalCliente(departamentos)
   - const tribSwitches = [['Gran contribuyente','gran_contribuyente','Retiene y declara en volúmenes altos; la DIAN lo designa.'],['Autorretenedor','autorretenedor','Se practica a sí mismo la retención en la fuente.'],['Agente de retención','agente_retencion','Debe retener a sus proveedores y consignarlo a la DIAN.'],['Obligado aduanero','obligado_aduanero','Realiza operaciones de importación o exportación.']]
   //- Códigos del anexo técnico de facturación electrónica. Van tal cual los pide la DIAN
   //- —no se derivan de las casillas de arriba— porque son lo que ella valida contra el RUT.
-  - const respFiscales = [['O-13','Gran contribuyente'],['O-15','Autorretenedor'],['O-23','Agente de retención de IVA'],['O-47','Régimen simple de tributación'],['R-99-PN','No aplica']]
+  //- Catálogo: src/json/responsabilidadFiscal.json (app.locals.responsabilidadesFiscales).
+  - const respFiscales = (responsabilidadesFiscales || []).map(r => [r.codigo, r.descripcion])
   //- Un solo lugar donde vive el aspecto de una etiqueta y de un campo. Antes cada fila
   //- repetía la cadena entera de clases y bastaba con olvidar una para que ese campo
   //- quedara medio píxel más alto que sus vecinos.
@@ -167,13 +168,9 @@ mixin modalCliente(departamentos)
               div(class="cli-wrap")
                 i(class="fi-rr-id-badge cli-icono")
                 select(id="cli-tipo-doc" name="tipoDocumento" class=campo + " cli-con-icono cli-select")
-                  option(value="CC") Cédula de Ciudadanía
-                  option(value="CE") Cédula de Extranjería
-                  option(value="TI") Tarjeta de Identidad
-                  option(value="NIT") NIT
-                  option(value="PP") Pasaporte
-                  option(value="PPT") Permiso por Protección Temporal (PPT)
-                  option(value="PEP") Permiso Especial de Permanencia (PEP)
+                  //- Catálogo: src/json/tipoIdentificacionPersonas.json (app.locals.tiposDocumento).
+                  each t in (tiposDocumento || [])
+                    option(value=t.valor)= t.etiqueta
                 i(class="fi-rr-angle-small-down cli-chevron")
             div
               label(for="cli-numero-doc" class=lbl) N° de documento

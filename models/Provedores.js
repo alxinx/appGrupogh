@@ -14,6 +14,14 @@ const Provedores = db.define('PROVEDORES', {
         allowNull: false,
         validate: { notEmpty: { msg: "La razón social es obligatoria." } }
     },
+    // Tipo del documento que va en taxIdSupplier. Mismo vocabulario que CLIENTES.tipoDocumento
+    // (incluido PEP), MENOS la tarjeta de identidad: un menor de edad no puede contratar, así
+    // que se registra a nombre de su padre, madre o tutor legal (helpers/tiposDocumento.js).
+    tipoDocumento: {
+        type: DataTypes.ENUM('CC', 'CE', 'NIT', 'PP', 'PPT', 'PEP'),
+        allowNull: false,
+        defaultValue: 'CC'
+    },
     taxIdSupplier: {
         type: DataTypes.STRING(20),
         allowNull: false,

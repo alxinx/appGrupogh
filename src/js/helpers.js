@@ -108,7 +108,15 @@ window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
     // reemplaza sin importar en qué formulario/sistema visual se use.
     const input = document.createElement('input');
     input.type = 'text';
-    input.autocomplete = 'off';
+    // Sin el autocompletado del navegador: la lista propia es la única que debe aparecer.
+    // Chrome ignora autocomplete="off" en campos que su heurística toma por dirección (lo
+    // deduce de la etiqueta "Departamento"/"Ciudad" y del placeholder) y encima de la lista
+    // despliega las direcciones guardadas. Un valor que no está en su lista de tokens sí lo
+    // desactiva. data-1p-ignore / data-lpignore hacen lo mismo con los gestores de contraseñas.
+    input.setAttribute('autocomplete', 'buscable-sin-autocompletar');
+    input.setAttribute('data-1p-ignore', '');
+    input.setAttribute('data-lpignore', 'true');
+    input.spellcheck = false;
     input.className = `${select.className} select-buscable-input`.trim();
     input.placeholder = placeholder;
     wrap.appendChild(input);
@@ -118,7 +126,9 @@ window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
     wrap.appendChild(lista);
 
     const sinTildes = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const opciones  = () => Array.from(select.options).filter(o => o.value !== '');
+    // Las opciones ocultas o deshabilitadas no se ofrecen: así un select filtrado desde
+    // afuera (bancos acotados por tipo, entidadFinanciera.js) sigue filtrado en la lista.
+    const opciones  = () => Array.from(select.options).filter(o => o.value !== '' && !o.hidden && !o.disabled);
 
     // La opción vacía ("Selecciona...") nunca se muestra en el input como si fuera texto
     // escrito — si no hay nada elegido de verdad, el input queda vacío y el placeholder
@@ -169,7 +179,10 @@ window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
     });
 
     sync();
-    return { refresh: sync };
+    // Quien cambie el value por código (sin evento) llama a select.buscable.refresh().
+    const api = { refresh: sync };
+    select.buscable = api;
+    return api;
 };
 
 window.iconoDoc = (fmt) => {

@@ -58,12 +58,11 @@ form#form-nuevo-cliente(method="post" enctype="multipart/form-data" class="col-s
                         label.label Tipo documento *
                             div(class="select-wrapper")
                                 select.field-text(name="tipoDocumento" id="tipo_documento_natural")
-                                    option(value="CC" selected= modoEdicion && cliente.tipoDocumento === 'CC') Cédula de Ciudadanía
-                                    option(value="CE" selected= modoEdicion && cliente.tipoDocumento === 'CE') Cédula de Extranjería
-                                    option(value="TI" selected= modoEdicion && cliente.tipoDocumento === 'TI') Tarjeta de Identidad
-                                    option(value="PP" selected= modoEdicion && cliente.tipoDocumento === 'PP') Pasaporte
-                                    option(value="PPT" selected= modoEdicion && cliente.tipoDocumento === 'PPT') Permiso por Protección Temporal (PPT)
-                                    option(value="PEP" selected= modoEdicion && cliente.tipoDocumento === 'PEP') Permiso Especial de Permanencia (PEP)
+                                    //- Catálogo: src/json/tipoIdentificacionPersonas.json (app.locals.tiposDocumento).
+                                    //- Persona natural: sin NIT, que es la pestaña de empresa.
+                                    each t in tiposDocumento
+                                        if t.valor !== 'NIT'
+                                            option(value=t.valor selected= modoEdicion && cliente.tipoDocumento === t.valor)= t.etiqueta
                                 span.select-icon
                                     i.fi-rr-chevron-double-down
                     div(class="col-span-12 md:col-span-4")
