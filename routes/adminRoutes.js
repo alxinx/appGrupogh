@@ -3,7 +3,7 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
+checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getEgresosDiaTienda, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
@@ -185,6 +185,8 @@ routes.get('/provedores/', pPro('READ'), dashboardSupplier);
 routes.get('/provedores/new/', pPro('CREATE'), newSupplier);
 routes.get('/provedores/ver/:idProveedor', pPro('READ'), csrfProtection, verProveedor);
 routes.post('/provedores/editar/:idProveedor', pPro('EDIT'), csrfProtection, actualizarProveedor);
+routes.post('/provedores/:idProveedor/cuentas/:idCuentaBancaria/verificar', pPro('EDIT'), csrfProtection, verificarCuentaProveedor);
+routes.get('/provedores/documentos/:idDocumento', pPro('READ'), verDocumentoProveedor);
 routes.get('/api/provedores/facturas-pendientes', pPro('READ'), getFacturasPendientesProveedores);
 routes.get('/api/provedores/factura/:idFacturaPro/detalle', pPro('READ'), getDetalleFacturaPendiente);
 routes.post('/api/provedores/factura/:idFacturaPro/abonar', pPro('EDIT'), registrarAbonoProveedor);

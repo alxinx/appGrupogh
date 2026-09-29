@@ -4,6 +4,9 @@
 // viaja con el formulario (el alta lo manda en su FormData; la edición, dentro de su JSON).
 // El servidor revalida todo: esto solo ordena y avisa.
 
+import { opcionesConfirmacion, cabeceraConfirmacion } from './modalConfirmacion.js';
+import { escaparHtml as esc } from './escaparHtml.js';
+
 const MAX_CUENTAS = 5;
 // Un banco tiene cuentas de ahorros o corriente; una billetera, depósito electrónico; Bre-B,
 // una llave.
@@ -96,7 +99,52 @@ function iniciar(caja) {
         aviso.textContent = hay ? texto.charAt(0).toUpperCase() + texto.slice(1) : '';
     };
 
+    // Lo que identifica el destino del pago (mismo criterio que helpers/proveedores.js).
+    const huella = (fila) => [
+        q(fila, '[data-entidad-financiera]').value, q(fila, '[data-tipo-cuenta]').value,
+        q(fila, '[data-tipo-llave]').value, q(fila, '[data-numero-cuenta]').value.replace(/[\s.-]/g, '').toLowerCase(),
+        q(fila, '[data-otro-titular]').checked ? q(fila, '[data-doc-titular]').value.trim() : ''
+    ].join('|');
+
+    const avisoVerificacion = (fila) => {
+        const aviso = q(fila, '[data-verificacion]');
+        const pendiente = Boolean(fila.dataset.huellaWeb) && fila.dataset.huellaWeb === huella(fila);
+        aviso.classList.toggle('hidden', !pendiente);
+        aviso.classList.toggle('flex', pendiente);
+    };
+
+    async function verificar(fila) {
+        const banco = q(fila, '[data-entidad-financiera]');
+        const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
+            variante: 'neutro',
+            html: '<div class="gh-conf-html">' + cabeceraConfirmacion({
+                icono: 'fi-rr-shield-check', badge: 'Verificar cuenta',
+                monto: esc(`${banco.selectedOptions[0]?.textContent.trim() || ''} · ${q(fila, '[data-numero-cuenta]').value}`),
+                contexto: 'La registró el proveedor desde la web.'
+            }) + `<div class="gh-conf-aviso"><i class="fi fi-rr-info"></i><span>Márcala solo si la confirmaste con la certificación bancaria o con el proveedor por un canal que ya conocías. Queda registrado quién la verificó.</span></div></div>`,
+            showCancelButton: true,
+            confirmButtonText: 'Sí, la verifiqué',
+            cancelButtonText: 'Todavía no',
+            focusCancel: true
+        }));
+        if (!isConfirmed) return;
+        const token = document.querySelector('input[name="_csrf"]')?.value || '';
+        try {
+            const r = await fetch(`/admin/provedores/${caja.dataset.idProveedor}/cuentas/${fila.dataset.idCuenta}/verificar`, {
+                method: 'POST', headers: { 'CSRF-Token': token }
+            });
+            const data = await r.json();
+            if (!data.success) throw new Error(data.mensaje);
+            delete fila.dataset.huellaWeb;
+            avisoVerificacion(fila);
+            Swal.fire({ icon: 'success', title: data.mensaje, timer: 1800, showConfirmButton: false });
+        } catch (e) {
+            Swal.fire({ icon: 'error', title: 'No se pudo verificar', text: e.message || 'Inténtalo de nuevo.' });
+        }
+    }
+
     const volcar = () => {
+        filas().forEach(avisoVerificacion);
         const cuentas = filas().map(fila => {
             const otro = q(fila, '[data-otro-titular]').checked;
             return {
@@ -164,6 +212,14 @@ function iniciar(caja) {
         });
         fila.addEventListener('input', volcar);
         fila.addEventListener('change', volcar);
+
+        // Cuenta del registro web sin verificar: el aviso se ve mientras la cuenta siga
+        // siendo la misma que dio el proveedor. Si alguien la cambia, la escribe él.
+        if (datos.idCuentaBancaria && datos.origen === 'web' && !datos.verificada) {
+            fila.dataset.huellaWeb = huella(fila);
+            fila.dataset.idCuenta = datos.idCuentaBancaria;
+            q(fila, '[data-verificar-cuenta]').addEventListener('click', () => verificar(fila));
+        }
 
         lista.appendChild(fila);
         return fila;

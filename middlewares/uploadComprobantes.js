@@ -43,15 +43,42 @@ const uploadRegistroWeb = multer({
     }
 });
 
-/** Recibe el RUT del registro web y traduce los errores de multer a JSON (422). */
-export const recibirRutRegistroWeb = (req, res, next) => {
-    uploadRegistroWeb.single('rut')(req, res, (err) => {
-        if (!err) return next();
-        const mensaje = err.code === 'LIMIT_FILE_SIZE'
-            ? `El archivo supera el tamaño máximo permitido (${MAX_BYTES / 1024 / 1024} MB).`
+// Traduce los errores de multer a un JSON que el formulario público sabe mostrar (422).
+const responderErrorMulter = (res, err) => {
+    const mensaje = err.code === 'LIMIT_FILE_SIZE'
+        ? `El archivo supera el tamaño máximo permitido (${MAX_BYTES / 1024 / 1024} MB).`
+        : err.code === 'LIMIT_UNEXPECTED_FILE'
+            ? 'Llegaron más archivos de los permitidos.'
             : err.code?.startsWith('LIMIT_')
                 ? 'La solicitud es demasiado grande.'
                 : err.message || 'No se pudo procesar el archivo.';
-        return res.status(422).json({ success: false, mensaje });
-    });
+    return res.status(422).json({ success: false, mensaje });
+};
+
+/** Recibe el RUT del registro web de clientes. */
+export const recibirRutRegistroWeb = (req, res, next) => {
+    uploadRegistroWeb.single('rut')(req, res, (err) => (err ? responderErrorMulter(res, err) : next()));
+};
+
+// ── Registro público de proveedores ──────────────────────────────────────────
+// RUT, cédula y hasta MAX_FOTOS_LUGAR_TRABAJO fotos del lugar de trabajo. El formulario
+// comprime cada foto en el navegador antes de enviarla (una foto de celular pesa varios MB),
+// así que el tope por archivo es el mismo de siempre. Las cuentas viajan como un JSON en un
+// campo, por eso ese campo admite más texto que los demás.
+export const MAX_FOTOS_LUGAR_TRABAJO = 8;
+const uploadRegistroProveedor = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_BYTES, files: MAX_FOTOS_LUGAR_TRABAJO + 2, fields: 60, fieldSize: 8 * 1024, parts: 75 },
+    fileFilter: (req, file, cb) => {
+        if (PERMITIDOS.includes(file.mimetype)) return cb(null, true);
+        cb(new Error('Solo se aceptan imágenes (JPG, PNG, WebP) o PDF.'));
+    }
+});
+
+export const recibirArchivosRegistroProveedor = (req, res, next) => {
+    uploadRegistroProveedor.fields([
+        { name: 'rut',    maxCount: 1 },
+        { name: 'cedula', maxCount: 1 },
+        { name: 'fotos',  maxCount: MAX_FOTOS_LUGAR_TRABAJO }
+    ])(req, res, (err) => (err ? responderErrorMulter(res, err) : next()));
 };

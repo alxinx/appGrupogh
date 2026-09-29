@@ -1,8 +1,9 @@
 import express from 'express';
 import apiRateLimit, { escrituraPublicaRateLimit, trackingRateLimit, crearRateLimit } from '../middlewares/apiRateLimit.js';
 import { exigirTurnstile } from '../middlewares/turnstile.js';
-import { recibirRutRegistroWeb } from '../middlewares/uploadComprobantes.js';
+import { recibirRutRegistroWeb, recibirArchivosRegistroProveedor } from '../middlewares/uploadComprobantes.js';
 import { consultarDocumentoRegistro, registrarClienteWeb } from '../controller/registroClienteWebController.js';
+import { catalogosRegistroProveedor, consultarDocumentoProveedorWeb, registrarProveedorWeb } from '../controller/registroProveedorWebController.js';
 import { recibirComprobante } from '../middlewares/uploadComprobante.js';
 import { getConfig, getCategorias, getCatalogo, getProducto, getFiltros, postInteresado, darDeBajaInteresado, getPaginaBySlug, getPuntosVenta, getDepartamentosPublico, getMunicipiosPublico, getCiiuPublico, trackVisita, identificarVisitante, crearPedidoWeb, iniciarPagoWompi, consultarEstadoPedido, webhookWompi, subirComprobantePagoWeb, sincronizarReservasWeb, demandaCarritoWeb } from '../controller/webApiController.js';
 
@@ -78,5 +79,23 @@ const registroRateLimit = crearRateLimit({
 });
 routes.post('/registro-clientes/consulta', consultaRegistroRateLimit, exigirTurnstile('registro_cliente'), consultarDocumentoRegistro);
 routes.post('/registro-clientes', registroRateLimit, exigirTurnstile('registro_cliente'), recibirRutRegistroWeb, registrarClienteWeb);
+
+// ── Registro público de proveedores (grupogh.co/formularios/registroProvedores) ──
+// Mismas capas y en el mismo orden que el de clientes, con su propia acción de Turnstile
+// y sus propios cupos: un registro de proveedores no gasta el cupo del de clientes.
+const consultaProveedorRateLimit = crearRateLimit({
+    limite: () => parseInt(process.env.REGISTRO_CONSULTAS_PER_MIN) || 10,
+    nombre: 'registro-proveedor-consulta',
+    mensaje: 'Demasiadas consultas seguidas. Espera un momento e inténtalo de nuevo.'
+});
+const registroProveedorRateLimit = crearRateLimit({
+    limite: () => parseInt(process.env.REGISTRO_ENVIOS_POR_10MIN) || 10,
+    ventanaMs: 10 * 60 * 1000,
+    nombre: 'registro-proveedor',
+    mensaje: 'Demasiados registros desde esta conexión. Inténtalo más tarde.'
+});
+routes.get('/registro-proveedores/catalogos', apiRateLimit, catalogosRegistroProveedor);
+routes.post('/registro-proveedores/consulta', consultaProveedorRateLimit, exigirTurnstile('registro_proveedor'), consultarDocumentoProveedorWeb);
+routes.post('/registro-proveedores', registroProveedorRateLimit, exigirTurnstile('registro_proveedor'), recibirArchivosRegistroProveedor, registrarProveedorWeb);
 
 export default routes;

@@ -57,6 +57,28 @@ const ProvedoresCuentasBancarias = db.define('PROVEDORES_CUENTAS_BANCARIAS', {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false
+    },
+    // De dónde llegó: la cargó alguien del panel o el proveedor desde el registro web.
+    origen: {
+        type: DataTypes.ENUM('panel', 'web'),
+        allowNull: false,
+        defaultValue: 'panel'
+    },
+    // Una cuenta que dio el propio proveedor por internet no se da por buena hasta que
+    // alguien del panel la confirma (certificación bancaria, llamada). La que carga el panel
+    // queda verificada por quien la cargó. Ver helpers/proveedores.js.
+    verificada: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    idUsuarioVerifico: {
+        type: DataTypes.UUID,
+        allowNull: true
+    },
+    fechaVerificacion: {
+        type: DataTypes.DATE,
+        allowNull: true
     }
 }, {
     tableName: 'PROVEDORES_CUENTAS_BANCARIAS',

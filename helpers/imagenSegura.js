@@ -67,8 +67,26 @@ export async function validarImagen(buffer, { minLado = 200, maxBytes = 2 * 1024
  * Convierte a WebP. `anchoMaximo` reduce la imagen sin ampliarla nunca
  * (omitirlo conserva la resolución original, como necesita un QR escaneable).
  */
-export async function aWebp(buffer, { calidad = 82, anchoMaximo = null } = {}) {
+export async function aWebp(buffer, { calidad = 82, anchoMaximo = null, caja = null } = {}) {
     let img = sharp(buffer, { limitInputPixels: LADO_MAXIMO_PX * LADO_MAXIMO_PX }).rotate();
     if (anchoMaximo) img = img.resize({ width: anchoMaximo, withoutEnlargement: true });
+    // Caja fija: `{ ancho, alto, ajuste }` con el `fit` de sharp ('inside' reduce sin
+    // recortar, 'cover' llena la caja recortando — la foto de perfil).
+    if (caja) img = img.resize(caja.ancho, caja.alto, {
+        fit: caja.ajuste ?? 'inside', withoutEnlargement: caja.ajuste !== 'cover',
+        ...(caja.posicion && { position: caja.posicion })   // 'attention': recorta hacia lo que más llama la atención
+    });
     return img.webp({ quality: calidad, effort: 4 }).toBuffer();
+}
+
+/**
+ * Valida una imagen subida y la devuelve convertida a WebP, en un paso. Para las que no son
+ * documentos (fotos de producto, foto de perfil): esas no pasan por `subirComprobantes`
+ * porque se guardan en otras tablas, pero cumplen la misma regla (CLAUDE.md §5.9).
+ * @returns `{ ok: true, buffer }` o `{ ok: false, mensaje }`
+ */
+export async function imagenAWebpSegura(buffer, { maxBytes = 5 * 1024 * 1024, minLado = 200, calidad = 80, caja = null, anchoMaximo = null } = {}) {
+    const revision = await validarImagen(buffer, { maxBytes, minLado });
+    if (!revision.ok) return revision;
+    return { ok: true, buffer: await aWebp(buffer, { calidad, caja, anchoMaximo }) };
 }

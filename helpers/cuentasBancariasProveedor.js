@@ -4,6 +4,7 @@ import {
 } from './catalogos.js';
 import { validarDocumento, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR } from './tiposDocumento.js';
 import { toPascal } from './clientes.js';
+import { RE_NOMBRE } from './registroWeb.js';
 
 // Cuentas bancarias de un proveedor (PROVEDORES_CUENTAS_BANCARIAS): validación compartida
 // por el alta (saveSupplier) y la edición (actualizarProveedor).
@@ -83,6 +84,7 @@ export const validarCuentasBancarias = (entrada) => {
         const nombreTitular = texto(c.titular);
         if (nombreTitular || texto(c.documentoTitular)) {
             if (nombreTitular.length < 3) return { error: `Cuenta ${n}: escribe el nombre completo del titular.` };
+            if (!RE_NOMBRE.test(nombreTitular)) return { error: `Cuenta ${n}: el nombre del titular solo puede llevar letras.` };
             if (texto(c.tipoDocumentoTitular).toUpperCase() === 'TI') {
                 return { error: `Cuenta ${n}: el titular no puede ser menor de edad (tarjeta de identidad).` };
             }

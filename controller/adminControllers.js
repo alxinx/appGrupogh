@@ -9,7 +9,6 @@ import { uuidV7 } from "../helpers/uuidV7.js";
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
 import { ZipArchive } from 'archiver';
-import sharp from 'sharp';
 import { Upload } from "@aws-sdk/lib-storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
@@ -19,6 +18,10 @@ import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos
 import { crearClienteCompleto, toPascal, TIPOS_DOC_CLIENTE_NATURAL, resolverUbicacionDane } from '../helpers/clientes.js';
 import { TIPOS_DOCUMENTO_PROVEEDOR, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR, CATALOGO_TIPOS_DOCUMENTO, validarDocumento, normalizarNumeroDocumento } from '../helpers/tiposDocumento.js';
 import { validarCuentasBancarias } from '../helpers/cuentasBancariasProveedor.js';
+import {
+    buscarProveedorPorDocumento, validarDocumentoProveedor, crearProveedorCompleto,
+    cuentasDelPanel, conservarVerificacion
+} from '../helpers/proveedores.js';
 import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
 import { avisarCambioDePermisos } from '../helpers/permisosEnVivo.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
@@ -47,6 +50,12 @@ import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFa
 import { round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
 import { subirComprobantes, borrarComprobantes, urlComprobante } from '../helpers/comprobantesMovimiento.js';
+import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
+import { urlDocumento, esKeyPrivada } from '../helpers/almacenamientoDocumentos.js';
+
+// Tamaños de las imágenes que no son documentos (helpers/imagenSegura.js, `caja`).
+const FOTO_PERFIL     = { ancho: 500,  alto: 500,  ajuste: 'cover' };
+const FOTO_PRODUCTO   = { ancho: 1000, alto: 1000, ajuste: 'inside' };
 import { listarSubcuentasPuc, subcuentaPucValida, MENSAJE_PUC_REQUERIDA, INCLUDE_PUC, etiquetaPuc } from '../helpers/pucEgresos.js';
 import { crearTirilla, fmtCOP, fmtFecha, fmtHora } from '../helpers/tirilla.js';
 
@@ -1327,52 +1336,24 @@ const saveBatchOrder = async (req, res) => {
             }, { transaction: t });
         }
 
-        // ── ARCHIVOS → R2 ─────────────────────────────────────
+        // ── ARCHIVOS → R2 (helpers/comprobantesMovimiento.js: tipo real, PDF y Office
+        //    revisados, imágenes a WebP) ────────────────────────
         if (archivos.length > 0) {
-            const docsData = await Promise.all(archivos.map(async (file, idx) => {
-                const isImage = file.mimetype.startsWith('image/');
-                const ext = file.originalname.split('.').pop().toLowerCase();
-                const safeName = nroFactura.replace(/[^a-zA-Z0-9]/g, '-');
-                const r2Key = `documentacion/facturas-proveedor/${safeName}-${Date.now()}-${idx}.${isImage ? 'webp' : ext}`;
-
-                let bufferToUpload = file.buffer;
-                let contentType    = file.mimetype;
-                if (isImage) {
-                    bufferToUpload = await sharp(file.buffer)
-                        .resize(2000, 2000, { fit: 'inside', withoutEnlargement: true })
-                        .webp({ quality: 85 })
-                        .toBuffer();
-                    contentType = 'image/webp';
-                }
-
-                await new Upload({
-                    client: s3Client,
-                    params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: bufferToUpload, ContentType: contentType }
-                }).done();
-                uploadedKeys.push(r2Key);
-
-                return {
-                    idPropietario:   factura.idFacturaPro,
-                    nombreDocumento: file.originalname,
-                    keyName:         r2Key,
-                    formato:         isImage ? 'WEBP' : ext.toUpperCase(),
-                    pertenece:       'orden_compra'
-                };
-            }));
-
-            await Documentacion.bulkCreate(docsData, { transaction: t });
+            const { docs, subidos } = await subirComprobantes({
+                archivos, idPropietario: factura.idFacturaPro, pertenece: 'orden_compra',
+                prefijo: 'orden', carpeta: 'facturas-proveedor', permitirOffice: true, anchoMaximo: 2000
+            });
+            uploadedKeys.push(...subidos);
+            await Documentacion.bulkCreate(docs, { transaction: t });
         }
 
         await t.commit();
         return res.json({ success: true, mensaje: 'Orden de compra registrada correctamente.', idFactura: factura.idFacturaPro });
 
     } catch (error) {
-        await t.rollback();
-        if (uploadedKeys.length > 0) {
-            await Promise.allSettled(uploadedKeys.map(key =>
-                s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }))
-            ));
-        }
+        if (!t.finished) await t.rollback().catch(() => {});
+        await borrarComprobantes(uploadedKeys);
+        if (error.publico) return res.status(400).json({ success: false, mensaje: error.message });
         console.error('Error en saveBatchOrder:', error);
         return res.status(500).json({ success: false, mensaje: 'Error interno al guardar la orden de compra.' });
     }
@@ -1608,50 +1589,22 @@ const saveCliente = async (req, res) => {
         // 4. Documentos (solo si vienen archivos)
         const archivos = req.files?.documentos || [];
         if (archivos.length > 0) {
-            const docsData = [];
-            await Promise.all(archivos.map(async (file, idx) => {
-                const ext           = file.originalname.split('.').pop().toLowerCase();
-                const isImg         = file.mimetype.startsWith('image/');
-                const nombreArchivo = `cli-${idCliente}-${Date.now()}-${idx}.${isImg ? 'webp' : ext}`;
-                const r2Key         = `documentacion/clientes/${nombreArchivo}`;
-
-                let bufferToUpload = file.buffer;
-                let contentType    = file.mimetype;
-                if (isImg) {
-                    bufferToUpload = await sharp(file.buffer)
-                        .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
-                        .webp({ quality: 80 })
-                        .toBuffer();
-                    contentType = 'image/webp';
-                }
-
-                await new Upload({
-                    client: s3Client,
-                    params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: bufferToUpload, ContentType: contentType }
-                }).done();
-
-                uploadedKeys.push(r2Key);
-                docsData.push({
-                    idPropietario:   idCliente,
-                    nombreDocumento: file.originalname,
-                    keyName:         r2Key,
-                    formato:         isImg ? 'WEBP' : ext.toUpperCase(),
-                    pertenece:       'cliente'
-                });
-            }));
-            await Documentacion.bulkCreate(docsData, { transaction: t });
+            // Mismo filtro de todos los documentos (helpers/comprobantesMovimiento.js).
+            const { docs, subidos } = await subirComprobantes({
+                archivos, idPropietario: idCliente, pertenece: 'cliente',
+                prefijo: 'cli', carpeta: 'clientes', permitirOffice: true, anchoMaximo: 1500
+            });
+            uploadedKeys.push(...subidos);
+            await Documentacion.bulkCreate(docs, { transaction: t });
         }
 
         await t.commit();
         return res.json({ success: true, idCliente });
 
     } catch (e) {
-        if (t) await t.rollback().catch(() => {});
-        if (uploadedKeys.length > 0) {
-            await Promise.allSettled(uploadedKeys.map(key =>
-                s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }))
-            ));
-        }
+        if (t && !t.finished) await t.rollback().catch(() => {});
+        await borrarComprobantes(uploadedKeys);
+        if (e.publico) return res.status(400).json({ success: false, mensaje: e.message });
         console.error('saveCliente:', e.message, e.stack);
         return res.status(500).json({ success: false, mensaje: e.message || 'Error al guardar el cliente.' });
     }
@@ -1800,50 +1753,22 @@ const updateCliente = async (req, res) => {
 
         const archivos = req.files?.documentos || [];
         if (archivos.length > 0) {
-            const docsData = [];
-            await Promise.all(archivos.map(async (file, idx) => {
-                const ext           = file.originalname.split('.').pop().toLowerCase();
-                const isImg         = file.mimetype.startsWith('image/');
-                const nombreArchivo = `cli-${idCliente}-${Date.now()}-${idx}.${isImg ? 'webp' : ext}`;
-                const r2Key         = `documentacion/clientes/${nombreArchivo}`;
-
-                let bufferToUpload = file.buffer;
-                let contentType    = file.mimetype;
-                if (isImg) {
-                    bufferToUpload = await sharp(file.buffer)
-                        .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
-                        .webp({ quality: 80 })
-                        .toBuffer();
-                    contentType = 'image/webp';
-                }
-
-                await new Upload({
-                    client: s3Client,
-                    params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: bufferToUpload, ContentType: contentType }
-                }).done();
-
-                uploadedKeys.push(r2Key);
-                docsData.push({
-                    idPropietario:   idCliente,
-                    nombreDocumento: file.originalname,
-                    keyName:         r2Key,
-                    formato:         isImg ? 'WEBP' : ext.toUpperCase(),
-                    pertenece:       'cliente'
-                });
-            }));
-            await Documentacion.bulkCreate(docsData, { transaction: t });
+            // Mismo filtro de todos los documentos (helpers/comprobantesMovimiento.js).
+            const { docs, subidos } = await subirComprobantes({
+                archivos, idPropietario: idCliente, pertenece: 'cliente',
+                prefijo: 'cli', carpeta: 'clientes', permitirOffice: true, anchoMaximo: 1500
+            });
+            uploadedKeys.push(...subidos);
+            await Documentacion.bulkCreate(docs, { transaction: t });
         }
 
         await t.commit();
         return res.json({ success: true, idCliente });
 
     } catch (e) {
-        if (t) await t.rollback().catch(() => {});
-        if (uploadedKeys.length > 0) {
-            await Promise.allSettled(uploadedKeys.map(key =>
-                s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }))
-            ));
-        }
+        if (t && !t.finished) await t.rollback().catch(() => {});
+        await borrarComprobantes(uploadedKeys);
+        if (e.publico) return res.status(400).json({ success: false, mensaje: e.message });
         console.error('updateCliente:', e.message, e.stack);
         return res.status(500).json({ success: false, mensaje: e.message || 'Error al actualizar el cliente.' });
     }
@@ -2067,7 +1992,7 @@ const eliminarDocumentoCliente = async (req, res) => {
     try {
         const doc = await Documentacion.findOne({ where: { idDocumento, pertenece: 'cliente' } });
         if (!doc) return res.status(404).json({ success: false, mensaje: 'Documento no encontrado' });
-        await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: doc.keyName })).catch(() => {});
+        await borrarComprobantes([doc.keyName]);   // cada documento en su bucket
         await doc.destroy();
         return res.json({ success: true });
     } catch (e) {
@@ -3612,10 +3537,10 @@ const saveEmployee = async (req, res) => {
             const namePhoto = `perfil-${NumeroDocumento}-${Date.now()}.webp`;
             const keyPhoto = `documentacion/empleados/perfil/${namePhoto}`;
 
-            const buffer = await sharp(file.buffer)
-                .resize(500, 500, { fit: 'cover' })
-                .webp({ quality: 80 })
-                .toBuffer();
+            // Imagen verificada por su contenido y recortada a 500×500 (helpers/imagenSegura.js).
+            const foto = await imagenAWebpSegura(file.buffer, { caja: FOTO_PERFIL });
+            if (!foto.ok) throw Object.assign(new Error(`Foto: ${foto.mensaje}`), { publico: true });
+            const buffer = foto.buffer;
 
             const upload = new Upload({
                 client: s3Client,
@@ -3650,34 +3575,13 @@ const saveEmployee = async (req, res) => {
 
         // 7. Procesar Documentos (empleados/)
         if (req.files && req.files.documentos) {
-            const docsData = await Promise.all(req.files.documentos.map(async (file, idx) => {
-                const ext = file.originalname.split('.').pop();
-                const nameDoc = `doc-${NumeroDocumento}-${Date.now()}-${idx}.${ext}`;
-                const keyDoc = `documentacion/empleados/${nameDoc}`;
-
-                const upload = new Upload({
-                    client: s3Client,
-                    params: {
-                        Bucket: process.env.R2_BUCKET_NAME,
-                        Key: keyDoc,
-                        Body: file.buffer,
-                        ContentType: file.mimetype
-                    }
-                });
-
-                await upload.done();
-                uploadedFiles.push(keyDoc);
-
-                return {
-                    idPropietario: empleado.idEmpleado,
-                    nombreDocumento: file.originalname,
-                    keyName: keyDoc,
-                    formato: ext.toUpperCase(),
-                    pertenece: 'empleado'
-                };
-            }));
-
-            await Documentacion.bulkCreate(docsData, { transaction: t });
+            // Antes subían tal cual llegaban; ahora pasan el filtro de todos los documentos.
+            const { docs, subidos } = await subirComprobantes({
+                archivos: req.files.documentos, idPropietario: empleado.idEmpleado, pertenece: 'empleado',
+                prefijo: 'doc', carpeta: 'empleados', permitirOffice: true
+            });
+            uploadedFiles.push(...subidos);
+            await Documentacion.bulkCreate(docs, { transaction: t });
         }
 
         await t.commit();
@@ -3687,18 +3591,10 @@ const saveEmployee = async (req, res) => {
         res.json({ success: true, mensaje: 'Empleado registrado con éxito. Código: ' + codigoEmpleado });
 
     } catch (error) {
-        await t.rollback();
+        if (!t.finished) await t.rollback().catch(() => {});
+        await borrarComprobantes(uploadedFiles);
+        if (error.publico) return res.status(400).json({ success: false, mensaje: error.message });
         console.error("ERROR SAVE_EMPLOYEE:", error);
-
-        // Rollback R2
-        if (uploadedFiles.length > 0) {
-            await Promise.all(uploadedFiles.map(key =>
-                s3Client.send(new DeleteObjectCommand({
-                    Bucket: process.env.R2_BUCKET_NAME,
-                    Key: key
-                }))
-            )).catch(err => console.error("Error rollback R2:", err));
-        }
 
         res.status(500).json({ success: false, mensaje: 'Error al registrar el empleado: ' + error.message });
     }
@@ -4016,6 +3912,19 @@ const saveProduct = async (req, res, next) => {
             return res.status(400).json({ errores: erroresPrecio });
         }
 
+        // Fotos: se verifican por su contenido y se convierten a WebP ANTES de tocar la base
+        // (helpers/imagenSegura.js). Antes se convertían después de crear el producto, y una
+        // foto inválida dejaba el producto guardado sin sus fotos.
+        const fotosWebp = [];
+        for (const [i, file] of (req.files || []).entries()) {
+            const foto = await imagenAWebpSegura(file.buffer, { caja: FOTO_PRODUCTO });
+            if (!foto.ok) {
+                const mensaje = `Imagen ${i + 1} (${file.originalname}): ${foto.mensaje}`;
+                return res.status(400).json({ mensaje, errores: { imagenes: mensaje } });
+            }
+            fotosWebp[i] = foto.buffer;
+        }
+
         // La categoría/subcategoría tampoco se validaba en el servidor: idCategoria es un
         // STRING(50) libre sin FK (ver models/Productos.js), y un POST directo podía dejarlo
         // vacío o "0". CATEGORIA y SUBCATEGORIA son la misma tabla (Categorias.tipo), así
@@ -4148,10 +4057,7 @@ const saveProduct = async (req, res, next) => {
                         const file = req.files[idx];
                         if (!file) continue;
                         const nombreArchivo = `${creado.sku}-${Date.now()}-${idx}.webp`;
-                        const bufferOptimizado = await sharp(file.buffer)
-                            .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
-                            .webp({ quality: 80 })
-                            .toBuffer();
+                        const bufferOptimizado = fotosWebp[idx];
                         await new Upload({
                             client: s3Client,
                             params: { Bucket: process.env.R2_BUCKET_NAME, Key: `productos/${nombreArchivo}`, Body: bufferOptimizado, ContentType: 'image/webp' }
@@ -4268,10 +4174,7 @@ const saveProduct = async (req, res, next) => {
             const uploadPromises = req.files.map(async (file, index) => {
                 // El SKU del producto guardado, no el del body: ya no llega del formulario.
                 const nombreArchivo = `${producto.sku}-${Date.now()}-${index}.webp`;
-                const bufferOptimizado = await sharp(file.buffer)
-                    .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
-                    .webp({ quality: 80 })
-                    .toBuffer();
+                const bufferOptimizado = fotosWebp[index];
 
                 const parallelUploads3 = new Upload({
                     client: s3Client,
@@ -4604,7 +4507,7 @@ const jsonUnicidad = async (req, res) => {
 const verProveedor = async (req, res) => {
     const { idProveedor } = req.params;
     try {
-        const [proveedor, categoriasProvedores, departamentos] = await Promise.all([
+        const [proveedor, categoriasProvedores, departamentos, documentosRaw] = await Promise.all([
             Provedores.findOne({
                 where: { idProveedor },
                 include: [
@@ -4613,9 +4516,25 @@ const verProveedor = async (req, res) => {
                 ]
             }),
             CategoriasDeProvedores.findAll(),
-            Departamentos.findAll({ raw: true })
+            Departamentos.findAll({ raw: true }),
+            Documentacion.findAll({
+                where: { idPropietario: idProveedor, pertenece: 'provedor' },
+                attributes: ['idDocumento', 'nombreDocumento', 'formato', 'keyName', 'createdAt'],
+                order: [['createdAt', 'DESC']],
+                raw: true
+            })
         ]);
         if (!proveedor) return res.redirect('/admin/provedores/');
+
+        // Sin la ruta del objeto: la vista enlaza a verDocumentoProveedor, que firma el enlace
+        // en el momento. `privado` solo decide el candado que se muestra.
+        const documentos = documentosRaw.map(d => ({
+            idDocumento:     d.idDocumento,
+            nombreDocumento: d.nombreDocumento,
+            formato:         d.formato,
+            fecha:           new Date(d.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }),
+            privado:         esKeyPrivada(d.keyName)
+        }));
 
         const facturasRaw = await FacturaProveedores.findAll({
             where: { idProveedor },
@@ -4663,6 +4582,7 @@ const verProveedor = async (req, res) => {
             categoriasProvedores,
             departamentos,
             facturas,
+            documentos,
             tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR,
             csrfToken: req.csrfToken(),
             currentPath: req.path
@@ -4723,11 +4643,15 @@ const actualizarProveedor = async (req, res) => {
 
             // Cuentas: las anteriores quedan borradas lógicamente (paranoid) y se crean las
             // nuevas. Así se conserva a qué cuenta se le pagaba antes.
+            // Una cuenta que ya estaba conserva su verificación (helpers/proveedores.js): guardar
+            // el formulario no da por verificada una cuenta del registro web que nadie revisó.
             if (reemplazarCuentas) {
+                const anteriores = await ProvedoresCuentasBancarias.findAll({ where: { idProveedor }, raw: true, transaction: t });
                 await ProvedoresCuentasBancarias.destroy({ where: { idProveedor }, transaction: t });
                 if (cuentasBancarias.cuentas.length) {
                     await ProvedoresCuentasBancarias.bulkCreate(
-                        cuentasBancarias.cuentas.map(c => ({ ...c, idProveedor })),
+                        conservarVerificacion(cuentasBancarias.cuentas, anteriores, req.usuario?.idUsuario)
+                            .map(c => ({ ...c, idProveedor })),
                         { transaction: t }
                     );
                 }
@@ -4747,33 +4671,53 @@ const actualizarProveedor = async (req, res) => {
 const CODIGOS_TIPO_DOCUMENTO_EMPLEADO = Empleados.getAttributes().TipoDocumento.values;
 const tipoIdentificacion = CATALOGO_TIPOS_DOCUMENTO.filter(t => CODIGOS_TIPO_DOCUMENTO_EMPLEADO.includes(t.codigo));
 
-// ── Documento de un proveedor ────────────────────────────────────────────────
-// Busca otro proveedor con ese número, INCLUIDOS los eliminados: taxIdSupplier es único en
-// la base aunque la fila esté borrada lógicamente (paranoid), así que un eliminado también
-// bloquea el número. `idExcluir` deja fuera al proveedor que se está editando.
-const buscarProveedorPorDocumento = (numero, idExcluir = null) => Provedores.findOne({
-    where: {
-        taxIdSupplier: numero,
-        ...(idExcluir && { idProveedor: { [Op.ne]: idExcluir } })
-    },
-    attributes: ['idProveedor', 'razonSocial', 'deletedAt'],
-    paranoid: false
-});
-
-/** Tipo + número válidos (helpers/tiposDocumento.js) y libres. `{ tipoDocumento, numero }` o `{ error }`. */
-const validarDocumentoProveedor = async (tipo, numero, idExcluir = null) => {
-    const doc = validarDocumento(tipo, numero, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR);
-    if (doc.error) return doc;
-    const otro = await buscarProveedorPorDocumento(doc.numero, idExcluir);
-    if (otro) {
-        return {
-            error: otro.deletedAt
-                ? `Ese número pertenece a un proveedor eliminado (${otro.razonSocial}).`
-                : `Ese número ya está registrado para el proveedor ${otro.razonSocial}.`
-        };
+// GET /admin/provedores/documentos/:idDocumento — abre un documento de un proveedor.
+// Los nuevos viven en el bucket privado: nunca se publica su ruta, se firma un enlace de
+// cinco minutos en el momento de abrirlo (helpers/almacenamientoDocumentos.js) y se
+// redirige. Pasa por pPro('READ'): sin permiso sobre proveedores no hay enlace.
+const verDocumentoProveedor = async (req, res) => {
+    try {
+        const doc = await Documentacion.findOne({
+            where: { idDocumento: req.params.idDocumento, pertenece: 'provedor' },
+            attributes: ['keyName', 'nombreDocumento', 'formato'],
+            raw: true
+        });
+        if (!doc) return res.status(404).send('Documento no encontrado.');
+        const extension = String(doc.formato || '').toLowerCase();
+        const nombre = /\.[a-z0-9]{2,5}$/i.test(doc.nombreDocumento) ? doc.nombreDocumento : `${doc.nombreDocumento}.${extension}`;
+        res.set('Cache-Control', 'no-store');
+        return res.redirect(302, await urlDocumento(doc.keyName, { nombre }));
+    } catch (error) {
+        console.error('verDocumentoProveedor:', error);
+        return res.status(500).send('No se pudo abrir el documento.');
     }
-    return doc;
 };
+
+// POST /admin/provedores/:idProveedor/cuentas/:idCuentaBancaria/verificar
+// Confirma una cuenta que dio el proveedor (registro web) después de revisarla contra la
+// certificación bancaria. Update condicionado a que siga sin verificar: dos clics o dos
+// pestañas no registran dos verificaciones.
+const verificarCuentaProveedor = async (req, res) => {
+    const { idProveedor, idCuentaBancaria } = req.params;
+    try {
+        const [filas] = await ProvedoresCuentasBancarias.update(
+            { verificada: true, idUsuarioVerifico: req.usuario?.idUsuario ?? null, fechaVerificacion: new Date() },
+            { where: { idCuentaBancaria, idProveedor, verificada: false } }
+        );
+        if (!filas) {
+            const cuenta = await ProvedoresCuentasBancarias.findOne({ where: { idCuentaBancaria, idProveedor }, attributes: ['verificada'] });
+            if (!cuenta) return res.status(404).json({ success: false, mensaje: 'Esa cuenta ya no existe: recarga la página.' });
+            return res.json({ success: true, mensaje: 'La cuenta ya estaba verificada.' });
+        }
+        return res.json({ success: true, mensaje: 'Cuenta verificada.' });
+    } catch (error) {
+        console.error('verificarCuentaProveedor:', error);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo verificar la cuenta.' });
+    }
+};
+
+// Documento de un proveedor: buscarProveedorPorDocumento / validarDocumentoProveedor viven en
+// helpers/proveedores.js, compartidos con el registro web.
 
 // GET /admin/api/check-nit/:nit?excluir=<idProveedor> — consulta en vivo del formulario.
 const checkNitSupplier = async (req, res) => {
@@ -4841,121 +4785,47 @@ const saveSupplier = async (req, res) => {
     const uploadedFiles = []; // Track uploaded files for rollback
 
     try {
-        // 2. Crear Provedor
-        const nuevoProvedor = await Provedores.create({
-            razonSocial,
-            tipoDocumento: documento.tipoDocumento,
-            taxIdSupplier: documento.numero,
-            nombreContacto,
-            telefonoContacto,
-            emailProvedor,
-            direccionProvedor,
-            departamento: ubicacion.idDepartamento,
-            ciudad: ubicacion.idMunicipio,
-            estado: true
-        }, { transaction: t });
+        // 2-3. Proveedor, categorías y cuentas (helpers/proveedores.js, compartido con el
+        //      registro web). Las cuentas que carga el panel quedan verificadas por quien las cargó.
+        const nuevoProvedor = await crearProveedorCompleto({
+            datos: {
+                razonSocial,
+                tipoDocumento: documento.tipoDocumento,
+                taxIdSupplier: documento.numero,
+                nombreContacto,
+                telefonoContacto,
+                emailProvedor,
+                direccionProvedor,
+                departamento: ubicacion.idDepartamento,
+                ciudad: ubicacion.idMunicipio,
+                estado: true
+            },
+            categorias: categoriasArray,
+            cuentas:    cuentasDelPanel(cuentasBancarias.cuentas, req.usuario?.idUsuario)
+        }, t);
 
         const idProveedor = nuevoProvedor.idProveedor;
 
-        // 3. Asociar Categorías
-        if (categoriasArray.length > 0) {
-            await nuevoProvedor.addCategorias(categoriasArray, { transaction: t });
-        }
-
-        // 3b. Cuentas bancarias, en la misma transacción que el proveedor
-        if (cuentasBancarias.cuentas.length) {
-            await ProvedoresCuentasBancarias.bulkCreate(
-                cuentasBancarias.cuentas.map(c => ({ ...c, idProveedor })),
-                { transaction: t }
-            );
-        }
-
-        // 4. Procesar Documentos (Upload to R2)
-        const extsPermitidas = ['pdf','jpg','jpeg','png','webp','gif','xls','xlsx','doc','docx'];
+        // 4. Documentos → bucket PRIVADO, carpeta provedores/{idProveedor}/ (cédulas, RUT,
+        //    certificaciones: helpers/almacenamientoDocumentos.js). Pasan el mismo filtro que
+        //    los del registro web: tipo real, PDF y Office revisados, imágenes a WebP.
         if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-                const ext = file.originalname.split('.').pop().toLowerCase();
-                if (!extsPermitidas.includes(ext)) {
-                    await t.rollback();
-                    return res.status(400).json({ success: false, mensaje: `Archivo "${file.originalname}" no permitido. Solo: PDF, JPG, PNG, GIF, XLS, DOC.` });
-                }
-            }
-        }
-        if (req.files && req.files.length > 0) {
-            // Usamos un loop para subir secuencialmente y poder hacer track o map async
-            // Preferimos map async para velocidad, pero hay que capturar r2Key
-
-            const docsData = [];
-
-            // Procesamos subidas
-            await Promise.all(req.files.map(async (file, index) => {
-                const isImage = file.mimetype.startsWith('image/');
-                const ext = file.originalname.split('.').pop();
-                const nombreArchivo = `doc-${documento.numero}-${Date.now()}-${index}.${isImage ? 'webp' : ext}`;
-                const r2Key = `documentacion/provedores/${nombreArchivo}`;
-
-                let bufferToUpload = file.buffer;
-                let contentType = file.mimetype;
-
-                if (isImage) {
-                    bufferToUpload = await sharp(file.buffer)
-                        .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
-                        .webp({ quality: 80 })
-                        .toBuffer();
-                    contentType = 'image/webp';
-                }
-
-                const upload = new Upload({
-                    client: s3Client,
-                    params: {
-                        Bucket: process.env.R2_BUCKET_NAME,
-                        Key: r2Key,
-                        Body: bufferToUpload,
-                        ContentType: contentType,
-                    }
-                });
-
-                await upload.done();
-                uploadedFiles.push(r2Key); // Add to rollback list
-
-                docsData.push({
-                    idPropietario: idProveedor,
-                    nombreDocumento: file.originalname,
-                    keyName: r2Key,
-                    formato: isImage ? 'WEBP' : ext.toUpperCase(),
-                    pertenece: 'provedor'
-                });
-            }));
-
-            // Guardar metadata en DB
-            if (docsData.length > 0) {
-                await Documentacion.bulkCreate(docsData, { transaction: t });
-            }
+            const { docs, subidos } = await subirComprobantes({
+                archivos: req.files, idPropietario: idProveedor, pertenece: 'provedor',
+                prefijo: 'doc', carpeta: 'provedores', permitirOffice: true, anchoMaximo: 1500
+            });
+            uploadedFiles.push(...subidos);
+            await Documentacion.bulkCreate(docs, { transaction: t });
         }
 
         await t.commit();
         res.json({ success: true, mensaje: 'Provedor guardado con éxito', idProveedor: nuevoProvedor.idProveedor, razonSocial: nuevoProvedor.razonSocial });
 
     } catch (error) {
-        await t.rollback();
+        if (!t.finished) await t.rollback().catch(() => {});
+        await borrarComprobantes(uploadedFiles);
+        if (error.publico) return res.status(400).json({ success: false, mensaje: error.message });
         console.error("Error en saveSupplier:", error);
-
-        // ROLLBACK R2: Eliminar archivos subidos si falla la transacción
-        if (uploadedFiles.length > 0) {
-            console.log(`Realizando rollback de ${uploadedFiles.length} archivos en R2...`);
-            try {
-                // DeleteObjectCommand requiere client.send
-                await Promise.all(uploadedFiles.map(key =>
-                    s3Client.send(new DeleteObjectCommand({
-                        Bucket: process.env.R2_BUCKET_NAME,
-                        Key: key
-                    }))
-                ));
-                console.log("Rollback R2 completado.");
-            } catch (r2Error) {
-                console.error("Error crítico: Falló el rollback de R2", r2Error);
-            }
-        }
 
         if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(400).json({ success: false, mensaje: 'Ese número de identificación ya está registrado para otro proveedor.' });
@@ -5877,42 +5747,27 @@ const actualizarEmpleado = async (req, res) => {
         let nuevaFotoKey = null;
         if (req.files?.fotoEmpleado?.[0]) {
             const file = req.files.fotoEmpleado[0];
-            const allowedImg = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-            if (!allowedImg.includes(file.mimetype))
-                throw new Error('Formato de foto no válido. Usa JPG, PNG o WebP.');
-            if (file.size > 5 * 1024 * 1024)
-                throw new Error('La foto no puede superar 5 MB.');
+            // Tipo por contenido, peso y dimensiones (helpers/imagenSegura.js), recortada a 500×500.
+            const foto = await imagenAWebpSegura(file.buffer, { caja: FOTO_PERFIL });
+            if (!foto.ok) throw new Error(`Foto: ${foto.mensaje}`);
 
             const keyPhoto = `documentacion/empleados/perfil/perfil-${NumeroDocumento}-${Date.now()}.webp`;
-            const buffer   = await sharp(file.buffer).resize(500, 500, { fit: 'cover' }).webp({ quality: 80 }).toBuffer();
+            const buffer   = foto.buffer;
             await new Upload({ client: s3Client, params: { Bucket: process.env.R2_BUCKET_NAME, Key: keyPhoto, Body: buffer, ContentType: 'image/webp' } }).done();
             uploadedFiles.push(keyPhoto);
             nuevaFotoKey = keyPhoto;
         }
 
         // 5.2 DOCUMENTOS: validar, subir a R2
-        const allowedDoc = [
-            'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
-            'application/pdf',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ];
         let docsData = [];
         if (req.files?.documentos?.length) {
-            docsData = await Promise.all(req.files.documentos.map(async (file, idx) => {
-                if (!allowedDoc.includes(file.mimetype))
-                    throw new Error(`Formato no válido: "${file.originalname}". Usa PDF, Word, Excel o imagen.`);
-                if (file.size > 5 * 1024 * 1024)
-                    throw new Error(`"${file.originalname}" supera el límite de 5 MB.`);
-
-                const ext    = file.originalname.split('.').pop();
-                const keyDoc = `documentacion/empleados/doc-${NumeroDocumento}-${Date.now()}-${idx}.${ext}`;
-                await new Upload({ client: s3Client, params: { Bucket: process.env.R2_BUCKET_NAME, Key: keyDoc, Body: file.buffer, ContentType: file.mimetype } }).done();
-                uploadedFiles.push(keyDoc);
-                return { idPropietario: idEmpleado, nombreDocumento: file.originalname, keyName: keyDoc, formato: ext.toUpperCase(), pertenece: 'empleado' };
-            }));
+            // Mismo filtro de todos los documentos (helpers/comprobantesMovimiento.js).
+            const { docs, subidos } = await subirComprobantes({
+                archivos: req.files.documentos, idPropietario: idEmpleado, pertenece: 'empleado',
+                prefijo: 'doc', carpeta: 'empleados', permitirOffice: true
+            });
+            uploadedFiles.push(...subidos);
+            docsData = docs;
         }
 
         // 5.3 ACTUALIZAR TABLA EMPLEADOS
@@ -6031,12 +5886,9 @@ const actualizarEmpleado = async (req, res) => {
         res.json({ success: true, mensaje: 'Empleado actualizado con éxito.' });
 
     } catch (error) {
-        await t.rollback().catch(() => {});
-        if (uploadedFiles.length) {
-            await Promise.all(
-                uploadedFiles.map(key => s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key })))
-            ).catch(() => {});
-        }
+        if (!t.finished) await t.rollback().catch(() => {});
+        await borrarComprobantes(uploadedFiles);
+        if (error.publico) return res.status(400).json({ success: false, mensaje: error.message });
         console.error('actualizarEmpleado:', error);
         res.status(500).json({ success: false, mensaje: 'Error al actualizar: ' + error.message });
     }
@@ -6047,7 +5899,7 @@ const eliminarDocumentoEmpleado = async (req, res) => {
     try {
         const doc = await Documentacion.findByPk(idDocumento);
         if (!doc) return res.status(404).json({ success: false, mensaje: 'Documento no encontrado' });
-        await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: doc.keyName })).catch(() => {});
+        await borrarComprobantes([doc.keyName]);   // cada documento en su bucket
         await doc.destroy();
         res.json({ success: true });
     } catch (error) {
@@ -9139,18 +8991,6 @@ const registrarAbonoProveedor = async (req, res) => {
 
 // ─── DOCUMENTOS DE TIENDA ────────────────────────────────────────────────────
 
-const _ALLOWED_DOC_EXTS  = ['jpg', 'jpeg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
-const _ALLOWED_DOC_MIMES = [
-    'image/jpeg',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-];
-const _MAX_DOC_SIZE = 5 * 1024 * 1024;
 
 const getTiendaDocumentos = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
@@ -9183,43 +9023,30 @@ const subirDocumentoTienda = async (req, res) => {
     const tienda = await PuntosDeVenta.findByPk(idPuntoDeVenta);
     if (!tienda) return res.status(404).json({ success: false, mensaje: 'Tienda no encontrada.' });
 
-    const uploadedKeys = [];
+    let subidos = [];
     try {
-        const docsData = await Promise.all(archivos.map(async (file, idx) => {
-            const ext = file.originalname.split('.').pop().toLowerCase();
-            if (!_ALLOWED_DOC_EXTS.includes(ext) || !_ALLOWED_DOC_MIMES.includes(file.mimetype))
-                throw new Error(`Tipo de archivo no permitido: ${file.originalname}`);
-            if (file.size > _MAX_DOC_SIZE)
-                throw new Error(`El archivo "${file.originalname}" supera los 5MB.`);
-
-            const safePdv = idPuntoDeVenta.replace(/[^a-zA-Z0-9]/g, '-');
-            const r2Key   = `documentacion/tiendas/${safePdv}-${Date.now()}-${idx}.${ext}`;
-
-            await new Upload({
-                client: s3Client,
-                params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: file.buffer, ContentType: file.mimetype }
-            }).done();
-            uploadedKeys.push(r2Key);
-
-            return { idPropietario: idPuntoDeVenta, nombreDocumento: file.originalname, keyName: r2Key, formato: ext.toUpperCase(), pertenece: 'punto_venta' };
+        // Mismo filtro de todos los documentos (helpers/comprobantesMovimiento.js): antes una
+        // foto JPG subía tal cual —sin WebP y con sus metadatos— y un PDF sin revisar.
+        let docs;
+        ({ docs, subidos } = await subirComprobantes({
+            archivos, idPropietario: idPuntoDeVenta, pertenece: 'punto_venta',
+            prefijo: 'tienda', carpeta: 'tiendas', permitirOffice: true
         }));
 
-        const creados  = await Documentacion.bulkCreate(docsData);
-        const r2Base   = process.env.R2_PUBLIC_URL;
+        const creados  = await Documentacion.bulkCreate(docs);
         const resultado = creados.map(d => ({
             idDocumento:     d.idDocumento,
             nombreDocumento: d.nombreDocumento,
             formato:         d.formato,
-            url:             `${r2Base}/${d.keyName}`
+            url:             urlComprobante(d.keyName)
         }));
         return res.json({ success: true, archivos: resultado });
 
     } catch (e) {
-        await Promise.allSettled(uploadedKeys.map(k =>
-            s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: k }))
-        ));
+        await borrarComprobantes(subidos);
+        if (e.publico) return res.status(400).json({ success: false, mensaje: e.message });
         console.error('subirDocumentoTienda:', e);
-        return res.status(500).json({ success: false, mensaje: e.message || 'Error al subir el archivo.' });
+        return res.status(500).json({ success: false, mensaje: 'Error al subir el archivo.' });
     }
 };
 
@@ -9228,7 +9055,7 @@ const eliminarDocumentoTienda = async (req, res) => {
     try {
         const doc = await Documentacion.findOne({ where: { idDocumento, pertenece: 'punto_venta' } });
         if (!doc) return res.status(404).json({ success: false, mensaje: 'Documento no encontrado.' });
-        await s3Client.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: doc.keyName })).catch(() => {});
+        await borrarComprobantes([doc.keyName]);   // cada documento en su bucket
         await doc.destroy();
         return res.json({ success: true });
     } catch (e) {
@@ -9380,7 +9207,7 @@ export {
     dashboardSupplier,
     newSupplier,
     verProveedor, actualizarProveedor,
-    saveSupplier, checkNitSupplier,
+    saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor,
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
     dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,

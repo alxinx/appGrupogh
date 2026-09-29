@@ -31,6 +31,8 @@
     "db:migrar-provedores-tipo-doc": "node ./seed/migracionProvedoresTipoDocumento.js",
     "db:migrar-cajas-entidad-financiera": "node ./seed/migracionCajasEntidadFinanciera.js",
     "db:migrar-provedores-cuentas": "node ./seed/migracionProvedoresCuentasBancarias.js",
+    "db:migrar-registro-web-proveedores": "node ./seed/migracionProvedoresRegistroWeb.js",
+    "db:migrar-documentos-proveedor": "node ./seed/migracionDocumentosProveedorPrivado.js",
     "db:migrar-credito-disponible-cliente": "node ./seed/migracionCreditoDisponibleCliente.js",
     "db:migrar-municipios-dane": "node ./seed/migracionMunicipiosDane.js",
     "db:migrar-pedidos-web-dane": "node ./seed/migracionPedidosWebUbicacionDane.js",

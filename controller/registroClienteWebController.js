@@ -8,7 +8,10 @@ import {
     REGIMEN_RESPONSABLE_IVA, REGIMEN_NO_RESPONSABLE_IVA
 } from '../helpers/clientes.js';
 import { subirComprobantes, borrarComprobantes } from '../helpers/comprobantesMovimiento.js';
-import { ipDe } from '../middlewares/apiRateLimit.js';
+import {
+    texto, esVerdadero, RE_NOMBRE, RE_RAZON_SOCIAL, validarEmailWeb, validarCelularWeb,
+    validarDireccionWeb, origenConstancia, cayoEnTrampa
+} from '../helpers/registroWeb.js';
 import { descripcionCiiu } from '../helpers/ciiu.js';
 import { validarDocumento } from '../helpers/tiposDocumento.js';
 
@@ -34,15 +37,10 @@ import { validarDocumento } from '../helpers/tiposDocumento.js';
 // agrega una versión nueva acá y en el formulario: la constancia guarda cuál se aceptó.
 const VERSIONES_AUTORIZACION = ['2026-09'];
 
-const RE_NOMBRE       = /^[\p{L}][\p{L} '.-]{0,99}$/u;
-const RE_RAZON_SOCIAL = /^[\p{L}\p{N}][\p{L}\p{N} .,&'()/-]{1,199}$/u;
-const RE_EMAIL        = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
-const RE_CELULAR      = /^3\d{9}$/;
+// Texto, correo, celular, dirección y campo trampa: helpers/registroWeb.js, compartido con
+// el registro de proveedores.
 const RE_CIIU         = /^\d{4}$/;
 const RE_FECHA        = /^\d{4}-\d{2}-\d{2}$/;
-
-const texto = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '');
-const esVerdadero = (v) => v === true || v === 'true' || v === 'on' || v === '1';
 
 const MENSAJE_YA_REGISTRADO =
     'Este documento ya está registrado en Grupo GH. No necesitas registrarte de nuevo: en la tienda te facturamos con tus datos.';
@@ -74,11 +72,7 @@ export const registrarClienteWeb = async (req, res) => {
     const b = req.body ?? {};
     const fallo = (mensaje, campo) => res.status(400).json({ success: false, mensaje, ...(campo && { campo }) });
 
-    // Campo trampa: invisible para una persona, un bot que rellena todo lo completa.
-    if (texto(b.sitio_web)) {
-        console.warn(`[registro-web] campo trampa lleno · ip=${ipDe(req)}`);
-        return fallo('No pudimos procesar el registro.');
-    }
+    if (cayoEnTrampa(req, 'registro-web')) return fallo('No pudimos procesar el registro.');
 
     // ── Autorizaciones ──
     if (!esVerdadero(b.acepta_datos)) return fallo('Debes autorizar el tratamiento de tus datos para registrarte.', 'acepta_datos');
@@ -122,24 +116,12 @@ export const registrarClienteWeb = async (req, res) => {
     }
 
     // ── Contacto ──
-    const email = texto(b.email).toLowerCase();
-    if (email.length > 150 || !RE_EMAIL.test(email)) return fallo('Ingresa un correo electrónico válido.', 'email');
-    // Mismo selector de país del checkout. Un celular colombiano se guarda con sus 10
-    // dígitos, como los del POS y la importación; uno de otro país, en formato
-    // internacional (+indicativo número) para que no se confunda con un número local.
-    const indicativo = texto(b.indicativo || '57').replace(/\D/g, '');
-    if (!/^\d{1,4}$/.test(indicativo)) return fallo('Indicativo de país inválido.', 'telefono');
-    const numeroCel = texto(b.telefono).replace(/\D/g, '');
-    let telefono;
-    if (indicativo === '57') {
-        telefono = numeroCel.replace(/^57(?=3\d{9}$)/, '');
-        if (!RE_CELULAR.test(telefono)) return fallo('Ingresa un celular de 10 dígitos que empiece por 3.', 'telefono');
-    } else {
-        if (!/^\d{6,14}$/.test(numeroCel) || (indicativo + numeroCel).length > 15) {
-            return fallo('Revisa el número de celular: sin el indicativo, entre 6 y 14 dígitos.', 'telefono');
-        }
-        telefono = `+${indicativo}${numeroCel}`;
-    }
+    const correo = validarEmailWeb(b.email);
+    if (correo.error) return fallo(correo.error, 'email');
+    const { email } = correo;
+    const celular = validarCelularWeb(b.indicativo, b.telefono);
+    if (celular.error) return fallo(celular.error, 'telefono');
+    const { telefono } = celular;
 
     let genero = null;
     if (!esEmpresa && texto(b.genero)) {
@@ -148,8 +130,9 @@ export const registrarClienteWeb = async (req, res) => {
     }
 
     // ── Ubicación ──
-    const direccion = texto(b.direccion);
-    if (direccion.length < 5 || direccion.length > 250) return fallo('Ingresa tu dirección completa.', 'direccion');
+    const dir = validarDireccionWeb(b.direccion);
+    if (dir.error) return fallo('Ingresa tu dirección completa.', 'direccion');
+    const { direccion } = dir;
 
     // ── Datos tributarios (solo con NIT) ──
     let tributario = {};
@@ -256,8 +239,7 @@ export const registrarClienteWeb = async (req, res) => {
             aceptaWhatsapp:         esVerdadero(b.acepta_whatsapp),
             aceptaEmail:            esVerdadero(b.acepta_email),
             versionAutorizacion,
-            ip:                     String(ipDe(req)).slice(0, 45),
-            userAgent:              String(req.get('user-agent') || '').slice(0, 255) || null
+            ...origenConstancia(req)
         }, { transaction: t });
 
         await t.commit();

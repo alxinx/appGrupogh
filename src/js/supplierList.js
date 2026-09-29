@@ -1,5 +1,6 @@
 import { tituloLista as tc } from '../../helpers/textoLista.js';
 import { imprimirPdf } from './imprimirPdf.js';
+import { escaparHtml as esc } from './escaparHtml.js';
 
 (function () {
     const inputBusqueda = document.getElementById('busquedaProvedor');
@@ -22,7 +23,7 @@ import { imprimirPdf } from './imprimirPdf.js';
             let categoriasHtml = '';
             if (p.categorias && p.categorias.length > 0) {
                 p.categorias.forEach(cat => {
-                    categoriasHtml += `<span class="inline-block bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded-full mr-1 mb-1 font-semibold">${cat.nombre}</span>`;
+                    categoriasHtml += `<span class="inline-block bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded-full mr-1 mb-1 font-semibold">${esc(cat.nombre)}</span>`;
                 });
             } else {
                 categoriasHtml = '<span class="text-gray-400 text-xs italic">Sin categoría</span>';
@@ -31,12 +32,12 @@ import { imprimirPdf } from './imprimirPdf.js';
             contenedor.innerHTML += `
                 <tr class="hover:bg-gray-50 transition-colors group">
                     <td class="p-4">
-                        <div class="font-bold text-gray-800">${tc(p.razonSocial)}</div>
-                        <div class="text-xs text-gray-400">${p.emailProvedor || 'Sin email'}</div>
+                        <div class="font-bold text-gray-800">${esc(tc(p.razonSocial))}</div>
+                        <div class="text-xs text-gray-400">${esc(p.emailProvedor) || 'Sin email'}</div>
                     </td>
-                    <td class="p-4 text-sm text-gray-600">${tc(p.nombreContacto) || '--'}</td>
-                    <td class="p-4 text-sm text-gray-600">${p.telefonoContacto || '--'}</td>
-                    <td class="p-4 text-sm text-gray-600 font-mono">${p.taxIdSupplier}</td>
+                    <td class="p-4 text-sm text-gray-600">${esc(tc(p.nombreContacto)) || '--'}</td>
+                    <td class="p-4 text-sm text-gray-600">${esc(p.telefonoContacto) || '--'}</td>
+                    <td class="p-4 text-sm text-gray-600 font-mono">${esc(p.taxIdSupplier)}</td>
                     <td class="p-4">
                         <div class="flex flex-wrap max-w-[200px]">
                             ${categoriasHtml}

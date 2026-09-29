@@ -39,6 +39,7 @@ import AbonoClienteCreditos from './AbonoClienteCreditos.js'
 import ClientesTributario from './ClientesTributario.js'
 import ClientesUbicacion from './ClientesUbicacion.js'
 import ClientesRegistroWeb from './ClientesRegistroWeb.js'
+import ProvedoresRegistroWeb from './ProvedoresRegistroWeb.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -230,6 +231,10 @@ ClientesUbicacion.belongsTo(Clientes, { foreignKey: 'idCliente' });
 // CASCADE borrar un cliente se llevaría la constancia sin que el trigger lo impida.
 Clientes.hasMany(ClientesRegistroWeb, { foreignKey: 'idCliente', as: 'registrosWeb', onDelete: 'RESTRICT', onUpdate: 'CASCADE' });
 ClientesRegistroWeb.belongsTo(Clientes, { foreignKey: 'idCliente', as: 'cliente', onDelete: 'RESTRICT', onUpdate: 'CASCADE' });
+// Mismo criterio para el registro web de proveedores: RESTRICT, porque MySQL no dispara
+// triggers en un borrado en cascada y la constancia es append-only.
+Provedores.hasMany(ProvedoresRegistroWeb, { foreignKey: 'idProveedor', as: 'registrosWeb', onDelete: 'RESTRICT', onUpdate: 'CASCADE' });
+ProvedoresRegistroWeb.belongsTo(Provedores, { foreignKey: 'idProveedor', as: 'proveedor', onDelete: 'RESTRICT', onUpdate: 'CASCADE' });
 
 // Caja tienda
 Empleados.hasMany(CajaTienda, { foreignKey: 'idEmpleadoApertura', as: 'cajasApertura' });
@@ -443,5 +448,6 @@ export {
   Familia,
   ReservasCarrito,
   ClientesRegistroWeb,
+  ProvedoresRegistroWeb,
   ProvedoresCuentasBancarias,
 }

@@ -132,7 +132,7 @@ block contenedor
                                                 i(class="fi fi-rr-bank text-purple-400")
                                                 h2(class="font-bold text-slate-700 text-sm") Cuentas bancarias
 
-                                        +cuentasBancariasProveedor({ cuentas: proveedor.cuentasBancarias, clase: 'col-span-12 flex flex-col' })
+                                        +cuentasBancariasProveedor({ cuentas: proveedor.cuentasBancarias, clase: 'col-span-12 flex flex-col', idProveedor: proveedor.idProveedor })
 
                                         //- ── Guardar ─────────────────────────────────────────────────
                                         div(class="col-span-12 flex justify-end pt-2 border-t border-gray-100 mt-2")
@@ -185,6 +185,34 @@ block contenedor
                                                             | #{isVencida ? 'Venció:' : 'Vence:'} #{f.fechaVencimiento}
                                                             if f.nroAbonos > 0
                                                                 span(class="ml-auto text-slate-400 font-normal") #{f.nroAbonos} abono#{f.nroAbonos !== 1 ? 's' : ''}
+
+                                    //- ── Documentos ──────────────────────────────────────────────────────
+                                    //- Cédula, RUT, certificaciones y fotos del taller. Cada enlace pasa por el backend
+                                    //- (verDocumentoProveedor), que revisa el permiso y firma un enlace de cinco minutos:
+                                    //- los documentos de identidad viven en el bucket privado y su ruta nunca llega acá.
+                                    div(class="flex items-center justify-between gap-2 -mx-6 px-6 pt-4 pb-4 border-y border-gray-100")
+                                        div(class="flex items-center gap-2")
+                                            i(class="fi fi-rr-folder-open text-purple-400")
+                                            h2(class="font-bold text-slate-700 text-sm") Documentos
+                                        if documentos.length
+                                            span(class="text-[11px] font-semibold text-slate-400 tabular-nums")= documentos.length
+                                    if documentos.length === 0
+                                        p(class="text-xs text-slate-400 text-center py-4") No tiene documentos cargados.
+                                    else
+                                        ul(class="space-y-1.5")
+                                            each doc in documentos
+                                                - const fmt = String(doc.formato || '').toUpperCase()
+                                                - const icono = fmt === 'PDF' ? 'fi-rr-file-pdf text-red-500' : ['WEBP','JPG','JPEG','PNG'].includes(fmt) ? 'fi-rr-picture text-sky-500' : ['XLS','XLSX'].includes(fmt) ? 'fi-rr-file-excel text-[#217346]' : ['DOC','DOCX'].includes(fmt) ? 'fi-rr-file-word text-blue-600' : 'fi-rr-document text-slate-400'
+                                                li
+                                                    a(href=`/admin/provedores/documentos/${doc.idDocumento}` target="_blank" rel="noopener"
+                                                      class="group flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-pink-50 transition-colors")
+                                                        i(class=`fi ${icono} text-lg flex-shrink-0`)
+                                                        span(class="flex-1 min-w-0")
+                                                            span(class="block text-xs font-semibold text-slate-700 truncate group-hover:text-pink-700")= doc.nombreDocumento
+                                                            span(class="block text-[11px] text-slate-400")= doc.fecha
+                                                        if doc.privado
+                                                            i(class="fi fi-rr-lock text-[11px] text-slate-400" title="Archivo privado: el enlace se firma al abrirlo y vence en minutos")
+                                                        i(class="fi fi-rr-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-pink-500")
 
                 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
                 //- Estilos del buscador de departamento/ciudad (window.enhanceSelectBuscable).

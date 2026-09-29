@@ -1,5 +1,8 @@
-// Para todo texto que escribe una persona y termina en un innerHTML: sin esto, una razón de
-// incidencia o una nota con "<img onerror=…>" se ejecuta en la pantalla de otra tienda.
-export const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c => ({
+// Escapa un texto para meterlo dentro de un innerHTML o del `html` de una ventana de
+// SweetAlert. Todo dato que escribió una persona —y más si llegó de un formulario público,
+// como el registro de proveedores— pasa por acá antes de volverse marcado: sin esto, un
+// "<img onerror=…>" guardado como nombre o llave se ejecuta en el navegador de quien abre
+// el panel.
+export const escaparHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));

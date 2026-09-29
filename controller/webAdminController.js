@@ -10,8 +10,7 @@ import { sanitizarContenidoPagina } from '../helpers/helpers.js';
 import s3Client from '../config/r2.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
-import sharp from 'sharp';
-import { validarYConvertirImagenWebp } from '../helpers/helpers.js';
+import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
 import { descontarStockFifo, siguienteCodigoTraslado } from '../helpers/traslados.js';
 import { mailPedidoCancelado } from '../helpers/mailPedidoCancelado.js';
 import { broadcast } from '../helpers/sseManager.js';
@@ -27,6 +26,15 @@ const R2_BASE   = process.env.R2_PUBLIC_URL;
 async function subirImagenR2(buffer, key, contentType = 'image/webp') {
     await new Upload({ client: s3Client, params: { Bucket: R2_BUCKET, Key: key, Body: buffer, ContentType: contentType } }).done();
     return `${R2_BASE}/${key}`;
+}
+
+// Imagen de la tienda web (categoría, banner, sección, popup): verificada por su contenido,
+// peso y dimensiones, y convertida a WebP con su encuadre (helpers/imagenSegura.js). Una
+// imagen inválida lanza un error `publico`, que el controlador devuelve como 400.
+async function imagenWeb(file, opciones = {}) {
+    const r = await imagenAWebpSegura(file.buffer, { calidad: 85, ...opciones });
+    if (!r.ok) throw Object.assign(new Error(r.mensaje), { publico: true });
+    return r.buffer;
 }
 
 async function eliminarImagenR2(key) {
@@ -188,14 +196,8 @@ export const subirImagenCategoria = async (req, res) => {
         if (!cat) return res.status(404).json({ success: false, mensaje: 'Categoría no encontrada.' });
         if (!req.file) return res.status(400).json({ success: false, mensaje: 'No se recibió ninguna imagen.' });
 
-        // validarYConvertirImagenWebp decodifica de verdad el archivo: no basta con el
-        // mimetype que declara el navegador.
-        await validarYConvertirImagenWebp(req.file.buffer);
-
-        const buffer = await sharp(req.file.buffer)
-            .resize(800, 1066, { fit: 'cover', position: 'attention' })
-            .webp({ quality: 82 })
-            .toBuffer();
+        // Se decodifica de verdad el archivo: no basta con el mimetype que declara el navegador.
+        const buffer = await imagenWeb(req.file, { calidad: 82, caja: { ancho: 800, alto: 1066, ajuste: 'cover', posicion: 'attention' } });
 
         const key = `web/categorias/${idCategoria}-${Date.now()}.webp`;
         const url = await subirImagenR2(buffer, key, 'image/webp');
@@ -209,7 +211,7 @@ export const subirImagenCategoria = async (req, res) => {
         return res.json({ success: true, imagen: url, mensaje: 'Imagen actualizada.' });
     } catch (e) {
         console.error('subirImagenCategoria:', e);
-        const esImagenInvalida = e.message?.includes('imagen válida');
+        const esImagenInvalida = Boolean(e.publico);
         return res.status(esImagenInvalida ? 400 : 500).json({
             success: false,
             mensaje: esImagenInvalida ? e.message : 'Error al subir la imagen.'
@@ -246,7 +248,7 @@ export const listaBanners = async (req, res) => {
 // Convierte y sube a R2 el archivo de un campo de multer (`.fields()`), validando primero
 // que sea realmente una imagen decodificable — nunca confiar solo en el mimetype del cliente.
 async function procesarImagenBanner(file, sufijo) {
-    const buffer = await validarYConvertirImagenWebp(file.buffer);
+    const buffer = await imagenWeb(file);
     const key = `web/banners/${Date.now()}-${sufijo}.webp`;
     const url = await subirImagenR2(buffer, key, 'image/webp');
     return { url, key };
@@ -272,7 +274,7 @@ export const crearBanner = async (req, res) => {
         return res.json({ success: true, mensaje: 'Banner creado correctamente.' });
     } catch (e) {
         console.error('crearBanner:', e);
-        return res.status(400).json({ success: false, mensaje: e.message?.includes('imagen válida') ? e.message : 'Error al crear el banner.' });
+        return res.status(400).json({ success: false, mensaje: e.publico ? e.message : 'Error al crear el banner.' });
     }
 };
 
@@ -306,7 +308,7 @@ export const actualizarBanner = async (req, res) => {
         return res.json({ success: true, mensaje: 'Banner actualizado correctamente.' });
     } catch (e) {
         console.error('actualizarBanner:', e);
-        return res.status(400).json({ success: false, mensaje: e.message?.includes('imagen válida') ? e.message : 'Error al actualizar el banner.' });
+        return res.status(400).json({ success: false, mensaje: e.publico ? e.message : 'Error al actualizar el banner.' });
     }
 };
 
@@ -381,7 +383,7 @@ export const crearSeccion = async (req, res) => {
         let imagenUrl = null, imagenKey = null;
 
         if (req.file) {
-            const buffer = await sharp(req.file.buffer).resize(800, 600, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
+            const buffer = await imagenWeb(req.file, { caja: { ancho: 800, alto: 600, ajuste: 'cover' } });
             const key = `web/secciones/${Date.now()}.webp`;
             imagenUrl = await subirImagenR2(buffer, key, 'image/webp');
             imagenKey = key;
@@ -390,6 +392,7 @@ export const crearSeccion = async (req, res) => {
         await SeccionesWeb.create({ titulo, idCategoria: idCategoria || null, orden: orden || 0, imagenUrl, imagenKey });
         return res.json({ success: true, mensaje: 'Sección creada correctamente.' });
     } catch (e) {
+        if (e.publico) return res.status(400).json({ success: false, mensaje: e.message });
         console.error('crearSeccion:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al crear la sección.' });
     }
@@ -406,7 +409,7 @@ export const actualizarSeccion = async (req, res) => {
 
         if (req.file) {
             if (seccion.imagenKey) await eliminarImagenR2(seccion.imagenKey).catch(() => {});
-            const buffer = await sharp(req.file.buffer).resize(800, 600, { fit: 'cover' }).webp({ quality: 85 }).toBuffer();
+            const buffer = await imagenWeb(req.file, { caja: { ancho: 800, alto: 600, ajuste: 'cover' } });
             const key = `web/secciones/${Date.now()}.webp`;
             imagenUrl = await subirImagenR2(buffer, key, 'image/webp');
             imagenKey = key;
@@ -415,6 +418,7 @@ export const actualizarSeccion = async (req, res) => {
         await seccion.update({ titulo, idCategoria: idCategoria || null, orden: orden || 0, activo: activo === 'true' || activo === true, imagenUrl, imagenKey });
         return res.json({ success: true, mensaje: 'Sección actualizada correctamente.' });
     } catch (e) {
+        if (e.publico) return res.status(400).json({ success: false, mensaje: e.message });
         console.error('actualizarSeccion:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al actualizar la sección.' });
     }
@@ -448,7 +452,7 @@ export const actualizarPopup = async (req, res) => {
 
         if (req.file) {
             if (popup.imagenKey) await eliminarImagenR2(popup.imagenKey).catch(() => {});
-            const buffer = await sharp(req.file.buffer).resize(600, 600, { fit: 'inside' }).webp({ quality: 85 }).toBuffer();
+            const buffer = await imagenWeb(req.file, { caja: { ancho: 600, alto: 600, ajuste: 'inside' } });
             const key = `web/popup/${Date.now()}.webp`;
             imagenUrl = await subirImagenR2(buffer, key, 'image/webp');
             imagenKey = key;
@@ -457,6 +461,7 @@ export const actualizarPopup = async (req, res) => {
         await popup.update({ titulo, link, delaySegundos: delaySegundos || 3, activo: activo === 'true' || activo === true, imagenUrl, imagenKey });
         return res.json({ success: true, mensaje: 'Popup actualizado correctamente.' });
     } catch (e) {
+        if (e.publico) return res.status(400).json({ success: false, mensaje: e.message });
         console.error('actualizarPopup:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al actualizar el popup.' });
     }

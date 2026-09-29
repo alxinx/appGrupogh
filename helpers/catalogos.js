@@ -60,6 +60,11 @@ export const TIPOS_CUENTA_BANCARIA = [
 //   soloDigitos  se le quitan espacios, puntos y guiones antes de validar
 //   max          tope del campo en el formulario (ni un dígito más)
 //   modo         inputmode del campo
+// Correo: lo que de verdad lleva una dirección (letras, números y . _ % + -). El patrón
+// laxo de antes aceptaba "<img/src=x/onerror=…>@a.co" como correo válido. Lo comparten la
+// llave Bre-B de correo y el correo de los registros web (helpers/registroWeb.js).
+export const PATRON_EMAIL = '^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$';
+
 const CELULAR = { patron: '^3\\d{9}$', max: 10, soloDigitos: true, modo: 'numeric', placeholder: '3001234567' };
 
 export const FORMATOS_NUMERO_CUENTA = {
@@ -75,7 +80,7 @@ export const TIPOS_LLAVE_BREB = [
       error: 'la llave de celular son exactamente 10 dígitos y empieza por 3.' },
     { codigo: 'documento',    descripcion: 'Número de documento', etiqueta: 'Llave: documento', patron: '^\\d{5,15}$', max: 15, soloDigitos: true, modo: 'numeric', placeholder: 'Sin puntos ni espacios',
       error: 'la llave de documento son solo dígitos (entre 5 y 15).' },
-    { codigo: 'correo',       descripcion: 'Correo electrónico',  etiqueta: 'Llave: correo', patron: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$', max: 100, modo: 'email', placeholder: 'pagos@empresa.com',
+    { codigo: 'correo',       descripcion: 'Correo electrónico',  etiqueta: 'Llave: correo', patron: PATRON_EMAIL, max: 100, modo: 'email', placeholder: 'pagos@empresa.com',
       error: 'la llave de correo no es un correo válido.' },
     { codigo: 'alfanumerica', descripcion: 'Alfanumérica (@)',    etiqueta: 'Llave alfanumérica', patron: '^@[A-Za-z0-9]{3,20}$', max: 21, modo: 'text', placeholder: '@minegocio',
       error: 'la llave alfanumérica empieza por @ y lleva de 3 a 20 letras o números.' },

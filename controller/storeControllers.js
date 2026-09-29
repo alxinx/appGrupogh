@@ -29,13 +29,13 @@ import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseMan
 import { resolverIds } from '../middlewares/verificarPermisoEmpleado.js';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
+import { subirComprobantes, borrarComprobantes } from '../helpers/comprobantesMovimiento.js';
 import { tituloLista } from '../helpers/textoLista.js';
 import { prepararVoucher } from '../helpers/voucherTraslado.js';
 import { resumenPendientes, wherePendienteAceptar } from '../helpers/trasladosPendientes.js';
 import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
 import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 import { randomUUID } from 'crypto';
-import sharp from 'sharp';
 import { crearConCodigo, siguienteNumero } from '../helpers/secuencias.js';
 import {
     bloquearYValidarTraslado, bloquearPacksDeTienda, vaciarStockDePacks,
@@ -2036,6 +2036,7 @@ const guardarCliente = async (req, res) => {
     const toBool       = (v) => v === 'true' || v === true;
 
     const t = await db.transaction();
+    const rutSubido = [];   // rutas en R2, para borrarlas si la transacción falla
     let idCliente;
     let guardado;
 
@@ -2112,40 +2113,22 @@ const guardarCliente = async (req, res) => {
         }
 
         // RUT (solo al crear: sobre un cliente existente lo carga el administrador)
+        // Mismo filtro de todos los documentos (helpers/comprobantesMovimiento.js): tipo real,
+        // PDF revisado, imagen a WebP.
         if (!existente && req.file) {
-            const file = req.file;
-            const ext  = file.originalname.split('.').pop().toLowerCase();
-            const isImage = file.mimetype.startsWith('image/');
-            const nombreArchivo = `rut-${numero_doc.trim()}-${Date.now()}.${isImage ? 'webp' : ext}`;
-            const r2Key = `documentacion/clientes/${nombreArchivo}`;
-
-            let buffer      = file.buffer;
-            let contentType = file.mimetype;
-            if (isImage) {
-                buffer = await sharp(file.buffer)
-                    .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
-                    .webp({ quality: 80 })
-                    .toBuffer();
-                contentType = 'image/webp';
-            }
-
-            await new Upload({
-                client: s3Client,
-                params: { Bucket: process.env.R2_BUCKET_NAME, Key: r2Key, Body: buffer, ContentType: contentType }
-            }).done();
-
-            await Documentacion.create({
-                idPropietario:  idCliente,
-                nombreDocumento: 'RUT',
-                keyName:         r2Key,
-                formato:         isImage ? 'WEBP' : ext.toUpperCase(),
-                pertenece:       'cliente'
-            }, { transaction: t });
+            const { docs, subidos } = await subirComprobantes({
+                archivos: [req.file], idPropietario: idCliente, pertenece: 'cliente',
+                prefijo: 'rut', carpeta: 'clientes', anchoMaximo: 1500
+            });
+            rutSubido.push(...subidos);
+            await Documentacion.bulkCreate(docs.map(d => ({ ...d, nombreDocumento: 'RUT' })), { transaction: t });
         }
 
         await t.commit();
     } catch (e) {
         if (!t.finished) await t.rollback().catch(() => {});
+        await borrarComprobantes(rutSubido);
+        if (e.publico) return res.status(400).json({ success: false, mensaje: `RUT: ${e.message}` });
         console.error('guardarCliente:', e);
         return res.status(500).json({ success: false, mensaje: 'Error al guardar el cliente.' });
     }

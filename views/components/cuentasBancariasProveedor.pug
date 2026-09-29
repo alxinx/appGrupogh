@@ -8,14 +8,15 @@
 //-
 //- opts.cuentas  cuentas guardadas (en la edición)
 //- opts.clase    clases del contenedor en la grilla del formulario
+//- opts.idProveedor  en la edición: para verificar una cuenta que llegó del registro web
 include ./entidadFinanciera.pug
 
 mixin cuentasBancariasProveedor(opts)
-  - const guardadas = (opts.cuentas || []).map(c => ({ codigoEntidadFinanciera: c.codigoEntidadFinanciera, tipoCuenta: c.tipoCuenta, tipoLlaveBreb: c.tipoLlaveBreb || '', numeroCuenta: c.numeroCuenta, titular: c.titular || '', tipoDocumentoTitular: c.tipoDocumentoTitular || '', documentoTitular: c.documentoTitular || '', principal: Boolean(c.principal) }))
+  - const guardadas = (opts.cuentas || []).map(c => ({ codigoEntidadFinanciera: c.codigoEntidadFinanciera, tipoCuenta: c.tipoCuenta, tipoLlaveBreb: c.tipoLlaveBreb || '', numeroCuenta: c.numeroCuenta, titular: c.titular || '', tipoDocumentoTitular: c.tipoDocumentoTitular || '', documentoTitular: c.documentoTitular || '', principal: Boolean(c.principal), idCuentaBancaria: c.idCuentaBancaria, origen: c.origen, verificada: Boolean(c.verificada) }))
   - const tiposTitular = (tiposDocumento || []).filter(t => t.valor !== 'TI')
   //- Los formatos del número (y de cada llave Bre-B) viajan desde helpers/catalogos.js: el
   //- navegador acota con las mismas reglas que valida el servidor.
-  div(class=opts.clase data-cuentas-proveedor data-formatos=JSON.stringify(formatosNumeroCuenta || {}))
+  div(class=opts.clase data-cuentas-proveedor data-formatos=JSON.stringify(formatosNumeroCuenta || {}) data-id-proveedor=opts.idProveedor || '')
     input(type="hidden" name="cuentasBancarias" value=JSON.stringify(guardadas) data-cuentas-json)
     div(class="flex flex-col gap-3" data-cuentas-lista)
     p(class="hidden text-xs text-gray-500 py-2" data-cuentas-vacio) Todavía no tiene cuentas registradas. Agrégalas para saber a dónde pagarle.
@@ -25,6 +26,15 @@ mixin cuentasBancariasProveedor(opts)
 
     template(data-plantilla-cuenta)
       div(class="rounded-xl border border-gray-200 bg-white p-4 grid grid-cols-12 gap-3" data-cuenta)
+        //- Cuenta que dio el propio proveedor en el registro web: no se le paga hasta que
+        //- alguien la confirme. cuentasProveedor.js la muestra solo mientras la cuenta
+        //- siga igual (si se edita, la escribe quien edita y queda verificada por él).
+        div(class="col-span-12 hidden items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900" data-verificacion)
+          i(class="fi fi-rr-shield-exclamation mt-0.5 text-amber-700")
+          span(class="flex-1 leading-relaxed")
+            strong(class="font-bold") Sin verificar.
+            |  La registró el proveedor desde la web. Confírmala con la certificación bancaria antes de pagarle.
+          button(type="button" class="btn btn-secondary !py-1.5 !px-3 !text-xs whitespace-nowrap" data-verificar-cuenta) Marcar verificada
         div(class="col-span-12 md:col-span-4")
           label.label Banco o billetera
             +selectEntidadFinanciera({ valor: 'codigo', clase: 'field-text', incluirBreB: true })

@@ -1,4 +1,5 @@
 import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion } from './modalConfirmacion.js';
+import { escaparHtml as esc } from './escaparHtml.js';
 
 // Ventana de confirmación antes de guardar un proveedor: la comparten el alta
 // (dataSupplier.js) y la edición (supplier/ver.pug, por window.confirmarProveedor).
@@ -11,7 +12,6 @@ import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion } from './
 // Lee todo del formulario tal como está (no de los valores enviados): el alta y la edición
 // tienen nombres de campo distintos, pero comparten los componentes y sus data-atributos.
 
-const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const textoOpcion = (select) => (select && select.value ? select.selectedOptions[0]?.textContent.trim() : '');
 
 // 3001234567 → 300 123 4567: un celular se relee mejor en tres grupos.
@@ -37,6 +37,8 @@ function filaCuenta(fila) {
     const numero   = agrupar(fila.querySelector('[data-numero-cuenta]').value.trim());
     const principal = fila.querySelector('[data-principal]').checked;
     const otro     = fila.querySelector('[data-otro-titular]').checked;
+    // Cuenta del registro web que sigue igual y nadie verificó (cuentasProveedor.js).
+    const sinVerificar = !fila.querySelector('[data-verificacion]')?.classList.contains('hidden');
     const titular  = otro
         ? `A nombre de ${esc(fila.querySelector('[data-titular]').value.trim())} · ${esc(fila.querySelector('[data-tipo-doc-titular]').value)} ${esc(fila.querySelector('[data-doc-titular]').value.trim())}`
         : 'A nombre del proveedor';
@@ -47,7 +49,8 @@ function filaCuenta(fila) {
         fondo:  principal ? '#FDE7F2' : '#EEF2F6',
         color:  principal ? '#C43B7E' : '#475569',
         titulo: esc(textoOpcion(banco) || 'Sin banco'),
-        sub:    `${esc(tipo)} · <span class="gh-conf-mono gh-conf-numero">${esc(numero) || '—'}</span><br>${titular}`,
+        sub:    `${esc(tipo)} · <span class="gh-conf-mono gh-conf-numero">${esc(numero) || '—'}</span><br>${titular}`
+              + (sinVerificar ? '<br><strong style="color:#92400E">Sin verificar · llegó del registro web</strong>' : ''),
         derecha: principal ? '<span class="gh-conf-principal">Principal</span>' : ''
     });
 }
@@ -92,7 +95,7 @@ export async function confirmarProveedor(form, { modo = 'alta' } = {}) {
                <span><strong>Cambió a dónde se le paga.</strong> Antes de guardar, confirma los números con el proveedor por un canal distinto al que te los pasó (una llamada al número que ya tenías).</span></div>`
         : '';
 
-    const html = `
+    const html = `<div class="gh-conf-html">
         ${cabeceraConfirmacion({
             icono:    modo === 'alta' ? 'fi-rr-user-add' : 'fi-rr-edit',
             badge:    modo === 'alta' ? 'Nuevo proveedor' : 'Editar proveedor',
@@ -106,7 +109,8 @@ export async function confirmarProveedor(form, { modo = 'alta' } = {}) {
             ${dato('Categorías', categorias.join(', '))}
         </dl>
         ${cuentas}
-        ${avisoCambio}`;
+        ${avisoCambio}
+    </div>`;
 
     const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
         variante: 'neutro',

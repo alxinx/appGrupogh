@@ -49,6 +49,18 @@ const run = async () => {
             await db.query(`ALTER TABLE ${TABLA} MODIFY numeroCuenta VARCHAR(100) NOT NULL`);
             console.log('✓ numeroCuenta ampliada a 100');
         }
+        // Verificación: las cuentas del registro web llegan sin verificar. Las que ya
+        // existían las cargó el panel, así que quedan verificadas (sin usuario: no se sabe
+        // quién fue).
+        if (!(await col('verificada'))) {
+            await db.query(`ALTER TABLE ${TABLA}
+                ADD COLUMN origen ENUM('panel','web') NOT NULL DEFAULT 'panel' AFTER principal,
+                ADD COLUMN verificada TINYINT(1) NOT NULL DEFAULT 0 AFTER origen,
+                ADD COLUMN idUsuarioVerifico CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL AFTER verificada,
+                ADD COLUMN fechaVerificacion DATETIME NULL AFTER idUsuarioVerifico`);
+            const [, meta] = await db.query(`UPDATE ${TABLA} SET verificada = 1, fechaVerificacion = createdAt`);
+            console.log(`✓ origen/verificada agregadas · ${meta?.affectedRows ?? 0} cuenta(s) existentes quedan verificadas`);
+        }
         console.log(`· ${TABLA} ya existía`);
     } else {
         await ProvedoresCuentasBancarias.sync();
