@@ -79,8 +79,11 @@ function abrirModal() {
 function cerrarModal() {
     modalEl.classList.add('hidden');
     modalEl.classList.remove('flex');
-    ['modal-razonSocial','modal-nit','modal-direccion','modal-email','modal-nombreContacto','modal-telefono']
+    ['modal-razonSocial','modal-direccion','modal-email','modal-nombreContacto','modal-telefono']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // Tipo y número de documento: marcado de views/components/documentoProveedor.pug.
+    const numeroDoc = modalEl.querySelector('[data-numero-documento]');
+    if (numeroDoc) { numeroDoc.value = ''; numeroDoc.dispatchEvent(new Event('input')); }
     const deptSel = document.getElementById('modal-departamento');
     if (deptSel) deptSel.value = '';
     const ciudadSel = document.getElementById('modal-ciudad');
@@ -134,7 +137,9 @@ document.getElementById('modal-departamento')?.addEventListener('change', async 
 
 document.getElementById('btnGuardarProveedor')?.addEventListener('click', async () => {
     const razonSocial = document.getElementById('modal-razonSocial').value.trim();
-    const nit         = document.getElementById('modal-nit').value.trim();
+    const cajaDoc     = modalEl.querySelector('[data-documento-proveedor]');
+    const tipoDoc     = cajaDoc.querySelector('[data-tipo-documento]').value;
+    const nit         = cajaDoc.querySelector('[data-numero-documento]').value.trim();
     const depto       = document.getElementById('modal-departamento').value;
     const ciudad      = document.getElementById('modal-ciudad').value;
     const direccion   = document.getElementById('modal-direccion').value.trim();
@@ -144,7 +149,13 @@ document.getElementById('btnGuardarProveedor')?.addEventListener('click', async 
     const categorias  = [...document.querySelectorAll('.cat-modal-checkbox:checked')].map(cb => cb.value);
 
     if (!razonSocial || !nit) {
-        Swal.fire({ icon: 'warning', title: 'Campos requeridos', text: 'Razón Social y NIT son obligatorios.' });
+        Swal.fire({ icon: 'warning', title: 'Campos requeridos', text: 'Razón social y número de identificación son obligatorios.' });
+        return;
+    }
+    // documentoProveedor.js marca el número repetido; el modal no es un <form>, así que su
+    // bloqueo en el submit no aplica acá y se revisa a mano.
+    if (cajaDoc.dataset.duplicado === '1') {
+        cajaDoc.querySelector('[data-numero-documento]').focus();
         return;
     }
     if (categorias.length === 0) {
@@ -166,6 +177,7 @@ document.getElementById('btnGuardarProveedor')?.addEventListener('click', async 
     const fd = new FormData();
     fd.append('_csrf', CSRF_TOKEN);
     fd.append('razonSocial', razonSocial);
+    fd.append('tipoDocumento', tipoDoc);
     fd.append('nit', nit);
     fd.append('departamentoSelect', depto);
     fd.append('ciudadSelect', ciudad);

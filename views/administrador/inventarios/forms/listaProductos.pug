@@ -55,7 +55,8 @@ form(id="filtroListadoProductos" class="col-span-12 grid grid-cols-2 md:grid-col
             //Dispobible en web
             div(class="col-span-1 p-2 ")
                 label.flex.items-center.cursor-pointer
-                    input(name="filtroWeb" id="filtroWeb"  type="checkbox" class="sr-only"  checked)
+                    //- Apagado por defecto: el listado muestra todo. Encendido, solo lo publicado en la web.
+                    input(name="filtroWeb" id="filtroWeb"  type="checkbox" class="sr-only")
                     span.switch
                         span.switch-thumb
                     span.ml-3.text-sm.text-gray-700 Disponible En Web

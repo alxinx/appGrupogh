@@ -12,7 +12,11 @@ block contenedor
                             //******************[CUERPO PANELES]*********************//
                             
                             //HEADER
-                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                            //- relative + z-30: el menú "Más" cae sobre los filtros y la tabla, que
+                            //- tienen su propio backdrop-filter y si no lo taparían.
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6 relative z-30"
+                                data-campos-exportar=JSON.stringify(camposExportar || [])
+                                data-csrf=csrfToken)
                                 include  ./headers/headerProducts.pug
                                 include  ./headers/actionBtns.pug
 
@@ -25,3 +29,5 @@ block contenedor
         script(src="/js/productList.js")
         script(src="/js/paginador.js")
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        //- Estilos de la ventana de exportación (gh-conf-*).
+        include ../../components/modalConfirmacion.pug

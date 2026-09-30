@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import path from 'path';
 const __filename_admin = fileURLToPath(import.meta.url);
@@ -14,7 +15,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos, ProductosCambiosPrecio } from "../models/index.js";
 import { crearClienteCompleto, toPascal, TIPOS_DOC_CLIENTE_NATURAL, resolverUbicacionDane } from '../helpers/clientes.js';
 import { TIPOS_DOCUMENTO_PROVEEDOR, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR, CATALOGO_TIPOS_DOCUMENTO, validarDocumento, normalizarNumeroDocumento } from '../helpers/tiposDocumento.js';
 import { validarCuentasBancarias } from '../helpers/cuentasBancariasProveedor.js';
@@ -806,6 +807,7 @@ const listaProductos = async (req, res) => {
     ]);
 
     return res.status(201).render('./administrador/inventarios/productList', {
+        camposExportar: CAMPOS_EXPORTAR_PRODUCTOS,
         pagina: "Inventarios y Productos",
         subPagina: "Listado De Productos",
         csrfToken: req.csrfToken(),
@@ -1222,7 +1224,8 @@ const batchBuyOrder = async (req, res) => {
         btnName: 'Guardar Orden de Compra',
         categoriasProvedores,
         departamentos,
-        puntosDeVenta
+        puntosDeVenta,
+        tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR
     });
 }
 
@@ -4342,6 +4345,53 @@ const eanJson = async (req, res) => {
 
 
 
+// Condiciones del listado de productos a partir de sus filtros (búsqueda, categoría,
+// familia, estado, web). La comparten el listado (filterProductListJson) y la exportación
+// a Excel (exportarProductos): "exportar los filtrados" tiene que dar exactamente las
+// mismas filas que se ven en pantalla.
+const condicionesListadoProductos = ({ busqueda, categoria, familia, estado, web } = {}) => {
+    let condiciones = {};
+
+    // 1. Búsqueda por texto (corregido con % al inicio y final)
+    if (busqueda && busqueda.trim() !== '') {
+        const term = `%${busqueda.trim()}%`;
+        condiciones[Op.or] = [
+            { nombreProducto: { [Op.like]: term } },
+            { sku: { [Op.like]: term } },
+            { ean: { [Op.like]: term } }
+        ];
+    }
+
+    // 2. Filtro de Categoría (corregido)
+    let categoriaId = parseInt(categoria);
+    if (categoriaId > 0) {
+        condiciones.idCategoria = { [Op.like]: `%${categoriaId}%` };
+    }
+
+    // 2.1 Filtro de Familia. Comparación exacta por id y como STRING: idFamilia es un
+    // UUID, no un entero. Con `parseInt` el UUID '4a48da36-…' quedaba en 4 y MySQL
+    // coaccionaba la columna CHAR al comparar, así que el filtro también devolvía los
+    // productos de cualquier otra familia cuyo UUID empezara con ese mismo dígito.
+    //
+    // Tampoco un LIKE como el de categoría: ahí el LIKE existe porque idCategoria
+    // guarda varias categorías separadas por '|' en una sola columna; idFamilia es
+    // una FK simple.
+    const familiaId = String(familia || '').trim();
+    if (familiaId) {
+        condiciones.idFamilia = familiaId;
+    }
+
+    // 3. Filtros de Estado y Web
+    if (estado && estado.trim() !== '') {
+        condiciones.activo = estado;
+    }
+    if (web !== undefined && web !== '') {
+        condiciones.web = web === 'true' ? 1 : 0;
+    }
+
+    return condiciones;
+};
+
 const filterProductListJson = async (req, res) => {
     try {
         // 1. Capturamos la página y aseguramos que sea un número
@@ -4351,46 +4401,7 @@ const filterProductListJson = async (req, res) => {
         const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
         const offset = (numPagina - 1) * limite;
 
-        let condiciones = {};
-
-        // 1. Búsqueda por texto (corregido con % al inicio y final)
-        if (busqueda && busqueda.trim() !== '') {
-            const term = `%${busqueda.trim()}%`;
-            condiciones[Op.or] = [
-                { nombreProducto: { [Op.like]: term } },
-                { sku: { [Op.like]: term } },
-                { ean: { [Op.like]: term } }
-            ];
-        }
-
-        // 2. Filtro de Categoría (corregido)
-        let categoriaId = parseInt(categoria);
-        if (categoriaId > 0) {
-            condiciones.idCategoria = { [Op.like]: `%${categoriaId}%` };
-        }
-
-        // 2.1 Filtro de Familia. Comparación exacta por id y como STRING: idFamilia es un
-        // UUID, no un entero. Con `parseInt` el UUID '4a48da36-…' quedaba en 4 y MySQL
-        // coaccionaba la columna CHAR al comparar, así que el filtro también devolvía los
-        // productos de cualquier otra familia cuyo UUID empezara con ese mismo dígito.
-        //
-        // Tampoco un LIKE como el de categoría: ahí el LIKE existe porque idCategoria
-        // guarda varias categorías separadas por '|' en una sola columna; idFamilia es
-        // una FK simple.
-        const familiaId = String(familia || '').trim();
-        if (familiaId) {
-            condiciones.idFamilia = familiaId;
-        }
-
-        // 3. Filtros de Estado y Web
-        if (estado && estado.trim() !== '') {
-            condiciones.activo = estado;
-        }
-        if (web !== undefined && web !== '') {
-            condiciones.web = web === 'true' ? 1 : 0;
-        }
-
-
+        const condiciones = condicionesListadoProductos(req.query);
 
         // 2. Usamos findAndCountAll para obtener 'count' (total) y 'rows' (productos de la página)
         const { count, rows: productosInstancias } = await Productos.findAndCountAll({
@@ -4436,6 +4447,454 @@ const filterProductListJson = async (req, res) => {
         res.status(500).json({ success: false, mensaje: 'Error al procesar productos' });
     }
 }
+
+
+// ── EXPORTAR PRODUCTOS A EXCEL ───────────────────────────────────────────────
+// Campos que el operador puede prender o apagar en la ventana de exportación
+// (src/js/exportarProductos.js los recibe de la vista: una sola lista). SKU y nombre van
+// siempre: sin ellos una fila no identifica nada. El costo arranca apagado: es un dato
+// interno y un Excel se reenvía con facilidad.
+const CAMPOS_EXPORTAR_PRODUCTOS = [
+    { clave: 'familia',      grupo: 'Catálogo',   etiqueta: 'Familia',                porDefecto: true },
+    { clave: 'categorias',   grupo: 'Catálogo',   etiqueta: 'Categorías',             porDefecto: true },
+    { clave: 'ean',          grupo: 'Catálogo',   etiqueta: 'Código de barras (EAN)', porDefecto: false },
+    { clave: 'estado',       grupo: 'Catálogo',   etiqueta: 'Estado y publicación web', porDefecto: true },
+    { clave: 'precios',      grupo: 'Precios',    etiqueta: 'Precios de venta',       porDefecto: true,  detalle: 'Público, mayorista y mayorista surtido' },
+    { clave: 'costo',        grupo: 'Precios',    etiqueta: 'Costo',                  porDefecto: false, detalle: 'Dato interno: cuidado al compartir el archivo' },
+    { clave: 'stock',        grupo: 'Inventario', etiqueta: 'Stock total',            porDefecto: true },
+    { clave: 'stockTiendas', grupo: 'Inventario', etiqueta: 'Stock por tienda',       porDefecto: false, detalle: 'Una columna por punto de venta' },
+    { clave: 'creado',       grupo: 'Inventario', etiqueta: 'Fecha de creación',      porDefecto: false }
+];
+
+// GET /admin/inventario/exportar?alcance=filtrados|todos&campos=a,b,c&<filtros del listado>
+// Un .xlsx en streaming (CLAUDE.md §2, §11): los productos se piden de a tandas, se
+// escriben y se descartan; el archivo nunca existe completo en memoria.
+const exportarProductos = async (req, res) => {
+    const todos = req.query.alcance === 'todos';
+    const pedidos = new Set(String(req.query.campos || '').split(',').map(c => c.trim()));
+    const campos = new Set(CAMPOS_EXPORTAR_PRODUCTOS.filter(c => pedidos.has(c.clave)).map(c => c.clave));
+    const where = todos ? {} : condicionesListadoProductos(req.query);
+
+    let wb;
+    try {
+        const idFamiliaFiltro = String(req.query.familia || '').trim();
+        const [cantidad, categorias, puntos, familiaFiltro] = await Promise.all([
+            Productos.count({ where }),
+            Categorias.findAll({ attributes: ['idCategoria', 'nombreCategoria'], raw: true }),
+            campos.has('stockTiendas')
+                ? PuntosDeVenta.findAll({ attributes: ['idPuntoDeVenta', 'nombreComercial'], order: [['nombreComercial', 'ASC']], raw: true })
+                : [],
+            !todos && idFamiliaFiltro ? Familia.findByPk(idFamiliaFiltro, { attributes: ['nombreFamilia'], raw: true }) : null
+        ]);
+        const nombreCategoria = Object.fromEntries(categorias.map(c => [String(c.idCategoria), tituloLista(c.nombreCategoria)]));
+
+        // Qué abarca el archivo, dicho en palabras: dos exportaciones con filtros distintos
+        // son indistinguibles una vez descargadas si el archivo no lo dice.
+        const q = req.query;
+        const filtros = todos ? [] : [
+            q.busqueda?.trim() && `Búsqueda “${q.busqueda.trim()}”`,
+            parseInt(q.categoria) > 0 && `Categoría ${nombreCategoria[String(parseInt(q.categoria))] || q.categoria}`,
+            familiaFiltro && `Familia ${tituloLista(familiaFiltro.nombreFamilia)}`,
+            q.estado === '1' && 'Solo activos', q.estado === '0' && 'Solo inactivos',
+            q.web === 'true' && 'Publicados en la web', q.web === 'false' && 'No publicados en la web'
+        ].filter(Boolean);
+
+        // ── Columnas según los campos elegidos ──
+        const cols = [
+            { key: 'sku',    titulo: 'SKU',      ancho: 16, tipo: 'mono' },
+            { key: 'nombre', titulo: 'Producto', ancho: 42, tipo: 'fuerte' },
+            ...(campos.has('familia')    ? [{ key: 'familia', titulo: 'Familia', ancho: 24 }] : []),
+            ...(campos.has('categorias') ? [{ key: 'categorias', titulo: 'Categorías', ancho: 30 }] : []),
+            ...(campos.has('ean')        ? [{ key: 'ean', titulo: 'EAN', ancho: 17, tipo: 'mono' }] : []),
+            ...(campos.has('estado')     ? [{ key: 'activo', titulo: 'Estado', ancho: 11, tipo: 'estado' },
+                                            { key: 'web', titulo: 'Web', ancho: 8, tipo: 'centro' }] : []),
+            ...(campos.has('precios')    ? [{ key: 'publico', titulo: 'Precio público', ancho: 16, tipo: 'pesos' },
+                                            { key: 'mayorista', titulo: 'Mayorista', ancho: 15, tipo: 'pesos' },
+                                            { key: 'surtido', titulo: 'Mayorista surtido', ancho: 18, tipo: 'pesos' }] : []),
+            ...(campos.has('costo')      ? [{ key: 'costo', titulo: 'Costo', ancho: 14, tipo: 'pesos' }] : []),
+            ...(campos.has('stock')      ? [{ key: 'stock', titulo: 'Stock total', ancho: 12, tipo: 'entero' }] : []),
+            ...puntos.map(pv => ({ key: `pv_${pv.idPuntoDeVenta}`, titulo: tituloLista(pv.nombreComercial), ancho: 14, tipo: 'entero' })),
+            ...(campos.has('creado')     ? [{ key: 'creado', titulo: 'Creado', ancho: 13, tipo: 'fecha' }] : [])
+        ];
+        // La cabecera del informe reparte cuatro casillas: con menos columnas, se ensancha.
+        const anchoHoja = Math.max(cols.length, 4);
+
+        const ahora = new Date();
+        const fecha = ahora.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'America/Bogota' });
+        const hora  = ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' });
+        const dia   = ahora.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });   // AAAA-MM-DD
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="productos-${todos ? 'todos' : 'filtrados'}-${dia}.xlsx"`);
+        res.setHeader('X-Exportacion-Productos', String(cantidad));
+        // Mismo blindaje del stream que exportarMovimientosCuenta: un 'error' sin oyente en
+        // la respuesta tumba el proceso, y con el stream roto `commit()` no resuelve nunca.
+        res.on('error', (err) => console.error('exportarProductos: stream cortado ·', err.code || err.message));
+
+        wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: false });
+        wb.creator = 'Grupo GH';
+        wb.created = ahora;
+        const FILA_TITULOS = 7;   // banner, título, vacía, dos de casillas, vacía → títulos
+        const ws = wb.addWorksheet('Productos', {
+            views: [{ state: 'frozen', ySplit: FILA_TITULOS, xSplit: 2 }],   // SKU y producto quedan fijos
+            pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+        });
+        ws.columns = [
+            ...cols.map(c => ({ key: c.key, width: c.ancho })),
+            ...Array.from({ length: anchoHoja - cols.length }, (_, i) => ({ key: `relleno${i}`, width: 14 }))
+        ];
+        const { banda, casillas } = crearAyudasHoja(ws, anchoHoja);
+
+        banda(`INVENTARIO  ·  ${todos ? 'TODOS LOS PRODUCTOS' : 'PRODUCTOS FILTRADOS'}  ·  ${cantidad === 1 ? '1 producto' : `${cantidad.toLocaleString('es-CO')} productos`}`, {
+            font: { name: 'Calibri', size: 9, bold: true, color: { argb: XLS.blanco } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.tinta } },
+            alignment: { vertical: 'middle', indent: 1 }
+        }, 22);
+        banda('Productos', { font: { name: 'Calibri', size: 20, bold: true, color: { argb: XLS.tinta } }, alignment: { vertical: 'middle', indent: 1 } }, 32);
+        ws.addRow([]).commit();
+        casillas([
+            { etiqueta: 'ALCANCE',   valor: todos ? 'Todo el catálogo' : 'Los filtrados en el listado' },
+            { etiqueta: 'FILTROS',   valor: filtros.length ? filtros.join(' · ') : 'Ninguno', color: filtros.length ? XLS.tinta : XLS.apagado },
+            { etiqueta: 'GENERADO',  valor: `${fecha}, ${hora}` },
+            { etiqueta: 'PRODUCTOS', valor: cantidad, formato: '#,##0' }
+        ]);
+        ws.addRow([]).commit();
+
+        const cabecera = ws.addRow(cols.map(c => c.titulo));
+        cabecera.height = 22;
+        cabecera.eachCell((celda, n) => {
+            const tipo = cols[n - 1]?.tipo;
+            celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.blanco } };
+            celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
+            celda.alignment = { vertical: 'middle', indent: 1, horizontal: ['pesos', 'entero'].includes(tipo) ? 'right' : ['centro', 'estado'].includes(tipo) ? 'center' : 'left' };
+        });
+        cabecera.commit();
+
+        // ── Productos, de a tandas. Mismo desempate por id que el listado (CLAUDE.md §8). ──
+        const pedirStock = campos.has('stock') || campos.has('stockTiendas');
+        let escritas = 0;
+        for (let offset = 0; ; offset += TANDA_EXPORT) {
+            const tanda = await Productos.findAll({
+                where,
+                attributes: ['idProducto', 'sku', 'ean', 'nombreProducto', 'idCategoria', 'activo', 'web',
+                    'precioVentaPublicoFinal', 'precioVentaMayorista', 'precioVentaMayoristaSurtido', 'costo', 'createdAt'],
+                include: campos.has('familia') ? [{ model: Familia, as: 'familia', attributes: ['nombreFamilia'], required: false }] : [],
+                order: [['nombreProducto', 'ASC'], ['idProducto', 'ASC']],
+                limit: TANDA_EXPORT,
+                offset
+            });
+            if (!tanda.length) break;
+
+            // Stock de la tanda en una sola consulta agregada (CLAUDE.md §7).
+            const stock = {};
+            if (pedirStock) {
+                const filas = await Stock.findAll({
+                    where: { idProducto: { [Op.in]: tanda.map(p => p.idProducto) } },
+                    attributes: ['idProducto', 'idPuntoVenta', [fn('SUM', col('cantidadExistente')), 'unidades']],
+                    group: ['idProducto', 'idPuntoVenta'],
+                    raw: true
+                });
+                for (const f of filas) {
+                    const u = parseInt(f.unidades) || 0;
+                    stock[f.idProducto] ??= { total: 0 };
+                    stock[f.idProducto].total += u;
+                    stock[f.idProducto][f.idPuntoVenta] = u;
+                }
+            }
+
+            for (const p of tanda) {
+                const st = stock[p.idProducto] || { total: 0 };
+                const valores = {
+                    sku: p.sku || '', nombre: tituloLista(p.nombreProducto || ''),
+                    familia: tituloLista(p.familia?.nombreFamilia || ''),
+                    categorias: String(p.idCategoria || '').split('|').map(id => nombreCategoria[id.trim()]).filter(Boolean).join(', '),
+                    ean: p.ean || '',
+                    activo: p.activo ? 'Activo' : 'Inactivo', web: p.web ? 'Sí' : 'No',
+                    publico: parseFloat(p.precioVentaPublicoFinal) || 0,
+                    mayorista: parseFloat(p.precioVentaMayorista) || 0,
+                    surtido: parseFloat(p.precioVentaMayoristaSurtido) || 0,
+                    costo: parseFloat(p.costo) || 0,
+                    stock: st.total,
+                    creado: p.createdAt ? new Date(p.createdAt) : null
+                };
+                puntos.forEach(pv => { valores[`pv_${pv.idPuntoDeVenta}`] = st[pv.idPuntoDeVenta] || 0; });
+
+                const fila = ws.addRow(cols.map(c => valores[c.key] ?? ''));
+                fila.height = 18;
+                cols.forEach((c, i) => {
+                    const celda = fila.getCell(i + 1);
+                    celda.font = { name: c.tipo === 'mono' ? 'Consolas' : 'Calibri', size: c.tipo === 'mono' ? 9 : 10, bold: c.tipo === 'fuerte', color: { argb: c.tipo === 'mono' ? XLS.apagado : XLS.tinta } };
+                    celda.alignment = { vertical: 'middle', indent: 1, horizontal: ['pesos', 'entero'].includes(c.tipo) ? 'right' : ['centro', 'estado'].includes(c.tipo) ? 'center' : 'left' };
+                    celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
+                    if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
+                    if (c.tipo === 'pesos')  celda.numFmt = FORMATO_PESOS;
+                    if (c.tipo === 'entero') celda.numFmt = '#,##0;[Red]-#,##0';
+                    if (c.tipo === 'fecha')  celda.numFmt = 'dd/mm/yyyy';
+                    // SKU y EAN como texto: hay códigos de solo dígitos y Excel se comería los
+                    // ceros a la izquierda (mismo criterio que la planilla de códigos, §7).
+                    if (c.tipo === 'mono')   celda.numFmt = '@';
+                    if (c.tipo === 'estado') {
+                        const activo = valores.activo === 'Activo';
+                        celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: activo ? XLS.ingresoTinta : XLS.egresoTinta } };
+                        celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: activo ? XLS.ingresoFondo : XLS.egresoFondo } };
+                    }
+                });
+                fila.commit();
+                escritas++;
+            }
+        }
+
+        if (!escritas) {
+            banda('No hay productos que coincidan con estos filtros.', {
+                font: { name: 'Calibri', size: 10, italic: true, color: { argb: XLS.apagado } },
+                alignment: { vertical: 'middle', indent: 1 }
+            }, 22);
+        } else {
+            ws.autoFilter = { from: { row: FILA_TITULOS, column: 1 }, to: { row: FILA_TITULOS, column: cols.length } };
+        }
+
+        ws.commit();
+        await wb.commit();
+    } catch (error) {
+        console.error('exportarProductos:', error);
+        // Si el archivo ya empezó a salir no hay cómo cambiar la respuesta: se corta.
+        if (!res.headersSent) return res.status(500).json({ success: false, mensaje: 'No se pudo generar el archivo.' });
+        res.destroy(error);
+    }
+};
+
+
+// ── EDITAR PRECIOS MASIVAMENTE ───────────────────────────────────────────────
+// Ventana del listado de inventario (src/js/preciosMasivos.js): los tres precios de venta
+// para un bloque de familias o de productos. Un precio que llega vacío no se toca.
+
+// Tope de productos por operación: una edición que abarca más es casi seguro un error de
+// selección, y así la transacción nunca bloquea media tabla.
+const MAX_PRODUCTOS_PRECIOS_MASIVOS = 3000;
+
+// GET /admin/json/precios-masivos/familias — familias con cuántos productos tienen y el rango
+// de su precio al público, para elegir sabiendo qué se va a tocar.
+const familiasPreciosMasivos = async (req, res) => {
+    try {
+        const filas = await Productos.findAll({
+            where: { idFamilia: { [Op.ne]: null } },
+            attributes: [
+                'idFamilia',
+                [fn('COUNT', col('idProducto')), 'productos'],
+                [fn('MIN', col('precioVentaPublicoFinal')), 'minPublico'],
+                [fn('MAX', col('precioVentaPublicoFinal')), 'maxPublico']
+            ],
+            include: [{ model: Familia, as: 'familia', attributes: ['nombreFamilia'] }],
+            group: ['idFamilia', 'familia.idFamilia', 'familia.nombreFamilia'],
+            order: [[col('familia.nombreFamilia'), 'ASC'], ['idFamilia', 'ASC']],
+            raw: true, nest: true
+        });
+        return res.json({
+            success: true,
+            familias: filas.map(f => ({
+                idFamilia:  f.idFamilia,
+                nombre:     tituloLista(f.familia?.nombreFamilia || ''),
+                productos:  parseInt(f.productos) || 0,
+                minPublico: parseFloat(f.minPublico) || 0,
+                maxPublico: parseFloat(f.maxPublico) || 0
+            }))
+        });
+    } catch (error) {
+        console.error('familiasPreciosMasivos:', error);
+        return res.status(500).json({ success: false, mensaje: 'No se pudieron cargar las familias.' });
+    }
+};
+
+// GET /admin/json/precios-masivos/productos?busqueda=&campo=publico&desde=&hasta=&todos=1
+// Buscador del modo "Por productos": el mismo texto del listado (nombre, SKU, EAN) más un
+// rango sobre uno de los tres precios. Sin `todos` devuelve los primeros 50 para mostrar;
+// con `todos`, todos los que coinciden (hasta el tope de una operación) para "Agregar los N".
+const COLUMNA_PRECIO = {
+    publico:   'precioVentaPublicoFinal',
+    mayorista: 'precioVentaMayorista',
+    surtido:   'precioVentaMayoristaSurtido'
+};
+const productosPreciosMasivos = async (req, res) => {
+    const fallo = (mensaje) => res.status(400).json({ success: false, mensaje });
+    const busqueda = String(req.query.busqueda || '').trim();
+    const columna = COLUMNA_PRECIO[req.query.campo] || COLUMNA_PRECIO.publico;
+    const leer = (v) => (v === undefined || String(v).trim() === '' ? undefined : montoNoNegativo(v));
+    const desde = leer(req.query.desde), hasta = leer(req.query.hasta);
+    if (desde === null || hasta === null) return fallo('El rango de precio no es válido.');
+    if (desde !== undefined && hasta !== undefined && desde > hasta) return fallo('El “desde” no puede ser mayor que el “hasta”.');
+    const conRango = desde !== undefined || hasta !== undefined;
+    if (busqueda.length < 2 && !conRango) return fallo('Escribe al menos 2 letras o pon un rango de precio.');
+
+    const where = condicionesListadoProductos({ busqueda });
+    if (conRango) {
+        where[columna] = {
+            ...(desde !== undefined && { [Op.gte]: desde }),
+            ...(hasta !== undefined && { [Op.lte]: hasta })
+        };
+    }
+    const todos = req.query.todos === '1';
+    try {
+        const total = await Productos.count({ where });
+        if (todos && total > MAX_PRODUCTOS_PRECIOS_MASIVOS) {
+            return fallo(`Son ${total.toLocaleString('es-CO')} productos: el máximo por operación es ${MAX_PRODUCTOS_PRECIOS_MASIVOS.toLocaleString('es-CO')}. Acota el rango o la búsqueda.`);
+        }
+        const filas = await Productos.findAll({
+            where,
+            attributes: ['idProducto', 'nombreProducto', 'sku', 'precioVentaPublicoFinal', 'precioVentaMayorista', 'precioVentaMayoristaSurtido'],
+            // Ordenados por el precio que se está filtrando: así se lee el rango de un vistazo.
+            order: [[columna, 'ASC'], ['nombreProducto', 'ASC'], ['idProducto', 'ASC']],
+            limit: todos ? MAX_PRODUCTOS_PRECIOS_MASIVOS : 50,
+            raw: true
+        });
+        return res.json({
+            success: true,
+            total,
+            productos: filas.map(p => ({
+                idProducto: p.idProducto,
+                nombre:     tituloLista(p.nombreProducto || ''),
+                sku:        p.sku,
+                publico:    parseFloat(p.precioVentaPublicoFinal) || 0,
+                mayorista:  parseFloat(p.precioVentaMayorista) || 0,
+                surtido:    parseFloat(p.precioVentaMayoristaSurtido) || 0
+            }))
+        });
+    } catch (error) {
+        console.error('productosPreciosMasivos:', error);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo hacer la búsqueda.' });
+    }
+};
+
+// POST /admin/inventario/precios-masivos
+// Antes de llegar acá ya pasaron: pInv('EDIT') (la sesión puede editar productos),
+// verificarCodigoEmpleadoAdmin (el código es de quien tiene la sesión, con bloqueo por
+// intentos) y verificarPermisoEmpleado(… 'EDIT') (ESE empleado puede editar productos).
+const editarPreciosMasivos = async (req, res) => {
+    const b = req.body ?? {};
+    const fallo = (mensaje) => res.status(400).json({ success: false, mensaje });
+
+    const alcance = b.alcance === 'familias' ? 'familias' : b.alcance === 'productos' ? 'productos' : null;
+    if (!alcance) return fallo('Elige si el cambio va por familias o por productos.');
+
+    const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(v => String(v).trim()).filter(Boolean))];
+    if (!ids.length) return fallo(alcance === 'familias' ? 'Elige al menos una familia.' : 'Elige al menos un producto.');
+    if (ids.length > 500) return fallo('Son demasiados elementos en una sola operación.');
+
+    // Mismas reglas que saveProduct (CLAUDE.md §11): público y mayorista mayores a $0,
+    // mayorista surtido no negativo. Vacío = no se cambia; montoNoNegativo rechaza negativos
+    // y basura (nunca limpiarPrecio directo, §6).
+    const leer = (v) => (v === undefined || v === null || String(v).trim() === '' ? undefined : montoNoNegativo(v));
+    const publico = leer(b.precios?.publico), mayorista = leer(b.precios?.mayorista), surtido = leer(b.precios?.surtido);
+    if (publico === null || (publico !== undefined && publico <= 0)) return fallo('El precio al público debe ser mayor a $0.');
+    if (mayorista === null || (mayorista !== undefined && mayorista <= 0)) return fallo('El precio mayorista debe ser mayor a $0.');
+    if (surtido === null) return fallo('El precio mayorista surtido no puede ser negativo.');
+    if (publico === undefined && mayorista === undefined && surtido === undefined) return fallo('Escribe al menos un precio nuevo.');
+
+    const nuevos = {
+        ...(publico   !== undefined && { precioVentaPublicoFinal: publico }),
+        ...(mayorista !== undefined && { precioVentaMayorista: mayorista }),
+        ...(surtido   !== undefined && { precioVentaMayoristaSurtido: surtido })
+    };
+    const whereProductos = alcance === 'familias' ? { idFamilia: { [Op.in]: ids } } : { idProducto: { [Op.in]: ids } };
+    const emp = req.empleadoVerificado;
+    const lote = randomUUID();
+
+    const t = await db.transaction();
+    try {
+        // FOR UPDATE: el "antes" de la bitácora es el precio que de verdad se reemplaza, aunque
+        // otra persona esté guardando uno de estos productos en el mismo momento.
+        const productos = await Productos.findAll({
+            where: whereProductos,
+            attributes: ['idProducto', 'precioVentaPublicoFinal', 'precioVentaMayorista', 'precioVentaMayoristaSurtido'],
+            transaction: t,
+            lock: t.LOCK.UPDATE
+        });
+        if (!productos.length) { await t.rollback(); return fallo('No hay productos en lo que elegiste.'); }
+        if (productos.length > MAX_PRODUCTOS_PRECIOS_MASIVOS) {
+            await t.rollback();
+            return fallo(`El cambio abarca ${productos.length.toLocaleString('es-CO')} productos: el máximo por operación es ${MAX_PRODUCTOS_PRECIOS_MASIVOS.toLocaleString('es-CO')}. Hazlo en partes.`);
+        }
+
+        const n = (v) => (v === null || v === undefined ? null : parseFloat(v));
+        await ProductosCambiosPrecio.bulkCreate(productos.map(p => ({
+            lote, alcance, idProducto: p.idProducto,
+            publicoAntes:   n(p.precioVentaPublicoFinal),     publicoDespues:   nuevos.precioVentaPublicoFinal     ?? n(p.precioVentaPublicoFinal),
+            mayoristaAntes: n(p.precioVentaMayorista),        mayoristaDespues: nuevos.precioVentaMayorista        ?? n(p.precioVentaMayorista),
+            surtidoAntes:   n(p.precioVentaMayoristaSurtido), surtidoDespues:   nuevos.precioVentaMayoristaSurtido ?? n(p.precioVentaMayoristaSurtido),
+            idEmpleado: emp.idEmpleado, nombreEmpleado: emp.nombre, codigoEmpleado: emp.codigoEmpleado,
+            idUsuario: req.usuario?.idUsuario ?? null
+        })), { transaction: t });
+
+        const [actualizados] = await Productos.update(nuevos, {
+            where: { idProducto: { [Op.in]: productos.map(p => p.idProducto) } },
+            transaction: t
+        });
+        await t.commit();
+
+        return res.json({
+            success: true,
+            actualizados: productos.length,
+            cambiaron: actualizados,
+            lote,
+            mensaje: `Precios actualizados en ${productos.length.toLocaleString('es-CO')} producto${productos.length === 1 ? '' : 's'}.`
+        });
+    } catch (error) {
+        if (!t.finished) await t.rollback().catch(() => {});
+        console.error('editarPreciosMasivos:', error);
+        return res.status(500).json({ success: false, mensaje: 'No se pudieron actualizar los precios.' });
+    }
+};
+
+
+// GET /admin/api/inventario/:idProducto/historial-precios?cursor=<ISO>_<idCambio>
+// Tarjeta "Historial de precios" de la ficha del producto: la bitácora de
+// PRODUCTOS_CAMBIOS_PRECIO, de la más nueva a la más vieja, de a 15 y con cursor (crece sin
+// límite con el tiempo: CLAUDE.md §8). No devuelve el código del empleado: es una
+// credencial y esta tarjeta la ve cualquiera con lectura de inventario.
+const TANDA_HISTORIAL_PRECIOS = 15;
+const historialPreciosProducto = async (req, res) => {
+    const { idProducto } = req.params;
+    try {
+        const where = { idProducto };
+        const [fechaCursor, idCursor] = String(req.query.cursor || '').split('_');
+        if (fechaCursor && idCursor && !Number.isNaN(Date.parse(fechaCursor))) {
+            const f = new Date(fechaCursor);
+            where[Op.or] = [
+                { createdAt: { [Op.lt]: f } },
+                { createdAt: f, idCambio: { [Op.lt]: idCursor } }
+            ];
+        }
+        const [filas, total] = await Promise.all([
+            ProductosCambiosPrecio.findAll({
+                where,
+                attributes: { exclude: ['codigoEmpleado', 'idUsuario', 'idEmpleado'] },
+                order: [['createdAt', 'DESC'], ['idCambio', 'DESC']],   // orden total para el cursor
+                limit: TANDA_HISTORIAL_PRECIOS + 1,
+                raw: true
+            }),
+            req.query.cursor ? null : ProductosCambiosPrecio.count({ where: { idProducto } })
+        ]);
+        const hayMas = filas.length > TANDA_HISTORIAL_PRECIOS;
+        const pagina = filas.slice(0, TANDA_HISTORIAL_PRECIOS);
+        const ultimo = pagina[pagina.length - 1];
+        const n = (v) => (v === null ? null : parseFloat(v));
+        return res.json({
+            success: true,
+            ...(total !== null && { total }),
+            cambios: pagina.map(c => ({
+                fecha:     c.createdAt,
+                alcance:   c.alcance,
+                empleado:  tituloLista(c.nombreEmpleado),
+                publico:   { antes: n(c.publicoAntes),   despues: n(c.publicoDespues) },
+                mayorista: { antes: n(c.mayoristaAntes), despues: n(c.mayoristaDespues) },
+                surtido:   { antes: n(c.surtidoAntes),   despues: n(c.surtidoDespues) }
+            })),
+            cursor: hayMas ? `${new Date(ultimo.createdAt).toISOString()}_${ultimo.idCambio}` : null
+        });
+    } catch (error) {
+        console.error('historialPreciosProducto:', error);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo cargar el historial de precios.' });
+    }
+};
 
 
 //jsonImageProduct
@@ -9207,7 +9666,7 @@ export {
     dashboardSupplier,
     newSupplier,
     verProveedor, actualizarProveedor,
-    saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor,
+    saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto,
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
     dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta,
     dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, buscarEmpleadoPorCodigo,

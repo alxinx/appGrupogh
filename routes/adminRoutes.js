@@ -3,7 +3,7 @@ import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
 const csrfProtection = csrf({ cookie: true });
 import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
+checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
 adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getEgresosDiaTienda, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
 jsonPermisosRecursos, jsonPermisosAcciones,
 verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
@@ -63,6 +63,7 @@ const pCli = perm('Clientes');
 const pTra = perm('Traslados');
 const pCfg = perm('Settings');
 const pDos = perm('Dosificación y Repartos');
+const validarEmpleadoInventario = validarCodigoConPermiso('Inventario y Productos', 'administrativo', 'EDIT', 'Tu usuario no tiene permiso para editar productos.');
 const validarEmpleadoDosificacion = validarCodigoConPermiso('Dosificación y Repartos', 'administrativo', 'EDIT', 'No tienes permiso para despachar desde dosificación.');
 import uploadImages, { MAX_IMAGENES } from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
@@ -105,6 +106,18 @@ routes.get('/tiendas/editar/:idPuntoDeVenta', pTie('EDIT'), editarTienda);
 //INVENTARIOS Y PRODUCTOS.
 routes.get('/inventario/ingreso', csrfProtection, pInv('CREATE'), dashboardInventorys);
 routes.get('/inventario/listado', pInv('READ'), listaProductos);
+routes.get('/inventario/exportar', pInv('READ'), exportarProductos);
+
+// ── Editar precios masivamente (botón "Más" del listado) ──
+// Tres llaves, en este orden: la sesión puede editar productos (pInv), el código de empleado
+// es de quien tiene la sesión (verificarCodigoEmpleadoAdmin, con bloqueo por intentos), y ESE
+// empleado tiene el permiso de editar productos (verificarPermisoEmpleado).
+routes.get('/json/precios-masivos/familias', pInv('EDIT'), familiasPreciosMasivos);
+routes.get('/json/precios-masivos/productos', pInv('EDIT'), productosPreciosMasivos);
+routes.get('/api/inventario/empleado/validar/:codigo', pInv('EDIT'), apiRateLimit, validarEmpleadoInventario);
+routes.post('/inventario/precios-masivos', pInv('EDIT'), csrfProtection,
+    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Inventario y Productos', 'administrativo', 'EDIT'),
+    editarPreciosMasivos);
 routes.get('/inventario/ver/:idProducto', pInv('READ'), verProducto)
 routes.get('/inventario/editar/:idProducto', pInv('EDIT'), editarProducto)
 routes.get('/inventario/batch/', pInv('CREATE'), batchBuyOrder)
@@ -398,6 +411,7 @@ routes.get('/api/inventario/:idProducto/stock-total', pInv('READ'), stockTotalPr
 routes.get('/api/inventario/:idProducto/unidades-vendidas', pInv('READ'), unidadesVendidasProducto);
 routes.get('/api/inventario/:idProducto/dias-inventario', pInv('READ'), diasInventarioProducto);
 routes.get('/api/inventario/:idProducto/stock-por-tienda', pInv('READ'), stockPorTiendaProducto);
+routes.get('/api/inventario/:idProducto/historial-precios', pInv('READ'), historialPreciosProducto);
 routes.get('/api/inventario/:idProducto/ventas-historico', pInv('READ'), ventasHistoricoProducto);
 routes.get('/api/inventario/:idProducto/ventas-por-tienda', pInv('READ'), ventasPorTiendaProducto);
 routes.post('/api/inventario/:idProducto/traslado', pInv('EDIT'), csrfProtection, trasladarProductoAdmin);

@@ -177,6 +177,231 @@ style.
     }
     .gh-conf-seccion span { font-size: 0.6875rem; font-weight: 600; color: #64748B; }
     .gh-conf-seccion + .gh-conf-lista { padding-top: 0.625rem; }
+    /* ── Elegir entre opciones (tarjetas de radio) ──────────────────────────
+       Dos o tres caminos excluyentes, cada uno con su cifra: la cifra es lo que decide
+       ("128 filtrados" contra "1.024 todos"), así que es lo más grande de la tarjeta. */
+    .gh-conf-opciones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.625rem; padding: 0.625rem 1.5rem 0; }
+    .gh-conf-opcion {
+        position: relative; display: flex; flex-direction: column; gap: 0.125rem;
+        padding: 0.75rem 0.875rem; border-radius: 14px; cursor: pointer;
+        border: 1.5px solid #E2E8F0; background: #fff;
+        transition: border-color .15s ease, background-color .15s ease;
+    }
+    .gh-conf-opcion:hover { border-color: #CBD5E1; }
+    .gh-conf-opcion input { position: absolute; opacity: 0; pointer-events: none; }
+    .gh-conf-opcion:has(input:checked) { border-color: var(--color-gh-primaryHover, #E24C95); background: #FDF2F8; }
+    .gh-conf-opcion:has(input:focus-visible) { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+    .gh-conf-opcion-titulo { font-size: 0.75rem; font-weight: 700; color: #334155; }
+    .gh-conf-opcion-cifra {
+        font-size: 1.375rem; line-height: 1.15; font-weight: 800; letter-spacing: -0.02em;
+        color: #1E293B; font-variant-numeric: tabular-nums;
+    }
+    .gh-conf-opcion:has(input:checked) .gh-conf-opcion-cifra { color: #A3306A; }
+    .gh-conf-opcion-sub {
+        font-size: 0.6875rem; line-height: 1.4; color: #64748B;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    /* ── Interruptores (campos que se incluyen) ─────────────────────────────
+       Una fila por campo: el nombre a la izquierda, el interruptor a la derecha, y toda la
+       fila es clicable. Los grupos se separan por un rótulo discreto, no por tarjetas. */
+    .gh-conf-interruptores { padding: 0.375rem 1.5rem 0; max-height: 40vh; overflow-y: auto; }
+    .gh-conf-grupo { margin: 0.75rem 0 0.25rem; font-size: 0.6875rem; font-weight: 600; color: #94A3B8; }
+    .gh-conf-grupo:first-child { margin-top: 0.25rem; }
+    .gh-conf-switch {
+        display: flex; align-items: center; gap: 0.75rem;
+        padding: 0.5625rem 0.25rem; border-bottom: 1px solid #F1F5F9; cursor: pointer;
+    }
+    .gh-conf-switch-texto { flex: 1; min-width: 0; }
+    .gh-conf-switch-titulo { display: block; font-size: 0.8125rem; font-weight: 600; color: #1E293B; }
+    .gh-conf-switch-detalle { display: block; font-size: 0.6875rem; color: #64748B; margin-top: 0.0625rem; }
+    .gh-conf-switch input { position: absolute; opacity: 0; pointer-events: none; }
+    .gh-conf-switch-pista {
+        position: relative; flex-shrink: 0; width: 2.125rem; height: 1.25rem; border-radius: 999px;
+        background: #CBD5E1; transition: background-color .18s ease;
+    }
+    .gh-conf-switch-pista::after {
+        content: ''; position: absolute; top: 0.1875rem; left: 0.1875rem;
+        width: 0.875rem; height: 0.875rem; border-radius: 999px; background: #fff;
+        box-shadow: 0 1px 2px rgb(15 23 42 / 0.25);
+        transition: transform .18s cubic-bezier(.16, 1, .3, 1);
+    }
+    .gh-conf-switch input:checked + .gh-conf-switch-pista { background: var(--color-gh-primaryHover, #E24C95); }
+    .gh-conf-switch input:checked + .gh-conf-switch-pista::after { transform: translateX(0.875rem); }
+    .gh-conf-switch input:focus-visible + .gh-conf-switch-pista { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+    /* Un campo que siempre va: sin interruptor, con un candado y el motivo. */
+    .gh-conf-switch--fijo { cursor: default; }
+    .gh-conf-switch--fijo .gh-conf-fijo { font-size: 0.6875rem; font-weight: 600; color: #94A3B8; display: inline-flex; align-items: center; gap: 0.25rem; }
+    @media (max-width: 420px) { .gh-conf-opciones { grid-template-columns: 1fr; } }
+
+    /* ── Ventana de trabajo (no de SweetAlert) ───────────────────────────────
+       Para un trabajo con varios pasos dentro —elegir, quitar, revisar— que tiene que seguir
+       abierto mientras SweetAlert confirma encima (quitar un elemento, pedir el código). Por
+       eso vive en su propia capa, por DEBAJO de la de SweetAlert (z-index 1060), con la misma
+       cara de las ventanas gh-conf. La abre src/js/preciosMasivos.js. */
+    .gh-conf-capa {
+        position: fixed; inset: 0; z-index: 1050;
+        display: flex; align-items: center; justify-content: center; padding: 1rem;
+        background: rgb(15 23 42 / 0.42);
+    }
+    .gh-conf-panel {
+        width: min(58rem, 100%); max-height: calc(100dvh - 2rem);
+        display: flex; flex-direction: column; overflow: hidden;
+        background: #fff; border-radius: 1rem;
+        box-shadow: 0 18px 45px -12px rgb(15 23 42 / 0.28), 0 6px 14px -8px rgb(15 23 42 / 0.18);
+    }
+    .gh-conf-panel .gh-conf-cabecera { position: relative; flex-shrink: 0; }
+    .gh-conf-panel { position: relative; }
+
+    /* "Subir": aparece cuando el cuerpo de la ventana se desplazó mucho (una lista de cientos
+       de elegidos). Vive en la barra de acciones, a la izquierda: flotando sobre la lista
+       tapaba la papelera de la última fila visible y se prestaba a un clic equivocado. Es
+       una ayuda para moverse, no una acción del formulario: sin borde ni rosa de fondo. */
+    .gh-conf-subir {
+        margin-right: auto; display: inline-flex; align-items: center; gap: 0.375rem;
+        padding: 0.625rem 0.875rem 0.625rem 0.75rem; border-radius: var(--radius-gh, 12px);
+        background: transparent; color: #475569; font-size: 0.8125rem; font-weight: 700;
+        opacity: 0; transform: translateY(4px); pointer-events: none;
+        transition: opacity .18s ease, transform .22s cubic-bezier(.16, 1, .3, 1), background-color .15s ease;
+    }
+    .gh-conf-subir i { color: var(--color-gh-primaryHover, #E24C95); font-size: 1rem; }
+    .gh-conf-subir--visible { opacity: 1; transform: none; pointer-events: auto; }
+    .gh-conf-subir:hover { background: #F1F5F9; color: #1E293B; }
+    .gh-conf-subir:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { .gh-conf-subir { transition: none; } }
+    .gh-conf-cerrar {
+        position: absolute; top: 1rem; right: 1rem; width: 2.25rem; height: 2.25rem; border-radius: 999px;
+        display: flex; align-items: center; justify-content: center; color: #64748B; background: transparent;
+        transition: background-color .15s ease, color .15s ease;
+    }
+    .gh-conf-cerrar:hover { background: #E2E8F0; color: #1E293B; }
+    .gh-conf-cerrar:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+    .gh-conf-panel-cuerpo { flex: 1; overflow-y: auto; padding-bottom: 1.25rem; }
+    .gh-conf-panel .gh-conf-acciones { flex-shrink: 0; border-top: 1px solid #F1F5F9; padding: 1rem 1.5rem; justify-content: flex-end; }
+    .gh-conf-panel .gh-conf-acciones .gh-conf-btn { flex: 0 1 auto; min-width: 9rem; }
+    .gh-conf-panel .gh-conf-seccion:first-child { border-top: none; margin-top: 1rem; padding-top: 0; }
+
+    /* Tres precios en fila, cada uno con su signo pesos y "Sin cambio" cuando va vacío. */
+    .gh-conf-precios { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; padding: 0.625rem 1.5rem 0; }
+    .gh-conf-precio label { display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 0.375rem; }
+    .gh-conf-precio-caja { position: relative; }
+    .gh-conf-precio-caja span {
+        position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%);
+        font-size: 0.875rem; font-weight: 700; color: #94A3B8; pointer-events: none;
+    }
+    .gh-conf-precio .gh-conf-input { padding-left: 1.75rem; font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #1E293B; }
+    .gh-conf-precio .gh-conf-input::placeholder { font-weight: 500; color: #94A3B8; font-size: 0.875rem; }
+    .gh-conf-precio-error { min-height: 1rem; margin-top: 0.25rem; font-size: 0.6875rem; font-weight: 600; color: #DC2626; }
+    .gh-conf-precio .gh-conf-input[aria-invalid="true"] { border-color: #F87171; }
+
+    /* Elegir → pasa a la derecha. Dos columnas: buscar a la izquierda, lo elegido a la derecha. */
+    /* align-items: start para que la columna de búsqueda pueda ser sticky: con la de elegidos
+       larga (cientos de productos), el cuerpo de la ventana se desplaza y la búsqueda lo
+       acompaña en vez de quedarse arriba fuera de la vista. */
+    .gh-conf-selector { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 1rem; padding: 0.625rem 1.5rem 0; }
+    @media (min-width: 721px) {
+        .gh-conf-selector > .gh-conf-columna:first-child {
+            position: sticky; top: 0.75rem; z-index: 1;
+            background: #fff;   /* lo que pasa por detrás al desplazarse no se transparenta */
+        }
+    }
+    .gh-conf-columna { display: flex; flex-direction: column; min-height: 0; }
+    .gh-conf-columna-titulo { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; font-size: 0.75rem; font-weight: 700; color: #334155; }
+    .gh-conf-columna-titulo span { font-size: 0.6875rem; font-weight: 600; color: #64748B; font-variant-numeric: tabular-nums; }
+    .gh-conf-buscar { position: relative; }
+    .gh-conf-buscar i { position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 0.8125rem; pointer-events: none; }
+    .gh-conf-buscar .gh-conf-input { padding-left: 2.25rem; }
+    .gh-conf-resultados, .gh-conf-elegidos {
+        margin-top: 0.5rem; height: 17rem; overflow-y: auto;
+        border: 1px solid #E2E8F0; border-radius: 12px; padding: 0.25rem;
+    }
+    /* La columna de elegidos se estira hasta el alto de la de búsqueda, que crece cuando se
+       abre el filtro por precio: nada de alturas calculadas a mano. */
+    .gh-conf-elegidos { margin-top: 0; height: auto; min-height: calc(17rem + 2.875rem + 0.5rem); background: #FAFAFA; overflow: visible; }
+    .gh-conf-resultado {
+        width: 100%; display: flex; align-items: center; gap: 0.625rem; text-align: left;
+        padding: 0.5625rem 0.625rem; border-radius: 9px; cursor: pointer; background: transparent;
+        transition: background-color .12s ease;
+    }
+    .gh-conf-resultado:hover, .gh-conf-resultado:focus-visible { background: #FDF2F8; outline: none; }
+    .gh-conf-resultado:disabled { cursor: default; background: transparent; }
+    .gh-conf-resultado-texto { flex: 1; min-width: 0; }
+    .gh-conf-resultado-titulo { display: block; font-size: 0.8125rem; font-weight: 600; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gh-conf-resultado-sub { display: block; font-size: 0.6875rem; color: #64748B; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gh-conf-resultado-accion {
+        flex-shrink: 0; width: 1.75rem; height: 1.75rem; border-radius: 999px;
+        display: flex; align-items: center; justify-content: center; font-size: 0.75rem;
+        background: #FDE7F2; color: #C43B7E;
+    }
+    .gh-conf-resultado:disabled .gh-conf-resultado-accion { background: #DCFCE7; color: #15803D; }
+    .gh-conf-vacio-lista { padding: 2rem 1rem; text-align: center; font-size: 0.75rem; color: #94A3B8; line-height: 1.5; }
+    .gh-conf-vacio-lista i { display: block; font-size: 1.5rem; color: #CBD5E1; margin-bottom: 0.375rem; }
+    .gh-conf-elegido {
+        display: flex; align-items: center; gap: 0.625rem;
+        padding: 0.5rem 0.5rem 0.5rem 0.75rem; margin: 0.25rem; border-radius: 10px; background: #fff;
+        box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+        animation: ghConfEntra .22s cubic-bezier(.16, 1, .3, 1) both;
+    }
+    .gh-conf-quitar {
+        flex-shrink: 0; width: 2rem; height: 2rem; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center; color: #94A3B8; background: transparent;
+        transition: background-color .15s ease, color .15s ease;
+    }
+    .gh-conf-quitar:hover, .gh-conf-quitar:focus-visible { background: #FFF1F2; color: #E11D48; outline: none; }
+    .gh-conf-nota { padding: 0.5rem 1.5rem 0; font-size: 0.6875rem; color: #64748B; }
+    .gh-conf-columna-titulo .gh-conf-enlace { font-size: 0.6875rem; }
+
+    /* Filtro por precio: se abre bajo el buscador. Cerrado es un enlace; abierto, una fila de
+       tres campos. Con un rango puesto, el enlace lo resume ("Público $23.000 – $23.800"). */
+    .gh-conf-enlace {
+        display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0;
+        font-size: 0.75rem; font-weight: 700; color: #A3306A; background: none; cursor: pointer;
+    }
+    .gh-conf-enlace:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .gh-conf-enlace:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; border-radius: 4px; }
+    .gh-conf-enlace--apagado { color: #64748B; }
+    .gh-conf-filtro { margin-top: 0.5rem; }
+    .gh-conf-filtro-campos {
+        display: grid; grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr) minmax(0, 1fr); gap: 0.5rem;
+        margin-top: 0.375rem; padding: 0.625rem; border-radius: 12px; background: #F8FAFC; border: 1px solid #E2E8F0;
+    }
+    .gh-conf-filtro-campos label { display: block; font-size: 0.6875rem; font-weight: 600; color: #64748B; margin-bottom: 0.25rem; }
+    .gh-conf-filtro-campos .gh-conf-input { padding: 0.5rem 0.625rem; font-size: 0.8125rem; }
+    .gh-conf-filtro-campos .gh-conf-precio-caja .gh-conf-input { padding-left: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .gh-conf-filtro-campos .gh-conf-precio-caja span { left: 0.625rem; font-size: 0.8125rem; }
+    .gh-conf-filtro-error { grid-column: 1 / -1; font-size: 0.6875rem; font-weight: 600; color: #DC2626; }
+    .gh-conf-filtro-error:empty { display: none; }
+
+    /* Cuántos coinciden y "Agregar los N", entre el buscador y la lista. */
+    .gh-conf-barra {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+        margin-top: 0.5rem; font-size: 0.75rem; color: #475569;
+    }
+    .gh-conf-barra strong { font-weight: 800; color: #1E293B; font-variant-numeric: tabular-nums; }
+    .gh-conf-agregar-todos {
+        flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.375rem;
+        padding: 0.375rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+        background: #FDE7F2; color: #A3306A; cursor: pointer; transition: background-color .15s ease;
+    }
+    .gh-conf-agregar-todos:hover { background: #FBCFE8; }
+    .gh-conf-agregar-todos:disabled { opacity: .5; cursor: default; }
+    .gh-conf-agregar-todos:focus-visible { outline: 2px solid var(--color-gh-primaryHover, #E24C95); outline-offset: 2px; }
+
+    @media (max-width: 720px) {
+        .gh-conf-precios, .gh-conf-selector { grid-template-columns: 1fr; }
+        .gh-conf-resultados { height: 13rem; }
+        .gh-conf-elegidos { height: auto; max-height: 16rem; min-height: 6rem; overflow-y: auto; }
+        .gh-conf-panel .gh-conf-acciones .gh-conf-btn { flex: 1; min-width: 0; }
+    }
+
+    /* El aviso de error de SweetAlert (showValidationMessage), con el lenguaje de la hoja:
+       sin él aparece la franja gris de la librería, ajena al resto de la ventana. */
+    .gh-conf-popup .swal2-validation-message {
+        margin: 1rem 1.5rem 0; padding: 0.625rem 0.875rem; border-radius: 10px;
+        background: #FEF2F2; color: #B91C1C; font-size: 0.75rem; font-weight: 600; justify-content: flex-start;
+    }
+    .gh-conf-popup .swal2-validation-message::before { display: none; }
+
     /* El número de una cuenta es lo que hay que releer dígito por dígito. */
     .gh-conf-numero { font-size: 0.75rem; font-weight: 600; color: #1E293B; letter-spacing: 0.02em; }
     .gh-conf-principal {

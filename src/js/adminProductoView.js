@@ -1,4 +1,5 @@
 import Chart from 'chart.js/auto';
+import { escaparHtml as esc } from './escaparHtml.js';
 
 (function () {
     const idProducto = document.getElementById('producto-id')?.value;
@@ -367,4 +368,62 @@ import Chart from 'chart.js/auto';
         }
     });
 
+
+    // ─── HISTORIAL DE PRECIOS ────────────────────────────────────────────────
+    // De a 15, del más nuevo al más viejo; "Ver más" sigue desde el cursor del servidor.
+    const cuerpoHist = $('historial-precios-body');
+    if (cuerpoHist) {
+        const pesos = (v) => (v === null || v === undefined ? '—' : `$${Number(v).toLocaleString('es-CO')}`);
+        const fechaHora = (iso) => {
+            const d = new Date(iso);
+            const f = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' });
+            const h = d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' });
+            return `<span class="block font-semibold text-slate-700">${f}</span><span class="block text-xs text-slate-400">${h}</span>`;
+        };
+        // Antes tachado → después, y cuánto cambió. Si ese precio no se tocó, se dice.
+        const celdaPrecio = ({ antes, despues }) => {
+            if (antes === despues) return `<span class="text-slate-500 tabular-nums">${pesos(despues)}</span><span class="block text-[11px] text-slate-400">Sin cambio</span>`;
+            const pct = antes ? Math.round(((despues - antes) / antes) * 100) : null;
+            const sube = despues > antes;
+            return `<span class="block text-xs text-slate-400 line-through tabular-nums">${pesos(antes)}</span>
+                <span class="font-bold text-slate-800 tabular-nums">${pesos(despues)}</span>
+                ${pct !== null ? `<span class="ml-1 text-[11px] font-bold ${sube ? 'text-emerald-700' : 'text-rose-700'}">${sube ? '▲' : '▼'} ${Math.abs(pct)}%</span>` : ''}`;
+        };
+        const fila = (c) => `<tr class="hover:bg-slate-50/60">
+            <td class="px-6 py-3 whitespace-nowrap">${fechaHora(c.fecha)}</td>
+            <td class="px-6 py-3 whitespace-nowrap">${celdaPrecio(c.publico)}</td>
+            <td class="px-6 py-3 whitespace-nowrap">${celdaPrecio(c.mayorista)}</td>
+            <td class="px-6 py-3 whitespace-nowrap">${celdaPrecio(c.surtido)}</td>
+            <td class="px-6 py-3"><span class="text-[11px] font-bold px-2 py-1 rounded-full ${c.alcance === 'familias' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}">${c.alcance === 'familias' ? 'Por familia' : 'Por producto'}</span></td>
+            <td class="px-6 py-3 text-slate-700">${esc(c.empleado)}</td>
+        </tr>`;
+
+        const cajaMas = $('historial-precios-mas');
+        const botonMas = $('historial-precios-btn-mas');
+        let cursor = null;
+
+        const cargarHistorial = async (siguiente = false) => {
+            botonMas.disabled = true;
+            try {
+                const r = await fetch(`/admin/api/inventario/${idProducto}/historial-precios${siguiente && cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+                const d = await r.json();
+                if (!d.success) throw new Error(d.mensaje);
+                if (!siguiente) {
+                    $('historial-precios-total').textContent = d.total === 1 ? '1 cambio' : `${(d.total || 0).toLocaleString('es-CO')} cambios`;
+                    cuerpoHist.innerHTML = d.cambios.length ? '' : `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400 text-sm">
+                        <i class="fi fi-rr-time-past block text-2xl text-slate-300 mb-1"></i>
+                        Todavía no se le ha cambiado el precio con “Editar precios masivamente”.</td></tr>`;
+                }
+                cuerpoHist.insertAdjacentHTML('beforeend', d.cambios.map(fila).join(''));
+                cursor = d.cursor;
+                cajaMas.classList.toggle('hidden', !cursor);
+            } catch {
+                if (!siguiente) cuerpoHist.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-rose-600 text-sm">No se pudo cargar el historial de precios.</td></tr>';
+            } finally {
+                botonMas.disabled = false;
+            }
+        };
+        botonMas.addEventListener('click', () => cargarHistorial(true));
+        cargarHistorial();
+    }
 })();

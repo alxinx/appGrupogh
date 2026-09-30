@@ -16,6 +16,23 @@ div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
                     | Exportar códigos de&nbsp;
                     span#exportarCodigosFamilia(class="font-bold text-slate-900")
 
+    //- "Más": acciones de todo el catálogo. Secundaria, antes de la principal (estándar de
+    //- views/components/accionesAdmin.pug). La abre src/js/menuMasAcciones.js.
+    if subPagina === 'Listado De Productos'
+        div(class="relative")
+            button#btn-mas-productos(type="button" class="btn btn-secondary flex items-center gap-2")
+                | Más
+                i(class="fi fi-rr-menu-dots text-xs")
+            div#menu-mas-productos(role="menu" class="hidden absolute right-0 top-[calc(100%+6px)] w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-30")
+                button#opcion-editar-precios(type="button" role="menuitem"
+                    class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:bg-pink-50 focus-visible:text-pink-700 outline-none text-left")
+                    i(class="fi fi-rr-dollar w-4 text-center text-pink-500")
+                    span Editar precios masivamente
+                button#opcion-exportar-productos(type="button" role="menuitem"
+                    class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:bg-pink-50 focus-visible:text-pink-700 outline-none text-left")
+                    i(class="fi fi-rr-file-excel w-4 text-center icono-excel")
+                    span Exportar productos
+
     if subPagina === 'Listado De Productos'
         a(href="/admin/inventario/ingreso")
             button(class="btn btn-danger flex items-center gap-2")
@@ -49,6 +66,8 @@ style.
     }
     /* Sin hover propio: el .btn-secondary del sistema ya lleva a gray-50, y así el verde
        queda como el único acento del botón. */
+    /* Mismo verde de formato de archivo en la opción "Exportar productos" del menú. */
+    .icono-excel { color: #217346; }
     #btnExportarCodigos { text-decoration: none; }
     #btnExportarCodigos:not(.hidden) { animation: exportar-codigos-entra .24s cubic-bezier(.16,1,.3,1) both; }
     @keyframes exportar-codigos-entra {

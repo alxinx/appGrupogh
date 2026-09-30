@@ -1,4 +1,7 @@
 import { tituloLista as tc } from '../../helpers/textoLista.js';
+import { activarMenuMas } from './menuMasAcciones.js';
+import { abrirExportarProductos } from './exportarProductos.js';
+import { abrirPreciosMasivos } from './preciosMasivos.js';
 (function(){
     const inputBusqueda = document.querySelector('#busquedaText');
     const selectCategoria = document.querySelector('#categoriaProductos');
@@ -64,18 +67,33 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         });
     }
 
+    // Los filtros de la pantalla, en un solo lugar: los usan el listado y la exportación,
+    // que tiene que traer exactamente las mismas filas.
+    const leerFiltros = () => ({
+        busqueda: inputBusqueda.value,
+        categoria: selectCategoria.value,
+        familia: selectFamilia?.value || '',
+        estado: estado.value,
+        // Solo filtra encendido. Antes mandaba siempre true/false y, apagado, dejaba
+        // únicamente los productos NO publicados en vez de mostrarlos todos.
+        web: checkWeb.checked ? 'true' : ''
+    });
+
+    // Los mismos filtros dichos en palabras, para la tarjeta "Los filtrados" de la ventana.
+    const textoOpcion = (sel) => (sel?.value ? sel.options[sel.selectedIndex]?.text.trim() : '');
+    const resumirFiltros = () => [
+        inputBusqueda.value.trim() && `Búsqueda “${inputBusqueda.value.trim()}”`,
+        textoOpcion(selectCategoria),
+        selectFamilia?.value && `Familia ${window.tituloCase?.(textoOpcion(selectFamilia)) || textoOpcion(selectFamilia)}`,
+        estado.value === '1' ? 'Solo activos' : estado.value === '0' ? 'Solo inactivos' : '',
+        checkWeb.checked && 'Publicados en la web'
+    ].filter(Boolean).join(' · ');
+
     const obtenerProductos = async () => {
         const consultaId = ++ultimaConsultaId;
         try {
             // Recolectamos filtros + la página actual
-            const filtros = {
-                busqueda: inputBusqueda.value,
-                categoria: selectCategoria.value,
-                familia: selectFamilia?.value || '',
-                estado: estado.value,
-                web: checkWeb.checked,
-                pagina: paginaActual
-            };
+            const filtros = { ...leerFiltros(), pagina: paginaActual };
 
             const queryParams = new URLSearchParams(filtros).toString();
             const url = `/admin/json/productos/?${queryParams}`;
@@ -154,6 +172,22 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
     // Al cargar, por si el navegador restauró una familia elegida.
     sincronizarExportar();
+
+    // ── Menú "Más" de la cabecera ──
+    const menuMas = activarMenuMas(document.querySelector('#btn-mas-productos'), document.querySelector('#menu-mas-productos'));
+    let camposExportar = [];
+    try { camposExportar = JSON.parse(document.querySelector('[data-campos-exportar]')?.dataset.camposExportar || '[]'); } catch { /* sin campos: la ventana igual abre */ }
+    document.querySelector('#opcion-editar-precios')?.addEventListener('click', () => {
+        menuMas.cerrar();
+        abrirPreciosMasivos({
+            csrfToken: document.querySelector('[data-csrf]')?.dataset.csrf || '',
+            alTerminar: obtenerProductos   // el listado muestra los precios nuevos sin recargar
+        });
+    });
+    document.querySelector('#opcion-exportar-productos')?.addEventListener('click', () => {
+        menuMas.cerrar();
+        abrirExportarProductos({ filtros: leerFiltros(), resumenFiltros: resumirFiltros(), campos: camposExportar });
+    });
 
     document.addEventListener('DOMContentLoaded', filtrar);
 

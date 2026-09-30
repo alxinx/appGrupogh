@@ -40,6 +40,7 @@ import ClientesTributario from './ClientesTributario.js'
 import ClientesUbicacion from './ClientesUbicacion.js'
 import ClientesRegistroWeb from './ClientesRegistroWeb.js'
 import ProvedoresRegistroWeb from './ProvedoresRegistroWeb.js'
+import ProductosCambiosPrecio from './ProductosCambiosPrecio.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -188,6 +189,10 @@ Productos.hasMany(DetallesPack, { foreignKey: 'idProducto' });
 
 Stock.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto' });
 Productos.hasMany(Stock, { foreignKey: 'idProducto', as: 'existencias' });
+// Bitácora de precios: sin FK en la base (constraints: false). Es append-only y un producto
+// que se borrara no puede quedar trabado por su historial, ni el historial perderse con él.
+Productos.hasMany(ProductosCambiosPrecio, { foreignKey: 'idProducto', as: 'cambiosPrecio', constraints: false });
+ProductosCambiosPrecio.belongsTo(Productos, { foreignKey: 'idProducto', as: 'producto', constraints: false });
 
 Stock.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoVenta', as: 'ubicacion' });
 PuntosDeVenta.hasMany(Stock, { foreignKey: 'idPuntoVenta', as: 'inventario' });
@@ -449,5 +454,6 @@ export {
   ReservasCarrito,
   ClientesRegistroWeb,
   ProvedoresRegistroWeb,
+  ProductosCambiosPrecio,
   ProvedoresCuentasBancarias,
 }

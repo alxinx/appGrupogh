@@ -65,3 +65,30 @@ div(class="col-span-12 bg-white/50 backdrop-blur-xl border border-white shadow-x
                     td(colspan="4" class="px-6 py-8 text-center text-slate-400 text-sm")
                         i(class="fi fi-rr-spinner animate-spin mr-2")
                         | Cargando...
+//- ── HISTORIAL DE PRECIOS ────────────────────────────────────────────────────
+//- La bitácora de PRODUCTOS_CAMBIOS_PRECIO (append-only). Hoy solo la escribe "Editar precios
+//- masivamente": la nota lo dice, para que nadie lea "sin cambios" donde hubo una edición
+//- desde el formulario del producto. La llena src/js/adminProductoView.js, de a 15.
+div(class="col-span-12 bg-white/50 backdrop-blur-xl border border-white shadow-xl rounded-2xl overflow-hidden mt-4")
+    div(class="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100")
+        div
+            h3(class="text-base font-bold text-slate-800") Historial de precios
+            p(class="text-xs text-slate-400 mt-0.5") Cambios hechos con “Editar precios masivamente”, con quién los autorizó
+        span#historial-precios-total(class="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full tabular-nums") —
+    div(class="overflow-x-auto")
+        table(class="w-full text-sm text-left")
+            thead
+                tr(class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider border-b border-slate-100")
+                    th(class="px-6 py-3") Fecha
+                    th(class="px-6 py-3") Público
+                    th(class="px-6 py-3") Mayorista
+                    th(class="px-6 py-3") Surtido
+                    th(class="px-6 py-3") Cómo
+                    th(class="px-6 py-3") Autorizó
+            tbody#historial-precios-body(class="divide-y divide-slate-100")
+                tr
+                    td(colspan="6" class="px-6 py-8 text-center text-slate-400 text-sm")
+                        i(class="fi fi-rr-spinner animate-spin mr-2")
+                        | Cargando...
+    div(class="px-6 py-3 border-t border-slate-100 text-center hidden" id="historial-precios-mas")
+        button#historial-precios-btn-mas(type="button" class="btn btn-secondary text-xs") Ver más cambios

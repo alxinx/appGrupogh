@@ -1,3 +1,5 @@
+include ../../../components/documentoProveedor.pug
+
 form(action="" method="post" id="formBatchOrder" class="col-span-12 grid grid-cols-12 gap-6 items-start")
     input(type="hidden" name="_csrf" id="csrfBatch" value=csrfToken)
 
@@ -133,7 +135,7 @@ form(action="" method="post" id="formBatchOrder" class="col-span-12 grid grid-co
 //- MODAL NUEVO PROVEEDOR
 div(id="modalNuevoProvedor" class="fixed inset-0 z-50 hidden items-start justify-center pt-10 px-4 bg-black/50")
     div(class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto")
-        div(class="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10")
+        div(class="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-20")
             h3(class="text-lg font-bold text-gray-800") Nuevo Proveedor
             button(type="button" id="btnCerrarModal" class="text-gray-400 hover:text-gray-600 text-2xl leading-none")
                 i.fi-rr-cross-small
@@ -141,13 +143,12 @@ div(id="modalNuevoProvedor" class="fixed inset-0 z-50 hidden items-start justify
         div(class="p-6")
             div(class="grid grid-cols-12 gap-3")
 
-                div(class="col-span-12 md:col-span-6")
+                div(class="col-span-12")
                     label.label Razón Social
                         input(class="field-text" type="text" id="modal-razonSocial" placeholder="Nombre del proveedor")
 
-                div(class="col-span-12 md:col-span-6")
-                    label.label NIT / Identificación
-                        input(class="field-text" type="text" id="modal-nit" placeholder="NIT o Cédula")
+                //- Mismo campo que el alta de proveedores: saveSupplier exige el tipo de documento.
+                +documentoProveedor({ tipos: tiposDocumento, nombre: 'nit', claseTipo: 'col-span-12 md:col-span-6', claseNumero: 'col-span-12 md:col-span-6' })
 
                 div(class="col-span-12 md:col-span-4")
                     label.label Departamento
@@ -208,7 +209,7 @@ div(id="modalNuevoProvedor" class="fixed inset-0 z-50 hidden items-start justify
                                 span(class="text-xs text-gray-400 mt-1") PDF, imágenes, Excel, Word — máx 10 archivos
                         div(id="modal-preview-docs" class="flex flex-wrap gap-2 mt-2")
 
-        div(class="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 sticky bottom-0 bg-white")
+        div(class="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 sticky bottom-0 bg-white z-20")
             button(type="button" id="btnCancelarModal" class="btn") Cancelar
             button(type="button" id="btnGuardarProveedor" class="btn btn-primary")
                 i.fi-rr-disk
@@ -216,4 +217,5 @@ div(id="modalNuevoProvedor" class="fixed inset-0 z-50 hidden items-start justify
 
 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
 script(src="/js/helpers.js")
+script(src="/js/documentoProveedor.js")
 script(src="/js/batchOrder.js")

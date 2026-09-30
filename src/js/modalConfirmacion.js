@@ -84,7 +84,7 @@ export const filaConfirmacion = ({ icono, fondo, color, titulo, sub, derecha = '
  * El permiso fino de la acción NO se comprueba acá: eso lo hace el endpoint al recibir el
  * POST. Esto es comodidad para el cajero, no el control.
  */
-export function activarVerificacionCodigo(inputId, estadoId, onVerificado, { accion = null } = {}) {
+export function activarVerificacionCodigo(inputId, estadoId, onVerificado, { accion = null, urlValidar = null } = {}) {
     const input = document.getElementById(inputId);
     const estado = document.getElementById(estadoId);
     if (!input || !estado) return;
@@ -104,12 +104,14 @@ export function activarVerificacionCodigo(inputId, estadoId, onVerificado, { acc
         setEstado('info', 'Verificando código...');
         timer = setTimeout(async () => {
             try {
-                const url = `/store/json/personal/validar/${encodeURIComponent(codigo)}`;
-                const r = await fetch(accion ? `${url}?accion=${encodeURIComponent(accion)}` : url);
+                // `urlValidar` para el panel admin, que valida contra su propio endpoint
+                // (validarCodigoConPermiso: código de la sesión + el permiso de la acción).
+                const url = urlValidar ? urlValidar(codigo) : `/store/json/personal/validar/${encodeURIComponent(codigo)}`;
+                const r = await fetch(accion && !urlValidar ? `${url}?accion=${encodeURIComponent(accion)}` : url);
                 const data = await r.json();
                 if (!data.success) { setEstado('error', data.mensaje || 'Código inválido.'); return; }
                 setEstado('ok', `✓ ${data.nombre || 'Empleado verificado'}`);
-                onVerificado({ idEmpleado: data.idEmpleado, nombre: data.nombre, codigoEmpleado: codigo.toUpperCase() });
+                onVerificado({ idEmpleado: data.idEmpleado ?? null, nombre: data.nombre, codigoEmpleado: codigo.toUpperCase() });
             } catch (_) {
                 setEstado('error', 'No se pudo verificar el código.');
             }
