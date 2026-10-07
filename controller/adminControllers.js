@@ -3277,8 +3277,9 @@ const dashboardSupplier = async (req, res) => {
     const hoySQL       = new Date().toISOString().split('T')[0];
     const en3DiasSQL   = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
 
-    const [categorias, [[statsCP]], [[statsVencer]], [[statsVencidas]]] = await Promise.all([
+    const [categorias, totalProvedores, [[statsCP]], [[statsVencer]], [[statsVencidas]]] = await Promise.all([
         CategoriasDeProvedores.findAll(),
+        Provedores.count(),
         db.query(`
             SELECT
                 COUNT(*) AS totalFacturas,
@@ -3318,6 +3319,7 @@ const dashboardSupplier = async (req, res) => {
         csrfToken: req.csrfToken(),
         currentPath: req.path,
         categorias,
+        totalProvedores,
         cuentasPorPagar: {
             total: parseInt(statsCP.totalFacturas)    || 0,
             monto: fmtCOP(parseFloat(statsCP.totalPorPagar) || 0)
