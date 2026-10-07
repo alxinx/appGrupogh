@@ -29,6 +29,9 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 //CONTROLADOR TRASLADOS:
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
+//CONTROLADOR PRODUCCIÓN (Confeccionistas, Procesos, Insumos):
+import { homeConfeccionistas, homeProcesos, homeInsumos } from '../controller/produccionController.js'
+
 //CONTROLADOR IMPORTACIONES:
 import { formularioImportaciones, procesarImportacionExcel, descargarPlantillaImportacion, formularioImportarClientes, procesarImportacionClientes, descargarPlantillaClientes } from '../controller/importacionesController.js'
 
@@ -63,6 +66,10 @@ const pCli = perm('Clientes');
 const pTra = perm('Traslados');
 const pCfg = perm('Settings');
 const pDos = perm('Dosificación y Repartos');
+// Pestaña "Producción" del menú. `pPro` ya está tomado por 'Provedores'.
+const pCon = perm('Confeccionistas');
+const pPrc = perm('Procesos');
+const pIns = perm('Insumos');
 const validarEmpleadoInventario = validarCodigoConPermiso('Inventario y Productos', 'administrativo', 'EDIT', 'Tu usuario no tiene permiso para editar productos.');
 const validarEmpleadoDosificacion = validarCodigoConPermiso('Dosificación y Repartos', 'administrativo', 'EDIT', 'No tienes permiso para despachar desde dosificación.');
 import uploadImages, { MAX_IMAGENES } from '../middlewares/uploadImages.js';
@@ -279,6 +286,13 @@ routes.post('/traslados/:idTraslado/recibir-devolucion',
     verificarCodigoEmpleadoAdmin,
     verificarPermisoEmpleado('Traslados', 'administrativo', 'EDIT'),
     recibirDevolucionAdmin);
+
+// Pestaña "Producción": base de los tres módulos, sin recurso propio todavía más allá de
+// la carpeta (ver seed/migracionPermisosProduccion.js).
+routes.get('/confeccionistas', pCon('READ'), csrfProtection, homeConfeccionistas);
+routes.get('/procesos',        pPrc('READ'), csrfProtection, homeProcesos);
+routes.get('/insumos',         pIns('READ'), csrfProtection, homeInsumos);
+
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
 routes.get('/configuracion/importaciones', pCfg('READ'), formularioImportaciones);
 routes.get('/configuracion/importaciones/plantilla', pCfg('READ'), descargarPlantillaImportacion);

@@ -30,6 +30,13 @@ const Categorias = db.define('CATEGORIAS', {
         type: DataTypes.BOOLEAN,
         defaultValue: false
     },
+    // Segmento de la URL de la categoria en la tienda web (/catalogo/{url}). Solo el slug,
+    // sin barras; unico entre las categorias de primer nivel.
+    url: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+        unique: true
+    },
     // URL publica en R2 de la imagen de portada de la categoria. La usa la seccion
     // "Compra por estilo" del home de la tienda web; si esta vacia, la web cae al
     // recuadro con degradado que ya tenia.

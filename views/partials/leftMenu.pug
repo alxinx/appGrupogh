@@ -10,19 +10,67 @@ aside(
       class="max-w-40 h-30 object-contain"
     )
 
-  // Menu
-  nav(class="flex-1 px-4 py-6 space-y-1 bg-[#F9F4FD] overflow-y-auto")
+  //- ── Filtro de permisos ──────────────────────────────────────────────────
+  //- `carpetasAdmin` lo arma el middleware `permisosAdmin` con los módulos que este
+  //- usuario tiene asignados. Un botón que lleva a un 403 es peor que no estar: el que
+  //- lo aprieta cree que el sistema falla, no que no tiene permiso.
+  //-
+  //- Si viniera vacío se muestra todo, para no dejar el menú en blanco por un fallo de
+  //- lectura: quien no tenga acceso rebota igual en el servidor, que es donde manda.
+  - const _cAdmin = (typeof carpetasAdmin !== 'undefined' && carpetasAdmin) || []
+  - const ver = (folder) => !_cAdmin.length || _cAdmin.includes(folder)
+  - const puede = (recurso, accion) => (typeof puedeAdmin === 'function' ? puedeAdmin(recurso, accion) : true)
 
-    //- ── Filtro de permisos ──────────────────────────────────────────────────
-    //- `carpetasAdmin` lo arma el middleware `permisosAdmin` con los módulos que este
-    //- usuario tiene asignados. Un botón que lleva a un 403 es peor que no estar: el que
-    //- lo aprieta cree que el sistema falla, no que no tiene permiso.
-    //-
-    //- Si viniera vacío se muestra todo, para no dejar el menú en blanco por un fallo de
-    //- lectura: quien no tenga acceso rebota igual en el servidor, que es donde manda.
-    - const _cAdmin = (typeof carpetasAdmin !== 'undefined' && carpetasAdmin) || []
-    - const ver = (folder) => !_cAdmin.length || _cAdmin.includes(folder)
-    - const puede = (recurso, accion) => (typeof puedeAdmin === 'function' ? puedeAdmin(recurso, accion) : true)
+  //- ── Pestañas del menú ───────────────────────────────────────────────────
+  //- Dos vistas del mismo panel, no dos layouts distintos: "Admin" es el menú de siempre;
+  //- "Producción" agrupa los módulos de taller (Confeccionistas, Procesos, Insumos). La
+  //- pestaña activa al cargar la decide el servidor por `currentPath` —si la página es de
+  //- un folder de Producción, esa pestaña ya viene pintada activa— así nunca hay parpadeo
+  //- esperando a que corra el JS. El interruptor en sí (clic + flechas) vive en
+  //- menuAdminTabs.js, el único script que lo toca.
+  //-
+  //- Ninguna de las dos pestañas se muestra si el usuario no tiene NINGÚN permiso de ese
+  //- bloque: un botón que lleva a una pestaña vacía es tan confuso como uno que lleva a un
+  //- 403. Sin permisos de un bloque, directamente no hay pestañas —se ven las opciones del
+  //- otro bloque sueltas, sin el selector— igual que si el menú nunca hubiera tenido tabs.
+  - const _folderAdmin = ['/tiendas', '/inventario', '/dosificaciones', '/bankentities', '/provedores', '/clientes', '/personal', '/traslados', '/web', '/configuracion']
+  - const _folderProduccion = ['/confeccionistas', '/procesos', '/insumos']
+  - const tieneAdmin = !_cAdmin.length || _folderAdmin.some(f => _cAdmin.includes(f))
+  - const tieneProduccion = !_cAdmin.length || _folderProduccion.some(f => _cAdmin.includes(f))
+  - const mostrarPestanas = tieneAdmin && tieneProduccion
+  - const tabInicial = mostrarPestanas ? (_folderProduccion.includes(currentPath) ? 'produccion' : 'admin') : (tieneProduccion ? 'produccion' : 'admin')
+  - const mostrarPanelAdmin = tieneAdmin && tabInicial === 'admin'
+  - const mostrarPanelProduccion = tieneProduccion && tabInicial === 'produccion'
+
+  if mostrarPestanas
+   div(class="px-4 pt-4 pb-1 bg-[#F9F4FD]")
+    div#menu-tabs(class="relative grid grid-cols-2 p-1 bg-white rounded-xl border border-gh-grayBorder shadow-sm" role="tablist" aria-label="Secciones del menú")
+      span#menu-tabs-indicator(
+        class="absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-lg bg-gradient-to-br from-gh-primary to-gh-primaryHover shadow-sm transition-transform duration-300 ease-out"
+        aria-hidden="true"
+        style=(tabInicial === 'produccion' ? 'transform:translateX(100%)' : 'transform:translateX(0)')
+      )
+      button#menu-tab-admin(
+        type="button" role="tab" data-menu-tab="admin"
+        aria-controls="menu-panel-admin" aria-selected=(tabInicial === 'admin' ? 'true' : 'false')
+        tabindex=(tabInicial === 'admin' ? '0' : '-1')
+        class=`relative z-10 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer ${tabInicial === 'admin' ? 'text-white' : 'text-gh-grayText hover:text-gh-primaryHover'}`
+      )
+        i(class="fi fi-rr-apps text-sm")
+        span Admin
+      button#menu-tab-produccion(
+        type="button" role="tab" data-menu-tab="produccion"
+        aria-controls="menu-panel-produccion" aria-selected=(tabInicial === 'produccion' ? 'true' : 'false')
+        tabindex=(tabInicial === 'produccion' ? '0' : '-1')
+        class=`relative z-10 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer ${tabInicial === 'produccion' ? 'text-white' : 'text-gh-grayText hover:text-gh-primaryHover'}`
+      )
+        i(class="fi fi-rr-wrench text-sm")
+        span Producción
+
+  // Menu
+  nav(class="flex-1 px-4 py-4 space-y-1 bg-[#F9F4FD] overflow-y-auto")
+
+   div#menu-panel-admin(role=(mostrarPestanas ? 'tabpanel' : undefined) aria-labelledby=(mostrarPestanas ? 'menu-tab-admin' : undefined) class=`space-y-1 ${mostrarPanelAdmin ? '' : 'hidden'}`)
 
     a(
       href="/admin"  class=`menu-item ${currentPath === '/' ? 'active' : ''}`)
@@ -54,11 +102,6 @@ aside(
           if puede('Inventario y Productos', 'CREATE')
             a(href="/admin/inventario/batch" class="submenu-item") Agregar Productos Al inventario
 
-      
-    
-
-        
-
     if ver('/dosificaciones')
       // Dosificador y traslados (submenu)
       details(class="group")
@@ -72,7 +115,6 @@ aside(
           a(href="/admin/dosificaciones/" class="submenu-item") Ver Paquetes Dosificados
           a(href="/admin/dosificaciones/new" class="submenu-item") Dosificar productos
 
-    
     if ver('/bankentities')
       //- Cajas, bancos y métodos de pago.
       //- `trasladosPendientes` lo inyecta cargarContadoresAdmin: traslados de efectivo en
@@ -93,13 +135,11 @@ aside(
           span#menu-traslados-texto(class="text-xs font-semibold leading-snug")
             = trasladosPorAceptar === 1 ? '1 traslado pendiente por aceptar' : `${trasladosPorAceptar} traslados pendientes por aceptar`
 
-      
-
     if ver('/provedores')
       a(href="/admin/provedores" class=`menu-item ${currentPath === '/provedores' ? 'active' : ''}`)
         i(class="fi fi-rr-supplier-alt text-lg")
         span Provedores
-    
+
     if ver('/clientes')
       a(href="/admin/clientes" class=`menu-item ${currentPath === '/clientes' ? 'active' : ''}`)
         i(class="fi fi-rr-users text-lg")
@@ -149,17 +189,41 @@ aside(
         i(class="fi fi-rr-settings text-lg")
         span Settings
 
-   
-    //- Mantiene los dos avisos del menú al día por SSE, sin recargar la página. Va en el
-    //- menú y no en el layout porque el layout lo comparten el panel de tienda y el sitio
-    //- web, que no tienen /admin/sse.
-    script(src="/js/adminAlertas.js")
+   //- ── Pestaña "Producción" ────────────────────────────────────────────────
+   //- Módulos de taller: proveedores que confeccionan, las etapas por las que pasa una
+   //- prenda y las materias primas que las alimentan. Mismo mecanismo de permisos que el
+   //- resto del menú (`ver`, con su folder dado de alta en PERMISOS_RECURSOS) — nadie lo
+   //- tiene otorgado por defecto, igual que "Mis Clientes" (ver seed/migracionPermisosProduccion.js).
+   div#menu-panel-produccion(role=(mostrarPestanas ? 'tabpanel' : undefined) aria-labelledby=(mostrarPestanas ? 'menu-tab-produccion' : undefined) class=`space-y-1 ${mostrarPanelProduccion ? '' : 'hidden'}`)
 
-    // Logout
-    div(class="p-4 border-t border-gray-300")
-      form(action="/logout" method="POST")
-          input(type="hidden" name="_csrf" value=csrfToken)
-          button(
-          class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium shadow-neutral-500 shadow-2xl cursor-pointer"    )
-              i(class="fi fi-rr-sign-out-alt")
-              span Cerrar sesión
+    if ver('/confeccionistas')
+      a(href="/admin/confeccionistas" class=`menu-item ${currentPath === '/confeccionistas' ? 'active' : ''}`)
+        i(class="fi fi-rr-tshirt text-lg")
+        span Confeccionistas
+
+    if ver('/procesos')
+      a(href="/admin/procesos" class=`menu-item ${currentPath === '/procesos' ? 'active' : ''}`)
+        i(class="fi fi-rr-workflow-setting text-lg")
+        span Procesos
+
+    if ver('/insumos')
+      a(href="/admin/insumos" class=`menu-item ${currentPath === '/insumos' ? 'active' : ''}`)
+        i(class="fi fi-rr-boxes text-lg")
+        span Insumos y Materias Primas
+
+   //- Mantiene los dos avisos del menú al día por SSE, sin recargar la página. Va en el
+   //- menú y no en el layout porque el layout lo comparten el panel de tienda y el sitio
+   //- web, que no tienen /admin/sse.
+   script(src="/js/adminAlertas.js")
+
+   //- Interruptor de las pestañas Admin / Producción (clic + flechas, indicador deslizante).
+   script(src="/js/menuAdminTabs.js")
+
+   // Logout
+   div(class="p-4 border-t border-gray-300")
+     form(action="/logout" method="POST")
+         input(type="hidden" name="_csrf" value=csrfToken)
+         button(
+         class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium shadow-neutral-500 shadow-2xl cursor-pointer"    )
+             i(class="fi fi-rr-sign-out-alt")
+             span Cerrar sesión

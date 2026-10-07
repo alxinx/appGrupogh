@@ -66,6 +66,7 @@
     "db:migrar-traslado-devuelto": "node ./seed/migracionTrasladoDevuelto.js",
     "db:migrar-secuencia-sku": "node ./seed/migracionSecuenciaSku.js",
     "db:migrar-indices-inventario": "node ./seed/migracionIndicesInventario.js",
+    "db:migrar-permisos-produccion": "node ./seed/migracionPermisosProduccion.js",
     "test": "DB_NAME=grupogh_test DB_HOST=127.0.0.1 REDIS_HOST= node --test --test-concurrency=1 --test-force-exit \"tests/**/*.test.js\""
   },
   "keywords": [

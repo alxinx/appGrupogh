@@ -54,7 +54,8 @@ export default {
         adminAlertas        : '/src/js/adminAlertas.js',
         importaciones       : '/src/js/importaciones.js',
         importarClientes : '/src/js/importarClientes.js',
-        storeClienteDetalle : '/src/js/storeClienteDetalle.js'
+        storeClienteDetalle : '/src/js/storeClienteDetalle.js',
+        menuAdminTabs       : '/src/js/menuAdminTabs.js'
     },
     output: {
         filename: '[name].js',
