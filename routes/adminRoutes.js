@@ -30,7 +30,7 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR PRODUCCIÓN (Confeccionistas, Procesos, Insumos):
-import { homeConfeccionistas, homeProcesos, homeInsumos } from '../controller/produccionController.js'
+import { homeConfeccionistas, homeProcesos, homeInsumos, crearInsumo, verInsumo, codigoInsumoOcupado } from '../controller/produccionController.js'
 
 //CONTROLADOR IMPORTACIONES:
 import { formularioImportaciones, procesarImportacionExcel, descargarPlantillaImportacion, formularioImportarClientes, procesarImportacionClientes, descargarPlantillaClientes } from '../controller/importacionesController.js'
@@ -292,6 +292,9 @@ routes.post('/traslados/:idTraslado/recibir-devolucion',
 routes.get('/confeccionistas', pCon('READ'), csrfProtection, homeConfeccionistas);
 routes.get('/procesos',        pPrc('READ'), csrfProtection, homeProcesos);
 routes.get('/insumos',         pIns('READ'), csrfProtection, homeInsumos);
+routes.post('/insumos',        pIns('CREATE'), csrfProtection, crearInsumo);
+routes.get('/insumos/codigo/:codigo', pIns('CREATE'), apiRateLimit, codigoInsumoOcupado);
+routes.get('/insumos/:idMaterial', pIns('READ'), csrfProtection, verInsumo);
 
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
 routes.get('/configuracion/importaciones', pCfg('READ'), formularioImportaciones);

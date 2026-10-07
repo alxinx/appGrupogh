@@ -1,0 +1,46 @@
+extends ../../layout/index
+block contenedor
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER: la identidad del material a la izquierda y "Volver" a la derecha.
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    avatar:    material.icono,
+                                    titulo:    material.nombre,
+                                    subtitulo: material.tipoEtiqueta
+                                })
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(href="/admin/insumos" class="btn btn-secondary")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Volver al catálogo
+
+                            //- DATOS DEL MATERIAL (solo lectura: el alta y los cambios se hacen en el catálogo).
+                            section(class="col-span-12 cards cardsWhite p-6 flex flex-col gap-6")
+                                h2(class="text-lg font-bold text-slate-800") Datos del material
+                                dl(class="grid grid-cols-1 md:grid-cols-2 gap-6")
+                                    div(class="flex flex-col gap-1")
+                                        dt(class="label-xs") Código DXF
+                                        dd(class="text-2xl font-bold text-slate-800 tabular-nums")= material.codigoMaterial
+                                    div(class="flex flex-col gap-1")
+                                        dt(class="label-xs") Tipo
+                                        dd(class="text-base font-semibold text-slate-800")= material.tipoEtiqueta
+                                    div(class="flex flex-col gap-1")
+                                        dt(class="label-xs") Unidad de compra
+                                        dd(class="text-base font-semibold text-slate-800")= material.unidadEtiqueta
+                                    div(class="flex flex-col gap-1")
+                                        dt(class="label-xs") Estado
+                                        dd
+                                            span(class=`status-chip ${material.activo ? 'status-active' : 'bg-slate-100 border-slate-200 text-slate-500'}`)= material.activo ? 'Activo' : 'Inactivo'
+                                    div(class="flex flex-col gap-1 md:col-span-2")
+                                        dt(class="label-xs") Registrado
+                                        dd(class="text-base font-semibold text-slate-800")= creado

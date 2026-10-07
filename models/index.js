@@ -41,6 +41,7 @@ import ClientesUbicacion from './ClientesUbicacion.js'
 import ClientesRegistroWeb from './ClientesRegistroWeb.js'
 import ProvedoresRegistroWeb from './ProvedoresRegistroWeb.js'
 import ProductosCambiosPrecio from './ProductosCambiosPrecio.js'
+import Material from './Material.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -456,4 +457,5 @@ export {
   ProvedoresRegistroWeb,
   ProductosCambiosPrecio,
   ProvedoresCuentasBancarias,
+  Material,
 }

@@ -1,0 +1,121 @@
+extends ../../layout/index
+block contenedor
+    include ../../components/headerAdmin
+    include ../../components/modalConfirmacion
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                +headerAdmin({
+                                    avatar:    '/img/avatars/insumos.webp',
+                                    titulo:    subPagina,
+                                    subtitulo: subtitulo
+                                })
+
+                            //- DOS COLUMNAS: el catálogo a la izquierda, el alta a la derecha.
+                            //- En pantallas chicas quedan una sobre otra, con el catálogo primero.
+                            div(class="col-span-12 grid grid-cols-12 gap-6 items-start")
+
+                                //- LISTADO
+                                section(class="col-span-12 lg:col-span-7 cards cardsWhite p-6 flex flex-col gap-4")
+                                    div(class="flex items-center justify-between gap-4 mb-4")
+                                        h2(class="text-lg font-bold text-slate-800") Catálogo
+                                        p(id="conteo-materiales" class="text-sm text-slate-500")
+                                            = materiales.length === 1 ? '1 material' : `${materiales.length} materiales`
+
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-sm")
+                                            thead
+                                                tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                    th(class="py-2 pr-3 font-semibold text-center") Código DXF
+                                                    th(class="py-2 pr-3 font-semibold") Material
+                                                    th(class="py-2 pr-3 font-semibold") Unidad
+                                                    th(class="py-2 pr-3 font-semibold") Estado
+                                                    th(class="py-2 font-semibold text-right") Acción
+                                            tbody(id="tabla-materiales")
+                                                if materiales.length
+                                                    each m in materiales
+                                                        tr(class="border-b border-slate-100 hover:bg-slate-50 transition-colors")
+                                                            td(class="py-3 pr-3 font-semibold text-slate-800 tabular-nums text-center")= m.codigoMaterial
+                                                            td(class="py-3 pr-3")
+                                                                div(class="flex items-center gap-3")
+                                                                    img(src=m.icono alt=m.tipoEtiqueta loading="lazy" class="w-14 h-14 rounded-xl bg-slate-100 p-2 object-contain flex-shrink-0")
+                                                                    div(class="min-w-0")
+                                                                        p(class="font-semibold text-slate-800")= m.nombre
+                                                                        p(class="text-xs text-slate-500")= m.tipoEtiqueta
+                                                            td(class="py-3 pr-3 text-slate-600")= m.unidadEtiqueta
+                                                            td(class="py-3 pr-3")
+                                                                span(class=`status-chip ${m.activo ? 'status-active' : 'bg-slate-100 border-slate-200 text-slate-500'}`)= m.activo ? 'Activo' : 'Inactivo'
+                                                            td(class="py-3 text-right")
+                                                                a(href=`/admin/insumos/${m.idMaterial}` class="btn btn-secondary")
+                                                                    i(class="fi fi-rr-arrow-right text-xs")
+                                                                    | Ver perfil
+                                                else
+                                                    tr
+                                                        td(colspan="5" class="py-12 text-center text-sm text-slate-400")
+                                                            | Todavía no hay materiales en el catálogo. Agrega el primero desde el formulario.
+
+                                //- FORMULARIO DE ALTA
+                                form(id="form-insumo" novalidate class="col-span-12 lg:col-span-5 cards cardsWhite p-6 flex flex-col gap-5"
+                                    data-csrf=csrfToken
+                                    data-codigo-min=limites.codigoMin
+                                    data-codigo-max=limites.codigoMax
+                                    data-nombre-max=limites.nombreMax)
+
+                                    div
+                                        h2(class="text-lg font-bold text-slate-800") Nuevo insumo
+                                        p(class="text-sm text-slate-500 mt-1") Se agrega al catálogo al confirmar.
+
+                                    //- Código y nombre en una misma fila: el código es corto, el nombre ocupa el resto.
+                                    div(class="grid grid-cols-12 gap-4 items-start")
+                                        div(class="col-span-4 flex flex-col gap-1")
+                                            label(class="label label-required" for="codigoMaterial") Código DXF
+                                            input#codigoMaterial.field-text(name="codigoMaterial" type="text" inputmode="numeric" autocomplete="off" placeholder="1" maxlength="10")
+                                            p#error-codigoMaterial(class="label-error text-xs hidden")
+
+                                        div(class="col-span-8 flex flex-col gap-1")
+                                            label#label-nombre(class="label label-required" for="nombre") Nombre insumo / materia prima
+                                            input#nombre.field-text(name="nombre" type="text" autocomplete="off" placeholder="Ej. Tela algodón blanca" maxlength=limites.nombreMax)
+                                            p#error-nombre(class="label-error text-xs hidden")
+
+                                    p(class="helper-text") Es el número de Material que trae el archivo de corte (1, 2, 3…).
+
+                                    fieldset(class="flex flex-col gap-2")
+                                        legend(class="label label-required") Tipo
+                                        div(class="grid grid-cols-1 sm:grid-cols-2 gap-3")
+                                            each t in tiposInsumo
+                                                label(class="cursor-pointer")
+                                                    input(type="radio" name="tipo" value=t.valor data-etiqueta=t.etiqueta data-etiqueta-nombre=t.etiquetaNombre class="peer sr-only")
+                                                    div(class="flex items-center gap-3 h-full rounded-xl border-2 border-slate-200 bg-white p-3 transition peer-checked:border-gh-primary peer-checked:bg-gh-primarySoft peer-focus-visible:ring-2 peer-focus-visible:ring-gh-primary")
+                                                        img(src=t.icono alt=t.etiqueta class="w-11 h-11 rounded-lg bg-slate-100 p-1.5 object-contain flex-shrink-0")
+                                                        div(class="min-w-0")
+                                                            p(class="text-sm font-semibold text-slate-800")= t.etiqueta
+                                                            p(class="text-xs text-slate-500 leading-snug")= t.detalle
+                                        p#error-tipo(class="label-error text-xs hidden")
+
+                                    div(class="flex flex-col gap-1")
+                                        label(class="label" for="unidadCompra") Unidad de compra
+                                        div(class="select-wrapper")
+                                            select#unidadCompra.field-text.appearance-none.pr-10(name="unidadCompra")
+                                                option(value="") Sin unidad
+                                                each u in unidadesCompra
+                                                    option(value=u.valor)= u.etiqueta
+                                            span(class="select-icon")
+                                                i(class="fi-rr-chevron-double-down")
+                                        p#error-unidadCompra(class="label-error text-xs hidden")
+
+                                    div(class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100")
+                                        button(type="button" id="btn-limpiar-insumo" class="btn btn-secondary") Limpiar
+                                        button(type="submit" id="btn-guardar-insumo" class="btn btn-danger") Guardar insumo
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/insumos.js")
