@@ -13,6 +13,7 @@ import {
     validarDocumentoProveedor, validarCategoriasProveedor, requiereFotosLugarTrabajo,
     crearProveedorCompleto, cuentasDeLaWeb
 } from '../helpers/proveedores.js';
+import { mailBienvenidaProveedor } from '../helpers/mailBienvenidaProveedor.js';
 import {
     texto, esVerdadero, RE_NOMBRE, RE_RAZON_SOCIAL, validarEmailWeb, validarCelularWeb,
     validarDireccionWeb, origenConstancia, cayoEnTrampa
@@ -194,9 +195,11 @@ export const registrarProveedorWeb = async (req, res) => {
     }
 
     // ── Proveedor + categorías + cuentas + documentos + constancia, juntos ──
+    const cuentasParaProveedor = cuentasDeLaWeb(cuentas.cuentas);
     const t = await db.transaction();
+    let proveedorCreado;
     try {
-        await crearProveedorCompleto({
+        proveedorCreado = await crearProveedorCompleto({
             datos: {
                 idProveedor,
                 razonSocial,
@@ -214,7 +217,7 @@ export const registrarProveedorWeb = async (req, res) => {
                 estado:            true
             },
             categorias,
-            cuentas: cuentasDeLaWeb(cuentas.cuentas),
+            cuentas: cuentasParaProveedor,
             docs
         }, t);
 
@@ -237,6 +240,21 @@ export const registrarProveedorWeb = async (req, res) => {
         console.error('registrarProveedorWeb:', e);
         return res.status(500).json({ success: false, mensaje: 'No pudimos completar el registro. Inténtalo de nuevo.' });
     }
+
+    // Después del commit y sin await: un correo caído no puede tumbar una respuesta que ya
+    // está confirmada en base de datos (CLAUDE.md §9). mailBienvenidaProveedor nunca lanza
+    // (enviarCorreoSes atrapa su propio error), pero el .catch es la red de seguridad por si
+    // algo revienta antes de llegar ahí.
+    mailBienvenidaProveedor({
+        razonSocial,
+        emailProveedor: correo.email,
+        tipoDocumento: doc.tipoDocumento,
+        taxIdSupplier: doc.numero,
+        fechaRegistro: proveedorCreado.createdAt,
+        categorias: categorias.map(c => c.nombre),
+        cuentas: cuentasParaProveedor,
+        documentos: docs
+    }).catch(() => {});
 
     return res.status(201).json({
         success: true,

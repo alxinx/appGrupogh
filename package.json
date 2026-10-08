@@ -33,6 +33,7 @@
     "db:migrar-provedores-cuentas": "node ./seed/migracionProvedoresCuentasBancarias.js",
     "db:migrar-registro-web-proveedores": "node ./seed/migracionProvedoresRegistroWeb.js",
     "db:migrar-documentos-proveedor": "node ./seed/migracionDocumentosProveedorPrivado.js",
+    "db:enviar-bienvenida-proveedores": "node ./seed/envioBienvenidaProveedores.js",
     "db:migrar-cambios-precio": "node ./seed/migracionProductosCambiosPrecio.js",
     "db:migrar-credito-disponible-cliente": "node ./seed/migracionCreditoDisponibleCliente.js",
     "db:migrar-municipios-dane": "node ./seed/migracionMunicipiosDane.js",

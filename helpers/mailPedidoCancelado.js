@@ -4,7 +4,7 @@ import {
     SOPORTE_EMAIL, WHATSAPP_URL, REDES
 } from '../config/marca.js';
 import { moneyCOP } from './formatMoney.js';
-import { fmtFechaCorta, fmtHora } from './plantillaCorreo.js';
+import { fmtFechaCorta, fmtHora, icono as iconoCompartido } from './plantillaCorreo.js';
 import { enviarCorreoSes, REMITENTE_COMPRAS } from './emailSes.js';
 dotenv.config();
 
@@ -18,26 +18,10 @@ const COLOR_BG = COLORES_CORREO.fondo;
 const COLOR_TEXT = COLORES_CORREO.texto;
 const COLOR_MUTED = COLORES_CORREO.textoSuave;
 
-// Iconos de línea, en primitivas simples (nada de paths largos) — se ven iguales en
-// cualquier cliente moderno de correo y heredan el color de marca en vez de depender
-// de cómo cada sistema operativo dibuje los emoji.
-function icono(nombre, { size = 20, color = COLOR_PRIMARY } = {}) {
-    const base = `viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"`;
-    const formas = {
-        doc: `<path d="M6 2h8l5 5v15H6z"/><path d="M14 2v5h5"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/>`,
-        calendario: `<rect x="3" y="5" width="18" height="16" rx="2"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="3" y1="10" x2="21" y2="10"/>`,
-        calendarioX: `<rect x="3" y="5" width="18" height="16" rx="2"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9.5" y1="14.5" x2="14.5" y2="19.5"/><line x1="14.5" y1="14.5" x2="9.5" y2="19.5"/>`,
-        dolar: `<circle cx="12" cy="12" r="9"/><text x="12" y="16.3" text-anchor="middle" font-size="11" font-weight="700" fill="${color}" stroke="none" font-family="Helvetica,Arial,sans-serif">$</text>`,
-        alerta: `<path d="M12 3 L22 21 L2 21 Z"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17" r="0.7" fill="${color}" stroke="none"/>`,
-        bolsa: `<path d="M6 8h12l-1 12H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>`,
-        audifonos: `<path d="M4 13a8 8 0 0 1 16 0"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/><path d="M19 19v1a3 3 0 0 1-3 3h-3"/>`,
-        escudo: `<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/>`,
-        estrella: `<polygon points="12 2 15 9 22 9.5 16.5 14 18.5 21 12 17 5.5 21 7.5 14 2 9.5 9 9"/>`,
-        camion: `<rect x="1" y="7" width="13" height="10"/><path d="M14 10h4l3 3v4h-7z"/><circle cx="6" cy="19" r="1.6" fill="${color}" stroke="none"/><circle cx="17" cy="19" r="1.6" fill="${color}" stroke="none"/>`,
-        mensaje: `<path d="M4 4h16v12H8l-4 4z"/>`,
-        sobre: `<rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 6 12 13 21 6"/>`
-    };
-    return `<svg ${base}>${formas[nombre] || ''}</svg>`;
+// Iconos de línea compartidos con helpers/mailBienvenidaProveedor.js — ver
+// helpers/plantillaCorreo.js. El color por defecto de este correo es el rosa de marca.
+function icono(nombre, opts = {}) {
+    return iconoCompartido(nombre, { color: COLOR_PRIMARY, ...opts });
 }
 
 function itemFilaHtml(it) {
