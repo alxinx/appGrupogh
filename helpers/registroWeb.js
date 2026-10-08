@@ -7,6 +7,20 @@ import { PATRON_EMAIL } from './catalogos.js';
 
 /** Texto de un campo: sin caracteres de control y sin espacios de los bordes. */
 export const texto = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '');
+
+/**
+ * Colapsa variantes decorativas de Unicode de vuelta a su letra base — el caso real es el
+ * teclado de celular con "texto elegante" activado, que escribe con el bloque Mathematical
+ * Alphanumeric Symbols ("𝑫𝒊𝒆𝒈𝒐" en vez de "Diego"). Quien lo activó sin saberlo (frecuente
+ * en adultos mayores) no tiene forma de notar el problema ni de corregirlo, así que la
+ * corrección es automática y silenciosa — nunca se le pide que "arregle" el campo.
+ *
+ * Se aplica DESPUÉS de texto() y ANTES de validar con una regex de nombre
+ * (RE_NOMBRE/RE_RAZON_SOCIAL): esas regex siguen siendo la única garantía real contra un
+ * campo sin ninguna letra válida (su \p{L} inicial no se cumple si no queda ninguna letra
+ * tras normalizar) — no hace falta una segunda comprobación de \p{L} en el controlador.
+ */
+export const normalizarTexto = (v) => String(v ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ');
 export const esVerdadero = (v) => v === true || v === 'true' || v === 'on' || v === '1';
 
 export const RE_NOMBRE       = /^[\p{L}][\p{L} '.-]{0,99}$/u;

@@ -9,7 +9,7 @@ import {
 } from '../helpers/clientes.js';
 import { subirComprobantes, borrarComprobantes } from '../helpers/comprobantesMovimiento.js';
 import {
-    texto, esVerdadero, RE_NOMBRE, RE_RAZON_SOCIAL, validarEmailWeb, validarCelularWeb,
+    texto, normalizarTexto, esVerdadero, RE_NOMBRE, RE_RAZON_SOCIAL, validarEmailWeb, validarCelularWeb,
     validarDireccionWeb, origenConstancia, cayoEnTrampa
 } from '../helpers/registroWeb.js';
 import { descripcionCiiu } from '../helpers/ciiu.js';
@@ -101,13 +101,13 @@ export const registrarClienteWeb = async (req, res) => {
     // ── Nombre ──
     let nombres = {};
     if (esEmpresa) {
-        const razon = texto(b.razon_social);
+        const razon = normalizarTexto(texto(b.razon_social));
         if (!RE_RAZON_SOCIAL.test(razon)) return fallo('Ingresa la razón social tal como aparece en el RUT.', 'razon_social');
         nombres = { razon_social: toPascal(razon) };
     } else {
         const campos = ['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'];
         for (const c of campos) {
-            const v = texto(b[c]);
+            const v = normalizarTexto(texto(b[c]));
             const obligatorio = c === 'primer_nombre' || c === 'primer_apellido';
             if (!v && obligatorio) return fallo(c === 'primer_nombre' ? 'Ingresa tu primer nombre.' : 'Ingresa tu primer apellido.', c);
             if (v && !RE_NOMBRE.test(v)) return fallo('Los nombres solo pueden llevar letras.', c);

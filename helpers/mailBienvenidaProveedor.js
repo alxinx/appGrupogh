@@ -3,7 +3,7 @@ import {
     COLORES_CORREO, LOGO_URL, PORTAL_URL, WEB_STORE_URL,
     SOPORTE_EMAIL, WHATSAPP_URL, REDES
 } from '../config/marca.js';
-import { fmtFechaCorta, icono as iconoCompartido } from './plantillaCorreo.js';
+import { fmtFechaCorta } from './plantillaCorreo.js';
 import { buscarEntidadFinanciera, buscarTipoLlaveBreb, TIPOS_CUENTA_BANCARIA } from './catalogos.js';
 import { enviarCorreoSes, REMITENTE_COMPRAS } from './emailSes.js';
 dotenv.config();
@@ -20,12 +20,23 @@ const COLOR_MUTED = C.textoSuave;
 
 // La mano que estrecha la del cliente se sirve desde este mismo backend (PORTAL_URL),
 // no desde el sitio público: es un activo de marketing interno, no una imagen de catálogo.
-const IMG_MANOS = `${PORTAL_URL}/img/avatars/hands.webp`;
+// En PNG, no WebP: Outlook de escritorio no decodifica WebP y mostraba el espacio vacío,
+// el mismo problema de fondo que los íconos SVG de acá arriba.
+const IMG_MANOS = `${PORTAL_URL}/img/avatars/hands.png`;
 
-// Iconos de línea compartidos con helpers/mailPedidoCancelado.js — ver
-// helpers/plantillaCorreo.js.
-function icono(nombre, opts = {}) {
-    return iconoCompartido(nombre, { color: COLOR_PRIMARY, ...opts });
+// Íconos como PNG, no SVG inline: Outlook de escritorio (y otros clientes de correo) quitan
+// las etiquetas <svg> del HTML antes de renderizar, dejando el círculo de fondo vacío. Cada
+// PNG se generó una sola vez a partir de la misma definición de formas que usa
+// helpers/plantillaCorreo.js (icono()), así que el dibujo es idéntico al SVG original — no
+// es una familia de íconos nueva, es el mismo arte exportado a un formato que todo cliente
+// de correo sabe pintar. Viven en public/img/avatars/, igual que hands.png, servidos por
+// este backend (PORTAL_URL).
+const ICONO_PNG_BASE = `${PORTAL_URL}/img/avatars`;
+function icono(nombre, { size = 20 } = {}) {
+    // El único ícono con un color distinto al rosa de marca en este correo es la alerta de
+    // "cuenta sin verificar": su PNG ya se generó en ámbar, no hace falta un color por parámetro.
+    const archivo = nombre === 'alerta' ? 'alerta-ambar' : nombre;
+    return `<img src="${ICONO_PNG_BASE}/icono-${archivo}.png" width="${size}" height="${size}" alt="" style="display:inline-block; vertical-align:middle;">`;
 }
 
 function infoCardHtml(iconoNombre, label, valor) {
@@ -91,7 +102,7 @@ function cuentaHtml(c) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff6e5; border:1px solid #f6dfab; border-radius:10px; margin-bottom:14px;">
             <tr><td style="padding:10px 12px;">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                    <td style="padding-right:6px; vertical-align:top;">${icono('alerta', { size: 14, color: '#b08d1a' })}</td>
+                    <td style="padding-right:6px; vertical-align:top;">${icono('alerta', { size: 14 })}</td>
                     <td style="font-size:12px; line-height:1.5; color:#8a5a00;"><strong>Sin verificar.</strong> Nuestro equipo validará esta cuenta antes de programar tu primer pago.</td>
                 </tr></table>
             </td></tr>

@@ -15,7 +15,7 @@ import {
 } from '../helpers/proveedores.js';
 import { mailBienvenidaProveedor } from '../helpers/mailBienvenidaProveedor.js';
 import {
-    texto, esVerdadero, RE_NOMBRE, RE_RAZON_SOCIAL, validarEmailWeb, validarCelularWeb,
+    texto, normalizarTexto, esVerdadero, RE_NOMBRE, RE_RAZON_SOCIAL, validarEmailWeb, validarCelularWeb,
     validarDireccionWeb, origenConstancia, cayoEnTrampa
 } from '../helpers/registroWeb.js';
 import { MAX_FOTOS_LUGAR_TRABAJO } from '../middlewares/uploadComprobantes.js';
@@ -110,14 +110,14 @@ export const registrarProveedorWeb = async (req, res) => {
     // completo y es su propio contacto; una empresa da su razón social y quién la atiende.
     let razonSocial, nombreContacto;
     if (esEmpresa) {
-        const razon = texto(b.razon_social);
+        const razon = normalizarTexto(texto(b.razon_social));
         if (!RE_RAZON_SOCIAL.test(razon)) return fallo('Ingresa la razón social tal como aparece en el RUT.', 'razon_social');
-        const contacto = texto(b.nombre_contacto);
+        const contacto = normalizarTexto(texto(b.nombre_contacto));
         if (contacto.length < 3 || !RE_NOMBRE.test(contacto)) return fallo('Ingresa el nombre de la persona de contacto.', 'nombre_contacto');
         razonSocial = toPascal(razon);
         nombreContacto = toPascal(contacto);
     } else {
-        const nombre = texto(b.nombre_completo).replace(/\s+/g, ' ');
+        const nombre = normalizarTexto(texto(b.nombre_completo));
         if (nombre.split(' ').length < 2 || !RE_NOMBRE.test(nombre)) return fallo('Ingresa tu nombre y tu apellido.', 'nombre_completo');
         razonSocial = toPascal(nombre);
         nombreContacto = razonSocial;
