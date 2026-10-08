@@ -23,9 +23,33 @@ export const UNIDADES_COMPRA = [
 // codigoMaterial es INT en MySQL: el tope es el máximo de un INT con signo.
 export const LIMITES_INSUMO = { codigoMin: 1, codigoMax: 2147483647, nombreMax: 100 };
 
+// Carpeta en el bucket público (`grupo-gh`, config/r2.js) donde vive la foto de un material.
+// Sin espacios ni mayúsculas, a diferencia de como se nombró de palabra: el resto de
+// carpetas del proyecto (`productos/`, `documentacion/`, `provedores/`...) tampoco llevan
+// espacio, y `urlDocumento`/`${R2_PUBLIC_URL}/${key}` no codifican la URL — un espacio
+// literal ahí queda a merced de que cada consumidor lo encodee bien.
+export const CARPETA_IMAGENES_INSUMOS = 'materiales-e-insumos';
+
+// MATERIAL.imagen guarda solo el nombre de archivo (igual que IMAGENES.nombreImagen para
+// productos): la carpeta es fija para todo el catálogo, así que no hace falta repetirla en
+// cada fila. La URL se arma una sola vez, acá, en vez de en cada vista/controlador.
+export const urlImagenMaterial = (nombreArchivo) =>
+    nombreArchivo ? `${process.env.R2_PUBLIC_URL}/${CARPETA_IMAGENES_INSUMOS}/${nombreArchivo}` : null;
+
 const ETIQUETA_TIPO = Object.fromEntries(TIPOS_INSUMO.map(t => [t.valor, t.etiqueta]));
 const ICONO_TIPO = Object.fromEntries(TIPOS_INSUMO.map(t => [t.valor, t.icono]));
 const ETIQUETA_UNIDAD = Object.fromEntries(UNIDADES_COMPRA.map(u => [u.valor, u.etiqueta]));
+
+// PENDIENTE: todavía no hay stock real de materiales (eso llega con el módulo de
+// Producción que consume estos insumos). Mientras tanto la columna "Cantidad" del
+// catálogo muestra un número de relleno — determinístico por `idMaterial`, no
+// `Math.random()`, para que no cambie en cada recarga y parezca un bug. Reemplazar
+// por la cantidad real en cuanto exista la tabla que la lleve.
+const cantidadFicticia = (idMaterial) => {
+    let hash = 0;
+    for (const c of String(idMaterial)) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
+    return (hash % 500) + 1;
+};
 
 // Lo que la vista necesita de una fila: nada del modelo que no se pinte.
 export const presentarMaterial = (m) => ({
@@ -37,7 +61,10 @@ export const presentarMaterial = (m) => ({
     unidadCompra:   m.unidadCompra,
     unidadEtiqueta: ETIQUETA_UNIDAD[m.unidadCompra] ?? '—',
     activo:         Boolean(m.activo),
-    icono:          ICONO_TIPO[m.tipo] ?? ICONO_TIPO.insumo
+    icono:          ICONO_TIPO[m.tipo] ?? ICONO_TIPO.insumo,
+    // Foto real del material si se subió una; si no, la vista cae al ícono genérico del tipo.
+    imagenUrl:      urlImagenMaterial(m.imagen),
+    cantidadFicticia: cantidadFicticia(m.idMaterial)
 });
 
 // Devuelve el código DXF como número, o null si no es un entero dentro de los límites. Lo usan

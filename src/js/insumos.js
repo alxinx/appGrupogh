@@ -19,9 +19,30 @@ if (form) {
     const campos = {
         codigoMaterial: document.getElementById('codigoMaterial'),
         nombre:         document.getElementById('nombre'),
-        unidadCompra:   document.getElementById('unidadCompra')
+        unidadCompra:   document.getElementById('unidadCompra'),
+        imagen:         document.getElementById('imagen')
     };
-    const CAMPOS = ['codigoMaterial', 'nombre', 'tipo', 'unidadCompra'];
+    // 'imagen' no entra a validar(): es opcional y el único error posible (formato, peso,
+    // dimensiones) lo manda el servidor — acá solo hace falta poder pintarlo y limpiarlo.
+    const CAMPOS = ['codigoMaterial', 'nombre', 'tipo', 'unidadCompra', 'imagen'];
+
+    // Vista previa real de la foto elegida: mismo patrón que el modal de QR de pago
+    // (bankentities/listado.pug) — la imagen de verdad reemplaza al ícono, no un simple
+    // cambio de color, que es lo que no se notaba antes.
+    const previewImagen  = document.getElementById('preview-imagen');
+    const iconoImagen    = document.getElementById('icono-imagen');
+    const nombreArchivo  = document.getElementById('nombre-archivo-imagen');
+    const NOMBRE_ARCHIVO_BASE = nombreArchivo?.textContent;
+    let urlPreviewImagenLocal = null;
+
+    const limpiarPreviewImagen = () => {
+        if (urlPreviewImagenLocal) URL.revokeObjectURL(urlPreviewImagenLocal);
+        urlPreviewImagenLocal = null;
+        previewImagen.classList.add('hidden');
+        previewImagen.removeAttribute('src');
+        iconoImagen.classList.remove('hidden');
+        nombreArchivo.textContent = NOMBRE_ARCHIVO_BASE;
+    };
 
     const tipoElegido = () => form.querySelector('input[name="tipo"]:checked');
 
@@ -126,10 +147,16 @@ if (form) {
         btn.disabled = true;
         btn.textContent = 'Guardando…';
         try {
+            // FormData, no JSON: la foto viaja en el mismo POST (campo "imagen"), y es la
+            // única razón de que este alta ya no mande un body JSON como antes.
+            const body = new FormData();
+            Object.entries(datos).forEach(([k, v]) => body.append(k, v ?? ''));
+            if (campos.imagen.files[0]) body.append('imagen', campos.imagen.files[0]);
+
             const r = await fetch('/admin/insumos', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
-                body: JSON.stringify(datos)
+                headers: { 'CSRF-Token': CSRF }, // sin Content-Type: el navegador pone el boundary de multipart
+                body
             });
             const data = await r.json().catch(() => ({}));
 
@@ -217,6 +244,18 @@ if (form) {
         if (!document.getElementById('error-nombre').classList.contains('hidden')) revalidar('nombre');
     });
     campos.unidadCompra.addEventListener('change', () => pintarError('unidadCompra', validar().unidadCompra));
+    campos.imagen.addEventListener('change', () => {
+        pintarError('imagen', ''); // el error anterior (si lo hubo) ya no aplica a este archivo
+        const file = campos.imagen.files[0];
+        if (!file) { limpiarPreviewImagen(); return; }
+
+        if (urlPreviewImagenLocal) URL.revokeObjectURL(urlPreviewImagenLocal);
+        urlPreviewImagenLocal = URL.createObjectURL(file);
+        previewImagen.src = urlPreviewImagenLocal;
+        previewImagen.classList.remove('hidden');
+        iconoImagen.classList.add('hidden');
+        nombreArchivo.textContent = file.name;
+    });
     form.querySelectorAll('input[name="tipo"]').forEach(r =>
         r.addEventListener('change', () => {
             revalidar('tipo');
@@ -228,5 +267,57 @@ if (form) {
         codigoOcupado = null;
         pintarTodos();
         pintarEtiquetaNombre();
+        limpiarPreviewImagen();
     });
 }
+
+// ── Catálogo: búsqueda + filtros ──────────────────────────────────────────────────
+// El catálogo llega completo del servidor (es chico, ver produccionController.js): acá
+// solo se muestran/ocultan las <tr> que ya están pintadas, nada de una consulta nueva.
+// Los cuatro filtros (texto, tipo, unidad, estado) se combinan entre sí.
+(function () {
+    const filas = Array.from(document.querySelectorAll('#tabla-materiales tr[data-nombre]'));
+    if (!filas.length) return;
+
+    const busqueda      = document.getElementById('busqueda-material');
+    const filtroTipo    = document.getElementById('filtro-tipo-material');
+    const filtroUnidad  = document.getElementById('filtro-unidad-material');
+    const filtroEstado  = document.getElementById('filtro-estado-material');
+    const btnLimpiar    = document.getElementById('limpiar-filtros-material');
+    const sinResultados = document.getElementById('sin-resultados-material');
+    const conteo        = document.getElementById('conteo-materiales');
+
+    const aplicarFiltros = () => {
+        const texto  = busqueda.value.trim().toLowerCase();
+        const tipo   = filtroTipo.value;
+        const unidad = filtroUnidad.value;
+        const activoBuscado = filtroEstado.value && (filtroEstado.value === 'activo' ? '1' : '0');
+
+        let visibles = 0;
+        filas.forEach(fila => {
+            const coincide =
+                (!texto || fila.dataset.nombre.includes(texto) || fila.dataset.codigo.includes(texto)) &&
+                (!tipo || fila.dataset.tipo === tipo) &&
+                (!unidad || fila.dataset.unidad === unidad) &&
+                (!activoBuscado || fila.dataset.activo === activoBuscado);
+            fila.classList.toggle('hidden', !coincide);
+            if (coincide) visibles++;
+        });
+
+        sinResultados.classList.toggle('hidden', visibles > 0);
+        conteo.textContent = visibles === filas.length
+            ? (filas.length === 1 ? '1 material' : `${filas.length} materiales`)
+            : `${visibles} de ${filas.length} materiales`;
+        btnLimpiar.classList.toggle('hidden', !(texto || tipo || unidad || filtroEstado.value));
+    };
+
+    busqueda.addEventListener('input', aplicarFiltros);
+    [filtroTipo, filtroUnidad, filtroEstado].forEach(sel => sel.addEventListener('change', aplicarFiltros));
+    btnLimpiar.addEventListener('click', () => {
+        busqueda.value = '';
+        filtroTipo.value = '';
+        filtroUnidad.value = '';
+        filtroEstado.value = '';
+        aplicarFiltros();
+    });
+})();

@@ -42,7 +42,11 @@ const Material = db.define('MATERIAL', {
     activo: {
         type: DataTypes.BOOLEAN,
         defaultValue: true
-    }
+    }, 
+    imagen: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+    },
 },
 {
     tableName: 'MATERIAL',

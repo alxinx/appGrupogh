@@ -1,6 +1,15 @@
 import { UniqueConstraintError } from 'sequelize';
+import { Upload } from '@aws-sdk/lib-storage';
+import s3Client from '../config/r2.js';
 import { Material } from '../models/index.js';
-import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, presentarMaterial, validarInsumo, codigoDxfValido } from '../helpers/insumos.js';
+import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, validarInsumo, codigoDxfValido } from '../helpers/insumos.js';
+import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
+import { borrarObjetos } from '../helpers/almacenamientoDocumentos.js';
+
+// Caja de recorte de la foto de un material: igual a la de una foto de producto
+// (FOTO_PRODUCTO en adminControllers.js) — cuadrada, sin recortar ('inside'), porque acá
+// también importa ver la pieza completa, no solo un recorte centrado.
+const FOTO_INSUMO = { ancho: 1000, alto: 1000, ajuste: 'inside' };
 
 // Base de los módulos de Producción (Confeccionistas, Procesos): hoy son la misma pantalla
 // vacía, lista para que cada módulo agregue su propio listado más adelante sin repetir el
@@ -66,15 +75,47 @@ const homeInsumos = async (req, res) => {
 // formulario del navegador valida lo mismo para avisar antes, pero no es la garantía (§5.3).
 // El código repetido no se busca antes con un SELECT: lo rechaza la restricción UNIQUE en el
 // mismo INSERT, así que no hay carrera entre dos altas con el mismo código.
+//
+// La foto es opcional y pasa por el mismo filtro que toda imagen subida por un usuario
+// (CLAUDE.md §5.9, helpers/imagenSegura.js): tipo real por magic bytes, no por el mimetype
+// del navegador, y se persiste convertida a WebP. Se sube a R2 ANTES de crear la fila —si la
+// imagen es inválida, el material no se crea sin foto por error— y si el INSERT falla
+// después (código duplicado), el objeto recién subido se borra: no queda huérfano en R2.
 const crearInsumo = async (req, res) => {
     const { errores, datos } = validarInsumo(req.body);
     if (errores) {
         return res.status(400).json({ success: false, errores, mensaje: 'Revisa los campos marcados.' });
     }
+
+    let nombreImagen = null;
+    if (req.file) {
+        const foto = await imagenAWebpSegura(req.file.buffer, { caja: FOTO_INSUMO });
+        if (!foto.ok) {
+            return res.status(400).json({ success: false, errores: { imagen: foto.mensaje }, mensaje: foto.mensaje });
+        }
+        nombreImagen = `insumo-${datos.codigoMaterial}-${Date.now()}.webp`;
+        try {
+            await new Upload({
+                client: s3Client,
+                params: {
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: `${CARPETA_IMAGENES_INSUMOS}/${nombreImagen}`,
+                    Body: foto.buffer,
+                    ContentType: 'image/webp'
+                }
+            }).done();
+        } catch (e) {
+            console.error('[insumos] subida de imagen:', e);
+            return res.status(500).json({ success: false, mensaje: 'No se pudo subir la imagen. Intenta de nuevo.' });
+        }
+    }
+
     try {
-        const material = await Material.create(datos);
+        const material = await Material.create(nombreImagen ? { ...datos, imagen: nombreImagen } : datos);
         return res.json({ success: true, mensaje: 'Material guardado.', material: presentarMaterial(material) });
     } catch (e) {
+        if (nombreImagen) await borrarObjetos([`${CARPETA_IMAGENES_INSUMOS}/${nombreImagen}`]);
+
         if (e instanceof UniqueConstraintError) {
             return res.status(409).json({
                 success: false,

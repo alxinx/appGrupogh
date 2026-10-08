@@ -292,7 +292,7 @@ routes.post('/traslados/:idTraslado/recibir-devolucion',
 routes.get('/confeccionistas', pCon('READ'), csrfProtection, homeConfeccionistas);
 routes.get('/procesos',        pPrc('READ'), csrfProtection, homeProcesos);
 routes.get('/insumos',         pIns('READ'), csrfProtection, homeInsumos);
-routes.post('/insumos',        pIns('CREATE'), csrfProtection, crearInsumo);
+routes.post('/insumos',        pIns('CREATE'), uploadImages.single('imagen'), csrfProtection, crearInsumo);
 routes.get('/insumos/codigo/:codigo', pIns('CREATE'), apiRateLimit, codigoInsumoOcupado);
 routes.get('/insumos/:idMaterial', pIns('READ'), csrfProtection, verInsumo);
 
