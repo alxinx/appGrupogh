@@ -21,6 +21,7 @@ export default {
         entidadFinanciera: '/src/js/entidadFinanciera.js',
         cuentasProveedor: '/src/js/cuentasProveedor.js',
         confirmarProveedor: '/src/js/confirmarProveedor.js',
+        documentosProveedorGaleria: '/src/js/documentosProveedorGaleria.js',
         supplierList: '/src/js/supplierList.js',
         dataDose : '/src/js/dataDose.js',
         dosificador : '/src/js/dosificador.js',

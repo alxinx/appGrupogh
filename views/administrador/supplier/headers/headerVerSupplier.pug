@@ -1,0 +1,16 @@
+include ../../../components/headerAdmin
+
++headerAdmin({
+    avatar:    '/img/avatars/suppliers.webp',
+    titulo:    proveedor.razonSocial,
+    subtitulo: `${proveedor.tipoDocumento} ${proveedor.taxIdSupplier}`,
+    iconoSub:  'fi-rr-id-card'
+})
+    if proveedor.estado
+        span(class="status-chip status-active")
+            span.status-dot
+            | Activo
+    else
+        span(class="status-chip status-neutral")
+            span.status-dot
+            | Inactivo

@@ -17,27 +17,20 @@ block contenedor
                             //- de apilamiento, y ahí adentro queda encerrado el z-20 del menú "Más".
                             //- Las tarjetas de abajo —con su propio backdrop-filter— lo tapaban.
                             //- z-40 y no z-30 porque `z-30` no está en el CSS compilado.
-                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-5 flex items-center justify-between gap-4 relative z-40")
-                                div(class="flex items-center gap-4")
-                                    a(href="/admin/provedores/" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex-shrink-0")
-                                        i(class="fi fi-rr-arrow-left text-slate-600")
-                                    div(class="w-12 h-12 rounded-full bg-gradient-to-br from-gray-200 to-purple-300 flex items-center justify-center flex-shrink-0 shadow-inner shadow-purple-700")
-                                        img(src="/img/avatars/suppliers.webp" alt="Proveedor" class="w-8 h-8 object-contain")
-                                    div
-                                        h1(class="font-bold text-slate-800 text-lg leading-tight")= proveedor.razonSocial
-                                        p(class="text-xs text-slate-400") #{proveedor.tipoDocumento} #{proveedor.taxIdSupplier}
-                                div(class="flex items-center gap-3")
-                                    if proveedor.estado
-                                        span(class="text-xs font-bold px-3 py-1.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1.5")
-                                            i(class="fi fi-rr-check-circle")
-                                            | Activo
-                                    else
-                                        span(class="text-xs font-bold px-3 py-1.5 rounded-full bg-red-100 text-red-600 flex items-center gap-1.5")
-                                            i(class="fi fi-rr-ban")
-                                            | Inactivo
-                                    a(href="/admin/provedores/new/" class="btn btn-primary text-xs py-1.5 px-4")
-                                        i(class="fi fi-rr-add")
-                                        | Nuevo proveedor
+                            //- Mismo mixin headerAdmin (avatar de 80px) y mismos botones .btn-secondary/
+                            //- .btn-danger que el resto del panel (§4.1.1 de CLAUDE.md) — antes este
+                            //- header tenía su propio marcado con avatar de 48px y título más chico.
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 bg-white/70 backdrop-blur-md rounded-2xl p-6 relative z-40")
+                                include ./headers/headerVerSupplier.pug
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    a(onclick='history.back()')
+                                        button(class="btn btn-secondary flex items-center gap-2")
+                                            i(class="fi fi-rr-arrow-left")
+                                            | Volver
+                                    a(href="/admin/provedores/new/")
+                                        button(class="btn btn-danger flex items-center gap-2")
+                                            i(class="fi fi-rr-user-add")
+                                            | Nuevo proveedor
 
                             //- ── BODY ────────────────────────────────────────────────────────────────
                             div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
@@ -199,20 +192,59 @@ block contenedor
                                     if documentos.length === 0
                                         p(class="text-xs text-slate-400 text-center py-4") No tiene documentos cargados.
                                     else
-                                        ul(class="space-y-1.5")
+                                        //- Una imagen abre la galería en el momento (#lightbox-documentos-proveedor,
+                                        //- documentosProveedorGaleria.js); el resto (PDF, Office) sigue yendo
+                                        //- directo a verDocumentoProveedor en pestaña nueva, que firma el enlace.
+                                        div(class="flex flex-wrap gap-2.5")
                                             each doc in documentos
                                                 - const fmt = String(doc.formato || '').toUpperCase()
-                                                - const icono = fmt === 'PDF' ? 'fi-rr-file-pdf text-red-500' : ['WEBP','JPG','JPEG','PNG'].includes(fmt) ? 'fi-rr-picture text-sky-500' : ['XLS','XLSX'].includes(fmt) ? 'fi-rr-file-excel text-[#217346]' : ['DOC','DOCX'].includes(fmt) ? 'fi-rr-file-word text-blue-600' : 'fi-rr-document text-slate-400'
-                                                li
-                                                    a(href=`/admin/provedores/documentos/${doc.idDocumento}` target="_blank" rel="noopener"
-                                                      class="group flex items-center gap-3 rounded-xl px-3 py-2.5 bg-slate-50 hover:bg-pink-50 transition-colors")
-                                                        i(class=`fi ${icono} text-lg flex-shrink-0`)
-                                                        span(class="flex-1 min-w-0")
-                                                            span(class="block text-xs font-semibold text-slate-700 truncate group-hover:text-pink-700")= doc.nombreDocumento
-                                                            span(class="block text-[11px] text-slate-400")= doc.fecha
+                                                - const esImagen = ['WEBP','JPG','JPEG','PNG'].includes(fmt)
+                                                - const href = `/admin/provedores/documentos/${doc.idDocumento}`
+                                                if esImagen
+                                                    button(type="button" data-doc-imagen
+                                                        data-href=href
+                                                        data-nombre=doc.nombreDocumento
+                                                        data-fecha=doc.fecha
+                                                        class="group relative w-[140px] h-[140px] flex-shrink-0 rounded-xl overflow-hidden bg-slate-100 border border-slate-100 hover:border-pink-300 transition-colors")
+                                                        img(src=href alt=doc.nombreDocumento loading="lazy" class="w-full h-full object-cover")
+                                                        div(class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center")
+                                                            i(class="fi fi-rr-eye text-white text-lg opacity-0 group-hover:opacity-100 transition-opacity drop-shadow")
+                                                        div(class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pt-5 pb-1.5 text-left")
+                                                            span(class="block text-[11px] font-semibold text-white truncate")= doc.nombreDocumento
                                                         if doc.privado
-                                                            i(class="fi fi-rr-lock text-[11px] text-slate-400" title="Archivo privado: el enlace se firma al abrirlo y vence en minutos")
-                                                        i(class="fi fi-rr-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-pink-500")
+                                                            i(class="fi fi-rr-lock absolute top-1.5 right-1.5 text-[11px] text-white drop-shadow" title="Archivo privado: el enlace se firma al abrirlo y vence en minutos")
+                                                else
+                                                    - const icono = fmt === 'PDF' ? 'fi-rr-file-pdf text-red-500' : ['XLS','XLSX'].includes(fmt) ? 'fi-rr-file-excel text-[#217346]' : ['DOC','DOCX'].includes(fmt) ? 'fi-rr-file-word text-blue-600' : 'fi-rr-document text-slate-400'
+                                                    a(href=href target="_blank" rel="noopener"
+                                                      class="group relative w-[140px] h-[140px] flex-shrink-0 rounded-xl overflow-hidden bg-slate-50 hover:bg-pink-50 border border-slate-100 hover:border-pink-200 transition-colors flex flex-col items-center justify-center gap-1.5 px-2 text-center")
+                                                        i(class=`fi ${icono} text-2xl flex-shrink-0`)
+                                                        span(class="block text-[11px] font-semibold text-slate-700 truncate w-full group-hover:text-pink-700")= doc.nombreDocumento
+                                                        span(class="block text-[10px] text-slate-400")= doc.fecha
+                                                        if doc.privado
+                                                            i(class="fi fi-rr-lock absolute top-1.5 right-1.5 text-[11px] text-slate-400" title="Archivo privado: el enlace se firma al abrirlo y vence en minutos")
+                                                        i(class="fi fi-rr-arrow-up-right-from-square absolute top-1.5 left-1.5 text-[10px] text-slate-300 group-hover:text-pink-400")
+
+                //- ── GALERÍA DE DOCUMENTOS (imágenes) ─────────────────────────────────
+                //- Mismo lenguaje visual que #lightbox-comprobante en pedidoDetalle.pug.
+                //- documentosProveedorGaleria.js arma la lista recorriendo [data-doc-imagen]
+                //- en el orden en que ya están en el DOM — no hay un JSON aparte que mantener.
+                div#lightbox-documentos-proveedor(class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8")
+                    div(class="absolute inset-0 bg-black/80 backdrop-blur-sm" data-cerrar-galeria-documentos)
+                    button(type="button" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors" data-cerrar-galeria-documentos title="Cerrar")
+                        i(class="fi fi-rr-cross-small text-xl")
+                    button#galeria-documentos-prev(type="button" class="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors" title="Anterior")
+                        i(class="fi fi-rr-angle-small-left text-xl")
+                    button#galeria-documentos-next(type="button" class="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors" title="Siguiente")
+                        i(class="fi fi-rr-angle-small-right text-xl")
+                    div(class="relative max-w-3xl w-full")
+                        img#galeria-documentos-img(src="" alt="" class="w-full max-h-[75vh] object-contain rounded-xl bg-white")
+                        div(class="mt-3 flex items-center justify-center gap-3 text-white")
+                            span#galeria-documentos-nombre(class="text-sm font-semibold")
+                            span#galeria-documentos-contador(class="text-xs text-white/60")
+                        div(class="mt-2 flex items-center justify-center")
+                            a#galeria-documentos-abrir(href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors")
+                                i(class="fi fi-rr-expand text-xs")
+                                | Abrir en pestaña nueva
 
                 script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
                 //- Estilos del buscador de departamento/ciudad (window.enhanceSelectBuscable).
@@ -220,6 +252,7 @@ block contenedor
                 include ../../components/modalConfirmacion.pug
                 script(src="/js/helpers.js")
                 script(src="/js/documentoProveedor.js")
+                script(src="/js/documentosProveedorGaleria.js")
                 script(src="/js/ubicacionProveedor.js")
                 script(src="/js/cuentasProveedor.js")
                 script(src="/js/confirmarProveedor.js")
