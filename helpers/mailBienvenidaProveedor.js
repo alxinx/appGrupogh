@@ -159,8 +159,20 @@ function filaDocumento(doc, idx, total) {
 // nombre es la única forma de distinguirlos.
 const esFotoDeTaller = (doc) => String(doc?.nombreDocumento ?? '').startsWith('Lugar de trabajo');
 
-const MINIATURA_ANCHO_MAX = 500;
-const MINIATURA_CALIDAD_JPEG = 75;
+// 320px/60 en vez de 500px/75: a 38x38px en el correo no se nota la diferencia, y con 3
+// fotos de taller (el caso real más pesado que hay hoy) el HTML pasaba los ~102KB donde
+// Gmail empieza a "recortar" el mensaje — la sección de Archivos cargados, casi al final,
+// quedaba en blanco. Medido con construirHtmlBienvenidaProveedor(): 99.9KB → 50.3KB.
+const MINIATURA_ANCHO_MAX = 320;
+const MINIATURA_CALIDAD_JPEG = 60;
+
+// El formulario permite hasta 8 fotos de taller (registroProveedorWebController.js,
+// maxFotos=8), y 8 miniaturas embebidas vuelven a pasar el límite de clip de Gmail aunque
+// cada una ya esté achicada — bajar más la calidad degradaría el caso típico de 2-3 fotos
+// para cubrir uno raro de 8. En cambio se tapa la cantidad: de la 4ª foto de taller en
+// adelante (en el orden en que vienen en `documentos`) no se genera miniatura y
+// filaDocumento() cae al badge de siempre, igual que con cualquier documento que falló.
+const MAX_MINIATURAS_EMBEBIDAS = 3;
 
 /**
  * Baja el original de R2 (helpers/almacenamientoDocumentos.js resuelve el bucket, público
@@ -173,8 +185,13 @@ const MINIATURA_CALIDAD_JPEG = 75;
  * completo, que es justo lo que no puede pasar con un envío masivo de 100+ proveedores.
  */
 async function resolverMiniaturasDocumentos(documentos) {
+    // Contador síncrono: Array.prototype.map ejecuta cada callback en orden hasta su primer
+    // await, así que esto cuenta las fotos de taller en el mismo orden en que vienen en
+    // `documentos` sin importar en qué orden terminen sus descargas.
+    let fotosVistas = 0;
     return Promise.all(documentos.map(async (doc) => {
         if (!doc.keyName || !esFotoDeTaller(doc)) return doc;
+        if (fotosVistas++ >= MAX_MINIATURAS_EMBEBIDAS) return doc;
         try {
             const { client, Bucket } = destinoDe(doc.keyName);
             const original = await client.send(new GetObjectCommand({ Bucket, Key: doc.keyName }));
