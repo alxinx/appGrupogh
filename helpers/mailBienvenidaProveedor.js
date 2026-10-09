@@ -1,10 +1,13 @@
 import dotenv from 'dotenv';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import sharp from 'sharp';
 import {
     COLORES_CORREO, LOGO_URL, PORTAL_URL, WEB_STORE_URL,
     SOPORTE_EMAIL, WHATSAPP_URL, REDES
 } from '../config/marca.js';
 import { fmtFechaCorta } from './plantillaCorreo.js';
 import { buscarEntidadFinanciera, buscarTipoLlaveBreb, TIPOS_CUENTA_BANCARIA } from './catalogos.js';
+import { destinoDe } from './almacenamientoDocumentos.js';
 import { enviarCorreoSes, REMITENTE_COMPRAS } from './emailSes.js';
 dotenv.config();
 
@@ -114,21 +117,30 @@ function cuentaHtml(c) {
     ])}`;
 }
 
-// Un cuadro de color con el formato del archivo (PDF / IMG) en vez de una miniatura real:
-// los documentos de un proveedor viven en el bucket PRIVADO de R2 (CLAUDE.md §5.7) y se
-// abren solo por el panel, con sesión y permiso — nunca con una URL embebida en un correo
-// que cualquiera puede reenviar o dejar abierto para siempre.
+// Un cuadro de color con el formato del archivo (PDF / IMG) para el documento que NO lleva
+// miniatura — cédula y RUT: son documentos de identidad, viven en el bucket PRIVADO de R2
+// (CLAUDE.md §5.7) y no se embeben en un correo (reenviable y sin expiración, a diferencia
+// del link firmado de 5 min que ya se evitó a propósito). Las fotos del lugar de trabajo sí
+// llevan miniatura real — ver resolverMiniaturasDocumentos() — porque son fotos de un
+// taller, no un documento de identidad. Decisión tomada con el usuario.
 const PALETA_DOC = { PDF: { bg: '#fde2e2', fg: '#b42318' } };
 const paletaDoc = (formato) => PALETA_DOC[formato] ?? { bg: COLOR_PRIMARY_SOFT, fg: COLOR_PRIMARY };
 
-function filaDocumento(doc, idx, total) {
+function celdaBadge(doc) {
     const { bg, fg } = paletaDoc(doc.formato);
+    return `<div style="width:38px;height:38px;border-radius:9px;background:${bg};color:${fg};text-align:center;line-height:38px;font-size:10px;font-weight:800;letter-spacing:.02em;">${doc.formato}</div>`;
+}
+
+function filaDocumento(doc, idx, total) {
     const esUltima = idx === total - 1;
+    const miniatura = doc.miniatura
+        ? `<img src="${doc.miniatura}" width="38" height="38" alt="" style="display:block; width:38px; height:38px; border-radius:9px; object-fit:cover;">`
+        : celdaBadge(doc);
     return `
     <tr>
         <td style="padding:12px 0; ${esUltima ? '' : 'border-bottom:1px solid #F3E4EC;'}">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                <td style="width:38px;height:38px;border-radius:9px;background:${bg};color:${fg};text-align:center;vertical-align:middle;font-size:10px;font-weight:800;letter-spacing:.02em;">${doc.formato}</td>
+                <td style="width:38px;">${miniatura}</td>
                 <td style="padding-left:12px;">
                     <span style="font-size:13px; font-weight:600; color:${COLOR_TEXT};">${doc.nombreDocumento}</span>
                 </td>
@@ -136,6 +148,47 @@ function filaDocumento(doc, idx, total) {
             </tr></table>
         </td>
     </tr>`;
+}
+
+// ─── Miniaturas de las fotos del lugar de trabajo ───────────────────────────
+//
+// Solo "Lugar de trabajo · foto N" (CLAUDE.md §5.13: fotos del taller, obligatorias para
+// confeccionistas) lleva miniatura real. Cédula y RUT se quedan con el badge — ver el
+// comentario de PALETA_DOC. DOCUMENTACION no tiene una columna de "tipo" aparte del nombre
+// libre que arma el controlador al subir (registroProveedorWebController.js), así que el
+// nombre es la única forma de distinguirlos.
+const esFotoDeTaller = (doc) => String(doc?.nombreDocumento ?? '').startsWith('Lugar de trabajo');
+
+const MINIATURA_ANCHO_MAX = 500;
+const MINIATURA_CALIDAD_JPEG = 75;
+
+/**
+ * Baja el original de R2 (helpers/almacenamientoDocumentos.js resuelve el bucket, público
+ * o privado, por la ruta — nunca a mano), lo reduce a una miniatura liviana y la devuelve
+ * como data URI JPEG. Nada se sube a ningún lado ni queda en disco: se genera en memoria y
+ * se descarta en cuanto el correo sale.
+ *
+ * Si un documento puntual falla (red, archivo corrupto, lo que sea) queda sin `miniatura` y
+ * filaDocumento() cae al badge de siempre — un documento roto no tira abajo el correo
+ * completo, que es justo lo que no puede pasar con un envío masivo de 100+ proveedores.
+ */
+async function resolverMiniaturasDocumentos(documentos) {
+    return Promise.all(documentos.map(async (doc) => {
+        if (!doc.keyName || !esFotoDeTaller(doc)) return doc;
+        try {
+            const { client, Bucket } = destinoDe(doc.keyName);
+            const original = await client.send(new GetObjectCommand({ Bucket, Key: doc.keyName }));
+            const bytes = Buffer.concat(await original.Body.toArray());
+            const miniaturaBuffer = await sharp(bytes)
+                .resize({ width: MINIATURA_ANCHO_MAX, withoutEnlargement: true })
+                .jpeg({ quality: MINIATURA_CALIDAD_JPEG })
+                .toBuffer();
+            return { ...doc, miniatura: `data:image/jpeg;base64,${miniaturaBuffer.toString('base64')}` };
+        } catch (e) {
+            console.error(`[bienvenida-proveedor] no se pudo generar la miniatura de "${doc.nombreDocumento}" (${doc.keyName}): ${e.message}`);
+            return doc;
+        }
+    }));
 }
 
 const ESTILOS_RESPONSIVE = `
@@ -347,6 +400,7 @@ export function construirHtmlBienvenidaProveedor(datos, opts = {}) {
 }
 
 const mailBienvenidaProveedor = async (datos) => {
+    const documentos = await resolverMiniaturasDocumentos(datos.documentos ?? []);
     return enviarCorreoSes({
         remitente: REMITENTE_COMPRAS,
         destinatario: datos.emailProveedor,
@@ -354,7 +408,7 @@ const mailBienvenidaProveedor = async (datos) => {
         texto: `Hola ${datos.razonSocial}, tu registro como proveedor de Grupo GH fue exitoso.\n\n`
             + `Usuario: ${datos.emailProveedor}\nContraseña: tu número de identificación o NIT\n\n`
             + `Revisaremos tus datos y tu cuenta bancaria antes de tu primer pago.`,
-        html: construirHtmlBienvenidaProveedor(datos),
+        html: construirHtmlBienvenidaProveedor({ ...datos, documentos }),
         contexto: 'bienvenida-proveedor'
     });
 };
