@@ -1,8 +1,8 @@
-import { UniqueConstraintError } from 'sequelize';
+import { UniqueConstraintError, Op } from 'sequelize';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
 import { Material } from '../models/index.js';
-import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, validarInsumo, codigoDxfValido } from '../helpers/insumos.js';
+import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, validarInsumo, codigoDxfValido, datosFicticiosInsumo, historialComprasInsumo } from '../helpers/insumos.js';
 import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
 import { borrarObjetos } from '../helpers/almacenamientoDocumentos.js';
 
@@ -39,11 +39,30 @@ const homeConfeccionistas = paginaBase({
     icono:     'fi-rr-tshirt'
 });
 
-const homeProcesos = paginaBase({
+// Procesos se abre en submenú (views/partials/leftMenu.pug): Nuevo proceso, Listado de
+// procesos y Fichas de confección son tres pantallas, no una — pero las tres cuelgan del
+// mismo folder de permiso ('/procesos', ver seed/migracionPermisosProduccion.js), igual que
+// las sub-páginas de Insumos (homeOrdenCompra, homeHistorialCompras) mantienen
+// currentPath: '/insumos' aunque su URL sea otra, para que el folder siga marcado activo.
+const homeProcesosNuevo = paginaBase({
     folder:    '/procesos',
-    titulo:    'Procesos',
+    titulo:    'Nuevo proceso',
+    subtitulo: 'Da de alta una nueva etapa de producción',
+    icono:     'fi-rr-plus'
+});
+
+const homeProcesosListado = paginaBase({
+    folder:    '/procesos',
+    titulo:    'Listado de procesos',
     subtitulo: 'Etapas de producción: corte, confección, lavandería, estampado y empaque',
     icono:     'fi-rr-interchange'
+});
+
+const homeFichasConfeccion = paginaBase({
+    folder:    '/procesos',
+    titulo:    'Fichas de confección',
+    subtitulo: 'Ficha técnica de cada prenda: procesos, tiempos e insumos asociados',
+    icono:     'fi-rr-document'
 });
 
 // GET /admin/insumos — listado del catálogo (columna izquierda) y formulario de alta (derecha).
@@ -134,15 +153,22 @@ const crearInsumo = async (req, res) => {
 
 // GET /admin/insumos/codigo/:codigo — ¿ya existe ese código DXF? Lo consulta el formulario al
 // salir del campo, para avisar antes de que la persona escriba el resto. No reemplaza la
-// garantía: el alta vuelve a rechazar el duplicado con el UNIQUE (409) por si dos personas
-// guardan el mismo código a la vez.
+// garantía: el alta (y la edición) vuelven a rechazar el duplicado con el UNIQUE (409) por si
+// dos personas guardan el mismo código a la vez.
+//
+// `?excluir=idMaterial` lo manda el formulario de edición: el propio material no cuenta como
+// "ocupado" si la persona no tocó el código. Gateado por READ (no CREATE/EDIT): el catálogo
+// ya muestra todos los códigos a cualquiera con lectura, así que esta consulta no revela nada
+// que esa pantalla no revele ya.
 const codigoInsumoOcupado = async (req, res) => {
     const codigo = codigoDxfValido(req.params.codigo);
     if (codigo === null) {
         return res.status(400).json({ success: false, mensaje: 'El código debe ser un número entero entre 1 y 2147483647.' });
     }
     try {
-        const existentes = await Material.count({ where: { codigoMaterial: codigo } });
+        const where = { codigoMaterial: codigo };
+        if (req.query.excluir) where.idMaterial = { [Op.ne]: req.query.excluir };
+        const existentes = await Material.count({ where });
         return res.json({ success: true, existe: existentes > 0 });
     } catch (e) {
         console.error('[insumos] consulta de código:', e);
@@ -158,6 +184,9 @@ const verInsumo = async (req, res) => {
         const material = await Material.findByPk(req.params.idMaterial);
         if (!material) return res.redirect('/admin/insumos');
         const fila = presentarMaterial(material);
+        // El resto de `datos` sigue siendo relleno (ver helpers/insumos.js) — solo el
+        // historial de compras es real, así que se pisa acá antes de llegar a la vista.
+        const datos = { ...datosFicticiosInsumo(fila), historialCompras: await historialComprasInsumo(material.idMaterial) };
         return res.render('./administrador/produccion/insumoPerfil', {
             pagina:    'Insumos',
             subPagina: fila.nombre,
@@ -167,7 +196,18 @@ const verInsumo = async (req, res) => {
             subtitulo: fila.tipoEtiqueta,
             icono:     'fi-rr-boxes',
             material:  fila,
-            creado:    new Date(material.createdAt).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' })
+            creado:    new Date(material.createdAt).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'long', timeStyle: 'short' }),
+            actualizado: new Date(material.updatedAt).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', year: 'numeric' }),
+            // Dashboard del perfil: casi todo es relleno todavía (ver el comentario en
+            // helpers/insumos.js) salvo historialCompras, que ya es real. `datos` llega
+            // aparte de `material` para que sea obvio en la vista qué es real y qué hay que
+            // reemplazar el día que exista la tabla.
+            datos,
+            // Para el modal "Editar insumo" — mismas listas que ya usa el alta (homeInsumos),
+            // así el formulario de edición no vuelve a escribirlas.
+            tiposInsumo: TIPOS_INSUMO,
+            unidadesCompra: UNIDADES_COMPRA,
+            limites: LIMITES_INSUMO
         });
     } catch (e) {
         console.error('produccionController(insumo perfil):', e);
@@ -175,4 +215,107 @@ const verInsumo = async (req, res) => {
     }
 };
 
-export { homeConfeccionistas, homeProcesos, homeInsumos, crearInsumo, verInsumo, codigoInsumoOcupado };
+// PUT /admin/insumos/:idMaterial — edición de los datos básicos: código DXF, nombre, tipo,
+// unidad de compra y, opcional, una foto nueva. La validación es la misma que el alta
+// (helpers/insumos.js, validarInsumo) y el mismo UNIQUE de MySQL es la garantía real contra
+// dos materiales con el mismo código — acá solo cambia que se excluye al propio material del
+// chequeo en vivo (codigoInsumoOcupado, `?excluir=`).
+//
+// Llega detrás de tres candados, en este orden (CLAUDE.md §9 / §6, mismo patrón que "Editar
+// precios masivamente"): el permiso de EDIT de la sesión (ruta), el código de un empleado de
+// esa sesión (verificarCodigoEmpleadoAdmin) y que ESE empleado tenga permiso de EDIT sobre
+// Insumos (verificarPermisoEmpleado) — req.empleadoVerificado llega armado por los dos
+// últimos, aunque hoy no se registra en ninguna bitácora propia (no existe una tabla de
+// cambios de insumo todavía, a diferencia de PRODUCTOS_CAMBIOS_PRECIO).
+//
+// La foto nueva se sube a R2 ANTES del UPDATE (mismo criterio que crearInsumo); si el UPDATE
+// falla, se borra la que se acababa de subir. La foto VIEJA se borra recién después de que el
+// UPDATE quedó bien — si se borrara antes y el UPDATE fallara, el material quedaría sin foto.
+const editarInsumo = async (req, res) => {
+    const material = await Material.findByPk(req.params.idMaterial);
+    if (!material) return res.status(404).json({ success: false, mensaje: 'El material ya no existe.' });
+
+    const { errores, datos } = validarInsumo(req.body);
+    if (errores) {
+        return res.status(400).json({ success: false, errores, mensaje: 'Revisa los campos marcados.' });
+    }
+
+    let nombreImagenNueva = null;
+    if (req.file) {
+        const foto = await imagenAWebpSegura(req.file.buffer, { caja: FOTO_INSUMO });
+        if (!foto.ok) {
+            return res.status(400).json({ success: false, errores: { imagen: foto.mensaje }, mensaje: foto.mensaje });
+        }
+        nombreImagenNueva = `insumo-${datos.codigoMaterial}-${Date.now()}.webp`;
+        try {
+            await new Upload({
+                client: s3Client,
+                params: {
+                    Bucket: process.env.R2_BUCKET_NAME,
+                    Key: `${CARPETA_IMAGENES_INSUMOS}/${nombreImagenNueva}`,
+                    Body: foto.buffer,
+                    ContentType: 'image/webp'
+                }
+            }).done();
+        } catch (e) {
+            console.error('[insumos] subida de imagen (editar):', e);
+            return res.status(500).json({ success: false, mensaje: 'No se pudo subir la imagen. Intenta de nuevo.' });
+        }
+    }
+
+    const imagenAnterior = material.imagen;
+    try {
+        await material.update(nombreImagenNueva ? { ...datos, imagen: nombreImagenNueva } : datos);
+    } catch (e) {
+        if (nombreImagenNueva) await borrarObjetos([`${CARPETA_IMAGENES_INSUMOS}/${nombreImagenNueva}`]);
+
+        if (e instanceof UniqueConstraintError) {
+            return res.status(409).json({
+                success: false,
+                errores: { codigoMaterial: `Ya existe un material con el código ${datos.codigoMaterial}.` },
+                mensaje: 'Revisa los campos marcados.'
+            });
+        }
+        if (e.name === 'SequelizeValidationError') {
+            const errs = Object.fromEntries(e.errors.map(x => [x.path, x.message]));
+            return res.status(400).json({ success: false, errores: errs, mensaje: 'Revisa los campos marcados.' });
+        }
+        console.error('[insumos] editar:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo guardar el material. Intenta de nuevo.' });
+    }
+
+    if (nombreImagenNueva && imagenAnterior) await borrarObjetos([`${CARPETA_IMAGENES_INSUMOS}/${imagenAnterior}`]);
+
+    return res.json({ success: true, mensaje: 'Material actualizado.', material: presentarMaterial(material) });
+};
+
+// POST /admin/insumos/:idMaterial/estado — suspende o reactiva un material. Nunca se borra
+// (CLAUDE.md §6, mismo criterio que Empleados.estado): "eliminar" acá es dejar
+// MATERIAL.activo en false, no un DELETE. Mismos tres candados que editarInsumo.
+//
+// Update condicional con el estado actual en el WHERE (CLAUDE.md §9) en vez de un
+// findByPk + save: si dos pestañas mandan el mismo cambio a la vez, la segunda no encuentra
+// fila que actualizar y responde 409 en lugar de pisar silenciosamente a la primera.
+const cambiarEstadoInsumo = async (req, res) => {
+    const activo = Boolean(req.body?.activo);
+    try {
+        const [filas] = await Material.update(
+            { activo },
+            { where: { idMaterial: req.params.idMaterial, activo: !activo } }
+        );
+        if (!filas) {
+            const existe = await Material.count({ where: { idMaterial: req.params.idMaterial } });
+            if (!existe) return res.status(404).json({ success: false, mensaje: 'El material ya no existe.' });
+            return res.status(409).json({ success: false, mensaje: `El material ya estaba ${activo ? 'activo' : 'suspendido'}.` });
+        }
+        return res.json({ success: true, mensaje: activo ? 'Material reactivado.' : 'Material suspendido.', activo });
+    } catch (e) {
+        console.error('[insumos] cambiar estado:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo cambiar el estado. Intenta de nuevo.' });
+    }
+};
+
+export {
+    homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion, homeInsumos,
+    crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado
+};

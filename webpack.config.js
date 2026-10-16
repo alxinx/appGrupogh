@@ -56,7 +56,11 @@ export default {
         importarClientes : '/src/js/importarClientes.js',
         storeClienteDetalle : '/src/js/storeClienteDetalle.js',
         menuAdminTabs       : '/src/js/menuAdminTabs.js',
-        insumos             : '/src/js/insumos.js'
+        insumos             : '/src/js/insumos.js',
+        insumoPerfil        : '/src/js/insumoPerfil.js',
+        ordenCompra         : '/src/js/ordenCompra.js',
+        ordenCompraDetalle  : '/src/js/ordenCompraDetalle.js',
+        historialCompras    : '/src/js/historialCompras.js'
     },
     output: {
         filename: '[name].js',

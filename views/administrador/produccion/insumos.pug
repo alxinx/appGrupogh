@@ -20,13 +20,17 @@ block contenedor
                                     titulo:    subPagina,
                                     subtitulo: subtitulo
                                 })
+                                //- Estándar de botones de header (views/components/accionesAdmin.pug):
+                                //- la acción principal de la pantalla, sola, a la derecha.
+                                if puede('Insumos', 'CREATE')
+                                    div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap mt-4")
+                                        button#btn-nuevo-insumo(type="button" class="btn btn-danger flex items-center gap-2")
+                                            i(class="fi fi-rr-box-open-full")
+                                            | Nuevo insumo
 
-                            //- DOS COLUMNAS: el catálogo a la izquierda, el alta a la derecha.
-                            //- En pantallas chicas quedan una sobre otra, con el catálogo primero.
-                            div(class="col-span-12 grid grid-cols-12 gap-6 items-start")
-
-                                //- LISTADO
-                                section(class="col-span-12 lg:col-span-7 cards cardsWhite p-6 flex flex-col gap-4")
+                            //- CATÁLOGO
+                            div(class="col-span-12")
+                                section(class="cards cardsWhite p-6 flex flex-col gap-4")
                                     div(class="flex items-center justify-between gap-4 mb-4")
                                         h2(class="text-lg font-bold text-slate-800") Catálogo
                                         p(id="conteo-materiales" class="text-sm text-slate-500")
@@ -99,74 +103,89 @@ block contenedor
                                                     td(colspan="6" class="py-12 text-center text-sm text-slate-400")
                                                         | Ningún material coincide con el filtro.
 
-                                //- FORMULARIO DE ALTA
-                                form(id="form-insumo" novalidate class="col-span-12 lg:col-span-5 cards cardsWhite p-6 flex flex-col gap-5"
-                                    data-csrf=csrfToken
-                                    data-codigo-min=limites.codigoMin
-                                    data-codigo-max=limites.codigoMax
-                                    data-nombre-max=limites.nombreMax)
+                            //- MODAL — alta de insumo. Mismo estilo de modal que el resto del panel
+                            //- (views/components/modals.pug, "Finalizar Venta"/"Hacer Traslado"): overlay
+                            //- oscuro con blur + tarjeta blanca redondeada, cabecera con icono y cierre.
+                            //- Lo abre el botón del header, el submenu "Nuevo insumo" (?nuevo=1, ver
+                            //- src/js/insumos.js) o queda cerrado por defecto.
+                            div#modal-nuevo-insumo(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden")
 
-                                    div
-                                        h2(class="text-lg font-bold text-slate-800") Nuevo insumo
-                                        p(class="text-sm text-slate-500 mt-1") Se agrega al catálogo al confirmar.
+                                    //- Header
+                                    div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
+                                        div(class="flex items-center gap-4")
+                                            div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
+                                                i(class="fi fi-rr-boxes text-white")
+                                            div
+                                                h2(class="text-lg font-bold text-slate-800") Nuevo insumo
+                                                p(class="text-sm text-slate-500") Se agrega al catálogo al confirmar.
+                                        button#modal-nuevo-insumo-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
+                                            i(class="fi fi-rr-cross-small text-xl")
 
-                                    //- Código y nombre en una misma fila: el código es corto, el nombre ocupa el resto.
-                                    div(class="grid grid-cols-12 gap-4 items-start")
-                                        div(class="col-span-4 flex flex-col gap-1")
-                                            label(class="label label-required" for="codigoMaterial") Código DXF
-                                            input#codigoMaterial.field-text(name="codigoMaterial" type="text" inputmode="numeric" autocomplete="off" placeholder="1" maxlength="10")
-                                            p#error-codigoMaterial(class="label-error text-xs hidden")
+                                    //- FORMULARIO DE ALTA
+                                    form(id="form-insumo" novalidate class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-5"
+                                        data-csrf=csrfToken
+                                        data-codigo-min=limites.codigoMin
+                                        data-codigo-max=limites.codigoMax
+                                        data-nombre-max=limites.nombreMax)
 
-                                        div(class="col-span-8 flex flex-col gap-1")
-                                            label#label-nombre(class="label label-required" for="nombre") Nombre insumo / materia prima
-                                            input#nombre.field-text(name="nombre" type="text" autocomplete="off" placeholder="Ej. Tela algodón blanca" maxlength=limites.nombreMax)
-                                            p#error-nombre(class="label-error text-xs hidden")
+                                        //- Código y nombre en una misma fila: el código es corto, el nombre ocupa el resto.
+                                        div(class="grid grid-cols-12 gap-4 items-start")
+                                            div(class="col-span-4 flex flex-col gap-1")
+                                                label(class="label label-required" for="codigoMaterial") Código DXF
+                                                input#codigoMaterial.field-text(name="codigoMaterial" type="text" inputmode="numeric" autocomplete="off" placeholder="1" maxlength="10")
+                                                p#error-codigoMaterial(class="label-error text-xs hidden")
 
-                                    p(class="helper-text") Es el número de Material que trae el archivo de corte (1, 2, 3…).
+                                            div(class="col-span-8 flex flex-col gap-1")
+                                                label#label-nombre(class="label label-required" for="nombre") Nombre insumo / materia prima
+                                                input#nombre.field-text(name="nombre" type="text" autocomplete="off" placeholder="Ej. Tela algodón blanca" maxlength=limites.nombreMax)
+                                                p#error-nombre(class="label-error text-xs hidden")
 
-                                    fieldset(class="flex flex-col gap-2")
-                                        legend(class="label label-required") Tipo
-                                        div(class="grid grid-cols-1 sm:grid-cols-2 gap-3")
-                                            each t in tiposInsumo
-                                                label(class="cursor-pointer")
-                                                    input(type="radio" name="tipo" value=t.valor data-etiqueta=t.etiqueta data-etiqueta-nombre=t.etiquetaNombre class="peer sr-only")
-                                                    div(class="flex items-center gap-3 h-full rounded-xl border-2 border-slate-200 bg-white p-3 transition peer-checked:border-gh-primary peer-checked:bg-gh-primarySoft peer-focus-visible:ring-2 peer-focus-visible:ring-gh-primary")
-                                                        img(src=t.icono alt=t.etiqueta class="w-11 h-11 rounded-lg bg-slate-100 p-1.5 object-contain flex-shrink-0")
-                                                        div(class="min-w-0")
-                                                            p(class="text-sm font-semibold text-slate-800")= t.etiqueta
-                                                            p(class="text-xs text-slate-500 leading-snug")= t.detalle
-                                        p#error-tipo(class="label-error text-xs hidden")
+                                        p(class="helper-text") Es el número de Material que trae el archivo de corte (1, 2, 3…).
 
-                                    div(class="flex flex-col gap-1")
-                                        label(class="label" for="unidadCompra") Unidad de compra
-                                        div(class="select-wrapper")
-                                            select#unidadCompra.field-text.appearance-none.pr-10(name="unidadCompra")
-                                                option(value="") Sin unidad
-                                                each u in unidadesCompra
-                                                    option(value=u.valor)= u.etiqueta
-                                            span(class="select-icon")
-                                                i(class="fi-rr-chevron-double-down")
-                                        p#error-unidadCompra(class="label-error text-xs hidden")
+                                        fieldset(class="flex flex-col gap-2")
+                                            legend(class="label label-required") Tipo
+                                            div(class="grid grid-cols-1 sm:grid-cols-2 gap-3")
+                                                each t in tiposInsumo
+                                                    label(class="cursor-pointer")
+                                                        input(type="radio" name="tipo" value=t.valor data-etiqueta=t.etiqueta data-etiqueta-nombre=t.etiquetaNombre class="peer sr-only")
+                                                        div(class="flex items-center gap-3 h-full rounded-xl border-2 border-slate-200 bg-white p-3 transition peer-checked:border-gh-primary peer-checked:bg-gh-primarySoft peer-focus-visible:ring-2 peer-focus-visible:ring-gh-primary")
+                                                            img(src=t.icono alt=t.etiqueta class="w-11 h-11 rounded-lg bg-slate-100 p-1.5 object-contain flex-shrink-0")
+                                                            div(class="min-w-0")
+                                                                p(class="text-sm font-semibold text-slate-800")= t.etiqueta
+                                                                p(class="text-xs text-slate-500 leading-snug")= t.detalle
+                                            p#error-tipo(class="label-error text-xs hidden")
 
-                                    //- Mismo patrón de carga con vista previa real que el modal de QR de
-                                    //- pago (views/administrador/bankentities/listado.pug): caja punteada,
-                                    //- input invisible encima, y al elegir archivo la imagen de verdad
-                                    //- reemplaza el ícono — no solo cambia de color.
-                                    div(class="flex flex-col gap-1")
-                                        label(class="label") Foto (opcional)
-                                        div(class="relative group")
-                                            input#imagen(type="file" name="imagen" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".jpg,.jpeg,.png,.webp")
-                                            div(class="inputUpload_mini")
-                                                img#preview-imagen(class="hidden w-20 h-20 object-contain mb-2 rounded-lg bg-white border border-slate-200")
-                                                div#icono-imagen(class="w-14 h-14 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-purple-500")
-                                                    i.fi-rr-picture.text-2xl
-                                                span#nombre-archivo-imagen(class="text-sm font-bold text-gray-600") Sube o arrastra la foto del material
-                                                span(class="text-xs text-gray-400 mt-1") JPG, PNG o WebP, hasta 2MB
-                                        p#error-imagen(class="label-error text-xs hidden")
+                                        div(class="flex flex-col gap-1")
+                                            label(class="label" for="unidadCompra") Unidad de compra
+                                            div(class="select-wrapper")
+                                                select#unidadCompra.field-text.appearance-none.pr-10(name="unidadCompra")
+                                                    option(value="") Sin unidad
+                                                    each u in unidadesCompra
+                                                        option(value=u.valor)= u.etiqueta
+                                                span(class="select-icon")
+                                                    i(class="fi-rr-chevron-double-down")
+                                            p#error-unidadCompra(class="label-error text-xs hidden")
 
-                                    div(class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100")
-                                        button(type="button" id="btn-limpiar-insumo" class="btn btn-secondary") Limpiar
-                                        button(type="submit" id="btn-guardar-insumo" class="btn btn-danger") Guardar insumo
+                                        //- Mismo patrón de carga con vista previa real que el modal de QR de
+                                        //- pago (views/administrador/bankentities/listado.pug): caja punteada,
+                                        //- input invisible encima, y al elegir archivo la imagen de verdad
+                                        //- reemplaza el ícono — no solo cambia de color.
+                                        div(class="flex flex-col gap-1")
+                                            label(class="label") Foto (opcional)
+                                            div(class="relative group")
+                                                input#imagen(type="file" name="imagen" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".jpg,.jpeg,.png,.webp")
+                                                div(class="inputUpload_mini")
+                                                    img#preview-imagen(class="hidden w-20 h-20 object-contain mb-2 rounded-lg bg-white border border-slate-200")
+                                                    div#icono-imagen(class="w-14 h-14 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-purple-500")
+                                                        i.fi-rr-picture.text-2xl
+                                                    span#nombre-archivo-imagen(class="text-sm font-bold text-gray-600") Sube o arrastra la foto del material
+                                                    span(class="text-xs text-gray-400 mt-1") JPG, PNG o WebP, hasta 2MB
+                                            p#error-imagen(class="label-error text-xs hidden")
+
+                                        div(class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100")
+                                            button(type="button" id="btn-limpiar-insumo" class="btn btn-secondary") Limpiar
+                                            button(type="submit" id="btn-guardar-insumo" class="btn btn-danger") Guardar insumo
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script(src="/js/insumos.js")

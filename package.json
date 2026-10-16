@@ -67,6 +67,7 @@
     "db:migrar-secuencia-sku": "node ./seed/migracionSecuenciaSku.js",
     "db:migrar-indices-inventario": "node ./seed/migracionIndicesInventario.js",
     "db:migrar-permisos-produccion": "node ./seed/migracionPermisosProduccion.js",
+    "db:migrar-ordenes-compra": "node ./seed/migracionOrdenesCompra.js",
     "test": "DB_NAME=grupogh_test DB_HOST=127.0.0.1 REDIS_HOST= node --test --test-concurrency=1 --test-force-exit \"tests/**/*.test.js\""
   },
   "keywords": [
@@ -93,6 +94,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-validator": "^7.3.1",
+    "flatpickr": "^4.6.13",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "jsqr": "^1.4.0",

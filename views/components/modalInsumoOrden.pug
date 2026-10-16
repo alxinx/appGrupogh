@@ -1,0 +1,129 @@
+//- ── MODAL "AGREGAR INSUMO" (orden de compra / cotización) + su caja de colores ────────
+//- Compartido entre admin/insumos/compra (alta) y admin/insumos/compra/:idOrdenCompra
+//- (edición de una cotización) — antes vivía copiado en ordenCompra.pug; separarlo acá
+//- evita que un ajuste al formulario (un campo nuevo, un texto) haya que repetirlo en los
+//- dos lados. Es mixin y no include porque las dos pantallas pasan su propio `materiales`/
+//- `colores` (la de alta trae el catálogo completo; la de edición también, igual de chico).
+//-
+//- Uso:
+//-     include ../../components/modalInsumoOrden.pug
+//-     +modalInsumoOrden(materiales, colores)
+//-
+//- El JS que llena esto (src/js/ordenCompra.js y src/js/ordenCompraDetalle.js) referencia
+//- los mismos ids en los dos lados — cualquier id nuevo acá tiene que agregarse en ambos.
+mixin modalInsumoOrden(materiales, colores)
+    //- ── MODAL "AGREGAR INSUMO" ──────────────────────────────────────────
+    //- Mismo estilo de modal que el resto del módulo (Nuevo/Editar insumo).
+    //- Color: SOLO colores simples de ATRIBUTOS (ya filtrados por el servidor,
+    //- helpers/ordenesCompra.js coloresSimplesDisponibles) — nunca un combinado.
+    div#modal-agregar-insumo(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+        div(class="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden")
+            div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
+                div(class="flex items-center gap-4")
+                    div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
+                        i(class="fi fi-rr-shopping-bag-add text-white")
+                    div
+                        h2#modal-agregar-insumo-titulo(class="text-lg font-bold text-slate-800") Agregar insumo
+                        p#modal-agregar-insumo-subtitulo(class="text-sm text-slate-500") Se agrega a la orden al confirmar.
+                button#modal-agregar-insumo-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
+                    i(class="fi fi-rr-cross-small text-xl")
+
+            div(class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-5")
+                div(class="flex flex-col gap-1")
+                    label(class="label label-required" for="li-material") Insumo
+                    div(class="select-wrapper")
+                        select#li-material.field-text.appearance-none.pr-10
+                            option(value="") Selecciona un insumo...
+                            each m in materiales
+                                option(value=m.idMaterial data-unidad=m.unidadCompra || '' data-nombre=m.nombre data-codigo=m.codigoMaterial)= `${m.nombre} · código ${m.codigoMaterial}`
+                        span(class="select-icon")
+                            i(class="fi-rr-chevron-double-down")
+                    p#error-li-material(class="label-error text-xs hidden")
+
+                //- Color: catálogo REAL, ya filtrado a colores simples. 0, 1 o varios — con
+                //- dos o más, cada color se compra con su propia cantidad y valor (abajo).
+                div(class="flex flex-col gap-1")
+                    div(class="flex items-center justify-between")
+                        label(class="label") Color
+                        button#li-btn-elegir-colores(type="button" class="text-xs font-bold text-gh-primaryHover hover:underline flex items-center gap-1")
+                            i(class="fi fi-rr-palette text-[10px]")
+                            | Elegir colores
+                    div#li-colores-chips(class="flex flex-wrap items-center gap-2 min-h-[2rem]")
+                        span#li-colores-vacio(class="text-xs text-slate-400 italic") Sin color específico
+                    p(class="helper-text") Solo colores simples del catálogo — un combinado se compra como dos insumos.
+
+                //- Sin color o con uno solo: una sola cantidad/valor.
+                div#li-cantidad-valor-simple(class="grid grid-cols-12 gap-4")
+                    div(class="col-span-6 flex flex-col gap-1")
+                        label(class="label label-required" for="li-cantidad") Cantidad
+                        div(class="relative")
+                            input#li-cantidad(type="text" inputmode="numeric" autocomplete="off" placeholder="0" class="field-text")
+                            span#li-unidad-suffix(class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400")
+                        p#error-li-cantidad(class="label-error text-xs hidden")
+                    div(class="col-span-6 flex flex-col gap-1")
+                        label(class="label label-required" for="li-valorUnitario") Valor unitario
+                        div(class="relative")
+                            span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm") $
+                            input#li-valorUnitario(type="text" inputmode="numeric" autocomplete="off" placeholder="0" class="field-text pl-6")
+                        p#error-li-valorUnitario(class="label-error text-xs hidden")
+
+                //- Dos colores o más: una fila por color, cada una con su propia
+                //- cantidad y valor — llenada por el JS de cada pantalla.
+                div#li-cantidad-valor-por-color(class="hidden flex-col gap-3")
+                    p(class="helper-text") Cada color se compra con su propia cantidad y valor.
+                    div#li-filas-por-color(class="flex flex-col gap-3")
+                    p#error-li-por-color(class="label-error text-xs hidden")
+
+                //- Otras características: par libre etiqueta/valor (Composición, Ancho,
+                //- Uso...). No hay catálogo detrás todavía (helpers/ordenesCompra.js).
+                div(class="flex flex-col gap-2")
+                    div(class="flex items-center justify-between")
+                        label(class="label") Otras características
+                        button#li-agregar-caracteristica(type="button" class="text-xs font-bold text-gh-primaryHover hover:underline flex items-center gap-1")
+                            i(class="fi fi-rr-plus-small text-[10px]")
+                            | Agregar
+                    div#li-caracteristicas(class="flex flex-col gap-2")
+
+                div(class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100")
+                    button(type="button" id="btn-limpiar-li" class="btn btn-secondary") Limpiar
+                    button(type="button" id="btn-confirmar-li" class="btn btn-danger") Agregar a la orden
+
+    //- ── CAJA DE COLORES (sub-modal, encima de "Agregar insumo") ────────────
+    //- Mismo patrón que "Colores para Talla" en admin/inventario/ingreso
+    //- (views/administrador/inventarios/forms/product.pug): grilla de swatches
+    //- con checkbox + buscador. Acá además se puede dar de alta un color simple
+    //- nuevo si no está en el catálogo (POST /admin/insumos/compra/colores).
+    div#modal-colores-insumo(class="fixed inset-0 z-[60] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm")
+        div(class="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden")
+            div(class="flex items-center justify-between px-6 py-5 border-b border-gray-100 flex-shrink-0")
+                h2(class="text-lg font-bold text-slate-800") Elegir colores
+                button#modal-colores-insumo-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
+                    i(class="fi fi-rr-cross-small text-xl")
+
+            div(class="px-6 pt-4 flex-shrink-0")
+                input#buscador-color-insumo(type="text" placeholder="Buscar color..." autocomplete="off" class="field-text")
+
+            div#grid-colores-insumo(class="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-2 sm:grid-cols-3 gap-2")
+                each c in colores
+                    label(class="color-insumo-item flex items-center gap-2.5 p-2.5 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-50")
+                        input(type="checkbox" value=c.idAtributo data-nombre=c.valor data-hex=c.codigo1 || '' class="color-insumo-checkbox w-4 h-4 flex-shrink-0")
+                        span(class="w-4 h-4 rounded-full border border-black/10 flex-shrink-0" style=`background-color:${c.codigo1 || '#ccc'}`)
+                        span(class="text-sm font-medium text-slate-700 truncate")= c.valor
+
+            //- Dar de alta un color simple nuevo si no está en la grilla de arriba.
+            div(class="px-6 pb-4 pt-4 flex-shrink-0 border-t border-slate-100")
+                button#btn-mostrar-nuevo-color(type="button" class="text-xs font-bold text-gh-primaryHover hover:underline flex items-center gap-1")
+                    i(class="fi fi-rr-plus-small text-[10px]")
+                    | El color que busco no está
+                div#form-nuevo-color(class="hidden items-end gap-2 mt-3")
+                    div(class="flex-1 flex flex-col gap-1")
+                        label(class="text-[11px] font-bold text-slate-500 uppercase tracking-wide") Nombre
+                        input#nuevo-color-nombre(type="text" autocomplete="off" placeholder="Ej. Verde Esmeralda" maxlength="100" class="field-text text-sm")
+                    div(class="flex flex-col gap-1")
+                        label(class="text-[11px] font-bold text-slate-500 uppercase tracking-wide") Color
+                        input#nuevo-color-hex(type="color" value="#E24C95" class="w-12 h-10 bg-white border border-slate-200 rounded-xl cursor-pointer")
+                    button#btn-guardar-nuevo-color(type="button" class="btn btn-secondary text-xs flex-shrink-0 whitespace-nowrap") Agregar
+                p#error-nuevo-color(class="label-error text-xs hidden mt-2")
+
+            div(class="px-6 py-4 border-t border-gray-100 flex-shrink-0")
+                button#btn-usar-colores(type="button" class="btn btn-danger w-full justify-center") Usar colores seleccionados

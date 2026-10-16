@@ -202,14 +202,45 @@ aside(
         span Confeccionistas
 
     if ver('/procesos')
-      a(href="/admin/procesos" class=`menu-item ${currentPath === '/procesos' ? 'active' : ''}`)
-        i(class="fi fi-rr-workflow-setting text-lg")
-        span Procesos
+      // Procesos (submenu)
+      details(class="group")
+        summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/procesos' ? 'active' : ''}`)
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-workflow-setting text-lg")
+            span Procesos
+          i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+
+        div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+          if puede('Procesos', 'CREATE')
+            a(href="/admin/procesos/nuevo" class="submenu-item") Nuevo proceso
+          if puede('Procesos', 'READ')
+            a(href="/admin/procesos" class="submenu-item") Listado de procesos
+          if puede('Procesos', 'READ')
+            a(href="/admin/procesos/fichas-confeccion" class="submenu-item") Fichas de confección
 
     if ver('/insumos')
-      a(href="/admin/insumos" class=`menu-item ${currentPath === '/insumos' ? 'active' : ''}`)
-        i(class="fi fi-rr-boxes text-lg")
-        span Insumos y Materias Primas
+      // Insumos y materias primas (submenu)
+      details(class="group")
+        summary(class=`menu-item cursor-pointer flex justify-between items-center menu-item ${currentPath === '/insumos' ? 'active' : ''}`)
+          div(class="flex items-center gap-3")
+            i(class="fi fi-rr-boxes text-lg")
+            span Insumos y Materias Primas
+          i(class="fi fi-rr-angle-small-right transition-transform group-open:rotate-90")
+
+        div(class="ml-9 mt-2 space-y-1 text-sm text-gray-600")
+          if puede('Insumos', 'READ')
+            a(href="/admin/insumos" class="submenu-item") Lista de insumos
+          //- Abre el formulario de alta como modal (views/administrador/produccion/insumos.pug);
+          //- ?nuevo=1 lo deja pintado desde el primer render, sin esperar al JS.
+          if puede('Insumos', 'CREATE')
+            a(href="/admin/insumos?nuevo=1" class="submenu-item") Nuevo insumo
+          //- Comprar es dar de alta un registro de compra, no solo consultar: mismo criterio
+          //- que "Nuevo insumo", no el de "Lista de insumos".
+          if puede('Insumos', 'CREATE')
+            a(href="/admin/insumos/compra" class="submenu-item") Compra de insumos
+          //- Ver el historial es solo consulta: READ alcanza, no hace falta CREATE.
+          if puede('Insumos', 'READ')
+            a(href="/admin/insumos/compra/historial" class="submenu-item") Historial de compras
 
    //- Mantiene los dos avisos del menú al día por SSE, sin recargar la página. Va en el
    //- menú y no en el layout porque el layout lo comparten el panel de tienda y el sitio

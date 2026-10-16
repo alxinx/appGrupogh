@@ -1,0 +1,304 @@
+extends ../../layout/index
+block contenedor
+    //- Detalle/edición de UNA orden de compra o cotización ya creada
+    //- (admin/insumos/compra/:idOrdenCompra, controller/ordenesCompraController.js
+    //- verOrdenCompra/guardarEdicionOrden). Siempre se puede cambiar estado, notas y fecha
+    //- estimada de entrega; agregar/quitar insumos SOLO si `permiteEditarLineas` lo permite
+    //- (cotización que no llegó a un estado terminal) — el proveedor y la fecha de la orden
+    //- nunca se tocan acá.
+    include ../../components/modalConfirmacion
+    include ../../components/selectBuscable.pug
+    include ../../components/fechaInput.pug
+    include ../../components/modalInsumoOrden.pug
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        form#form-orden-detalle(
+                            class="mainDashboard"
+                            data-csrf=csrfToken
+                            data-id-orden=orden.idOrdenCompra
+                            data-permite-lineas=permiteEditarLineas ? '1' : '0'
+                            data-fecha-orden=orden.fechaOrden
+                            data-porcentaje-iva=orden.porcentajeIva)
+
+                            //- ── MIGA DE PAN ───────────────────────────────────────────
+                            div(class="col-span-12 flex items-center gap-2 text-sm")
+                                a(href="/admin/insumos" class="flex items-center gap-1.5 text-slate-500 hover:text-gh-primaryHover transition-colors")
+                                    i(class="fi fi-rr-boxes text-xs")
+                                    | Insumos
+                                i(class="fi fi-rr-angle-small-right text-[10px] text-slate-300")
+                                a(href="/admin/insumos/compra/historial" class="text-slate-500 hover:text-gh-primaryHover transition-colors") Historial de compras
+                                i(class="fi fi-rr-angle-small-right text-[10px] text-slate-300")
+                                span(class="text-slate-700 font-semibold")= orden.numeroOrden
+
+                            //- ── HEADER ─────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-start md:justify-between gap-4")
+                                div(class="flex items-start gap-4")
+                                    div(class="w-14 h-14 rounded-2xl bg-gh-primary flex items-center justify-center flex-shrink-0 shadow-lg shadow-gh-primary/30")
+                                        i(class="fi fi-rr-file-invoice text-white text-xl")
+                                    div
+                                        div(class="flex items-center gap-2 flex-wrap")
+                                            h1(class="text-2xl font-bold text-slate-800")= orden.numeroOrden
+                                            span(class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-violet-50 text-violet-600")= subtitulo
+                                        p(class="text-sm text-slate-500 mt-1")
+                                            | Creada el #{new Date(orden.createdAt).toLocaleDateString('es-CO')}
+                                            if orden.empleadoAutorizaNombre
+                                                |  · Autorizada por #{orden.empleadoAutorizaNombre}
+                                div(class="flex items-center gap-3 flex-wrap")
+                                    a(href=`/admin/insumos/compra/${orden.idOrdenCompra}/pdf` target="_blank" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-file-pdf text-xs")
+                                        | Ver PDF
+                                    a(href="/admin/insumos/compra/historial" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Volver
+
+                            div(class="col-span-12 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 items-start")
+
+                                //- ══════════════════════════ COLUMNA IZQUIERDA ══════════════════════════
+                                div(class="flex flex-col gap-4 min-w-0")
+
+                                    //- ── PROVEEDOR (real, solo lectura — no se cambia desde acá) ──
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-3")
+                                        div(class="flex items-start justify-between gap-4")
+                                            div(class="flex items-start gap-3 min-w-0")
+                                                div(class="w-14 h-14 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0 text-lg font-bold text-gh-primaryHover")= proveedor.iniciales
+                                                div(class="min-w-0")
+                                                    div(class="flex items-center gap-2 flex-wrap")
+                                                        h3(class="text-base font-bold text-slate-800")= proveedor.razonSocial
+                                                        span(class=`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${proveedor.activo ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`)= proveedor.activo ? 'Activo' : 'Inactivo'
+                                                    div(class="flex flex-wrap gap-1.5 mt-1")
+                                                        each cat in proveedor.categorias
+                                                            span(class="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-violet-50 text-violet-600")= cat
+                                                    p(class="text-xs text-slate-400 mt-1 flex items-center gap-1.5")
+                                                        i(class="fi fi-rr-marker text-[10px]")
+                                                        span= [proveedor.ciudad, proveedor.departamento].filter(Boolean).join(', ') || 'Sin ciudad registrada'
+                                        div(class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-100 text-xs")
+                                            div
+                                                p(class="text-slate-400") Documento
+                                                p(class="font-semibold text-slate-700")= `${proveedor.tipoDocumento} ${proveedor.documento}`
+                                            div
+                                                p(class="text-slate-400") Teléfono
+                                                p(class="font-semibold text-slate-700")= proveedor.telefono || '—'
+                                            div
+                                                p(class="text-slate-400") Correo
+                                                p(class="font-semibold text-slate-700 truncate")= proveedor.correo || '—'
+
+                                    //- ── INSUMOS ─────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-4")
+                                        div(class="flex items-center justify-between gap-3")
+                                            h2(class="text-lg font-bold text-slate-800 flex items-center gap-2")
+                                                i(class="fi fi-rr-shopping-bag text-gh-primaryHover text-base")
+                                                | Insumos
+                                            if permiteEditarLineas
+                                                button#btn-agregar-insumo(type="button" class="btn btn-danger btn-sm text-xs flex items-center gap-1.5")
+                                                    i(class="fi fi-rr-plus-small text-xs")
+                                                    | Agregar insumo
+                                        if !permiteEditarLineas
+                                            p(class="helper-text -mt-2")
+                                                if orden.tipo === 'cotizacion'
+                                                    | Esta cotización ya llegó a un estado final — para cambiar sus insumos, anúlala y crea una nueva.
+                                                else
+                                                    | Una orden de compra no cambia sus insumos una vez creada — para corregirla, anúlala y crea una nueva.
+
+                                        div(class="overflow-x-auto")
+                                            table(class="w-full text-sm")
+                                                thead
+                                                    tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                        th(class="py-2 pr-3 font-semibold") #
+                                                        th(class="py-2 pr-3 font-semibold") Insumo
+                                                        th(class="py-2 pr-3 font-semibold text-center") Cantidad
+                                                        th(class="py-2 pr-3 font-semibold") Características
+                                                        th(class="py-2 pr-3 font-semibold text-right") Valor unitario
+                                                        th(class="py-2 pr-3 font-semibold text-right") Valor total
+                                                        if permiteEditarLineas
+                                                            th(class="py-2 font-semibold text-right")
+                                                tbody#tabla-lineas-orden
+                                                    each l, i in lineas
+                                                        tr(class="border-b border-slate-100" data-uid=l.idDetalleOrdenCompra data-origen="existente" data-valor-total=l.valorTotal)
+                                                            td(class="py-3 pr-3 text-slate-400 tabular-nums")= i + 1
+                                                            td(class="py-3 pr-3")
+                                                                p(class="font-semibold text-slate-800")= l.nombreMaterial
+                                                                p(class="text-xs text-slate-400") código #{l.codigoMaterialDxf}
+                                                            td(class="py-3 pr-3 text-center tabular-nums")
+                                                                p= `${l.cantidad.toLocaleString('es-CO')} ${l.unidadCompra || ''}`.trim()
+                                                                if l.cantidadRecibida !== null
+                                                                    - const difRecibida = l.cantidadRecibida - l.cantidad
+                                                                    p(class=`text-[11px] font-semibold mt-0.5 ${difRecibida === 0 ? 'text-emerald-500' : difRecibida < 0 ? 'text-amber-500' : 'text-sky-500'}`)
+                                                                        | Recibido: #{l.cantidadRecibida.toLocaleString('es-CO')} #{l.unidadCompra || ''}
+                                                            td(class="py-3 pr-3 text-xs text-slate-600 leading-relaxed")
+                                                                - const carac = [l.colorNombre ? `Color: ${l.colorNombre}` : null, ...Object.entries(l.caracteristicas || {}).map(([k, v]) => `${k}: ${v}`)].filter(Boolean)
+                                                                if carac.length
+                                                                    each c, idx in carac
+                                                                        if idx > 0
+                                                                            br
+                                                                        = c
+                                                                else
+                                                                    span(class="text-slate-400") —
+                                                            td(class="py-3 pr-3 text-right tabular-nums")= `$ ${Math.round(l.valorUnitario).toLocaleString('es-CO')}`
+                                                            td(class="py-3 pr-3 text-right font-semibold tabular-nums")= `$ ${Math.round(l.valorTotal).toLocaleString('es-CO')}`
+                                                            if permiteEditarLineas
+                                                                td(class="py-3 text-right")
+                                                                    div(class="flex items-center justify-end gap-2.5")
+                                                                        button(type="button" data-editar-linea=l.idDetalleOrdenCompra class="text-slate-300 hover:text-gh-primaryHover transition-colors cursor-pointer")
+                                                                            i(class="fi fi-rr-pencil")
+                                                                        button(type="button" data-quitar-linea=l.idDetalleOrdenCompra class="text-slate-300 hover:text-rose-500 transition-colors cursor-pointer")
+                                                                            i(class="fi fi-rr-trash")
+                                                tbody
+                                                    tr#sin-lineas-orden(class=lineas.length ? 'hidden' : '')
+                                                        td(colspan=permiteEditarLineas ? 7 : 6 class="py-10 text-center text-sm text-slate-400")
+                                                            | Esta orden no tiene insumos.
+
+                                        //- Datos de las líneas existentes para el modal de edición
+                                        //- (src/js/ordenCompraDetalle.js) — un <script type="application/json">
+                                        //- en vez de una asignación `window.x = !{...}` para que nada de lo que
+                                        //- traiga nombreMaterial/caracteristicas pueda ejecutarse como JS. El
+                                        //- `<` se escapa a < para que un nombre con "</script>" adentro no
+                                        //- corte el tag antes de tiempo.
+                                        if permiteEditarLineas
+                                            - const lineasJsonSeguro = JSON.stringify(lineas).replace(/</g, '\\u003c')
+                                            script#datos-lineas-orden(type="application/json")!= lineasJsonSeguro
+
+                                    //- ── NOTAS ───────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-2")
+                                        label(class="label" for="notas") Notas
+                                        textarea#notas(name="notas" rows="3" maxlength="1000" placeholder="Ej. Forma de pago, observaciones especiales, etc." class="field-text resize-none")= orden.notas || ''
+
+                                //- ══════════════════════════ COLUMNA DERECHA ═══════════════════════════
+                                div(class="flex flex-col gap-4 min-w-0")
+
+                                    //- ── ESTADO ───────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                        h3(class="text-sm font-bold text-slate-800 flex items-center gap-2")
+                                            i(class="fi fi-rr-flag text-gh-primaryHover")
+                                            | Estado
+                                        div(class="select-wrapper")
+                                            select#estadoOrden.field-text.appearance-none.pr-10(name="estado")
+                                                each e in estadosOrden
+                                                    option(value=e.valor selected=e.valor === orden.estado)= e.etiqueta
+                                            span(class="select-icon")
+                                                i(class="fi-rr-chevron-double-down")
+                                        p(class="helper-text") Cualquier estado se puede elegir — lo decide quien autoriza el cambio, con su código.
+
+                                    //- ── FECHAS ───────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-4")
+                                        h3(class="text-sm font-bold text-slate-800 flex items-center gap-2")
+                                            i(class="fi fi-rr-calendar-days text-gh-primaryHover")
+                                            | Fechas
+                                        div(class="grid grid-cols-1 sm:grid-cols-2 gap-3")
+                                            div(class="flex flex-col gap-1")
+                                                label(class="label text-xs") Fecha de la orden
+                                                p(class="field-text text-sm bg-slate-50 text-slate-500 flex items-center")= new Date(orden.fechaOrden + 'T00:00:00').toLocaleDateString('es-CO')
+                                            div(class="flex flex-col gap-1")
+                                                label(class="label text-xs" for="fechaEntregaEstimada") Fecha estimada de entrega
+                                                input#fechaEntregaEstimada(type="text" autocomplete="off" name="fechaEntregaEstimada" placeholder="dd/mm/aaaa" class="field-text text-sm" value=orden.fechaEntregaEstimada || '')
+                                                p#error-fechaEntregaEstimada(class="label-error text-xs hidden")
+
+                                    //- ── RESUMEN ──────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                        h3(class="text-sm font-bold text-slate-800 flex items-center gap-2")
+                                            i(class="fi fi-rr-receipt text-gh-primaryHover")
+                                            | Resumen de la orden
+                                        div(class="flex items-center justify-between text-sm")
+                                            span(class="text-slate-500") Total de items
+                                            span#resumen-items(class="font-bold text-slate-800 tabular-nums")= lineas.length
+                                        div(class="flex items-center justify-between text-sm")
+                                            span(class="text-slate-500") Subtotal
+                                            span#resumen-subtotal(class="font-semibold text-slate-700 tabular-nums")= `$ ${Math.round(orden.subtotal).toLocaleString('es-CO')}`
+                                        div(class="flex items-center justify-between text-sm")
+                                            span(class="text-slate-500")= orden.porcentajeIva > 0 ? `IVA (${orden.porcentajeIva}%)` : 'IVA'
+                                            span#resumen-iva(class="font-semibold text-slate-700 tabular-nums")= orden.porcentajeIva > 0 ? `$ ${Math.round(orden.valorIva).toLocaleString('es-CO')}` : 'Incluido'
+                                        div(class="flex items-center justify-between pt-3 border-t border-slate-100")
+                                            span(class="text-base font-bold text-slate-800") Total
+                                            span#resumen-total(class="text-xl font-black text-gh-primaryHover tabular-nums")= `$ ${Math.round(orden.total).toLocaleString('es-CO')}`
+
+                                    //- ── COTIZACIÓN: PEDIDA TAMBIÉN A ──────────────────────────
+                                    if hermanas.length
+                                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                            div(class="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100")
+                                                div(class="w-9 h-9 rounded-xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                                                    i(class="fi fi-rr-clipboard-list text-gh-primaryHover text-sm")
+                                                h3(class="text-sm font-bold text-slate-800") Esta cotización también se pidió a
+                                            div(class="divide-y divide-slate-50")
+                                                each h in hermanas
+                                                    - const etiquetaEstadoHermana = (estadosOrden.find(function (e) { return e.valor === h.estado }) || {}).etiqueta || h.estado
+                                                    a(href=`/admin/insumos/compra/${h.idOrdenCompra}` class="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50 transition-colors")
+                                                        div(class="min-w-0")
+                                                            p(class="text-sm font-bold text-slate-800 truncate")= h.proveedor
+                                                            p(class="text-xs text-slate-400")= `${h.numeroOrden} · ${etiquetaEstadoHermana}`
+                                                        p(class="text-sm font-bold text-slate-700 tabular-nums flex-shrink-0")= `$ ${Math.round(h.total).toLocaleString('es-CO')}`
+
+                                    //- ── HISTORIAL DE MOVIMIENTOS (append-only, ver registrarMovimientoOrden) ──
+                                    if historial.length
+                                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                            div(class="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100")
+                                                div(class="w-9 h-9 rounded-xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                                                    i(class="fi fi-rr-time-past text-gh-primaryHover text-sm")
+                                                h3(class="text-sm font-bold text-slate-800") Historial de movimientos
+                                            div(class="divide-y divide-slate-50 max-h-80 overflow-y-auto")
+                                                each h in historial
+                                                    div(class="flex items-start gap-3 px-5 py-3")
+                                                        div(class="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 mt-0.5")
+                                                            i(class=`fi ${h.icono} text-slate-400 text-xs`)
+                                                        div(class="min-w-0")
+                                                            p(class="text-xs text-slate-700 leading-relaxed")= h.resumen
+                                                            p(class="text-[11px] text-slate-400 mt-0.5")= `${h.quien} · ${h.fecha}`
+
+                                    //- ── ACCIONES ─────────────────────────────────────────────
+                                    div(class="flex flex-col gap-2")
+                                        //- Acciones propias, cada una con su propio modal y candado — no son
+                                        //- parte de "Guardar cambios" (convertirACompra/recibirOrden en el
+                                        //- controlador).
+                                        if permiteRecibir
+                                            button#btn-recibir-orden(type="button" class="btn btn-secondary w-full justify-center")
+                                                i(class="fi fi-rr-box-check text-xs")
+                                                | Recibir orden
+                                        if orden.tipo === 'cotizacion' && permiteEditarLineas
+                                            button#btn-convertir-compra(type="button" class="btn btn-secondary w-full justify-center")
+                                                i(class="fi fi-rr-exchange text-xs")
+                                                | Convertir a orden de compra
+                                        button#btn-guardar-cambios(type="submit" class="btn btn-danger w-full justify-center") Guardar cambios
+
+                    +modalInsumoOrden(materiales, colores)
+
+                    //- ── MODAL "RECIBIR ORDEN" ───────────────────────────────────────────
+                    //- Propio de esta pantalla (no es un mixin compartido): confirma cuánto
+                    //- llegó de verdad por línea, aparte de lo pedido — controller/
+                    //- ordenesCompraController.js recibirOrden, helpers/ordenesCompra.js
+                    //- validarRecepcionOrden. No se restringe por `permiteEditarLineas`: se
+                    //- puede recibir una orden ya "recibida" para corregir un dato mal
+                    //- capturado, sin tener que cancelarla y crear otra.
+                    if permiteRecibir
+                        div#modal-recibir-orden(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                            div(class="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden")
+                                div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
+                                    div(class="flex items-center gap-4")
+                                        div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
+                                            i(class="fi fi-rr-box-check text-white")
+                                        div
+                                            h2(class="text-lg font-bold text-slate-800") Recibir orden
+                                            p(class="text-sm text-slate-500") Confirma cuánto llegó de cada insumo.
+                                    button#modal-recibir-orden-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
+                                        i(class="fi fi-rr-cross-small text-xl")
+
+                                div(class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-4")
+                                    p(class="helper-text -mt-1") Si lo que llegó es distinto a lo pedido, cámbialo acá — lo pedido no se toca.
+                                    div#filas-recibir-orden(class="flex flex-col gap-3")
+
+                                div(class="flex items-center justify-end gap-3 px-8 py-5 border-t border-slate-100 flex-shrink-0")
+                                    button(type="button" id="btn-cancelar-recibir" class="btn btn-secondary") Cancelar
+                                    button(type="button" id="btn-confirmar-recibir" class="btn btn-danger") Confirmar recepción
+
+                        //- Datos de las líneas para precargar el modal — mismo criterio que
+                        //- #datos-lineas-orden: JSON, nunca `window.x = !{...}`.
+                        - const lineasRecibirJsonSeguro = JSON.stringify(lineas).replace(/</g, '\\u003c')
+                        script#datos-lineas-recibir(type="application/json")!= lineasRecibirJsonSeguro
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/ordenCompraDetalle.js")

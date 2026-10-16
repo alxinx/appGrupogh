@@ -39,6 +39,7 @@
             const activo = b.dataset.menuTab === tab;
             b.classList.toggle('text-white', activo);
             b.classList.toggle('text-gh-grayText', !activo);
+            b.classList.toggle('hover:text-gh-primaryHover', !activo);
             b.setAttribute('aria-selected', String(activo));
             b.tabIndex = activo ? 0 : -1;
         });

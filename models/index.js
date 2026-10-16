@@ -42,6 +42,9 @@ import ClientesRegistroWeb from './ClientesRegistroWeb.js'
 import ProvedoresRegistroWeb from './ProvedoresRegistroWeb.js'
 import ProductosCambiosPrecio from './ProductosCambiosPrecio.js'
 import Material from './Material.js'
+import OrdenesCompra from './OrdenesCompra.js'
+import DetallesOrdenCompra from './DetallesOrdenCompra.js'
+import OrdenesCompraHistorial from './OrdenesCompraHistorial.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -288,8 +291,33 @@ Empleados.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'cuenta' });
 PuntosDeVenta.hasMany(Empleados, { foreignKey: 'idPuntoDeVenta', as: 'personal' });
 Empleados.belongsTo(PuntosDeVenta, { foreignKey: 'idPuntoDeVenta', as: 'sede' });
 
-//Provedores.hasMany(OrdenDeCompra, { foreignKey: 'idProveedor' });
-//OrdenDeCompra.belongsTo(Provedores, { foreignKey: 'idProveedor' });
+// ─── Órdenes de compra (admin/insumos/compra) ────────────────────────────────
+Provedores.hasMany(OrdenesCompra, { foreignKey: 'idProveedor', as: 'ordenesCompra', onDelete: 'RESTRICT' });
+OrdenesCompra.belongsTo(Provedores, { foreignKey: 'idProveedor', as: 'proveedor' });
+
+Usuarios.hasMany(OrdenesCompra, { foreignKey: 'idUsuarioCrea', as: 'ordenesCompraCreadas' });
+OrdenesCompra.belongsTo(Usuarios, { foreignKey: 'idUsuarioCrea', as: 'usuarioCrea' });
+
+Empleados.hasMany(OrdenesCompra, { foreignKey: 'idEmpleadoAutoriza', as: 'ordenesCompraAutorizadas' });
+OrdenesCompra.belongsTo(Empleados, { foreignKey: 'idEmpleadoAutoriza', as: 'empleadoAutoriza' });
+
+OrdenesCompra.hasMany(DetallesOrdenCompra, { foreignKey: 'idOrdenCompra', as: 'detalles', onDelete: 'CASCADE' });
+DetallesOrdenCompra.belongsTo(OrdenesCompra, { foreignKey: 'idOrdenCompra', as: 'orden' });
+
+Material.hasMany(DetallesOrdenCompra, { foreignKey: 'idMaterial', as: 'comprasDetalle' });
+DetallesOrdenCompra.belongsTo(Material, { foreignKey: 'idMaterial', as: 'material' });
+
+Atributos.hasMany(DetallesOrdenCompra, { foreignKey: 'idAtributoColor', as: 'detallesOrdenCompra' });
+DetallesOrdenCompra.belongsTo(Atributos, { foreignKey: 'idAtributoColor', as: 'color' });
+
+OrdenesCompra.hasMany(OrdenesCompraHistorial, { foreignKey: 'idOrdenCompra', as: 'historial', onDelete: 'CASCADE' });
+OrdenesCompraHistorial.belongsTo(OrdenesCompra, { foreignKey: 'idOrdenCompra', as: 'orden' });
+
+Usuarios.hasMany(OrdenesCompraHistorial, { foreignKey: 'idUsuario', as: 'movimientosOrdenesCompra' });
+OrdenesCompraHistorial.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
+
+Empleados.hasMany(OrdenesCompraHistorial, { foreignKey: 'idEmpleado', as: 'movimientosOrdenesCompra' });
+OrdenesCompraHistorial.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 
 
 // ─── DetallesPagosFactura ────────────────────────────────────────────────────
@@ -458,4 +486,7 @@ export {
   ProductosCambiosPrecio,
   ProvedoresCuentasBancarias,
   Material,
+  OrdenesCompra,
+  DetallesOrdenCompra,
+  OrdenesCompraHistorial,
 }

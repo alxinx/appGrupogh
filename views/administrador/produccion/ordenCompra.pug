@@ -1,0 +1,222 @@
+extends ../../layout/index
+block contenedor
+    //- Estilos de las ventanas de confirmación (gh-conf-*): las usa "Crear orden de compra"
+    //- (código de empleado imperativo, src/js/ordenCompra.js).
+    include ../../components/modalConfirmacion
+    //- El selector de insumo se vuelve buscable por JS (window.enhanceSelectBuscable,
+    //- src/js/helpers.js), igual que departamento/municipio en el formulario de clientes:
+    //- el <select> real sigue mandando el id tal cual, esto solo agrega un input de texto +
+    //- una lista filtrable encima.
+    include ../../components/selectBuscable.pug
+    //- Skin de los campos de fecha (Flatpickr, src/js/fechaInput.js) con la identidad del panel.
+    include ../../components/fechaInput.pug
+    //- Modal "Agregar insumo" + su caja de colores — compartido con la edición de una
+    //- cotización (admin/insumos/compra/:idOrdenCompra).
+    include ../../components/modalInsumoOrden.pug
+
+    //- Orden de compra de insumos a un proveedor REGISTRADO (admin/insumos/compra).
+    //- Proveedor y colores son reales (helpers/ordenesCompra.js, controller/
+    //- ordenesCompraController.js): el proveedor se busca en vivo contra PROVEDORES, el
+    //- color de cada línea sale de ATRIBUTOS filtrado a colores simples (tipo='COLOR' AND
+    //- codigo2 IS NULL — nunca un combinado). El resto de "características" de una línea
+    //- (composición, ancho...) es texto libre: no hay catálogo detrás todavía.
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        form#form-orden-compra(class="mainDashboard" data-csrf=csrfToken data-iva=ivaPorcentaje)
+
+                            //- ── MIGA DE PAN ───────────────────────────────────────────
+                            div(class="col-span-12 flex items-center gap-2 text-sm")
+                                a(href="/admin/insumos" class="flex items-center gap-1.5 text-slate-500 hover:text-gh-primaryHover transition-colors")
+                                    i(class="fi fi-rr-boxes text-xs")
+                                    | Insumos
+                                i(class="fi fi-rr-angle-small-right text-[10px] text-slate-300")
+                                span(class="text-slate-700 font-semibold") Compra de insumos
+
+                            //- ── HEADER ─────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-start md:justify-between gap-4")
+                                div(class="flex items-start gap-4")
+                                    div(class="w-14 h-14 rounded-2xl bg-gh-primary flex items-center justify-center flex-shrink-0 shadow-lg shadow-gh-primary/30")
+                                        i(class="fi fi-rr-file-invoice text-white text-xl")
+                                    div
+                                        h1(class="text-2xl font-bold text-slate-800") Orden de compra
+                                        p(class="text-sm text-slate-500 mt-1") Gestiona las compras de insumos y materias primas a tus proveedores.
+                                div(class="flex items-center gap-3 flex-wrap")
+                                    //- Cotización / Orden de compra — alterna el campo oculto "tipo".
+                                    div#selector-tipo-orden(class="flex items-center gap-1 p-1 bg-white rounded-xl border border-gh-grayBorder shadow-sm")
+                                        input(type="hidden" name="tipo" id="tipoOrden" value="orden_compra")
+                                        each t in tiposOrden
+                                            button(type="button" data-tipo=t.valor class=`tipo-orden-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${t.valor === 'orden_compra' ? 'bg-gh-primary text-white' : 'text-gh-grayText hover:bg-slate-50'}`)= t.etiqueta
+                                    a(href="/admin/insumos" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Volver
+
+                            div(class="col-span-12 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 items-start")
+
+                                //- ══════════════════════════ COLUMNA IZQUIERDA ══════════════════════════
+                                div(class="flex flex-col gap-4 min-w-0")
+
+                                    //- ── PROVEEDOR (real: búsqueda en vivo contra PROVEDORES) ──
+                                    //- Una orden de compra es de UN proveedor (tarjeta completa, como ya
+                                    //- había). Una cotización puede pedirse a varios a la vez: el mismo
+                                    //- buscador, pero cada resultado se AGREGA a una lista en vez de
+                                    //- reemplazar la selección — ver #lista-proveedores-cotizacion y el
+                                    //- toggle de tipo en src/js/ordenCompra.js.
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-4")
+                                        input(type="hidden" name="idProveedores" id="idProveedores" required)
+
+                                        //- Buscador — siempre visible en modo cotización (para seguir
+                                        //- agregando); se oculta en modo orden de compra apenas hay uno elegido.
+                                        div#buscador-proveedor
+                                            label(class="label label-required") Proveedor
+                                            div(class="relative")
+                                                input#input-buscar-proveedor(type="text" autocomplete="off" placeholder="Busca por razón social, NIT o contacto..." class="field-text pl-9")
+                                                i(class="fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs")
+                                                div#resultados-proveedor(class="hidden absolute z-20 top-[calc(100%+6px)] left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 max-h-72 overflow-y-auto")
+                                            p#error-idProveedor(class="label-error text-xs hidden") Selecciona un proveedor registrado.
+                                            p#helper-proveedor(class="helper-text") Solo proveedores que ya están dados de alta en Proveedores.
+
+                                        //- Modo cotización: lista de proveedores agregados, cada uno con su
+                                        //- "Quitar" — llena src/js/ordenCompra.js.
+                                        div#lista-proveedores-cotizacion(class="hidden flex-col gap-2")
+
+                                        //- Tarjeta del proveedor elegido — la pinta src/js/ordenCompra.js con lo
+                                        //- que devuelve GET /admin/insumos/compra/proveedores/:id (real, CLAUDE.md
+                                        //- §6: sin calificación/cumplimiento inventados para una entidad real).
+                                        div#tarjeta-proveedor(class="hidden flex-col gap-3")
+                                            div(class="flex items-start justify-between gap-4")
+                                                div(class="flex items-start gap-3 min-w-0")
+                                                    div#proveedor-iniciales(class="w-14 h-14 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0 text-lg font-bold text-gh-primaryHover")
+                                                    div(class="min-w-0")
+                                                        div(class="flex items-center gap-2 flex-wrap")
+                                                            h3#proveedor-nombre(class="text-base font-bold text-slate-800")
+                                                            span#proveedor-estado(class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap")
+                                                        div#proveedor-categorias(class="flex flex-wrap gap-1.5 mt-1")
+                                                        p(class="text-xs text-slate-400 mt-1 flex items-center gap-1.5")
+                                                            i(class="fi fi-rr-marker text-[10px]")
+                                                            span#proveedor-ciudad
+                                                button#btn-cambiar-proveedor(type="button" class="text-xs font-bold text-gh-primaryHover hover:underline whitespace-nowrap flex-shrink-0") Cambiar
+                                            div(class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-100 text-xs")
+                                                div
+                                                    p(class="text-slate-400") Documento
+                                                    p#proveedor-documento(class="font-semibold text-slate-700")
+                                                div
+                                                    p(class="text-slate-400") Teléfono
+                                                    p#proveedor-telefono(class="font-semibold text-slate-700")
+                                                div
+                                                    p(class="text-slate-400") Correo
+                                                    p#proveedor-correo(class="font-semibold text-slate-700 truncate")
+                                                div
+                                                    p(class="text-slate-400") Contacto
+                                                    p#proveedor-contacto(class="font-semibold text-slate-700")
+                                                div
+                                                    p(class="text-slate-400") Antigüedad
+                                                    p#proveedor-antiguedad(class="font-semibold text-slate-700")
+
+                                    //- ── INSUMOS A COMPRAR ───────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-4")
+                                        div(class="flex items-center justify-between gap-3")
+                                            h2(class="text-lg font-bold text-slate-800 flex items-center gap-2")
+                                                i(class="fi fi-rr-shopping-bag text-gh-primaryHover text-base")
+                                                | Insumos a comprar
+                                            button#btn-agregar-insumo(type="button" class="btn btn-danger btn-sm text-xs flex items-center gap-1.5")
+                                                i(class="fi fi-rr-plus-small text-xs")
+                                                | Agregar insumo
+
+                                        div(class="overflow-x-auto")
+                                            table(class="w-full text-sm")
+                                                thead
+                                                    tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                        th(class="py-2 pr-3 font-semibold") #
+                                                        th(class="py-2 pr-3 font-semibold") Insumo
+                                                        th(class="py-2 pr-3 font-semibold text-center") Cantidad
+                                                        th(class="py-2 pr-3 font-semibold") Características
+                                                        th(class="py-2 pr-3 font-semibold text-right") Valor unitario
+                                                        th(class="py-2 pr-3 font-semibold text-right") Valor total
+                                                        th(class="py-2 font-semibold text-right")
+                                                tbody#tabla-lineas-orden
+                                                tbody
+                                                    tr#sin-lineas-orden
+                                                        td(colspan="7" class="py-10 text-center text-sm text-slate-400")
+                                                            | Todavía no agregaste ningún insumo a esta orden.
+
+                                    //- ── NOTAS ADICIONALES ───────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-2")
+                                        label(class="label" for="notas") Notas adicionales
+                                        textarea#notas(name="notas" rows="3" maxlength="1000" placeholder="Ej. Forma de pago, observaciones especiales, etc." class="field-text resize-none")
+
+                                //- ══════════════════════════ COLUMNA DERECHA ═══════════════════════════
+                                div(class="flex flex-col gap-4 min-w-0")
+
+                                    //- ── FECHAS (reales) ─────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-4")
+                                        h3(class="text-sm font-bold text-slate-800 flex items-center gap-2")
+                                            i(class="fi fi-rr-calendar-days text-gh-primaryHover")
+                                            | Fechas
+                                        div(class="grid grid-cols-1 sm:grid-cols-2 gap-3")
+                                            div(class="flex flex-col gap-1")
+                                                label(class="label label-required text-xs" for="fechaOrden") Fecha de la orden
+                                                input#fechaOrden(type="text" autocomplete="off" name="fechaOrden" placeholder="dd/mm/aaaa" class="field-text text-sm")
+                                                p#error-fechaOrden(class="label-error text-xs hidden")
+                                            div(class="flex flex-col gap-1")
+                                                label(class="label text-xs" for="fechaEntregaEstimada") Fecha estimada de entrega
+                                                input#fechaEntregaEstimada(type="text" autocomplete="off" name="fechaEntregaEstimada" placeholder="dd/mm/aaaa" class="field-text text-sm")
+                                                p#error-fechaEntregaEstimada(class="label-error text-xs hidden")
+                                        div(class="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 rounded-xl p-3")
+                                            i(class="fi fi-rr-info text-slate-400 mt-0.5")
+                                            span El proveedor confirmará la fecha de entrega y el tiempo de producción.
+
+                                    //- ── RESUMEN (cálculo real en vivo) ──────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                        h3(class="text-sm font-bold text-slate-800 flex items-center gap-2")
+                                            i(class="fi fi-rr-receipt text-gh-primaryHover")
+                                            | Resumen de la orden
+                                        div(class="flex items-center justify-between text-sm")
+                                            span(class="text-slate-500") Total de items
+                                            span#resumen-items(class="font-bold text-slate-800 tabular-nums") 0
+                                        div(class="flex items-center justify-between text-sm")
+                                            span(class="text-slate-500") Subtotal
+                                            span#resumen-subtotal(class="font-semibold text-slate-700 tabular-nums") $ 0
+
+                                        //- Si el proveedor ya cotizó los valores con IVA incluido, no se vuelve
+                                        //- a sumar — el porcentaje de esta orden queda en 0 (helpers/
+                                        //- ordenesCompra.js, insertarOrden).
+                                        label(class="flex items-center justify-between gap-3 py-1 cursor-pointer")
+                                            span(class="text-xs font-semibold text-slate-500") El IVA ya está calculado en los valores
+                                            div(class="relative inline-flex items-center flex-shrink-0")
+                                                input#iva-incluido(type="checkbox" class="sr-only peer")
+                                                div(class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gh-primary")
+
+                                        div(class="flex items-center justify-between text-sm")
+                                            span#resumen-iva-label(class="text-slate-500") IVA (19%)
+                                            span#resumen-iva(class="font-semibold text-slate-700 tabular-nums") $ 0
+                                        div(class="flex items-center justify-between pt-3 border-t border-slate-100")
+                                            span(class="text-base font-bold text-slate-800") Total
+                                            span#resumen-total(class="text-xl font-black text-gh-primaryHover tabular-nums") $ 0
+
+                                    //- ── HISTORIAL DE ÓRDENES CON ESTE PROVEEDOR (real) ──────
+                                    //- Vacío mientras no haya proveedor elegido o no tenga órdenes
+                                    //- anteriores — nunca se rellena con datos inventados.
+                                    div#card-historial-proveedor(class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                        div(class="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100")
+                                            div(class="w-9 h-9 rounded-xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                                                i(class="fi fi-rr-clipboard-list text-gh-primaryHover text-sm")
+                                            h3(class="text-sm font-bold text-slate-800") Historial con este proveedor
+                                        div#lista-historial-proveedor(class="divide-y divide-slate-50")
+
+                                    //- ── ACCIONES ─────────────────────────────────────────────
+                                    div(class="flex flex-col gap-2")
+                                        button#btn-crear-orden(type="submit" class="btn btn-danger w-full justify-center") Crear orden de compra
+                                        button#btn-guardar-borrador(type="button" class="btn btn-secondary w-full justify-center") Guardar borrador
+
+                    +modalInsumoOrden(materiales, colores)
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/ordenCompra.js")

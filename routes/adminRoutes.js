@@ -30,7 +30,8 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR PRODUCCIÓN (Confeccionistas, Procesos, Insumos):
-import { homeConfeccionistas, homeProcesos, homeInsumos, crearInsumo, verInsumo, codigoInsumoOcupado } from '../controller/produccionController.js'
+import { homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion, homeInsumos, crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado } from '../controller/produccionController.js'
+import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
 import { formularioImportaciones, procesarImportacionExcel, descargarPlantillaImportacion, formularioImportarClientes, procesarImportacionClientes, descargarPlantillaClientes } from '../controller/importacionesController.js'
@@ -72,6 +73,8 @@ const pPrc = perm('Procesos');
 const pIns = perm('Insumos');
 const validarEmpleadoInventario = validarCodigoConPermiso('Inventario y Productos', 'administrativo', 'EDIT', 'Tu usuario no tiene permiso para editar productos.');
 const validarEmpleadoDosificacion = validarCodigoConPermiso('Dosificación y Repartos', 'administrativo', 'EDIT', 'No tienes permiso para despachar desde dosificación.');
+const validarEmpleadoInsumos = validarCodigoConPermiso('Insumos', 'administrativo', 'EDIT', 'Tu usuario no tiene permiso para editar insumos.');
+const validarEmpleadoCompraInsumo = validarCodigoConPermiso('Insumos', 'administrativo', 'CREATE', 'Tu usuario no tiene permiso para crear órdenes de compra.');
 import uploadImages, { MAX_IMAGENES } from '../middlewares/uploadImages.js';
 import uploadMixed from '../middlewares/uploadMixed.js'; // Importamos el middleware mixto
 import { recibirQr } from '../middlewares/uploadQr.js';
@@ -290,11 +293,71 @@ routes.post('/traslados/:idTraslado/recibir-devolucion',
 // Pestaña "Producción": base de los tres módulos, sin recurso propio todavía más allá de
 // la carpeta (ver seed/migracionPermisosProduccion.js).
 routes.get('/confeccionistas', pCon('READ'), csrfProtection, homeConfeccionistas);
-routes.get('/procesos',        pPrc('READ'), csrfProtection, homeProcesos);
+// Procesos es un submenú (ver leftMenu.pug): nuevo antes de la carpeta genérica, igual que
+// /insumos/compra va antes del catch-all /insumos/:idMaterial.
+routes.get('/procesos/nuevo',             pPrc('CREATE'), csrfProtection, homeProcesosNuevo);
+routes.get('/procesos/fichas-confeccion', pPrc('READ'),   csrfProtection, homeFichasConfeccion);
+routes.get('/procesos',                   pPrc('READ'),   csrfProtection, homeProcesosListado);
 routes.get('/insumos',         pIns('READ'), csrfProtection, homeInsumos);
 routes.post('/insumos',        pIns('CREATE'), uploadImages.single('imagen'), csrfProtection, crearInsumo);
-routes.get('/insumos/codigo/:codigo', pIns('CREATE'), apiRateLimit, codigoInsumoOcupado);
+// READ, no CREATE: el catálogo (abajo) ya muestra todos los códigos a cualquiera con lectura,
+// así que esta consulta no revela nada nuevo — y la necesita también quien solo tiene EDIT.
+routes.get('/insumos/codigo/:codigo', pIns('READ'), apiRateLimit, codigoInsumoOcupado);
+routes.get('/insumos/empleado/validar/:codigo', pIns('EDIT'), apiRateLimit, validarEmpleadoInsumos);
+
+// Compra de insumos (orden de compra a un proveedor registrado). Todo antes del catch-all
+// /insumos/:idMaterial: si no, Express tomaría "compra" como un id.
+routes.get('/insumos/compra', pIns('CREATE'), csrfProtection, homeOrdenCompra);
+routes.get('/insumos/compra/proveedores', pIns('CREATE'), apiRateLimit, buscarProveedoresOrden);
+routes.get('/insumos/compra/proveedores/:idProveedor', pIns('CREATE'), apiRateLimit, verProveedorOrden);
+routes.get('/insumos/compra/empleado/validar/:codigo', pIns('CREATE'), apiRateLimit, validarEmpleadoCompraInsumo);
+// Alta de un color simple nuevo desde la caja de colores de "Agregar insumo", cuando el
+// que hace falta no está en el catálogo (ATRIBUTOS).
+routes.post('/insumos/compra/colores', pIns('CREATE'), csrfProtection, crearColorSimple);
+// "Guardar borrador": solo el permiso de sesión, igual que el alta de un insumo — no pide
+// código de empleado porque todavía no compromete nada con el proveedor.
+routes.post('/insumos/compra/borrador', pIns('CREATE'), csrfProtection, guardarBorradorOrden);
+// "Crear orden de compra": mismo triple candado que editar/suspender un insumo — acá sí es
+// imperativo el código de un empleado con permiso de CREATE sobre Insumos.
+routes.post('/insumos/compra', pIns('CREATE'), csrfProtection,
+    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'CREATE'), crearOrdenCompra);
+
+// Historial de compras: solo consulta, READ alcanza (ver una orden no es crearla).
+routes.get('/insumos/compra/historial', pIns('READ'), csrfProtection, homeHistorialCompras);
+routes.get('/insumos/compra/historial/json', pIns('READ'), apiRateLimit, historialComprasJson);
+
+// Detalle/edición de UNA orden ya creada — registradas al final del bloque de "compra"
+// para no competir con las rutas literales de arriba (:idOrdenCompra es un comodín de 3
+// segmentos, igual forma que /insumos/compra/proveedores o /insumos/compra/historial).
+// Ver PDF es solo lectura (pIns('READ')); cambiar estado/notas/fecha/insumos reutiliza el
+// mismo candado que editar un insumo: permiso de EDIT de la sesión acá, código de un
+// empleado de esa sesión (validarEmpleadoInsumos) y que ESE empleado tenga EDIT sobre
+// Insumos (verificarPermisoEmpleado) — ver CLAUDE.md §5.1 y el patrón ya usado abajo para
+// editarInsumo/cambiarEstadoInsumo.
+routes.get('/insumos/compra/:idOrdenCompra', pIns('READ'), csrfProtection, verOrdenCompra);
+routes.get('/insumos/compra/:idOrdenCompra/pdf', pIns('READ'), pdfOrdenCompra);
+routes.get('/insumos/compra/:idOrdenCompra/empleado/validar/:codigo', pIns('EDIT'), apiRateLimit, validarEmpleadoInsumos);
+routes.post('/insumos/compra/:idOrdenCompra', pIns('EDIT'), csrfProtection,
+    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), guardarEdicionOrden);
+// "Convertir a orden de compra": acción propia con su propio candado — no es un campo más
+// de guardarEdicionOrden (ver el comentario en el controlador).
+routes.post('/insumos/compra/:idOrdenCompra/convertir', pIns('EDIT'), csrfProtection,
+    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), convertirACompra);
+// "Recibir orden": mismo candado — confirmar qué y cuánto llegó compromete el inventario
+// igual que crear la orden.
+routes.post('/insumos/compra/:idOrdenCompra/recibir', pIns('EDIT'), csrfProtection,
+    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), recibirOrden);
+
 routes.get('/insumos/:idMaterial', pIns('READ'), csrfProtection, verInsumo);
+
+// Editar datos básicos y suspender/reactivar: mismo triple candado que "Editar precios
+// masivamente" (CLAUDE.md §6) — permiso de EDIT de la sesión (acá), código de un empleado de
+// esa sesión y que ESE empleado tenga EDIT sobre Insumos. "Eliminar" nunca es un DELETE
+// (CLAUDE.md §6): /estado solo cambia MATERIAL.activo.
+routes.put('/insumos/:idMaterial', pIns('EDIT'), uploadImages.single('imagen'), csrfProtection,
+    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), editarInsumo);
+routes.post('/insumos/:idMaterial/estado', pIns('EDIT'), csrfProtection,
+    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), cambiarEstadoInsumo);
 
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
 routes.get('/configuracion/importaciones', pCfg('READ'), formularioImportaciones);

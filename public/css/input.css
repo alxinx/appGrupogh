@@ -1,5 +1,9 @@
 @import "tailwindcss";
 @import "@flaticon/flaticon-uicons/css/all/all";
+/* Calendario del panel (admin/insumos/compra y cualquier otra vista que use
+   src/js/fechaInput.js) — la skin con la identidad de la marca va en
+   views/components/fechaInput.pug. */
+@import "flatpickr/dist/flatpickr.css";
 
 
 
