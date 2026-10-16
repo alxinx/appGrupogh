@@ -14,15 +14,22 @@ export const TIPOS_ORDEN = [
 export const IVA_PORCENTAJE_DEFECTO = 19.00;
 
 // Mismo vocabulario que el ENUM de ORDENES_COMPRA.estado (models/OrdenesCompra.js) — una
-// sola lista para el filtro del historial (admin/insumos/compra/historial) y cualquier
-// otro lugar que necesite mostrar las opciones, en vez de repetir los seis valores sueltos.
+// sola lista para el filtro del historial (admin/insumos/compra/historial), el selector
+// visual de la ficha (admin/insumos/compra/:id, ordenCompraDetalle.pug) y cualquier otro
+// lugar que necesite mostrar las opciones, en vez de repetir los seis valores sueltos.
+//
+// Los campos de color son los MISMOS seis que ya usan los badges del listado
+// (src/js/historialCompras.js, ESTADO) — no se puede compartir un solo archivo entre el
+// servidor y el navegador (este módulo importa Sequelize), así que el listado mantiene su
+// propia copia, pero las clases de Tailwind tienen que seguir siendo las mismas tonalidades
+// si se retoca una acá.
 export const ESTADOS_ORDEN = [
-    { valor: 'borrador',    etiqueta: 'Borrador' },
-    { valor: 'enviada',     etiqueta: 'Enviada' },
-    { valor: 'confirmada',  etiqueta: 'Confirmada' },
-    { valor: 'en_transito', etiqueta: 'En tránsito' },
-    { valor: 'recibida',    etiqueta: 'Recibida' },
-    { valor: 'cancelada',   etiqueta: 'Cancelada' }
+    { valor: 'borrador',    etiqueta: 'Borrador',    dot: 'bg-slate-400',   borde: 'border-slate-400',   fondo: 'bg-slate-50',   texto: 'text-slate-700',   check: 'bg-slate-500' },
+    { valor: 'enviada',     etiqueta: 'Enviada',     dot: 'bg-blue-500',    borde: 'border-blue-400',    fondo: 'bg-blue-50',    texto: 'text-blue-700',    check: 'bg-blue-500' },
+    { valor: 'confirmada',  etiqueta: 'Confirmada',  dot: 'bg-indigo-500',  borde: 'border-indigo-400',  fondo: 'bg-indigo-50',  texto: 'text-indigo-700',  check: 'bg-indigo-500' },
+    { valor: 'en_transito', etiqueta: 'En tránsito', dot: 'bg-amber-500',   borde: 'border-amber-400',   fondo: 'bg-amber-50',   texto: 'text-amber-700',   check: 'bg-amber-500' },
+    { valor: 'recibida',    etiqueta: 'Recibida',    dot: 'bg-emerald-500', borde: 'border-emerald-400', fondo: 'bg-emerald-50', texto: 'text-emerald-700', check: 'bg-emerald-500' },
+    { valor: 'cancelada',   etiqueta: 'Cancelada',   dot: 'bg-rose-500',    borde: 'border-rose-400',    fondo: 'bg-rose-50',    texto: 'text-rose-700',    check: 'bg-rose-500' }
 ];
 
 // Colores "simples": ATRIBUTOS de tipo COLOR sin un segundo código — un combinado

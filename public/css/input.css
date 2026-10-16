@@ -1446,3 +1446,27 @@
 details[open] summary .fi-rr-caret-right {
   transform: rotate(90deg);
 }
+
+/* Barrido de brillo en la tarjeta de Estado que queda elegida (admin/insumos/compra/:id,
+   ordenCompraDetalle.pug/.js) — un solo barrido al quedar activa, no en bucle: marca cuál
+   es sin convertir el panel en una animación constante. La tarjeta necesita overflow:hidden
+   (clase de Tailwind en el propio label) para que el barrido no se salga de las esquinas
+   redondeadas. */
+@keyframes ghEstadoShine {
+  from { left: -60%; }
+  to   { left: 130%; }
+}
+.gh-estado-shine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(115deg, transparent, rgb(255 255 255 / 0.7), transparent);
+  animation: ghEstadoShine 1s ease-out;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gh-estado-shine::before { animation: none; content: none; }
+}

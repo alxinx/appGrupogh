@@ -169,20 +169,55 @@ block contenedor
                                         label(class="label" for="notas") Notas
                                         textarea#notas(name="notas" rows="3" maxlength="1000" placeholder="Ej. Forma de pago, observaciones especiales, etc." class="field-text resize-none")= orden.notas || ''
 
+                                    //- ── ACCIONES ─────────────────────────────────────────────
+                                    //- Acciones propias, cada una con su propio modal y candado — no son
+                                    //- parte de "Guardar cambios" (convertirACompra/recibirOrden en el
+                                    //- controlador). Debajo de Notas, no en la columna lateral: es lo
+                                    //- último que se completa antes de guardar, así que va al final del
+                                    //- flujo de lectura. Orden de menor a mayor peso, la principal al
+                                    //- final (CLAUDE.md §4.1.1).
+                                    div(class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2.5 pt-1")
+                                        if permiteRecibir
+                                            button#btn-recibir-orden(type="button" class="btn btn-secondary justify-center")
+                                                i(class="fi fi-rr-box-check text-xs")
+                                                | Recibir orden
+                                        if orden.tipo === 'cotizacion' && permiteEditarLineas
+                                            button#btn-convertir-compra(type="button" class="btn btn-secondary justify-center")
+                                                i(class="fi fi-rr-exchange text-xs")
+                                                | Convertir a orden de compra
+                                        button#btn-guardar-cambios(type="submit" class="btn btn-danger justify-center") Guardar cambios
+
                                 //- ══════════════════════════ COLUMNA DERECHA ═══════════════════════════
                                 div(class="flex flex-col gap-4 min-w-0")
 
                                     //- ── ESTADO ───────────────────────────────────────────────
+                                    //- Tarjetas de radio, no <select>: cada estado lleva su propio color
+                                    //- (mismo mapa que los badges del listado, helpers/ordenesCompra.js
+                                    //- ESTADOS_ORDEN) y la elegida muestra un check — se lee de un vistazo
+                                    //- sin tener que abrir el desplegable. El input real sigue siendo un
+                                    //- radio nativo (name="estado"): src/js/ordenCompraDetalle.js lee el
+                                    //- `:checked` al guardar, igual que antes leía el <select>, y repinta
+                                    //- la tarjeta al cambiar — mismo patrón que el toggle de régimen
+                                    //- fiscal de dataCliente.js (swap de className por data-attribute, no
+                                    //- clases de Tailwind condicionadas por CSS).
                                     div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
                                         h3(class="text-sm font-bold text-slate-800 flex items-center gap-2")
                                             i(class="fi fi-rr-flag text-gh-primaryHover")
                                             | Estado
-                                        div(class="select-wrapper")
-                                            select#estadoOrden.field-text.appearance-none.pr-10(name="estado")
-                                                each e in estadosOrden
-                                                    option(value=e.valor selected=e.valor === orden.estado)= e.etiqueta
-                                            span(class="select-icon")
-                                                i(class="fi-rr-chevron-double-down")
+                                        div#estadoOrden(class="grid grid-cols-2 gap-2")
+                                            each e in estadosOrden
+                                                - const estadoActivo = e.valor === orden.estado
+                                                label(
+                                                    class=`gh-estado-opcion relative flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 cursor-pointer overflow-hidden transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-gh-primary ${estadoActivo ? `${e.borde} ${e.fondo} opacity-100 shadow-sm gh-estado-shine` : 'border-slate-200 bg-white opacity-60 hover:opacity-100 hover:border-slate-300 hover:bg-slate-50'}`
+                                                    data-borde=e.borde
+                                                    data-fondo=e.fondo
+                                                    data-texto=e.texto
+                                                    data-check=e.check)
+                                                    input(type="radio" name="estado" value=e.valor checked=estadoActivo data-etiqueta=e.etiqueta class="sr-only")
+                                                    span(class=`w-2 h-2 rounded-full flex-shrink-0 ${e.dot}`)
+                                                    span(class=`gh-estado-texto text-xs font-semibold flex-1 truncate ${estadoActivo ? e.texto : 'text-slate-600'}`)= e.etiqueta
+                                                    span(class=`gh-estado-check w-4 h-4 rounded-full items-center justify-center flex-shrink-0 ${e.check} ${estadoActivo ? 'flex' : 'hidden'}`)
+                                                        i(class="fi fi-rr-check text-white text-[8px]")
                                         p(class="helper-text") Cualquier estado se puede elegir — lo decide quien autoriza el cambio, con su código.
 
                                     //- ── FECHAS ───────────────────────────────────────────────
@@ -248,21 +283,6 @@ block contenedor
                                                         div(class="min-w-0")
                                                             p(class="text-xs text-slate-700 leading-relaxed")= h.resumen
                                                             p(class="text-[11px] text-slate-400 mt-0.5")= `${h.quien} · ${h.fecha}`
-
-                                    //- ── ACCIONES ─────────────────────────────────────────────
-                                    div(class="flex flex-col gap-2")
-                                        //- Acciones propias, cada una con su propio modal y candado — no son
-                                        //- parte de "Guardar cambios" (convertirACompra/recibirOrden en el
-                                        //- controlador).
-                                        if permiteRecibir
-                                            button#btn-recibir-orden(type="button" class="btn btn-secondary w-full justify-center")
-                                                i(class="fi fi-rr-box-check text-xs")
-                                                | Recibir orden
-                                        if orden.tipo === 'cotizacion' && permiteEditarLineas
-                                            button#btn-convertir-compra(type="button" class="btn btn-secondary w-full justify-center")
-                                                i(class="fi fi-rr-exchange text-xs")
-                                                | Convertir a orden de compra
-                                        button#btn-guardar-cambios(type="submit" class="btn btn-danger w-full justify-center") Guardar cambios
 
                     +modalInsumoOrden(materiales, colores)
 

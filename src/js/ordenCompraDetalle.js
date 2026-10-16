@@ -43,6 +43,35 @@ if (form) {
         return !invalido;
     };
 
+    // ── Estado (tarjetas de color, no <select>) ─────────────────────────────────────────
+    // Mismo patrón que el toggle de régimen fiscal en dataCliente.js: swap de className
+    // completo por tarjeta, leyendo el color de cada una de su propio data-attribute
+    // (ordenCompraDetalle.pug ya lo pintó ahí, uno por ESTADOS_ORDEN). Así una tarjeta
+    // nueva en el catálogo no necesita tocar este archivo.
+    (function () {
+        const contenedorEstado = document.getElementById('estadoOrden');
+        if (!contenedorEstado) return;
+
+        const BASE = 'gh-estado-opcion relative flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 cursor-pointer overflow-hidden transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-gh-primary';
+        // Activa: color propio + sombra + el barrido de brillo de .gh-estado-shine (CSS,
+        // un solo barrido por `::before`, no en bucle). Inactiva: se ve apagada —
+        // opacity-60, sube a 100 solo en hover — para que la elegida resalte de verdad y
+        // no compita con cinco tarjetas iguales de "disponibles".
+        const INACTIVO = 'border-slate-200 bg-white opacity-60 hover:opacity-100 hover:border-slate-300 hover:bg-slate-50';
+
+        const repintar = () => {
+            contenedorEstado.querySelectorAll('.gh-estado-opcion').forEach((tarjeta) => {
+                const activa = tarjeta.querySelector('input[name="estado"]').checked;
+                tarjeta.className = `${BASE} ${activa ? `${tarjeta.dataset.borde} ${tarjeta.dataset.fondo} opacity-100 shadow-sm gh-estado-shine` : INACTIVO}`;
+                const texto = tarjeta.querySelector('.gh-estado-texto');
+                if (texto) texto.className = `gh-estado-texto text-xs font-semibold flex-1 truncate ${activa ? tarjeta.dataset.texto : 'text-slate-600'}`;
+                const check = tarjeta.querySelector('.gh-estado-check');
+                if (check) check.className = `gh-estado-check w-4 h-4 rounded-full items-center justify-center flex-shrink-0 ${tarjeta.dataset.check} ${activa ? 'flex' : 'hidden'}`;
+            });
+        };
+        contenedorEstado.querySelectorAll('input[name="estado"]').forEach((radio) => radio.addEventListener('change', repintar));
+    })();
+
     // ── Líneas (insumos) ────────────────────────────────────────────────────────────────
     const tabla = document.getElementById('tabla-lineas-orden');
     const filaVacia = document.getElementById('sin-lineas-orden');
@@ -547,7 +576,7 @@ if (form) {
         }
         if (!ok) return;
 
-        const estado = document.getElementById('estadoOrden').value;
+        const estado = document.querySelector('#estadoOrden input[name="estado"]:checked')?.value;
         const notas = document.getElementById('notas').value.trim() || null;
         const fechaEntregaEstimada = document.getElementById('fechaEntregaEstimada').value || null;
         const payloadLineasNuevas = lineasNuevas.map(l => ({
@@ -612,7 +641,7 @@ if (form) {
         }));
         if (!isConfirmed) return;
 
-        const etiquetaEstadoGuardado = document.getElementById('estadoOrden').selectedOptions[0]?.text || '';
+        const etiquetaEstadoGuardado = document.querySelector('#estadoOrden input[name="estado"]:checked')?.dataset.etiqueta || '';
         await Swal.fire({
             ...opcionesConfirmacion({ variante: 'ingreso', html: `<div class="gh-conf-html">${cabeceraConfirmacion({ icono: 'fi-rr-check', badge: 'Cambios guardados', contexto: etiquetaEstadoGuardado ? `Estado: ${etiquetaEstadoGuardado}` : '' })}</div>` }),
             showCancelButton: false,
