@@ -1447,6 +1447,44 @@ details[open] summary .fi-rr-caret-right {
   transform: rotate(90deg);
 }
 
+/* Transición entre pasos del asistente "Nueva ficha de confección"
+   (admin/procesos/fichas-confeccion/nueva, src/js/fichaConfeccionNueva.js) — portada de
+   /formularios/registroClientes (grupoghweb, src/components/registro/Piezas.tsx
+   useTransicionPasos + globals.css): lo que sale se desliza hacia un lado, desvanece y se
+   encoge; lo que entra llega del otro lado con un leve rebote. La dirección la pone
+   --gh-paso-entrada/--gh-paso-salida (avanzar o volver), y avanzar dispara un destello —
+   mismos nombres de keyframe con prefijo gh- en vez de registro-, mismos tiempos, con los
+   tokens de color del panel (--color-gh-primarySoft/--color-gh-primary) en vez del rosa del
+   sitio público. */
+@keyframes ghPasoEntra {
+  from { opacity: 0; transform: translateX(var(--gh-paso-entrada, 50px)) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes ghPasoDestello {
+  0%   { opacity: 0; }
+  35%  { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+.gh-paso-entra { animation: ghPasoEntra 0.5s cubic-bezier(0.22, 1.18, 0.36, 1) both; }
+.gh-paso-sale {
+  opacity: 0;
+  transform: translateX(var(--gh-paso-salida, -50px)) scale(0.97);
+  transition: opacity 0.2s ease-in, transform 0.2s ease-in;
+}
+.gh-paso-destello {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 45%, var(--color-gh-primarySoft, #FDE7F2) 0%, rgb(247 148 201 / 0.45) 45%, rgb(247 148 201 / 0) 80%);
+  animation: ghPasoDestello 0.58s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gh-paso-entra, .gh-paso-sale { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; }
+  .gh-paso-destello { display: none; }
+}
+
 /* Barrido de brillo en la tarjeta de Estado que queda elegida (admin/insumos/compra/:id,
    ordenCompraDetalle.pug/.js) — un solo barrido al quedar activa, no en bucle: marca cuál
    es sin convertir el panel en una animación constante. La tarjeta necesita overflow:hidden

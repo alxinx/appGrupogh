@@ -30,7 +30,9 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR PRODUCCIÓN (Confeccionistas, Procesos, Insumos):
-import { homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion, homeInsumos, crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado } from '../controller/produccionController.js'
+import { homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, homeInsumos, crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado } from '../controller/produccionController.js'
+import { subirDxfFicha, estadoDxfFicha } from '../controller/fichaConfeccionDxfController.js'
+import { recibirDxf } from '../middlewares/uploadDxf.js';
 import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
@@ -295,9 +297,16 @@ routes.post('/traslados/:idTraslado/recibir-devolucion',
 routes.get('/confeccionistas', pCon('READ'), csrfProtection, homeConfeccionistas);
 // Procesos es un submenú (ver leftMenu.pug): nuevo antes de la carpeta genérica, igual que
 // /insumos/compra va antes del catch-all /insumos/:idMaterial.
-routes.get('/procesos/nuevo',             pPrc('CREATE'), csrfProtection, homeProcesosNuevo);
-routes.get('/procesos/fichas-confeccion', pPrc('READ'),   csrfProtection, homeFichasConfeccion);
-routes.get('/procesos',                   pPrc('READ'),   csrfProtection, homeProcesosListado);
+routes.get('/procesos/nuevo',                            pPrc('CREATE'), csrfProtection, homeProcesosNuevo);
+routes.get('/procesos/fichas-confeccion/nueva',           pPrc('CREATE'), csrfProtection, homeFichaConfeccionNueva);
+// Subida + análisis del DXF (controller/fichaConfeccionDxfController.js): csrfProtection
+// antes de `recibirDxf` (multer) porque el token viaja en el header, no en el body
+// multipart — mismo orden que /bankentities/:idEntidad/qr.
+routes.post('/procesos/fichas-confeccion/dxf',            pPrc('CREATE'), csrfProtection, recibirDxf, subirDxfFicha);
+routes.get('/procesos/fichas-confeccion/dxf/:idArchivoDxf', pPrc('READ'), estadoDxfFicha);
+routes.get('/procesos/fichas-confeccion/biblioteca',      pPrc('READ'),   csrfProtection, homeFichaConfeccionBiblioteca);
+routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   csrfProtection, homeFichasConfeccion);
+routes.get('/procesos',                                   pPrc('READ'),   csrfProtection, homeProcesosListado);
 routes.get('/insumos',         pIns('READ'), csrfProtection, homeInsumos);
 routes.post('/insumos',        pIns('CREATE'), uploadImages.single('imagen'), csrfProtection, crearInsumo);
 // READ, no CREATE: el catálogo (abajo) ya muestra todos los códigos a cualquiera con lectura,

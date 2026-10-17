@@ -45,6 +45,7 @@ import Material from './Material.js'
 import OrdenesCompra from './OrdenesCompra.js'
 import DetallesOrdenCompra from './DetallesOrdenCompra.js'
 import OrdenesCompraHistorial from './OrdenesCompraHistorial.js'
+import FichaConfeccionDxf from './FichaConfeccionDxf.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -319,6 +320,16 @@ OrdenesCompraHistorial.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuar
 Empleados.hasMany(OrdenesCompraHistorial, { foreignKey: 'idEmpleado', as: 'movimientosOrdenesCompra' });
 OrdenesCompraHistorial.belongsTo(Empleados, { foreignKey: 'idEmpleado', as: 'empleado' });
 
+// ─── Archivos DXF de fichas de confección ────────────────────────────────────
+Usuarios.hasMany(FichaConfeccionDxf, { foreignKey: 'idUsuarioCarga', as: 'archivosDxfCargados' });
+FichaConfeccionDxf.belongsTo(Usuarios, { foreignKey: 'idUsuarioCarga', as: 'usuarioCarga' });
+
+Material.hasMany(FichaConfeccionDxf, { foreignKey: 'idMaterialAsociado', as: 'archivosDxfAsociados' });
+FichaConfeccionDxf.belongsTo(Material, { foreignKey: 'idMaterialAsociado', as: 'materialAsociado' });
+
+Familia.hasMany(FichaConfeccionDxf, { foreignKey: 'idFamiliaAsociada', as: 'archivosDxfAsociados' });
+FichaConfeccionDxf.belongsTo(Familia, { foreignKey: 'idFamiliaAsociada', as: 'familiaAsociada' });
+
 
 // ─── DetallesPagosFactura ────────────────────────────────────────────────────
 FacturaClientes.hasMany(DetallesPagosFactura, { foreignKey: 'idFacturaCliente', as: 'pagos' });
@@ -489,4 +500,5 @@ export {
   OrdenesCompra,
   DetallesOrdenCompra,
   OrdenesCompraHistorial,
+  FichaConfeccionDxf,
 }

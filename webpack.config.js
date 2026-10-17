@@ -60,7 +60,8 @@ export default {
         insumoPerfil        : '/src/js/insumoPerfil.js',
         ordenCompra         : '/src/js/ordenCompra.js',
         ordenCompraDetalle  : '/src/js/ordenCompraDetalle.js',
-        historialCompras    : '/src/js/historialCompras.js'
+        historialCompras    : '/src/js/historialCompras.js',
+        fichaConfeccionNueva: '/src/js/fichaConfeccionNueva.js'
     },
     output: {
         filename: '[name].js',

@@ -58,12 +58,70 @@ const homeProcesosListado = paginaBase({
     icono:     'fi-rr-interchange'
 });
 
-const homeFichasConfeccion = paginaBase({
-    folder:    '/procesos',
-    titulo:    'Fichas de confección',
-    subtitulo: 'Ficha técnica de cada prenda: procesos, tiempos e insumos asociados',
-    icono:     'fi-rr-document'
-});
+// Fichas de confección ya tiene su propia pantalla (dos caminos: crear una o consultar la
+// biblioteca) — salió de `paginaBase` por eso, igual que Insumos ya había salido antes.
+// `currentPath` se mantiene en '/procesos' en las tres pantallas (acá, la nueva y la
+// biblioteca) para que el folder del menú lateral siga marcado activo aunque la URL real
+// sea otra — mismo criterio que homeOrdenCompra/homeHistorialCompras con '/insumos'.
+const homeFichasConfeccion = (req, res) => {
+    try {
+        return res.render('./administrador/produccion/fichasConfeccion', {
+            pagina: 'Fichas de confección',
+            subPagina: 'Fichas de confección',
+            csrfToken: req.csrfToken(),
+            currentPath: '/procesos'
+        });
+    } catch (e) {
+        console.error('produccionController(fichasConfeccion):', e);
+        return res.status(500).send('No se pudo cargar la página.');
+    }
+};
+
+// GET /admin/procesos/fichas-confeccion/nueva — asistente paso a paso, inspirado en la
+// transición de /formularios/registroClientes (grupoghweb, src/components/registro/
+// Piezas.tsx useTransicionPasos): lo que sale se desliza y encoge, lo que entra llega con
+// un leve rebote y un destello marca el avance — portado a CSS/JS plano acá (sin React) y
+// con los tokens gh-* en vez del rosa del sitio público (public/css/input.css,
+// src/js/fichaConfeccionNueva.js). Hoy solo tiene el paso de Referencia completo: el resto
+// de los campos (insumos, procesos, tallas...) está pendiente de definir, así que no hay
+// endpoint de guardado todavía — ni tabla: nada de esto escribe en la base aún.
+const homeFichaConfeccionNueva = (req, res) => {
+    try {
+        return res.render('./administrador/produccion/fichaConfeccionNueva', {
+            pagina: 'Fichas de confección',
+            subPagina: 'Nueva ficha de confección',
+            csrfToken: req.csrfToken(),
+            currentPath: '/procesos'
+        });
+    } catch (e) {
+        console.error('produccionController(fichaConfeccionNueva):', e);
+        return res.status(500).send('No se pudo cargar la página.');
+    }
+};
+
+// GET /admin/procesos/fichas-confeccion/biblioteca — listado. Datos de ejemplo fijos
+// (DUMMY_FICHAS_CONFECCION, debajo): todavía no hay tabla de fichas de confección en la
+// base, así que no hay consulta real detrás — se reemplaza cuando exista el modelo.
+const DUMMY_FICHAS_CONFECCION = [
+    { referencia: 'VEST-2026-014', prenda: 'Vestido midi con volante', insumos: 'Lino, blonda, hilo poliéster', estado: 'Activa' },
+    { referencia: 'BLU-2026-003',  prenda: 'Blusa manga campana',     insumos: 'Viscosa, botones nácar',       estado: 'Activa' },
+    { referencia: 'PANT-2025-091', prenda: 'Pantalón palazzo',        insumos: 'Lino, cierre invisible',       estado: 'Borrador' },
+    { referencia: 'CHAQ-2025-077', prenda: 'Chaqueta oversize',       insumos: 'Dril, forro, botones metálicos', estado: 'Archivada' }
+];
+const homeFichaConfeccionBiblioteca = (req, res) => {
+    try {
+        return res.render('./administrador/produccion/fichaConfeccionBiblioteca', {
+            pagina: 'Fichas de confección',
+            subPagina: 'Biblioteca de fichas de confección',
+            csrfToken: req.csrfToken(),
+            currentPath: '/procesos',
+            fichas: DUMMY_FICHAS_CONFECCION
+        });
+    } catch (e) {
+        console.error('produccionController(fichaConfeccionBiblioteca):', e);
+        return res.status(500).send('No se pudo cargar la página.');
+    }
+};
 
 // GET /admin/insumos — listado del catálogo (columna izquierda) y formulario de alta (derecha).
 // El catálogo es chico (un registro por material del DXF), así que se trae completo y ordenado
@@ -316,6 +374,7 @@ const cambiarEstadoInsumo = async (req, res) => {
 };
 
 export {
-    homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion, homeInsumos,
+    homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion,
+    homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, homeInsumos,
     crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado
 };

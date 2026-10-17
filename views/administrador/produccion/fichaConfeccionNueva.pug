@@ -1,0 +1,158 @@
+extends ../../layout/index
+block contenedor
+    //- Asistente "Nueva ficha de confección" (admin/procesos/fichas-confeccion/nueva).
+    //- Transición entre pasos PORTADA de /formularios/registroClientes (grupoghweb,
+    //- src/components/registro/Piezas.tsx useTransicionPasos + globals.css): lo que sale se
+    //- desliza y encoge, lo que entra llega con un leve rebote, y avanzar dispara un
+    //- destello — mismo mecanismo, reescrito en CSS/JS plano (acá no hay React) y con los
+    //- tokens gh-* en vez del rosa del sitio público (public/css/input.css .gh-paso-*,
+    //- src/js/fichaConfeccionNueva.js).
+    //-
+    //- Solo el paso 1 (DXF, molde y video) está completo, y solo de front: elige el archivo
+    //- y lo muestra, sin subirlo. El resto de los campos de la ficha (insumos, procesos,
+    //- tallas, instrucciones...) todavía no está definido, así que el paso 2 es un cartel de
+    //- "pendiente" y no hay endpoint de guardado — ni tabla: nada de esto escribe en la base
+    //- todavía.
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-pencil-ruler',
+                                    titulo:    'Nueva ficha de confección',
+                                    subtitulo: 'Arma la ficha técnica paso a paso',
+                                    iconoSub:  'fi-rr-document'
+                                })
+                                a(href="/admin/procesos/fichas-confeccion" class="btn btn-secondary btn-sm text-xs whitespace-nowrap flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-xs")
+                                    | Volver
+
+                            div(class="col-span-12 max-w-4xl mx-auto w-full flex flex-col gap-5")
+
+                                //- ── INDICADOR DE PASOS ──────────────────────────────────
+                                //- Mismo espíritu que `Pasos` en Piezas.tsx (número en círculo,
+                                //- el activo resaltado) simplificado a dos pasos: con solo dos no
+                                //- hace falta el estado "ya pasado" con check, un paso futuro
+                                //- siempre se ve igual hasta que le toca.
+                                nav(aria-label="Pasos de la ficha")
+                                    ol(class="flex items-center justify-center gap-2")
+                                        each nombre, i in ['Archivos', 'Resto de campos']
+                                            li(class="flex items-center gap-2")
+                                                button(
+                                                    type="button"
+                                                    data-indicador-paso=i
+                                                    disabled=i > 0
+                                                    class=`gh-paso-ind flex items-center gap-2 text-xs font-bold transition-colors ${i === 0 ? 'text-slate-800' : 'text-slate-400'}`)
+                                                    span(class=`gh-paso-ind-circulo w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 ${i === 0 ? 'bg-gh-primary text-white' : 'bg-slate-100 text-slate-400'}`)= i + 1
+                                                    span(class="hidden sm:inline")= nombre
+                                                if i < 1
+                                                    span(class="text-slate-300" aria-hidden="true") ›
+
+                                //- ── CONTENEDOR DE PASOS (con transición) ────────────────
+                                div#asistente-ficha(class="relative bg-white rounded-2xl shadow-sm border border-slate-100 p-6 md:p-8 overflow-hidden" data-csrf=csrfToken)
+
+                                    //- PASO 1 — Archivos de la prenda: tres cargas en paralelo, cada
+                                    //- una con su propio slot vacío/lleno (src/js/
+                                    //- fichaConfeccionNueva.js). Mismo patrón `.inputUpload` que ya
+                                    //- usa el resto del panel (documentLoader.pug, insumoPerfil.pug)
+                                    //- — un input de archivo real y transparente encima de la caja
+                                    //- punteada, así que soltar un archivo encima también funciona,
+                                    //- sin JS de arrastre propio.
+                                    //-
+                                    //- Solo el DXF sube de verdad hoy (data-subida-url): se manda a
+                                    //- POST .../dxf apenas se elige, y mientras el servidor lo analiza
+                                    //- en segundo plano (controller/fichaConfeccionDxfController.js)
+                                    //- el front hace polling a GET .../dxf/:id hasta ver 'listo' o
+                                    //- 'error'. El molde y el video quedan solo de vista previa local
+                                    //- por ahora — no tienen `data-subida-url`.
+                                    section(data-paso class="gh-paso-entra")
+                                        h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Sube los archivos de la prenda
+                                        p(class="mt-1.5 mb-6 text-sm text-slate-500") El DXF, el molde y el video del proceso de confección.
+                                        div(class="grid grid-cols-1 sm:grid-cols-3 gap-4")
+                                            - const archivosFicha = [{ id: 'dxf', etiqueta: 'Carga tu archivo DXF', icono: 'fi-rr-file-code', accept: '.dxf', caption: 'Archivo .dxf del patronaje', subidaUrl: '/admin/procesos/fichas-confeccion/dxf' }, { id: 'molde', etiqueta: 'Carga el molde', icono: 'fi-rr-vector', accept: '.pdf,.jpg,.jpeg,.png,.webp', caption: 'PDF o imagen del molde' }, { id: 'video', etiqueta: 'Carga el video del proceso', icono: 'fi-rr-video-camera', accept: '.mp4,.mov,.webm', caption: 'Video del proceso de confección' }]
+                                            each campo in archivosFicha
+                                                div(data-slot-archivo=campo.id data-subida-url=campo.subidaUrl || '' class="flex flex-col gap-2")
+                                                    span(class="text-sm font-bold text-slate-700")= campo.etiqueta
+
+                                                    //- Estado vacío: caja punteada + input real transparente encima.
+                                                    div(data-zona-vacia class="relative group")
+                                                        input(type="file" accept=campo.accept data-input-archivo=campo.id class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
+                                                        div(class="inputUpload !p-6 !mb-0 h-full")
+                                                            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-gh-primaryHover")
+                                                                i(class=`fi ${campo.icono} text-xl`)
+                                                            span(class="text-sm font-bold text-gray-600 text-center leading-snug")= campo.etiqueta
+                                                            span(class="text-xs text-gray-400 mt-1 text-center")= campo.caption
+
+                                                    //- Estado lleno: nombre + peso + quitar. Empieza oculto.
+                                                    div(data-zona-llena class="hidden flex-col gap-3 border-2 border-gh-primary bg-gh-primarySoft/40 rounded-2xl px-4 py-3.5")
+                                                        div(class="flex items-center gap-3")
+                                                            div(class="w-9 h-9 rounded-full bg-white flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                                i(class=`fi ${campo.icono} text-sm`)
+                                                            div(class="flex-1 min-w-0")
+                                                                p(data-nombre-archivo class="text-xs font-bold text-slate-800 truncate")
+                                                                p(data-peso-archivo class="text-[11px] text-slate-500 tabular-nums")
+                                                            button(type="button" data-quitar-archivo aria-label=`Quitar: ${campo.etiqueta}` class="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
+                                                                i(class="fi fi-rr-cross-small")
+
+                                                        //- Solo para slots con subida real (hoy, el DXF): estado del
+                                                        //- análisis en segundo plano.
+                                                        if campo.subidaUrl
+                                                            div(data-estado-analisis class="hidden items-center gap-2 pt-3 border-t border-gh-primary/20 text-xs font-semibold text-slate-500")
+                                                                span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0" data-spinner-analisis)
+                                                                span(data-texto-analisis) Analizando el archivo…
+                                                            div(data-resultado-analisis class="hidden flex-col gap-1 pt-3 border-t border-gh-primary/20")
+                                                                div(class="flex items-center justify-between gap-2 text-xs")
+                                                                    span(class="text-slate-500") Style Name
+                                                                    span(data-campo-estiloNombre class="font-bold text-slate-800 text-right")
+                                                                div(class="flex items-center justify-between gap-2 text-xs")
+                                                                    span(class="text-slate-500") Size
+                                                                    span(data-campo-talla class="font-bold text-slate-800 text-right")
+                                                                div(class="flex items-center justify-between gap-2 text-xs")
+                                                                    span(class="text-slate-500") Material
+                                                                    span(data-campo-material class="font-bold text-slate-800 text-right")
+
+                                                                //- Asociación automática: Material por código DXF (contra
+                                                                //- MATERIAL.codigoMaterial) y Style Name por familia (contra
+                                                                //- FAMILIA.nombreFamilia) — helpers/dxf.js asociarCamposDxf.
+                                                                //- Arranca en amarillo (viñeta, "buscando") y pasa a check
+                                                                //- verde si encontró o check rojo si no, cuando el polling
+                                                                //- trae la respuesta (src/js/fichaConfeccionNueva.js).
+                                                                div(class="flex flex-col gap-1.5 mt-2 pt-2 border-t border-gh-primary/20")
+                                                                    div(data-asociacion="material" class="flex items-center gap-2 text-[11px]")
+                                                                        span(data-marca-pendiente class="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0")
+                                                                        span(data-marca-resuelta class="hidden w-3.5 h-3.5 rounded-full items-center justify-center flex-shrink-0")
+                                                                            i(class="fi fi-rr-check text-white text-[7px]")
+                                                                        span(data-texto-asociacion class="text-slate-600") Buscando el insumo por código DXF…
+                                                                    div(data-asociacion="familia" class="flex items-center gap-2 text-[11px]")
+                                                                        span(data-marca-pendiente class="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0")
+                                                                        span(data-marca-resuelta class="hidden w-3.5 h-3.5 rounded-full items-center justify-center flex-shrink-0")
+                                                                            i(class="fi fi-rr-check text-white text-[7px]")
+                                                                        span(data-texto-asociacion class="text-slate-600") Buscando la familia por nombre…
+                                                            p(data-error-analisis class="hidden pt-3 border-t border-rose-200 text-xs font-semibold text-rose-600")
+
+                                    //- PASO 2 — pendiente de definir el resto de los campos
+                                    section(data-paso class="hidden")
+                                        h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Acá van los demás campos
+                                        p(class="mt-1.5 mb-6 text-sm text-slate-500") Insumos, procesos, tallas, instrucciones de confección... en cuanto se definan, este paso se completa.
+                                        div(class="rounded-xl border-2 border-dashed border-slate-200 px-5 py-10 flex flex-col items-center text-center gap-2")
+                                            i(class="fi fi-rr-time-forward text-xl text-slate-300")
+                                            span(class="text-sm font-semibold text-slate-500") Pendiente de definir
+
+                                //- ── NAV ───────────────────────────────────────────────
+                                div(class="flex items-center justify-between gap-3")
+                                    button#btn-paso-atras(type="button" disabled class="btn btn-secondary")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Atrás
+                                    button#btn-paso-continuar(type="button" class="btn btn-danger") Continuar
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/fichaConfeccionNueva.js")

@@ -1,0 +1,43 @@
+extends ../../layout/index
+block contenedor
+    //- Entrada de Fichas de confección (admin/procesos/fichas-confeccion). Dos caminos, no un
+    //- listado: crear una ficha nueva (asistente, fichaConfeccionNueva.pug) o consultar las
+    //- que ya existen (fichaConfeccionBiblioteca.pug) — mismo patrón de tarjeta grande de
+    //- elección que usa /formularios/registroClientes en grupoghweb (Piezas.tsx OpcionTipo)
+    //- para "¿A nombre de quién facturamos?", acá con los tokens gh-* del panel.
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                +headerAdmin({
+                                    icono:     'fi-rr-document',
+                                    titulo:    'Fichas de confección',
+                                    subtitulo: 'Ficha técnica de cada prenda: procesos, tiempos e insumos asociados',
+                                    iconoSub:  'fi-rr-wrench'
+                                })
+
+                            div(class="col-span-12 flex flex-col items-center text-center pt-6 pb-4")
+                                h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") ¿Qué quieres hacer?
+                                p(class="mt-1 text-sm text-slate-500") Elige una opción para empezar.
+
+                            div(class="col-span-12 max-w-2xl mx-auto w-full grid grid-cols-1 sm:grid-cols-2 gap-4")
+                                a(href="/admin/procesos/fichas-confeccion/nueva" class="group flex flex-col items-start text-left border-2 border-slate-200 rounded-2xl px-6 py-6 bg-white hover:border-gh-primary hover:bg-gh-primarySoft/40 transition-colors")
+                                    span(class="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-gh-primary transition-colors")
+                                        i(class="fi fi-rr-pencil-ruler text-slate-500 group-hover:text-white transition-colors")
+                                    span(class="block mt-4 text-base font-bold text-slate-800") Nueva ficha de confección
+                                    span(class="block mt-1.5 text-sm text-slate-500 leading-snug") Arma la ficha técnica de una prenda nueva, paso a paso.
+
+                                a(href="/admin/procesos/fichas-confeccion/biblioteca" class="group flex flex-col items-start text-left border-2 border-slate-200 rounded-2xl px-6 py-6 bg-white hover:border-gh-primary hover:bg-gh-primarySoft/40 transition-colors")
+                                    span(class="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-gh-primary transition-colors")
+                                        i(class="fi fi-rr-books text-slate-500 group-hover:text-white transition-colors")
+                                    span(class="block mt-4 text-base font-bold text-slate-800") Biblioteca de fichas de confección
+                                    span(class="block mt-1.5 text-sm text-slate-500 leading-snug") Consulta y revisa las fichas que ya se crearon.

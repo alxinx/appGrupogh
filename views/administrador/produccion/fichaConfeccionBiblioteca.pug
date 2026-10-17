@@ -1,0 +1,53 @@
+extends ../../layout/index
+block contenedor
+    //- Biblioteca de fichas de confección (admin/procesos/fichas-confeccion/biblioteca).
+    //- DUMMY por ahora: `fichas` son datos de ejemplo fijos del controlador
+    //- (DUMMY_FICHAS_CONFECCION, produccionController.js) — todavía no hay tabla de fichas
+    //- de confección en la base, así que no hay búsqueda ni paginación real detrás. Cuando
+    //- exista el modelo, esto se reemplaza por el mismo patrón de listado del resto del
+    //- panel (ver historialCompras.pug: búsqueda + filtros + paginación de servidor).
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-books',
+                                    titulo:    'Biblioteca de fichas de confección',
+                                    subtitulo: 'Fichas ya creadas',
+                                    iconoSub:  'fi-rr-document'
+                                })
+                                a(href="/admin/procesos/fichas-confeccion" class="btn btn-secondary btn-sm text-xs whitespace-nowrap flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-xs")
+                                    | Volver
+
+                            div(class="col-span-12 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2.5 text-sm text-amber-700")
+                                i(class="fi fi-rr-info text-amber-500")
+                                | Esta lista es de ejemplo — todavía no hay fichas reales guardadas.
+
+                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                div(class="overflow-x-auto")
+                                    table(class="w-full text-sm")
+                                        thead
+                                            tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
+                                                th(class="py-3 px-5 font-semibold") Referencia
+                                                th(class="py-3 px-5 font-semibold") Prenda
+                                                th(class="py-3 px-5 font-semibold") Insumos
+                                                th(class="py-3 px-5 font-semibold text-right") Estado
+                                        tbody
+                                            each f in fichas
+                                                tr(class="border-b border-slate-100 last:border-0")
+                                                    td(class="py-3.5 px-5 font-semibold text-slate-800 tabular-nums") #{f.referencia}
+                                                    td(class="py-3.5 px-5 text-slate-700") #{f.prenda}
+                                                    td(class="py-3.5 px-5 text-slate-500") #{f.insumos}
+                                                    td(class="py-3.5 px-5 text-right")
+                                                        - const claseEstado = f.estado === 'Activa' ? 'bg-emerald-100 text-emerald-600' : f.estado === 'Borrador' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-600'
+                                                        span(class=`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${claseEstado}`)= f.estado

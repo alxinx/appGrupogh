@@ -16,7 +16,7 @@ import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 // —en `documentacion/…` del público— se siguen abriendo igual mientras se migran
 // (seed/migracionDocumentosProveedorPrivado.js).
 
-export const CARPETAS_PRIVADAS = ['provedores'];
+export const CARPETAS_PRIVADAS = ['provedores', 'dxf'];
 
 // Vida del enlace firmado: alcanza para abrir el documento, no para compartirlo.
 const VIDA_URL_SEG = 5 * 60;
