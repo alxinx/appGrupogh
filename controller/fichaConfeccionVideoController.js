@@ -89,7 +89,7 @@ const estadoVideo = async (req, res) => {
     try {
         const video = await FichaConfeccionVideo.findOne({
             where: { idVideo: req.params.idVideo, idUsuarioCarga: req.usuario.idUsuario },
-            attributes: ['idVideo', 'nombreOriginal', 'orden', 'estado', 'errorMensaje']
+            attributes: ['idVideo', 'nombreOriginal', 'orden', 'estado', 'errorMensaje', 'cloudflareVideoUid']
         });
         if (!video) return res.status(404).json({ success: false, mensaje: 'Ese video no existe.' });
 
