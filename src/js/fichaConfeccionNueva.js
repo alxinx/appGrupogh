@@ -394,6 +394,319 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     }
 })();
 
+// ── Video del proceso: Direct Creator Upload de Cloudflare Stream ──────────────────────
+// A diferencia del DXF y el molde, el archivo nunca llega a este servidor — el backend solo
+// entrega una URL de subida de un solo uso (POST .../video/solicitar-subida) y el navegador
+// sube el archivo DIRECTO a Cloudflare con esa URL (helpers/cloudflareStream.js explica por
+// qué: evitar que un video pesado consuma recursos de este backend). Hasta 3 videos, cada
+// uno en su propia fila con progreso individual (pendiente → subiendo % → completado ✓ →
+// error + reintentar) — y el indicador de arriba (#indicador-videos, afuera de los pasos)
+// se mantiene visible aunque el usuario avance al paso 2 mientras todavía hay algo subiendo.
+(function () {
+    const MAX_VIDEOS = 3;
+    const slotVideo = document.querySelector('[data-slot-video]');
+    if (!slotVideo) return;
+
+    const URL_VIDEO = '/admin/procesos/fichas-confeccion/video';
+    const input = slotVideo.querySelector('[data-input-video]');
+    const zonaVacia = slotVideo.querySelector('[data-zona-vacia-video]');
+    const listaVideos = slotVideo.querySelector('[data-lista-videos]');
+    const plantillaFila = document.getElementById('plantilla-fila-video');
+    const indicador = document.getElementById('indicador-videos');
+    const indicadorTexto = indicador?.querySelector('[data-indicador-videos-texto]');
+
+    // clave local (no es el idVideo del servidor hasta que responde solicitar-subida) → fila
+    // + estado, para poder reintentar sin pedirle el archivo de nuevo al usuario.
+    const videos = new Map();
+
+    const pesoLegible = (bytes) => {
+        if (!bytes) return '';
+        if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    };
+
+    const actualizarZonaVacia = () => {
+        const llenos = videos.size >= MAX_VIDEOS;
+        zonaVacia.classList.toggle('hidden', llenos);
+        input.disabled = llenos;
+    };
+
+    const actualizarIndicador = () => {
+        const subiendo = [...videos.values()].filter((v) => v.estado === 'pendiente' || v.estado === 'subiendo').length;
+        const conError = [...videos.values()].filter((v) => v.estado === 'error').length;
+        if (!subiendo && !conError) { indicador.classList.add('hidden'); indicador.classList.remove('flex'); return; }
+
+        indicador.classList.remove('hidden');
+        indicador.classList.add('flex');
+        const partes = [];
+        if (subiendo) partes.push(`Subiendo ${subiendo} video${subiendo > 1 ? 's' : ''}…`);
+        if (conError) partes.push(`${conError} con error`);
+        if (indicadorTexto) indicadorTexto.textContent = partes.join(' · ');
+    };
+
+    const pintarFila = (v) => {
+        v.nombreEl.textContent = v.nombreOriginal;
+        v.spinnerEl.classList.toggle('hidden', v.estado !== 'pendiente' && v.estado !== 'subiendo');
+        v.checkEl.classList.toggle('hidden', v.estado !== 'completado');
+        v.checkEl.classList.toggle('flex', v.estado === 'completado');
+        v.barraEl.style.width = `${v.estado === 'completado' ? 100 : v.porcentaje}%`;
+        v.barraEl.classList.toggle('bg-rose-500', v.estado === 'error');
+        v.barraEl.classList.toggle('bg-gh-primary', v.estado !== 'error');
+        v.btnReintentar.classList.toggle('hidden', v.estado !== 'error');
+        v.iconoEl.classList.toggle('text-rose-400', v.estado === 'error');
+        v.iconoEl.classList.toggle('text-slate-400', v.estado !== 'error');
+
+        if (v.estado === 'pendiente') v.textoEl.textContent = 'Pendiente…';
+        else if (v.estado === 'subiendo') v.textoEl.textContent = `Subiendo… ${v.porcentaje}%`;
+        else if (v.estado === 'completado') v.textoEl.textContent = 'Completado';
+        else v.textoEl.textContent = v.errorMensaje || 'Error al subir el video.';
+        v.textoEl.classList.toggle('text-rose-600', v.estado === 'error');
+        v.textoEl.classList.toggle('font-semibold', v.estado === 'error');
+        v.textoEl.classList.toggle('text-slate-500', v.estado !== 'error');
+
+        actualizarIndicador();
+    };
+
+    const crearFila = (clave, archivo) => {
+        const nodo = plantillaFila.content.firstElementChild.cloneNode(true);
+        listaVideos.appendChild(nodo);
+        const v = {
+            clave,
+            archivo,
+            idVideo: null,
+            nombreOriginal: archivo.name,
+            modoSubida: null,
+            estado: 'pendiente',
+            porcentaje: 0,
+            errorMensaje: null,
+            filaEl: nodo,
+            iconoEl: nodo.querySelector('[data-icono-fila]'),
+            nombreEl: nodo.querySelector('[data-nombre-fila]'),
+            spinnerEl: nodo.querySelector('[data-spinner-fila]'),
+            checkEl: nodo.querySelector('[data-check-fila]'),
+            barraEl: nodo.querySelector('[data-barra-fila]'),
+            textoEl: nodo.querySelector('[data-texto-estado-fila]'),
+            btnReintentar: nodo.querySelector('[data-btn-reintentar-fila]')
+        };
+        v.btnReintentar.addEventListener('click', () => reintentar(v));
+        videos.set(clave, v);
+        pintarFila(v);
+        return v;
+    };
+
+    // Modo simulado (uploadURL === null, sin CLOUDFLARE_STREAM_API_TOKEN/
+    // CLOUDFLARE_ACCOUNT_ID — helpers/cloudflareStream.js): imita el progreso con un
+    // intervalo, así el flujo completo se puede probar sin la clave.
+    const simularSubida = (v) => new Promise((resolve) => {
+        let pct = 0;
+        const t = setInterval(() => {
+            pct = Math.min(100, pct + 10 + Math.random() * 15);
+            v.porcentaje = Math.round(pct);
+            pintarFila(v);
+            if (pct >= 100) { clearInterval(t); resolve(); }
+        }, 180);
+    });
+
+    // POST simple de un solo request — Cloudflare le pone un tope DURO de 200MB (confirmado
+    // en sesión: un archivo más grande vuelve un 4xx acá). El backend ya decide por
+    // adelantado si el archivo entra en este método o necesita TUS (controller/
+    // fichaConfeccionVideoController.js crearSesionSubida), así que si esto se llama es
+    // porque el archivo mide menos de ese tope.
+    const subirArchivoDirectoSimple = (v, uploadURL) => new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadURL);
+        xhr.upload.addEventListener('progress', (e) => {
+            if (!e.lengthComputable) return;
+            v.porcentaje = Math.round((e.loaded / e.total) * 100);
+            pintarFila(v);
+        });
+        xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) return resolve();
+            reject(new Error(`Cloudflare rechazó la subida (HTTP ${xhr.status})${detalleError(xhr)}`));
+        });
+        xhr.addEventListener('error', () => reject(new Error('Se perdió la conexión subiendo el video (red o CORS).')));
+
+        const formData = new FormData();
+        formData.append('file', v.archivo);
+        xhr.send(formData);
+    });
+
+    // TUS (resumable, por partes) — para un archivo que pasó los ~200MB del método simple.
+    // La sesión ya se creó en el backend (crearSubidaTus); acá solo se manda el archivo en
+    // pedazos con PATCH directo a `uploadURL`, respetando el offset que Cloudflare confirma
+    // en cada respuesta (protocolo TUS 1.0.0). Los bytes tampoco pasan por este backend.
+    const TAMANO_PARTE_TUS = 50 * 1024 * 1024;
+    const subirArchivoDirectoTus = (v, uploadURL) => new Promise((resolve, reject) => {
+        const total = v.archivo.size;
+
+        const enviarParte = (offset) => {
+            const parte = v.archivo.slice(offset, Math.min(offset + TAMANO_PARTE_TUS, total));
+            const xhr = new XMLHttpRequest();
+            xhr.open('PATCH', uploadURL);
+            xhr.setRequestHeader('Tus-Resumable', '1.0.0');
+            xhr.setRequestHeader('Upload-Offset', String(offset));
+            xhr.setRequestHeader('Content-Type', 'application/offset+octet-stream');
+            xhr.upload.addEventListener('progress', (e) => {
+                if (!e.lengthComputable) return;
+                v.porcentaje = Math.round(((offset + e.loaded) / total) * 100);
+                pintarFila(v);
+            });
+            xhr.addEventListener('load', () => {
+                console.debug('[video-tus]', v.idVideo, `parte [${offset},${offset + parte.size}) → HTTP ${xhr.status}, Upload-Offset recibido:`, xhr.getResponseHeader('Upload-Offset'));
+                if (xhr.status < 200 || xhr.status >= 300) {
+                    return reject(new Error(`Cloudflare rechazó una parte de la subida (HTTP ${xhr.status})${detalleError(xhr)}`));
+                }
+                const nuevoOffset = Number(xhr.getResponseHeader('Upload-Offset'));
+                const siguiente = Number.isFinite(nuevoOffset) ? nuevoOffset : offset + parte.size;
+                if (siguiente >= total) { v.porcentaje = 100; pintarFila(v); console.debug('[video-tus]', v.idVideo, 'todas las partes enviadas, resolviendo.'); return resolve(); }
+                enviarParte(siguiente);
+            });
+            xhr.addEventListener('error', (ev) => { console.error('[video-tus]', v.idVideo, `parte [${offset},...) tiró error de red/CORS:`, ev); reject(new Error('Se perdió la conexión subiendo el video (red o CORS).')); });
+            xhr.send(parte);
+        };
+
+        enviarParte(0);
+    });
+
+    // Cloudflare devuelve el motivo real del rechazo en el cuerpo (JSON `errors[].message`,
+    // o texto plano) — mostrarlo tal cual en vez de un genérico es lo que de verdad ayuda a
+    // diagnosticar (tamaño, formato, URL vencida...).
+    const detalleError = (xhr) => {
+        let detalle = '';
+        try {
+            const cuerpo = JSON.parse(xhr.responseText);
+            detalle = cuerpo?.errors?.[0]?.message || cuerpo?.messages?.[0]?.message || '';
+        } catch (_) {
+            detalle = (xhr.responseText || '').slice(0, 200);
+        }
+        return detalle ? `: ${detalle}` : '.';
+    };
+
+    const subirArchivoDirecto = (v, uploadURL) => {
+        if (!uploadURL) return simularSubida(v);
+        return v.modoSubida === 'tus' ? subirArchivoDirectoTus(v, uploadURL) : subirArchivoDirectoSimple(v, uploadURL);
+    };
+
+    // Transcodeando puede tardar más que la subida misma — se consulta cada pocos segundos
+    // hasta 'ready'/'error' en vez de darlo por completado apenas terminan los bytes.
+    const esperarListo = async (v) => {
+        console.debug('[video]', v.idVideo, 'esperando a que Cloudflare termine de procesar…');
+        let vuelta = 0;
+        for (;;) {
+            vuelta += 1;
+            const r = await fetch(`${URL_VIDEO}/${v.idVideo}`).catch((err) => { console.debug('[video]', v.idVideo, 'consulta de estado falló (red), reintenta:', err); return null; });
+            if (r) {
+                const d = await r.json().catch(() => ({}));
+                if (r.ok && d.success) {
+                    if (vuelta % 5 === 1) console.debug('[video]', v.idVideo, 'vuelta', vuelta, 'estado actual:', d.video.estado);
+                    if (d.video.estado === 'ready') return;
+                    if (d.video.estado === 'error') throw new Error(d.video.errorMensaje || 'Cloudflare no pudo procesar el video.');
+                } else {
+                    console.debug('[video]', v.idVideo, 'consulta de estado respondió sin éxito:', r.status, d);
+                }
+            }
+            // Una consulta fallida (red cortada un instante) no es un error del video — se
+            // reintenta en la próxima vuelta en vez de tirar la fila a error por eso.
+            await new Promise((res) => setTimeout(res, 3000));
+        }
+    };
+
+    const procesarVideo = async (v) => {
+        try {
+            v.estado = 'pendiente';
+            pintarFila(v);
+
+            const r = await fetch(`${URL_VIDEO}/solicitar-subida`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                body: JSON.stringify({ orden: [...videos.values()].indexOf(v) + 1, nombreOriginal: v.archivo.name, pesoBytes: v.archivo.size })
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo iniciar la subida.');
+            v.idVideo = d.idVideo;
+            v.modoSubida = d.modo;
+
+            v.estado = 'subiendo';
+            pintarFila(v);
+            console.debug('[video]', v.idVideo, 'subida directa iniciada, modo', v.modoSubida);
+            await subirArchivoDirecto(v, d.uploadURL);
+            console.debug('[video]', v.idVideo, 'subida directa resuelta, confirmando con el backend…');
+
+            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', headers: { 'CSRF-Token': CSRF } });
+            const dConfirmar = await rConfirmar.json().catch(() => ({}));
+            if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
+            console.debug('[video]', v.idVideo, 'confirmar respondió estado =', dConfirmar.estado);
+
+            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'Cloudflare no pudo procesar el video.');
+            if (dConfirmar.estado !== 'ready') await esperarListo(v);
+
+            v.estado = 'completado';
+            v.porcentaje = 100;
+            pintarFila(v);
+        } catch (e) {
+            console.error('[video]', v.idVideo, 'procesarVideo falló:', e);
+            v.estado = 'error';
+            v.errorMensaje = e.message;
+            pintarFila(v);
+            // Si la subida directa falló del lado del navegador, Cloudflare puede no tener
+            // nada que reportar todavía — se avisa al backend para que el estado no se quede
+            // en 'uploading' para siempre.
+            if (v.idVideo) {
+                fetch(`${URL_VIDEO}/${v.idVideo}/marcar-error`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                    body: JSON.stringify({ mensaje: e.message })
+                }).catch(() => {});
+            }
+        } finally {
+            actualizarZonaVacia();
+        }
+    };
+
+    const reintentar = async (v) => {
+        v.estado = 'pendiente';
+        v.errorMensaje = null;
+        v.porcentaje = 0;
+        pintarFila(v);
+        try {
+            const r = await fetch(`${URL_VIDEO}/${v.idVideo}/reintentar`, { method: 'POST', headers: { 'CSRF-Token': CSRF } });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo reintentar.');
+            v.modoSubida = d.modo;
+
+            v.estado = 'subiendo';
+            pintarFila(v);
+            await subirArchivoDirecto(v, d.uploadURL);
+
+            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', headers: { 'CSRF-Token': CSRF } });
+            const dConfirmar = await rConfirmar.json().catch(() => ({}));
+            if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
+            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'Cloudflare no pudo procesar el video.');
+            if (dConfirmar.estado !== 'ready') await esperarListo(v);
+
+            v.estado = 'completado';
+            v.porcentaje = 100;
+            pintarFila(v);
+        } catch (e) {
+            v.estado = 'error';
+            v.errorMensaje = e.message;
+            pintarFila(v);
+        }
+    };
+
+    input?.addEventListener('change', () => {
+        const disponibles = MAX_VIDEOS - videos.size;
+        const archivos = Array.from(input.files || []).slice(0, Math.max(0, disponibles));
+        input.value = '';
+        archivos.forEach((archivo) => {
+            const clave = `${Date.now()}-${Math.random()}`;
+            const v = crearFila(clave, archivo);
+            procesarVideo(v);
+        });
+        actualizarZonaVacia();
+    });
+})();
+
 const SALIDA_MS = 200;
 const contenedor = document.getElementById('asistente-ficha');
 

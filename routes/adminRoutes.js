@@ -35,6 +35,7 @@ import { subirDxfFicha, estadoDxfFicha } from '../controller/fichaConfeccionDxfC
 import { recibirDxf } from '../middlewares/uploadDxf.js';
 import { subirMolde, iniciarGeneracionMolde, estadoIntentoMolde, aprobarMoldeIa } from '../controller/fichaConfeccionMoldeController.js'
 import { recibirMolde } from '../middlewares/uploadMolde.js';
+import { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo } from '../controller/fichaConfeccionVideoController.js'
 import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
@@ -314,6 +315,15 @@ routes.post('/procesos/fichas-confeccion/molde',                       pPrc('CRE
 routes.post('/procesos/fichas-confeccion/molde/:idMolde/generar',      pPrc('CREATE'), csrfProtection, iniciarGeneracionMolde);
 routes.get('/procesos/fichas-confeccion/molde/intento/:idIntento',     pPrc('READ'),   estadoIntentoMolde);
 routes.post('/procesos/fichas-confeccion/molde/intento/:idIntento/aprobar', pPrc('CREATE'), csrfProtection, aprobarMoldeIa);
+// Video del proceso (controller/fichaConfeccionVideoController.js) — Direct Creator Upload
+// de Cloudflare Stream: el navegador nunca sube el archivo por acá, solo pide la URL de
+// subida y después confirma/consulta/reintenta por idVideo. Sin multer, por eso no hace
+// falta ningún orden especial con csrfProtection (no hay multipart que leer).
+routes.post('/procesos/fichas-confeccion/video/solicitar-subida',  pPrc('CREATE'), csrfProtection, solicitarSubidaVideo);
+routes.post('/procesos/fichas-confeccion/video/:idVideo/confirmar', pPrc('CREATE'), csrfProtection, confirmarSubidaVideo);
+routes.get('/procesos/fichas-confeccion/video/:idVideo',           pPrc('READ'),   estadoVideo);
+routes.post('/procesos/fichas-confeccion/video/:idVideo/reintentar', pPrc('CREATE'), csrfProtection, reintentarVideo);
+routes.post('/procesos/fichas-confeccion/video/:idVideo/marcar-error', pPrc('CREATE'), csrfProtection, marcarErrorVideo);
 routes.get('/procesos/fichas-confeccion/biblioteca',      pPrc('READ'),   csrfProtection, homeFichaConfeccionBiblioteca);
 routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   csrfProtection, homeFichasConfeccion);
 routes.get('/procesos',                                   pPrc('READ'),   csrfProtection, homeProcesosListado);

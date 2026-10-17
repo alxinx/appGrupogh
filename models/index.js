@@ -48,6 +48,7 @@ import OrdenesCompraHistorial from './OrdenesCompraHistorial.js'
 import FichaConfeccionDxf from './FichaConfeccionDxf.js'
 import FichaConfeccionMolde from './FichaConfeccionMolde.js'
 import FichaConfeccionMoldeIaIntento from './FichaConfeccionMoldeIaIntento.js'
+import FichaConfeccionVideo from './FichaConfeccionVideo.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -345,6 +346,10 @@ FichaConfeccionMoldeIaIntento.belongsTo(FichaConfeccionDxf, { foreignKey: 'idDxf
 Usuarios.hasMany(FichaConfeccionMoldeIaIntento, { foreignKey: 'idUsuarioSolicita', as: 'intentosMoldeIaSolicitados' });
 FichaConfeccionMoldeIaIntento.belongsTo(Usuarios, { foreignKey: 'idUsuarioSolicita', as: 'usuarioSolicita' });
 
+// ─── Videos del proceso de fichas de confección ──────────────────────────────
+Usuarios.hasMany(FichaConfeccionVideo, { foreignKey: 'idUsuarioCarga', as: 'videosCargados' });
+FichaConfeccionVideo.belongsTo(Usuarios, { foreignKey: 'idUsuarioCarga', as: 'usuarioCarga' });
+
 
 // ─── DetallesPagosFactura ────────────────────────────────────────────────────
 FacturaClientes.hasMany(DetallesPagosFactura, { foreignKey: 'idFacturaCliente', as: 'pagos' });
@@ -518,4 +523,5 @@ export {
   FichaConfeccionDxf,
   FichaConfeccionMolde,
   FichaConfeccionMoldeIaIntento,
+  FichaConfeccionVideo,
 }
