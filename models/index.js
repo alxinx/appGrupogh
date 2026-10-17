@@ -46,6 +46,8 @@ import OrdenesCompra from './OrdenesCompra.js'
 import DetallesOrdenCompra from './DetallesOrdenCompra.js'
 import OrdenesCompraHistorial from './OrdenesCompraHistorial.js'
 import FichaConfeccionDxf from './FichaConfeccionDxf.js'
+import FichaConfeccionMolde from './FichaConfeccionMolde.js'
+import FichaConfeccionMoldeIaIntento from './FichaConfeccionMoldeIaIntento.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -330,6 +332,19 @@ FichaConfeccionDxf.belongsTo(Material, { foreignKey: 'idMaterialAsociado', as: '
 Familia.hasMany(FichaConfeccionDxf, { foreignKey: 'idFamiliaAsociada', as: 'archivosDxfAsociados' });
 FichaConfeccionDxf.belongsTo(Familia, { foreignKey: 'idFamiliaAsociada', as: 'familiaAsociada' });
 
+// ─── Moldes de fichas de confección + sus intentos de generación con IA ──────
+Usuarios.hasMany(FichaConfeccionMolde, { foreignKey: 'idUsuarioCarga', as: 'moldesCargados' });
+FichaConfeccionMolde.belongsTo(Usuarios, { foreignKey: 'idUsuarioCarga', as: 'usuarioCarga' });
+
+FichaConfeccionMolde.hasMany(FichaConfeccionMoldeIaIntento, { foreignKey: 'idMolde', as: 'intentos', onDelete: 'CASCADE' });
+FichaConfeccionMoldeIaIntento.belongsTo(FichaConfeccionMolde, { foreignKey: 'idMolde', as: 'molde' });
+
+FichaConfeccionDxf.hasMany(FichaConfeccionMoldeIaIntento, { foreignKey: 'idDxf', as: 'intentosMoldeIa' });
+FichaConfeccionMoldeIaIntento.belongsTo(FichaConfeccionDxf, { foreignKey: 'idDxf', as: 'dxf' });
+
+Usuarios.hasMany(FichaConfeccionMoldeIaIntento, { foreignKey: 'idUsuarioSolicita', as: 'intentosMoldeIaSolicitados' });
+FichaConfeccionMoldeIaIntento.belongsTo(Usuarios, { foreignKey: 'idUsuarioSolicita', as: 'usuarioSolicita' });
+
 
 // ─── DetallesPagosFactura ────────────────────────────────────────────────────
 FacturaClientes.hasMany(DetallesPagosFactura, { foreignKey: 'idFacturaCliente', as: 'pagos' });
@@ -501,4 +516,6 @@ export {
   DetallesOrdenCompra,
   OrdenesCompraHistorial,
   FichaConfeccionDxf,
+  FichaConfeccionMolde,
+  FichaConfeccionMoldeIaIntento,
 }

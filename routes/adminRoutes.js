@@ -33,6 +33,8 @@ import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleT
 import { homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, homeInsumos, crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado } from '../controller/produccionController.js'
 import { subirDxfFicha, estadoDxfFicha } from '../controller/fichaConfeccionDxfController.js'
 import { recibirDxf } from '../middlewares/uploadDxf.js';
+import { subirMolde, iniciarGeneracionMolde, estadoIntentoMolde, aprobarMoldeIa } from '../controller/fichaConfeccionMoldeController.js'
+import { recibirMolde } from '../middlewares/uploadMolde.js';
 import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
@@ -304,6 +306,14 @@ routes.get('/procesos/fichas-confeccion/nueva',           pPrc('CREATE'), csrfPr
 // multipart — mismo orden que /bankentities/:idEntidad/qr.
 routes.post('/procesos/fichas-confeccion/dxf',            pPrc('CREATE'), csrfProtection, recibirDxf, subirDxfFicha);
 routes.get('/procesos/fichas-confeccion/dxf/:idArchivoDxf', pPrc('READ'), estadoDxfFicha);
+// Molde (JPG/PDF) + generación de imagen con IA (controller/fichaConfeccionMoldeController.js).
+// El resultado se estira por GET/POST, igual que el DXF — la notificación en vivo cuando
+// termina la IA viaja por el SSE que ya existe (/admin/sse, helpers/sseManager.js), no por
+// un canal nuevo.
+routes.post('/procesos/fichas-confeccion/molde',                       pPrc('CREATE'), csrfProtection, recibirMolde, subirMolde);
+routes.post('/procesos/fichas-confeccion/molde/:idMolde/generar',      pPrc('CREATE'), csrfProtection, iniciarGeneracionMolde);
+routes.get('/procesos/fichas-confeccion/molde/intento/:idIntento',     pPrc('READ'),   estadoIntentoMolde);
+routes.post('/procesos/fichas-confeccion/molde/intento/:idIntento/aprobar', pPrc('CREATE'), csrfProtection, aprobarMoldeIa);
 routes.get('/procesos/fichas-confeccion/biblioteca',      pPrc('READ'),   csrfProtection, homeFichaConfeccionBiblioteca);
 routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   csrfProtection, homeFichasConfeccion);
 routes.get('/procesos',                                   pPrc('READ'),   csrfProtection, homeProcesosListado);

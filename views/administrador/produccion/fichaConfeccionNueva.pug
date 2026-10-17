@@ -78,9 +78,9 @@ block contenedor
                                         h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Sube los archivos de la prenda
                                         p(class="mt-1.5 mb-6 text-sm text-slate-500") El DXF, el molde y el video del proceso de confección.
                                         div(class="grid grid-cols-1 sm:grid-cols-3 gap-4")
-                                            - const archivosFicha = [{ id: 'dxf', etiqueta: 'Carga tu archivo DXF', icono: 'fi-rr-file-code', accept: '.dxf', caption: 'Archivo .dxf del patronaje', subidaUrl: '/admin/procesos/fichas-confeccion/dxf' }, { id: 'molde', etiqueta: 'Carga el molde', icono: 'fi-rr-vector', accept: '.pdf,.jpg,.jpeg,.png,.webp', caption: 'PDF o imagen del molde' }, { id: 'video', etiqueta: 'Carga el video del proceso', icono: 'fi-rr-video-camera', accept: '.mp4,.mov,.webm', caption: 'Video del proceso de confección' }]
+                                            - const archivosFicha = [{ id: 'dxf', etiqueta: 'Carga tu archivo DXF', icono: 'fi-rr-file-code', accept: '.dxf', caption: 'Archivo .dxf del patronaje', subidaUrl: '/admin/procesos/fichas-confeccion/dxf' }, { id: 'molde', etiqueta: 'Carga el molde', icono: 'fi-rr-vector', accept: '.jpg,.jpeg,.pdf', caption: 'JPG o PDF del molde', subidaUrl: '/admin/procesos/fichas-confeccion/molde', generaIa: true }, { id: 'video', etiqueta: 'Carga el video del proceso', icono: 'fi-rr-video-camera', accept: '.mp4,.mov,.webm', caption: 'Video del proceso de confección' }]
                                             each campo in archivosFicha
-                                                div(data-slot-archivo=campo.id data-subida-url=campo.subidaUrl || '' class="flex flex-col gap-2")
+                                                div(data-slot-archivo=campo.id data-subida-url=campo.subidaUrl || '' data-genera-ia=campo.generaIa ? '1' : '' class="flex flex-col gap-2")
                                                     span(class="text-sm font-bold text-slate-700")= campo.etiqueta
 
                                                     //- Estado vacío: caja punteada + input real transparente encima.
@@ -103,9 +103,8 @@ block contenedor
                                                             button(type="button" data-quitar-archivo aria-label=`Quitar: ${campo.etiqueta}` class="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
                                                                 i(class="fi fi-rr-cross-small")
 
-                                                        //- Solo para slots con subida real (hoy, el DXF): estado del
-                                                        //- análisis en segundo plano.
-                                                        if campo.subidaUrl
+                                                        //- Solo para el DXF: estado del análisis en segundo plano.
+                                                        if campo.subidaUrl && !campo.generaIa
                                                             div(data-estado-analisis class="hidden items-center gap-2 pt-3 border-t border-gh-primary/20 text-xs font-semibold text-slate-500")
                                                                 span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0" data-spinner-analisis)
                                                                 span(data-texto-analisis) Analizando el archivo…
@@ -139,6 +138,27 @@ block contenedor
                                                                         span(data-texto-asociacion class="text-slate-600") Buscando la familia por nombre…
                                                             p(data-error-analisis class="hidden pt-3 border-t border-rose-200 text-xs font-semibold text-rose-600")
 
+                                                        //- Solo para el molde: generación de imagen con IA. El modal de
+                                                        //- Pattern/Colors se abre apenas termina de subirse el archivo
+                                                        //- (src/js/fichaConfeccionNueva.js) — acá solo vive el resultado.
+                                                        if campo.generaIa
+                                                            div(data-estado-generacion class="hidden items-center gap-2 pt-3 border-t border-gh-primary/20 text-xs font-semibold text-slate-500")
+                                                                span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0")
+                                                                span Generando la vista previa con IA (hasta un minuto)…
+                                                            div(data-resultado-generacion class="hidden flex-col gap-3 pt-3 border-t border-gh-primary/20")
+                                                                img(data-imagen-generada class="w-full rounded-xl border border-slate-200" alt="Vista previa generada con IA")
+                                                                div(data-acciones-generacion class="flex items-center gap-2")
+                                                                    button(type="button" data-btn-repetir class="btn btn-secondary btn-sm flex-1 justify-center text-xs")
+                                                                        i(class="fi fi-rr-refresh text-xs")
+                                                                        | Repetir
+                                                                    button(type="button" data-btn-aprobar class="btn btn-danger btn-sm flex-1 justify-center text-xs")
+                                                                        i(class="fi fi-rr-check text-xs")
+                                                                        | Aprobar
+                                                                p(data-aprobado-aviso class="hidden text-xs font-semibold text-emerald-600 flex items-center gap-1.5")
+                                                                    i(class="fi fi-rr-check-circle")
+                                                                    | Imagen aprobada y guardada
+                                                            p(data-error-generacion class="hidden pt-3 border-t border-rose-200 text-xs font-semibold text-rose-600")
+
                                     //- PASO 2 — pendiente de definir el resto de los campos
                                     section(data-paso class="hidden")
                                         h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Acá van los demás campos
@@ -153,6 +173,37 @@ block contenedor
                                         i(class="fi fi-rr-arrow-left text-xs")
                                         | Atrás
                                     button#btn-paso-continuar(type="button" class="btn btn-danger") Continuar
+
+                            //- ── MODAL "GENERAR VISTA PREVIA CON IA" ─────────────────────
+                            //- Un solo modal para la primera generación y para "Repetir" — al
+                            //- repetir se abre precargado con pattern/colors del intento
+                            //- anterior (src/js/fichaConfeccionNueva.js), el usuario los deja
+                            //- igual o los cambia. El Fabric NO se pregunta acá: sale solo del
+                            //- material ya resuelto en el DXF (controller/
+                            //- fichaConfeccionMoldeController.js iniciarGeneracionMolde).
+                            div#modal-molde-ia(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden")
+                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100")
+                                        div(class="flex items-center gap-3")
+                                            div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30 flex-shrink-0")
+                                                i(class="fi fi-rr-sparkles text-white")
+                                            div
+                                                h2#modal-molde-ia-titulo(class="text-lg font-bold text-slate-800") Generar vista previa con IA
+                                                p(class="text-sm text-slate-500") El patrón y los colores de la prenda.
+                                        button#modal-molde-ia-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                            i(class="fi fi-rr-cross-small text-xl")
+
+                                    div(class="px-7 py-6 flex flex-col gap-4")
+                                        div(class="flex flex-col gap-1")
+                                            label(class="label" for="molde-ia-pattern") Pattern (patrón)
+                                            input#molde-ia-pattern(type="text" autocomplete="off" placeholder="Ej. liso, floral, rayas finas" class="field-text")
+                                        div(class="flex flex-col gap-1")
+                                            label(class="label" for="molde-ia-colors") Colors (colores)
+                                            input#molde-ia-colors(type="text" autocomplete="off" placeholder="Ej. azul marino y blanco" class="field-text")
+
+                                    div(class="flex items-center justify-end gap-3 px-7 py-5 border-t border-slate-100")
+                                        button#btn-molde-ia-cancelar(type="button" class="btn btn-secondary") Cancelar
+                                        button#btn-molde-ia-generar(type="button" class="btn btn-danger") Generar
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script(src="/js/fichaConfeccionNueva.js")

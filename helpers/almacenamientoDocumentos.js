@@ -16,7 +16,13 @@ import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 // —en `documentacion/…` del público— se siguen abriendo igual mientras se migran
 // (seed/migracionDocumentosProveedorPrivado.js).
 
-export const CARPETAS_PRIVADAS = ['provedores', 'dxf'];
+// 'moldes': el molde original (JPG/PDF) subido en el asistente de fichas de confección.
+// 'moldes-ia-borradores': el resultado que la IA genera, ANTES de que el usuario lo
+// apruebe — nunca vive en 'moldesIa/' hasta ese momento (controller/
+// fichaConfeccionMoldeController.js aprobarMoldeIa). 'moldesIa': las imágenes ya
+// aprobadas — privadas también, como el resto de este módulo; no hay pedido de que sean
+// públicas.
+export const CARPETAS_PRIVADAS = ['provedores', 'dxf', 'moldes', 'moldes-ia-borradores', 'moldesIa'];
 
 // Vida del enlace firmado: alcanza para abrir el documento, no para compartirlo.
 const VIDA_URL_SEG = 5 * 60;

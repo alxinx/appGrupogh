@@ -10,11 +10,24 @@
 //
 // Solo el paso 1 está completo hoy — el resto de los campos de la ficha (insumos, procesos,
 // tallas...) todavía no está definido, así que "Continuar" en el último paso no guarda
-// nada: no hay ni endpoint ni tabla todavía. De los tres archivos, solo el DXF sube de
-// verdad (el molde y el video quedan de vista previa local, sin `data-subida-url`).
+// nada: no hay ni endpoint ni tabla todavía. El DXF y el molde suben de verdad; el video
+// queda de vista previa local por ahora, sin `data-subida-url`.
+//
+// La notificación en vivo de "la IA ya terminó" (sección "Molde: generación de imagen con
+// IA", más abajo) reutiliza el canal de SSE que ya existe para todo el panel admin
+// (helpers/sseManager.js, CLAUDE.md §13) — adminAlertas.js, cargado en todas las páginas
+// del admin por leftMenu.pug, ya abre y conecta esa conexión compartida antes de que este
+// archivo corra; acá solo hace falta suscribirse a un evento más.
+import { adminSSE } from './sseCompartido.js';
 
 const CSRF = document.getElementById('asistente-ficha')?.dataset.csrf;
 const INTERVALO_POLL_MS = 1500;
+
+// El molde necesita el material ya resuelto del DXF (Fabric del prompt — controller/
+// fichaConfeccionMoldeController.js iniciarGeneracionMolde): se comparte por acá en vez de
+// una variable global suelta, porque los dos slots viven en closures separados del mismo
+// forEach de abajo.
+const estadoFicha = { idArchivoDxf: null };
 
 // ── Campos de archivo (DXF / molde / video) ─────────────────────────────────────────────
 // Cada slot es independiente: caja punteada vacía (data-zona-vacia, con el <input
@@ -77,6 +90,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             const r = await fetch(urlSubida, { method: 'POST', headers: { 'CSRF-Token': CSRF }, body: formData });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo subir el archivo.');
+            estadoFicha.idArchivoDxf = d.idArchivoDxf;
 
             timerPoll = setInterval(async () => {
                 try {
@@ -166,6 +180,8 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         }
     };
 
+    const generaIa = slot.dataset.generaIa === '1';
+
     input.addEventListener('change', () => {
         const archivo = input.files?.[0];
         if (!archivo) return;
@@ -175,7 +191,11 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         zonaLlena.classList.remove('hidden');
         zonaLlena.classList.add('flex-col');
 
-        if (urlSubida) subirYAnalizar(archivo);
+        // El molde no se analiza solo (no hay nada que leer de un JPG/PDF) — sube y después
+        // pregunta Pattern/Colors por el modal. Ver la sección "Molde + generación con IA"
+        // más abajo, que escucha este evento.
+        if (generaIa) slot.dispatchEvent(new CustomEvent('archivo-molde-elegido', { detail: { archivo } }));
+        else if (urlSubida) subirYAnalizar(archivo);
     });
 
     btnQuitar?.addEventListener('click', () => {
@@ -188,8 +208,191 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         resultadoAnalisis?.classList.add('hidden');
         errorAnalisis?.classList.add('hidden');
         reiniciarAsociaciones();
+        if (generaIa) slot.dispatchEvent(new CustomEvent('archivo-molde-quitado'));
     });
 });
+
+// ── Molde: generación de imagen con IA ──────────────────────────────────────────────────
+// Sube el molde (arriba, igual que el DXF) y, apenas termina, abre el modal de Pattern/
+// Colors. Al confirmar, POST a .../molde/:id/generar — responde de inmediato (202, "ya lo
+// metí a la cola") y el resultado real llega después por dos caminos a la vez: el push de
+// SSE (adminSSE, canal del usuario — helpers/sseManager.js, mismo mecanismo que permisos en
+// vivo, CLAUDE.md §13) y, de respaldo, un polling lento por si la pestaña se perdió el
+// evento (red caída un segundo, SSE reconectando). El que llegue primero gana — el otro
+// encuentra el intento ya resuelto y no hace nada.
+(function () {
+    const slotMolde = document.querySelector('[data-slot-archivo="molde"][data-genera-ia="1"]');
+    if (!slotMolde) return;
+
+    const URL_MOLDE = slotMolde.dataset.subidaUrl; // /admin/procesos/fichas-confeccion/molde
+    const estadoGeneracion = slotMolde.querySelector('[data-estado-generacion]');
+    const resultadoGeneracion = slotMolde.querySelector('[data-resultado-generacion]');
+    const imagenGenerada = slotMolde.querySelector('[data-imagen-generada]');
+    const accionesGeneracion = slotMolde.querySelector('[data-acciones-generacion]');
+    const btnRepetir = slotMolde.querySelector('[data-btn-repetir]');
+    const btnAprobar = slotMolde.querySelector('[data-btn-aprobar]');
+    const avisoAprobado = slotMolde.querySelector('[data-aprobado-aviso]');
+    const errorGeneracion = slotMolde.querySelector('[data-error-generacion]');
+
+    const modal = document.getElementById('modal-molde-ia');
+    const inputPattern = document.getElementById('molde-ia-pattern');
+    const inputColors = document.getElementById('molde-ia-colors');
+    const btnGenerar = document.getElementById('btn-molde-ia-generar');
+
+    let idMoldeActual = null;
+    let idIntentoActual = null;
+    let ultimoPattern = '';
+    let ultimoColors = '';
+    let timerPollGeneracion = null;
+    let suscritoSSE = false;
+
+    const detenerPollGeneracion = () => { clearInterval(timerPollGeneracion); timerPollGeneracion = null; };
+
+    const abrirModal = () => { modal.classList.remove('hidden'); modal.classList.add('flex'); };
+    const cerrarModal = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+
+    document.getElementById('modal-molde-ia-cerrar')?.addEventListener('click', cerrarModal);
+    document.getElementById('btn-molde-ia-cancelar')?.addEventListener('click', cerrarModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
+
+    // ── Subir el molde (igual patrón que el DXF, pero sin análisis: solo guarda el
+    // archivo) y, apenas termina, abrir el modal para la primera generación. ────────────
+    slotMolde.addEventListener('archivo-molde-elegido', async (e) => {
+        errorGeneracion?.classList.add('hidden');
+        try {
+            const formData = new FormData();
+            formData.append('molde', e.detail.archivo);
+            const r = await fetch(URL_MOLDE, { method: 'POST', headers: { 'CSRF-Token': CSRF }, body: formData });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo subir el molde.');
+
+            idMoldeActual = d.idMolde;
+            idIntentoActual = null;
+            inputPattern.value = '';
+            inputColors.value = '';
+            abrirModal();
+        } catch (e2) {
+            if (errorGeneracion) { errorGeneracion.textContent = e2.message; errorGeneracion.classList.remove('hidden'); }
+        }
+    });
+
+    slotMolde.addEventListener('archivo-molde-quitado', () => {
+        detenerPollGeneracion();
+        idMoldeActual = null;
+        idIntentoActual = null;
+        estadoGeneracion?.classList.add('hidden');
+        resultadoGeneracion?.classList.add('hidden');
+        avisoAprobado?.classList.add('hidden');
+        accionesGeneracion?.classList.remove('hidden');
+        errorGeneracion?.classList.add('hidden');
+    });
+
+    // ── Confirmar el modal: arranca un intento nuevo (primera vez o "Repetir") ──────────
+    btnGenerar?.addEventListener('click', async () => {
+        if (!idMoldeActual) return;
+        const pattern = inputPattern.value.trim();
+        const colors = inputColors.value.trim();
+
+        cerrarModal();
+        detenerPollGeneracion();
+        estadoGeneracion?.classList.remove('hidden');
+        estadoGeneracion?.classList.add('flex');
+        resultadoGeneracion?.classList.add('hidden');
+        avisoAprobado?.classList.add('hidden');
+        errorGeneracion?.classList.add('hidden');
+
+        try {
+            const r = await fetch(`${URL_MOLDE}/${idMoldeActual}/generar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                body: JSON.stringify({ pattern, colors, idDxf: estadoFicha.idArchivoDxf })
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo iniciar la generación.');
+
+            idIntentoActual = d.idIntento;
+            ultimoPattern = pattern;
+            ultimoColors = colors;
+            suscribirseASSE();
+
+            // Respaldo de SSE: una consulta lenta por si el push no llega (pestaña en
+            // segundo plano, reconexión). SSE normalmente gana primero.
+            timerPollGeneracion = setInterval(() => consultarIntento(idIntentoActual), 4000);
+        } catch (e2) {
+            estadoGeneracion?.classList.add('hidden');
+            estadoGeneracion?.classList.remove('flex');
+            if (errorGeneracion) { errorGeneracion.textContent = e2.message; errorGeneracion.classList.remove('hidden'); }
+        }
+    });
+
+    // ── "Repetir": mismo modal, precargado con lo último usado ──────────────────────────
+    btnRepetir?.addEventListener('click', () => {
+        inputPattern.value = ultimoPattern;
+        inputColors.value = ultimoColors;
+        abrirModal();
+    });
+
+    // ── "Aprobar": copia el borrador a moldesIa/{timestamp}.png ─────────────────────────
+    btnAprobar?.addEventListener('click', async () => {
+        if (!idIntentoActual) return;
+        btnAprobar.disabled = true;
+        btnAprobar.textContent = 'Aprobando…';
+        try {
+            const r = await fetch(`${URL_MOLDE}/intento/${idIntentoActual}/aprobar`, {
+                method: 'POST',
+                headers: { 'CSRF-Token': CSRF }
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo aprobar la imagen.');
+
+            accionesGeneracion?.classList.add('hidden');
+            avisoAprobado?.classList.remove('hidden');
+        } catch (e2) {
+            if (errorGeneracion) { errorGeneracion.textContent = e2.message; errorGeneracion.classList.remove('hidden'); }
+        } finally {
+            btnAprobar.disabled = false;
+            btnAprobar.textContent = 'Aprobar';
+        }
+    });
+
+    // ── Resultado: SSE push + polling de respaldo llegan acá los dos ────────────────────
+    async function consultarIntento(idIntento) {
+        if (idIntento !== idIntentoActual) return; // una respuesta de un intento viejo, ignorarla
+        try {
+            const r = await fetch(`${URL_MOLDE}/intento/${idIntento}`);
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) return;
+            if (d.intento.estado === 'procesando') return;
+
+            detenerPollGeneracion();
+            estadoGeneracion?.classList.add('hidden');
+            estadoGeneracion?.classList.remove('flex');
+
+            if (d.intento.estado === 'error') {
+                if (errorGeneracion) { errorGeneracion.textContent = d.intento.errorMensaje || 'No se pudo generar la imagen.'; errorGeneracion.classList.remove('hidden'); }
+                return;
+            }
+
+            if (imagenGenerada) imagenGenerada.src = d.intento.previewUrl;
+            resultadoGeneracion?.classList.remove('hidden');
+            resultadoGeneracion?.classList.add('flex-col');
+        } catch (_) {
+            // Un fallo de red en una consulta de respaldo no es un error del intento — se
+            // reintenta en la próxima vuelta del polling.
+        }
+    }
+
+    function suscribirseASSE() {
+        if (suscritoSSE) return;
+        suscritoSSE = true;
+        adminSSE().on('molde_ia_listo', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                consultarIntento(data.idIntento);
+            } catch (_) { /* evento mal formado, el polling de respaldo lo resuelve igual */ }
+        });
+    }
+})();
 
 const SALIDA_MS = 200;
 const contenedor = document.getElementById('asistente-ficha');
