@@ -6,16 +6,24 @@ import db from '../config/bd.js';
 // Cloudflare Stream (helpers/cloudflareStream.js), nunca pasa por este servidor. UUID: es
 // una entidad de negocio, no una línea de detalle (CLAUDE.md §3).
 //
-// Sin `idFicha` todavía, igual que FichaConfeccionDxf y FichaConfeccionMolde: no existe
-// tabla FICHAS_CONFECCION — las tres (DXF, molde, video) quedan sueltas hasta que el resto
-// del asistente esté definido y haya algo que las junte. Con las tres ya construidas, ese
-// es el próximo paso lógico: una tabla FICHAS_CONFECCION y un ALTER en cada una de estas
-// tres agregando la FK — se documenta con su SQL cuando se pida.
+// `idFicha` es NULLABLE a propósito: el video se sube en el paso 1 del asistente, ANTES de
+// que exista la ficha (que recién se crea al finalizar, controller/
+// fichaConfeccionController.js finalizarFicha) — mismo motivo por el que FichaConfeccionDxf
+// y FichaConfeccionMolde tampoco llevan esta FK: ahí la relación va al revés (la ficha
+// apunta a UN dxf y UN molde), pero el video es varios-por-ficha, así que acá sí hace falta
+// la columna. Se completa recién al finalizar (UPDATE, no en la subida).
 const FichaConfeccionVideo = db.define('FICHAS_CONFECCION_VIDEOS', {
     idVideo: {
         type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true
+    },
+    idFicha: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: 'FICHAS_CONFECCION', key: 'idFicha' },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
     },
     idUsuarioCarga: {
         type: DataTypes.UUID,

@@ -5,6 +5,7 @@ import { FichaConfeccionDxf, Material, Familia } from '../models/index.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { keyDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { esDxfValido, analizarDxf, asociarCamposDxf } from '../helpers/dxf.js';
+import { urlImagenMaterial } from '../helpers/insumos.js';
 
 // Subida + análisis del DXF de una ficha de confección (admin/procesos/fichas-confeccion/
 // nueva, paso 1). Asíncrono a propósito: el navegador no espera a que termine el parseo ni
@@ -124,12 +125,22 @@ const estadoDxfFicha = async (req, res) => {
         const archivo = await FichaConfeccionDxf.findByPk(req.params.idArchivoDxf, {
             attributes: ['idArchivoDxf', 'nombreOriginal', 'pesoBytes', 'estado', 'estiloNombre', 'talla', 'material', 'errorMensaje'],
             include: [
-                { model: Material, as: 'materialAsociado', attributes: ['idMaterial', 'nombre', 'codigoMaterial'] },
+                { model: Material, as: 'materialAsociado', attributes: ['idMaterial', 'nombre', 'codigoMaterial', 'imagen'] },
                 { model: Familia, as: 'familiaAsociada', attributes: ['idFamilia', 'nombreFamilia'] }
             ]
         });
         if (!archivo) return res.status(404).json({ success: false, mensaje: 'Ese archivo no existe.' });
-        return res.json({ success: true, archivo });
+
+        // La foto del material (paso "Tela y colores" del asistente) sale del mismo catálogo
+        // que ya la sirve en /admin/insumos — mismo helper, nunca una segunda forma de armar
+        // la URL (CLAUDE.md DRY).
+        const respuesta = archivo.toJSON();
+        if (respuesta.materialAsociado) {
+            respuesta.materialAsociado.imagenUrl = urlImagenMaterial(respuesta.materialAsociado.imagen);
+            delete respuesta.materialAsociado.imagen;
+        }
+
+        return res.json({ success: true, archivo: respuesta });
     } catch (e) {
         console.error('fichaConfeccionDxfController(estado):', e);
         return res.status(500).json({ success: false, mensaje: 'No se pudo consultar el archivo.' });

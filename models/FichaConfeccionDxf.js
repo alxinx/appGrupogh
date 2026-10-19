@@ -6,11 +6,11 @@ import db from '../config/bd.js';
 // línea de detalle (CLAUDE.md §3). El análisis (helpers/dxf.js) corre en segundo plano
 // después de responder la subida, así que la fila nace en 'procesando' y se completa sola.
 //
-// `idFicha` NO existe todavía: no hay tabla FICHAS_CONFECCION — el asistente solo tiene el
-// paso de archivos resuelto, el resto de los campos (insumos, procesos, tallas...) sigue
-// pendiente de definir (controller/produccionController.js homeFichaConfeccionNueva). Este
-// archivo queda suelto hasta que esa tabla exista; en ese momento se agrega la columna con
-// un ALTER (CLAUDE.md: toda columna nueva se avisa con su SQL).
+// No lleva `idFicha`: la relación con FICHAS_CONFECCION va al revés acá — una ficha apunta
+// a UN solo DXF (`FichaConfeccion.idDxf`, models/FichaConfeccion.js), así que la FK vive en
+// esa tabla, no en esta. Esta fila existe desde el paso 1 del asistente, antes de que la
+// ficha exista; al finalizar, `finalizarFicha` (controller/fichaConfeccionController.js)
+// simplemente la referencia, no la modifica.
 const FichaConfeccionDxf = db.define('FICHAS_CONFECCION_DXF', {
     idArchivoDxf: {
         type: DataTypes.UUID,

@@ -20,3 +20,10 @@ export const CLOUDFLARE_STREAM_CONFIGURADO = !!(CLOUDFLARE_ACCOUNT_ID && CLOUDFL
 export const CLOUDFLARE_STREAM_BASE_URL = CLOUDFLARE_ACCOUNT_ID
     ? `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream`
     : null;
+
+// Subdominio de reproducción (distinto del Account ID de arriba) — lo da Cloudflare al
+// activar Stream, uno por cuenta. Con esto se arma la URL pública de ver un video
+// (`.../{uid}/watch`), usada para el QR "link al video de referencia" de la ficha de
+// confección (helpers/fichaConfeccionPdf.js). Sin esta variable no se puede armar ese QR —
+// el PDF simplemente omite esa sección.
+export const CLOUDFLARE_STREAMING_SUBDOMAIN = process.env.CLOUDFLARE_STREAMING_SUBDOMAIN || null;

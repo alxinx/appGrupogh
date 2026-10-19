@@ -21,8 +21,9 @@ import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 // apruebe — nunca vive en 'moldesIa/' hasta ese momento (controller/
 // fichaConfeccionMoldeController.js aprobarMoldeIa). 'moldesIa': las imágenes ya
 // aprobadas — privadas también, como el resto de este módulo; no hay pedido de que sean
-// públicas.
-export const CARPETAS_PRIVADAS = ['provedores', 'dxf', 'moldes', 'moldes-ia-borradores', 'moldesIa'];
+// públicas. 'fichas-confeccion': el PDF final (helpers/fichaConfeccionPdf.js) — trae el
+// precio de confección, nunca público.
+export const CARPETAS_PRIVADAS = ['provedores', 'dxf', 'moldes', 'moldes-ia-borradores', 'moldesIa', 'fichas-confeccion'];
 
 // Vida del enlace firmado: alcanza para abrir el documento, no para compartirlo.
 const VIDA_URL_SEG = 5 * 60;

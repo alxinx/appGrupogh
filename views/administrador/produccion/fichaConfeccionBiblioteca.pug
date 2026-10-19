@@ -1,11 +1,9 @@
 extends ../../layout/index
 block contenedor
     //- Biblioteca de fichas de confección (admin/procesos/fichas-confeccion/biblioteca).
-    //- DUMMY por ahora: `fichas` son datos de ejemplo fijos del controlador
-    //- (DUMMY_FICHAS_CONFECCION, produccionController.js) — todavía no hay tabla de fichas
-    //- de confección en la base, así que no hay búsqueda ni paginación real detrás. Cuando
-    //- exista el modelo, esto se reemplaza por el mismo patrón de listado del resto del
-    //- panel (ver historialCompras.pug: búsqueda + filtros + paginación de servidor).
+    //- `fichas` sale de un solo findAll en produccionController.js (sin joins: referencia y
+    //- materialNombre son fotos congeladas en la propia fila, CLAUDE.md §7). Sin paginación
+    //- todavía — volumen de un solo negocio (CLAUDE.md §8); se agrega cuando haga falta.
     include ../../components/headerAdmin
 
     body(class="bg-gray-100 min-h-screen")
@@ -29,25 +27,32 @@ block contenedor
                                     i(class="fi fi-rr-arrow-left text-xs")
                                     | Volver
 
-                            div(class="col-span-12 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2.5 text-sm text-amber-700")
-                                i(class="fi fi-rr-info text-amber-500")
-                                | Esta lista es de ejemplo — todavía no hay fichas reales guardadas.
-
-                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
-                                div(class="overflow-x-auto")
-                                    table(class="w-full text-sm")
-                                        thead
-                                            tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
-                                                th(class="py-3 px-5 font-semibold") Referencia
-                                                th(class="py-3 px-5 font-semibold") Prenda
-                                                th(class="py-3 px-5 font-semibold") Insumos
-                                                th(class="py-3 px-5 font-semibold text-right") Estado
-                                        tbody
-                                            each f in fichas
-                                                tr(class="border-b border-slate-100 last:border-0")
-                                                    td(class="py-3.5 px-5 font-semibold text-slate-800 tabular-nums") #{f.referencia}
-                                                    td(class="py-3.5 px-5 text-slate-700") #{f.prenda}
-                                                    td(class="py-3.5 px-5 text-slate-500") #{f.insumos}
-                                                    td(class="py-3.5 px-5 text-right")
-                                                        - const claseEstado = f.estado === 'Activa' ? 'bg-emerald-100 text-emerald-600' : f.estado === 'Borrador' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-600'
-                                                        span(class=`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${claseEstado}`)= f.estado
+                            if !fichas.length
+                                div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 px-6 py-14 flex flex-col items-center text-center gap-2")
+                                    i(class="fi fi-rr-document text-2xl text-slate-300")
+                                    span(class="text-sm font-semibold text-slate-500") Todavía no hay fichas guardadas
+                                    a(href="/admin/procesos/fichas-confeccion/nueva" class="btn btn-danger btn-sm mt-2") Nueva ficha de confección
+                            else
+                                div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-sm")
+                                            thead
+                                                tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
+                                                    th(class="py-3 px-5 font-semibold") Referencia
+                                                    th(class="py-3 px-5 font-semibold") Tela
+                                                    th(class="py-3 px-5 font-semibold text-right") Cantidad
+                                                    th(class="py-3 px-5 font-semibold text-right") Precio confección
+                                                    th(class="py-3 px-5 font-semibold text-right") Creada
+                                                    th(class="py-3 px-5 font-semibold text-right") PDF
+                                            tbody
+                                                each f in fichas
+                                                    tr(class="border-b border-slate-100 last:border-0")
+                                                        td(class="py-3.5 px-5 font-semibold text-slate-800") #{f.referencia}
+                                                        td(class="py-3.5 px-5 text-slate-600") #{f.materialNombre}
+                                                        td(class="py-3.5 px-5 text-right tabular-nums") #{f.cantidadTotal.toLocaleString('es-CO')}
+                                                        td(class="py-3.5 px-5 text-right tabular-nums") $#{Math.round(f.precioConfeccion).toLocaleString('es-CO')}
+                                                        td(class="py-3.5 px-5 text-right text-slate-500 text-xs") #{new Date(f.createdAt).toLocaleDateString('es-CO')}
+                                                        td(class="py-3.5 px-5 text-right")
+                                                            a(href=`/admin/procesos/fichas-confeccion/${f.idFicha}/pdf` target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs font-bold text-gh-primaryHover hover:underline")
+                                                                i(class="fi fi-rr-document-signed text-xs")
+                                                                | Ver PDF

@@ -8,10 +8,8 @@
 // clase `.gh-paso-entra` (con un reflow forzado en el medio, si no el navegador no nota el
 // cambio y no la vuelve a correr).
 //
-// Solo el paso 1 está completo hoy — el resto de los campos de la ficha (insumos, procesos,
-// tallas...) todavía no está definido, así que "Continuar" en el último paso no guarda
-// nada: no hay ni endpoint ni tabla todavía. El DXF y el molde suben de verdad; el video
-// queda de vista previa local por ahora, sin `data-subida-url`.
+// Tres pasos: archivos, tela+colores, complementos/observaciones/precio. "Guardar ficha"
+// en el último junta todo en POST .../finalizar (controller/fichaConfeccionController.js).
 //
 // La notificación en vivo de "la IA ya terminó" (sección "Molde: generación de imagen con
 // IA", más abajo) reutiliza el canal de SSE que ya existe para todo el panel admin
@@ -23,11 +21,17 @@ import { adminSSE } from './sseCompartido.js';
 const CSRF = document.getElementById('asistente-ficha')?.dataset.csrf;
 const INTERVALO_POLL_MS = 1500;
 
-// El molde necesita el material ya resuelto del DXF (Fabric del prompt — controller/
-// fichaConfeccionMoldeController.js iniciarGeneracionMolde): se comparte por acá en vez de
-// una variable global suelta, porque los dos slots viven en closures separados del mismo
-// forEach de abajo.
-const estadoFicha = { idArchivoDxf: null };
+// Estado compartido entre los distintos IIFE de este archivo (archivos, colores, envío
+// final) — cada slot vive en su propio closure, así que lo que uno resuelve y otro necesita
+// después (el material del DXF para el molde Y para el paso 2, el idMolde para el envío
+// final, los videos listos...) pasa por acá en vez de variables globales sueltas.
+const estadoFicha = {
+    idArchivoDxf: null,
+    idMolde: null,
+    idMoldeIaIntentoAprobado: null,
+    materialNombre: null,
+    obtenerVideosListos: () => []
+};
 
 // ── Campos de archivo (DXF / molde / video) ─────────────────────────────────────────────
 // Cada slot es independiente: caja punteada vacía (data-zona-vacia, con el <input
@@ -158,6 +162,21 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
                         `No hay ninguna familia llamada "${dEstado.archivo.estiloNombre}".`,
                         'No se detectó un Style Name en el DXF.');
 
+                    // El paso 2 (tela + colores) necesita el material ya resuelto — nunca
+                    // se vuelve a preguntar (mismo criterio que el Fabric del prompt de IA).
+                    // La foto sale del mismo catálogo que /admin/insumos (controller/
+                    // fichaConfeccionDxfController.js, helpers/insumos.js urlImagenMaterial).
+                    estadoFicha.materialNombre = material?.nombre || null;
+                    const elMaterialPaso2 = document.getElementById('paso2-material');
+                    if (elMaterialPaso2) {
+                        elMaterialPaso2.textContent = estadoFicha.materialNombre || 'No se identificó un material en el DXF — revísalo.';
+                        elMaterialPaso2.classList.toggle('text-rose-600', !estadoFicha.materialNombre);
+                    }
+                    const elFotoPaso2 = document.getElementById('paso2-material-foto');
+                    if (elFotoPaso2 && material?.imagenUrl) {
+                        elFotoPaso2.innerHTML = `<img src="${material.imagenUrl}" alt="${estadoFicha.materialNombre || ''}" class="w-full h-full object-cover">`;
+                    }
+
                     resultadoAnalisis?.classList.remove('hidden');
                     resultadoAnalisis?.classList.add('flex-col');
                 } catch (e) {
@@ -268,6 +287,8 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
 
             idMoldeActual = d.idMolde;
             idIntentoActual = null;
+            estadoFicha.idMolde = d.idMolde;
+            estadoFicha.idMoldeIaIntentoAprobado = null;
             inputPattern.value = '';
             inputColors.value = '';
             abrirModal();
@@ -280,6 +301,8 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         detenerPollGeneracion();
         idMoldeActual = null;
         idIntentoActual = null;
+        estadoFicha.idMolde = null;
+        estadoFicha.idMoldeIaIntentoAprobado = null;
         estadoGeneracion?.classList.add('hidden');
         resultadoGeneracion?.classList.add('hidden');
         avisoAprobado?.classList.add('hidden');
@@ -345,6 +368,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo aprobar la imagen.');
 
+            estadoFicha.idMoldeIaIntentoAprobado = idIntentoActual;
             accionesGeneracion?.classList.add('hidden');
             avisoAprobado?.classList.remove('hidden');
         } catch (e2) {
@@ -418,6 +442,11 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     // clave local (no es el idVideo del servidor hasta que responde solicitar-subida) → fila
     // + estado, para poder reintentar sin pedirle el archivo de nuevo al usuario.
     const videos = new Map();
+
+    // El envío final (POST .../finalizar) necesita los idVideo ya confirmados como
+    // 'completado' — el backend los revalida igual (CLAUDE.md §12), esto es solo lo que se
+    // manda a pedir.
+    estadoFicha.obtenerVideosListos = () => [...videos.values()].filter((v) => v.estado === 'completado' && v.idVideo).map((v) => v.idVideo);
 
     const pesoLegible = (bytes) => {
         if (!bytes) return '';
@@ -707,6 +736,171 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     });
 })();
 
+// ── Paso 2: tela (auto-cargada, ver más arriba) + colores y cantidades ─────────────────
+// "mayatext verde 200, mayatext azul 140": una fila por color con una cantidad — se
+// agregan y quitan libremente, sin tope. El color se elige en #modal-elegir-color (pastilla
+// con su círculo de color, buscador arriba) en vez de un <select> plano — mismo lenguaje
+// visual que #modalColores en views/administrador/inventarios/forms/product.pug, adaptado a
+// una sola elección por fila en vez de multi-selección por talla.
+(function () {
+    const lista = document.querySelector('[data-lista-colores]');
+    const plantilla = document.getElementById('plantilla-fila-color');
+    const btnAgregar = document.getElementById('btn-agregar-color');
+    const errorColores = document.querySelector('[data-error-colores]');
+    const modal = document.getElementById('modal-elegir-color');
+    const buscador = document.getElementById('buscador-color-ficha');
+    const grid = document.getElementById('grid-colores-ficha');
+    const btnCerrarModalColor = document.getElementById('cerrar-modal-color');
+    if (!lista || !plantilla || !btnAgregar) return;
+
+    let filaActual = null; // qué fila está esperando la elección del modal
+
+    const cerrarModalColor = () => {
+        modal?.classList.add('hidden');
+        modal?.classList.remove('flex');
+        filaActual = null;
+        if (buscador) buscador.value = '';
+        grid?.querySelectorAll('[data-opcion-color]').forEach((b) => { b.style.display = ''; });
+    };
+
+    const abrirModalColor = (fila) => {
+        filaActual = fila;
+        modal?.classList.remove('hidden');
+        modal?.classList.add('flex');
+        buscador?.focus();
+    };
+
+    btnCerrarModalColor?.addEventListener('click', cerrarModalColor);
+    modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarModalColor(); });
+
+    buscador?.addEventListener('input', (e) => {
+        const termino = e.target.value.toLowerCase().trim();
+        grid?.querySelectorAll('[data-opcion-color]').forEach((b) => {
+            const coincide = (b.dataset.nombre || '').toLowerCase().includes(termino);
+            b.style.display = coincide ? '' : 'none';
+        });
+    });
+
+    grid?.addEventListener('click', (e) => {
+        const opcion = e.target.closest('[data-opcion-color]');
+        if (!opcion || !filaActual) return;
+
+        const swatch = filaActual.querySelector('[data-color-swatch]');
+        const nombreEl = filaActual.querySelector('[data-color-nombre]');
+        const inputId = filaActual.querySelector('[data-color-id]');
+        if (inputId) inputId.value = opcion.dataset.id;
+        if (nombreEl) { nombreEl.textContent = opcion.dataset.nombre; nombreEl.classList.remove('text-slate-400'); nombreEl.classList.add('text-slate-800', 'font-semibold'); }
+        if (swatch) {
+            swatch.style.backgroundColor = opcion.querySelector('span')?.style.backgroundColor || '#ccc';
+            swatch.classList.remove('hidden');
+        }
+        errorColores?.classList.add('hidden');
+        cerrarModalColor();
+    });
+
+    const agregarFila = () => {
+        const nodo = plantilla.content.firstElementChild.cloneNode(true);
+        lista.appendChild(nodo);
+        nodo.querySelector('[data-abrir-color]')?.addEventListener('click', () => abrirModalColor(nodo));
+        nodo.querySelector('[data-quitar-color]')?.addEventListener('click', () => nodo.remove());
+        errorColores?.classList.add('hidden');
+    };
+
+    btnAgregar.addEventListener('click', agregarFila);
+    agregarFila(); // arranca con una fila lista para no obligar a tocar "Agregar color".
+
+    // Lee las filas con color Y cantidad > 0 elegidos — una fila vacía (recién agregada, sin
+    // tocar) simplemente no cuenta, no es un error.
+    estadoFicha.obtenerColores = () => [...lista.querySelectorAll('[data-fila-color]')]
+        .map((fila) => ({
+            idAtributoColor: parseInt(fila.querySelector('[data-color-id]')?.value, 10),
+            cantidad: parseInt(fila.querySelector('[data-color-cantidad]')?.value, 10)
+        }))
+        .filter((f) => Number.isInteger(f.idAtributoColor) && f.idAtributoColor > 0 && Number.isInteger(f.cantidad) && f.cantidad > 0);
+
+    estadoFicha.validarColores = () => {
+        const validas = estadoFicha.obtenerColores();
+        const ok = validas.length > 0;
+        errorColores?.classList.toggle('hidden', ok);
+        if (errorColores) errorColores.textContent = 'Agrega al menos un color con su cantidad.';
+        return ok;
+    };
+})();
+
+// ── Paso 3 → envío final: junta todo en POST .../finalizar ─────────────────────────────
+(function () {
+    const inputComplementos = document.getElementById('ficha-complementos');
+    const inputObservaciones = document.getElementById('ficha-observaciones');
+    const inputPrecio = document.getElementById('ficha-precio');
+    const errorFinalizar = document.querySelector('[data-error-finalizar]');
+    const modalListo = document.getElementById('modal-ficha-lista');
+    const modalListoTexto = modalListo?.querySelector('[data-ficha-lista-texto]');
+    const modalListoPdf = modalListo?.querySelector('[data-ficha-lista-pdf]');
+    if (!inputPrecio) return;
+
+    window.initMoneyInput?.(inputPrecio);
+
+    estadoFicha.validarPrecio = () => {
+        const valor = window.parseMoney ? window.parseMoney(inputPrecio.value) : parseInt(inputPrecio.value.replace(/\D/g, ''), 10) || 0;
+        const ok = valor > 0;
+        errorFinalizar?.classList.toggle('hidden', ok);
+        if (errorFinalizar) errorFinalizar.textContent = 'El precio de confección debe ser mayor a $0.';
+        return ok;
+    };
+
+    estadoFicha.enviarFichaFinal = async (btnContinuar) => {
+        if (!estadoFicha.idArchivoDxf) {
+            if (errorFinalizar) { errorFinalizar.textContent = 'Falta el DXF del paso 1.'; errorFinalizar.classList.remove('hidden'); }
+            return false;
+        }
+        if (!estadoFicha.validarColores() || !estadoFicha.validarPrecio()) return false;
+
+        const precio = window.parseMoney ? window.parseMoney(inputPrecio.value) : 0;
+        const textoOriginal = btnContinuar.textContent;
+        btnContinuar.disabled = true;
+        btnContinuar.textContent = 'Guardando…';
+        errorFinalizar?.classList.add('hidden');
+
+        try {
+            const r = await fetch('/admin/procesos/fichas-confeccion/finalizar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                body: JSON.stringify({
+                    idDxf: estadoFicha.idArchivoDxf,
+                    idMolde: estadoFicha.idMolde,
+                    idMoldeIaIntento: estadoFicha.idMoldeIaIntentoAprobado,
+                    colores: estadoFicha.obtenerColores(),
+                    idsVideos: estadoFicha.obtenerVideosListos(),
+                    complementos: inputComplementos?.value || '',
+                    observaciones: inputObservaciones?.value || '',
+                    precioConfeccion: precio
+                })
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo guardar la ficha.');
+
+            if (modalListoTexto) {
+                modalListoTexto.textContent = d.pdfUrl
+                    ? 'Ya quedó en la Biblioteca de fichas de confección.'
+                    : (d.avisoPdf || 'Ya quedó en la Biblioteca — el PDF se genera al abrirla.');
+            }
+            if (modalListoPdf) {
+                if (d.pdfUrl) { modalListoPdf.href = d.pdfUrl; modalListoPdf.classList.remove('hidden'); }
+                else modalListoPdf.classList.add('hidden');
+            }
+            modalListo?.classList.remove('hidden');
+            modalListo?.classList.add('flex');
+            return true;
+        } catch (e) {
+            if (errorFinalizar) { errorFinalizar.textContent = e.message; errorFinalizar.classList.remove('hidden'); }
+            return false;
+        } finally {
+            btnContinuar.disabled = false;
+            btnContinuar.textContent = textoOriginal;
+        }
+    };
+})();
+
 const SALIDA_MS = 200;
 const contenedor = document.getElementById('asistente-ficha');
 
@@ -781,16 +975,15 @@ if (contenedor) {
     };
 
     btnAtras?.addEventListener('click', () => irA(actual - 1, -1));
-    btnContinuar?.addEventListener('click', () => {
+    btnContinuar?.addEventListener('click', async () => {
         if (actual === pasos.length - 1) {
-            Swal.fire({
-                icon: 'info',
-                title: 'Todavía no se puede guardar',
-                text: 'Faltan definir los demás campos de la ficha (insumos, procesos, tallas...).',
-                confirmButtonColor: '#E24C95'
-            });
+            await estadoFicha.enviarFichaFinal?.(btnContinuar);
             return;
         }
+        // Salir del paso 2 (colores) sin al menos uno cargado no tiene nada que guardar
+        // después — se valida acá, no al final, para no dejar al usuario llegar hasta
+        // "Guardar ficha" y recién ahí enterarse.
+        if (actual === 1 && estadoFicha.validarColores && !estadoFicha.validarColores()) return;
         irA(actual + 1, 1);
     });
     indicadores.forEach((boton, i) => boton.addEventListener('click', () => irA(i, -1)));

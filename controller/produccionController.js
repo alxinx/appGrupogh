@@ -1,7 +1,7 @@
 import { UniqueConstraintError, Op } from 'sequelize';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
-import { Material } from '../models/index.js';
+import { Material, Atributos, FichaConfeccion } from '../models/index.js';
 import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, validarInsumo, codigoDxfValido, datosFicticiosInsumo, historialComprasInsumo } from '../helpers/insumos.js';
 import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
 import { borrarObjetos } from '../helpers/almacenamientoDocumentos.js';
@@ -82,16 +82,23 @@ const homeFichasConfeccion = (req, res) => {
 // Piezas.tsx useTransicionPasos): lo que sale se desliza y encoge, lo que entra llega con
 // un leve rebote y un destello marca el avance — portado a CSS/JS plano acá (sin React) y
 // con los tokens gh-* en vez del rosa del sitio público (public/css/input.css,
-// src/js/fichaConfeccionNueva.js). Hoy solo tiene el paso de Referencia completo: el resto
-// de los campos (insumos, procesos, tallas...) está pendiente de definir, así que no hay
-// endpoint de guardado todavía — ni tabla: nada de esto escribe en la base aún.
-const homeFichaConfeccionNueva = (req, res) => {
+// src/js/fichaConfeccionNueva.js). `colores` es el catálogo de ATRIBUTOS tipo='COLOR'
+// (mismo patrón que controller/importacionesController.js) para el paso de "color +
+// cantidad" — se pasa server-side una sola vez, no por un endpoint JSON aparte.
+const homeFichaConfeccionNueva = async (req, res) => {
     try {
+        const colores = await Atributos.findAll({
+            where: { tipo: 'COLOR' },
+            attributes: ['idAtributo', 'valor', 'codigo1', 'codigo2'],
+            order: [['valor', 'ASC']],
+            raw: true
+        });
         return res.render('./administrador/produccion/fichaConfeccionNueva', {
             pagina: 'Fichas de confección',
             subPagina: 'Nueva ficha de confección',
             csrfToken: req.csrfToken(),
-            currentPath: '/procesos'
+            currentPath: '/procesos',
+            colores
         });
     } catch (e) {
         console.error('produccionController(fichaConfeccionNueva):', e);
@@ -99,23 +106,22 @@ const homeFichaConfeccionNueva = (req, res) => {
     }
 };
 
-// GET /admin/procesos/fichas-confeccion/biblioteca — listado. Datos de ejemplo fijos
-// (DUMMY_FICHAS_CONFECCION, debajo): todavía no hay tabla de fichas de confección en la
-// base, así que no hay consulta real detrás — se reemplaza cuando exista el modelo.
-const DUMMY_FICHAS_CONFECCION = [
-    { referencia: 'VEST-2026-014', prenda: 'Vestido midi con volante', insumos: 'Lino, blonda, hilo poliéster', estado: 'Activa' },
-    { referencia: 'BLU-2026-003',  prenda: 'Blusa manga campana',     insumos: 'Viscosa, botones nácar',       estado: 'Activa' },
-    { referencia: 'PANT-2025-091', prenda: 'Pantalón palazzo',        insumos: 'Lino, cierre invisible',       estado: 'Borrador' },
-    { referencia: 'CHAQ-2025-077', prenda: 'Chaqueta oversize',       insumos: 'Dril, forro, botones metálicos', estado: 'Archivada' }
-];
-const homeFichaConfeccionBiblioteca = (req, res) => {
+// GET /admin/procesos/fichas-confeccion/biblioteca — listado real. `referencia` y
+// `materialNombre` son fotos congeladas en la propia fila (models/FichaConfeccion.js), así
+// que un solo findAll alcanza — sin joins ni consulta por fila (CLAUDE.md §7).
+const homeFichaConfeccionBiblioteca = async (req, res) => {
     try {
+        const fichas = await FichaConfeccion.findAll({
+            where: { estado: 'activa' },
+            attributes: ['idFicha', 'referencia', 'materialNombre', 'cantidadTotal', 'precioConfeccion', 'createdAt'],
+            order: [['createdAt', 'DESC']]
+        });
         return res.render('./administrador/produccion/fichaConfeccionBiblioteca', {
             pagina: 'Fichas de confección',
             subPagina: 'Biblioteca de fichas de confección',
             csrfToken: req.csrfToken(),
             currentPath: '/procesos',
-            fichas: DUMMY_FICHAS_CONFECCION
+            fichas
         });
     } catch (e) {
         console.error('produccionController(fichaConfeccionBiblioteca):', e);

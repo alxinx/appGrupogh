@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import {
-    CLOUDFLARE_STREAM_CONFIGURADO, CLOUDFLARE_STREAM_BASE_URL, CLOUDFLARE_STREAM_API_TOKEN
+    CLOUDFLARE_STREAM_CONFIGURADO, CLOUDFLARE_STREAM_BASE_URL, CLOUDFLARE_STREAM_API_TOKEN,
+    CLOUDFLARE_STREAMING_SUBDOMAIN
 } from '../config/cloudflareStream.js';
 
 // Cloudflare Stream — Direct Creator Uploads (admin/procesos/fichas-confeccion, "Carga el
@@ -90,6 +91,17 @@ export async function crearSubidaTus({ uploadLength, nombreArchivo }) {
     const uid = new URL(location).pathname.split('/').pop();
 
     return { uid, uploadURL: location };
+}
+
+/**
+ * URL pública de reproducción de un video ya listo — la página "watch" que Cloudflare aloja
+ * por defecto (`preview` en su propia API). Null sin CLOUDFLARE_STREAMING_SUBDOMAIN o para
+ * un uid simulado (no existe en Cloudflare de verdad). La usa el QR de la ficha de
+ * confección (helpers/fichaConfeccionPdf.js) — no hace falta autenticarse para verla.
+ */
+export function urlVerVideo(uid) {
+    if (!CLOUDFLARE_STREAMING_SUBDOMAIN || !uid || uid.startsWith(UID_SIMULADO_PREFIJO)) return null;
+    return `https://${CLOUDFLARE_STREAMING_SUBDOMAIN}/${uid}/watch`;
 }
 
 /**

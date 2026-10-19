@@ -8,11 +8,12 @@ block contenedor
     //- tokens gh-* en vez del rosa del sitio público (public/css/input.css .gh-paso-*,
     //- src/js/fichaConfeccionNueva.js).
     //-
-    //- Solo el paso 1 (DXF, molde y video) está completo, y solo de front: elige el archivo
-    //- y lo muestra, sin subirlo. El resto de los campos de la ficha (insumos, procesos,
-    //- tallas, instrucciones...) todavía no está definido, así que el paso 2 es un cartel de
-    //- "pendiente" y no hay endpoint de guardado — ni tabla: nada de esto escribe en la base
-    //- todavía.
+    //- Tres pasos: 1) archivos (DXF/molde/video, suben de verdad apenas se eligen — ver más
+    //- abajo), 2) tela + colores y cantidades (el material se auto-carga del DXF del paso 1,
+    //- nunca se vuelve a preguntar — mismo criterio que el Fabric del prompt de IA) y
+    //- 3) complementos/observaciones/precio. "Guardar ficha" en el paso 3 junta todo en POST
+    //- .../finalizar (controller/fichaConfeccionController.js): crea la fila de
+    //- FICHAS_CONFECCION + sus colores, genera el PDF y la deja visible en la Biblioteca.
     include ../../components/headerAdmin
 
     body(class="bg-gray-100 min-h-screen")
@@ -45,7 +46,7 @@ block contenedor
                                 //- siempre se ve igual hasta que le toca.
                                 nav(aria-label="Pasos de la ficha")
                                     ol(class="flex items-center justify-center gap-2")
-                                        each nombre, i in ['Archivos', 'Resto de campos']
+                                        each nombre, i in ['Archivos', 'Tela y colores', 'Precio y notas']
                                             li(class="flex items-center gap-2")
                                                 button(
                                                     type="button"
@@ -54,7 +55,7 @@ block contenedor
                                                     class=`gh-paso-ind flex items-center gap-2 text-xs font-bold transition-colors ${i === 0 ? 'text-slate-800' : 'text-slate-400'}`)
                                                     span(class=`gh-paso-ind-circulo w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 ${i === 0 ? 'bg-gh-primary text-white' : 'bg-slate-100 text-slate-400'}`)= i + 1
                                                     span(class="hidden sm:inline")= nombre
-                                                if i < 1
+                                                if i < 2
                                                     span(class="text-slate-300" aria-hidden="true") ›
 
                                 //- Indicador persistente de subida de video — a propósito AFUERA de
@@ -159,11 +160,11 @@ block contenedor
                                                                 span Generando la vista previa con IA (hasta un minuto)…
                                                             div(data-resultado-generacion class="hidden flex-col gap-3 pt-3 border-t border-gh-primary/20")
                                                                 img(data-imagen-generada class="w-full rounded-xl border border-slate-200" alt="Vista previa generada con IA")
-                                                                div(data-acciones-generacion class="flex items-center gap-2")
-                                                                    button(type="button" data-btn-repetir class="btn btn-secondary btn-sm flex-1 justify-center text-xs")
+                                                                div(data-acciones-generacion class="grid grid-cols-2 gap-2")
+                                                                    button(type="button" data-btn-repetir class="btn btn-secondary btn-sm justify-center text-xs px-2")
                                                                         i(class="fi fi-rr-refresh text-xs")
                                                                         | Repetir
-                                                                    button(type="button" data-btn-aprobar class="btn btn-danger btn-sm flex-1 justify-center text-xs")
+                                                                    button(type="button" data-btn-aprobar class="btn btn-danger btn-sm justify-center text-xs px-2")
                                                                         i(class="fi fi-rr-check text-xs")
                                                                         | Aprobar
                                                                 p(data-aprobado-aviso class="hidden text-xs font-semibold text-emerald-600 flex items-center gap-1.5")
@@ -207,13 +208,106 @@ block contenedor
                                                         span(data-texto-estado-fila class="text-[11px] text-slate-500")
                                                         button(type="button" data-btn-reintentar-fila class="hidden text-[11px] font-bold text-gh-primaryHover hover:underline cursor-pointer") Reintentar
 
-                                    //- PASO 2 — pendiente de definir el resto de los campos
+                                    //- PASO 2 — Tela (auto-cargada del DXF del paso 1, nunca se
+                                    //- vuelve a preguntar) + colores y cantidades. "mayatext verde
+                                    //- 200, mayatext azul 140": una fila por color, se agregan las
+                                    //- que hagan falta (src/js/fichaConfeccionNueva.js).
                                     section(data-paso class="hidden")
-                                        h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Acá van los demás campos
-                                        p(class="mt-1.5 mb-6 text-sm text-slate-500") Insumos, procesos, tallas, instrucciones de confección... en cuanto se definan, este paso se completa.
-                                        div(class="rounded-xl border-2 border-dashed border-slate-200 px-5 py-10 flex flex-col items-center text-center gap-2")
-                                            i(class="fi fi-rr-time-forward text-xl text-slate-300")
-                                            span(class="text-sm font-semibold text-slate-500") Pendiente de definir
+                                        h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Tela y colores
+                                        p(class="mt-1.5 mb-6 text-sm text-slate-500") La tela sale del DXF que ya subiste. Agrega un color y su cantidad por cada uno que necesites.
+
+                                        div(class="rounded-2xl border border-gh-primary/20 bg-gh-primarySoft/30 px-5 py-4 flex items-center gap-3 mb-6")
+                                            div#paso2-material-foto(class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-gh-primaryHover overflow-hidden")
+                                                i(class="fi fi-rr-thread text-base")
+                                            div
+                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Tela
+                                                p#paso2-material(class="text-sm font-bold text-slate-800") Resuelve primero el DXF en el paso 1…
+
+                                        div(data-lista-colores class="flex flex-col gap-2.5")
+                                        p(data-error-colores class="hidden text-xs font-semibold text-rose-600 mt-2")
+
+                                        button#btn-agregar-color(type="button" class="btn btn-secondary btn-sm mt-4 w-fit")
+                                            i(class="fi fi-rr-plus-small text-xs")
+                                            | Agregar color
+
+                                    //- Plantilla de una fila "color + cantidad" — clonada por JS. El
+                                    //- color se elige en el modal compartido de abajo (mismo lenguaje
+                                    //- visual que el selector de colores por talla del alta de
+                                    //- producto, views/administrador/inventarios/forms/product.pug
+                                    //- #modalColores: buscador + grilla de pastillas con su círculo
+                                    //- de color) en vez de un <select> plano.
+                                    template#plantilla-fila-color
+                                        div(data-fila-color class="flex items-center gap-2.5")
+                                            button(type="button" data-abrir-color class="field-text flex-1 flex items-center gap-2.5 text-left cursor-pointer")
+                                                span(data-color-swatch class="hidden w-4 h-4 rounded-full flex-shrink-0 ring-1 ring-black/10")
+                                                span(data-color-nombre class="text-slate-400") Elige un color…
+                                            input(type="hidden" data-color-id)
+                                            input(type="number" inputmode="numeric" min="1" data-color-cantidad placeholder="Cantidad" class="field-text w-28 text-right")
+                                            button(type="button" data-quitar-color aria-label="Quitar color" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
+                                                i(class="fi fi-rr-cross-small")
+
+                                    //- ── MODAL "ELEGIR COLOR" ─────────────────────────────────
+                                    //- Una sola pastilla por click (a diferencia de #modalColores,
+                                    //- que es multi-selección por talla) — acá cada fila de la
+                                    //- ficha necesita exactamente un color.
+                                    div#modal-elegir-color(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                        div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
+                                            div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
+                                                h2(class="text-lg font-bold text-slate-800") Elige un color
+                                                button#cerrar-modal-color(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                                    i(class="fi fi-rr-cross-small text-xl")
+                                            div(class="px-7 pt-5 flex-shrink-0")
+                                                input#buscador-color-ficha(type="text" autocomplete="off" placeholder="Buscar color…" class="field-text")
+                                            div#grid-colores-ficha(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
+                                                each c in (colores || [])
+                                                    button(
+                                                        type="button"
+                                                        data-opcion-color
+                                                        data-id=c.idAtributo
+                                                        data-nombre=c.valor
+                                                        class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
+                                                        span(class="w-5 h-5 rounded-full flex-shrink-0 ring-1 ring-black/10" style=`background-color: ${c.codigo1 || '#ccc'}`)
+                                                        span(class="text-sm font-medium text-slate-700 truncate")= c.valor
+
+                                    //- PASO 3 — Complementos, observaciones y precio de confección.
+                                    //- "Guardar ficha" en este paso manda todo a POST .../finalizar.
+                                    //- Mismo lenguaje visual que la tarjeta "Tela" del paso 2 (icono +
+                                    //- microetiqueta en vez del <label> rosa genérico del resto del
+                                    //- panel): es el cierre del asistente, no un formulario suelto.
+                                    section(data-paso class="hidden")
+                                        h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Complementos, notas y precio
+                                        p(class="mt-1.5 mb-6 text-sm text-slate-500") Lo último antes de generar la ficha en PDF.
+
+                                        div(class="grid grid-cols-1 sm:grid-cols-2 gap-4")
+                                            div(class="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4")
+                                                div(class="flex items-center gap-2")
+                                                    div(class="w-7 h-7 rounded-lg bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                        i(class="fi fi-rr-tags text-xs")
+                                                    label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-complementos") Complementos
+                                                textarea#ficha-complementos(rows="4" placeholder="Botones, cierres, elástico, marquilla…" class="field-text resize-none bg-white")
+
+                                            div(class="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4")
+                                                div(class="flex items-center gap-2")
+                                                    div(class="w-7 h-7 rounded-lg bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                        i(class="fi fi-rr-comment-alt text-xs")
+                                                    label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-observaciones") Observaciones
+                                                textarea#ficha-observaciones(rows="4" placeholder="Instrucciones o notas para confección…" class="field-text resize-none bg-white")
+
+                                        //- El precio queda aparte y con más peso: es el último dato antes
+                                        //- de generar el PDF, el mismo tratamiento rosa-suave que la
+                                        //- tarjeta "Tela" del paso 2 para que se lea como el cierre.
+                                        div(class="mt-4 rounded-2xl border border-gh-primary/20 bg-gh-primarySoft/30 px-5 py-4 flex items-center justify-between gap-4 flex-wrap")
+                                            div(class="flex items-center gap-3")
+                                                div(class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                    i(class="fi fi-rr-sack-dollar text-base")
+                                                div
+                                                    p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Precio de confección
+                                                    p(class="text-xs text-slate-500") Lo que se paga por prenda confeccionada
+                                            div(class="relative")
+                                                span(class="absolute left-4 top-1/2 -translate-y-1/2 text-gh-primaryHover font-bold") $
+                                                input#ficha-precio(type="text" inputmode="numeric" autocomplete="off" placeholder="0" class="w-40 pl-8 pr-4 py-2.5 rounded-xl border border-gh-primary/30 bg-white text-right text-lg font-bold text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-gh-primary/40" aria-label="Precio de confección")
+
+                                        p(data-error-finalizar class="hidden mt-3 text-xs font-semibold text-rose-600 flex items-center gap-1.5")
 
                                 //- ── NAV ───────────────────────────────────────────────
                                 div(class="flex items-center justify-between gap-3")
@@ -253,5 +347,25 @@ block contenedor
                                         button#btn-molde-ia-cancelar(type="button" class="btn btn-secondary") Cancelar
                                         button#btn-molde-ia-generar(type="button" class="btn btn-danger") Generar
 
+                            //- ── MODAL "FICHA GUARDADA" ───────────────────────────────────
+                            //- Resultado de POST .../finalizar: la ficha ya quedó en la
+                            //- Biblioteca. El PDF puede no estar listo todavía si la generación
+                            //- falló justo después de guardar (controller/
+                            //- fichaConfeccionController.js) — en ese caso no hay link y se avisa
+                            //- que se genera solo al abrirla desde la Biblioteca.
+                            div#modal-ficha-lista(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center")
+                                    div(class="px-7 pt-8 pb-6 flex flex-col items-center gap-3")
+                                        div(class="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center")
+                                            i(class="fi fi-rr-check-circle text-2xl text-emerald-500")
+                                        h2(class="text-lg font-bold text-slate-800") Ficha guardada
+                                        p(data-ficha-lista-texto class="text-sm text-slate-500") Ya quedó en la Biblioteca de fichas de confección.
+                                    div(class="px-7 pb-7 flex flex-col gap-2.5")
+                                        a(data-ficha-lista-pdf href="#" target="_blank" rel="noopener" class="btn btn-danger justify-center")
+                                            i(class="fi fi-rr-document-signed text-xs")
+                                            | Ver PDF
+                                        a(href="/admin/procesos/fichas-confeccion/biblioteca" class="btn btn-secondary justify-center") Ir a la Biblioteca
+
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
         script(src="/js/fichaConfeccionNueva.js")

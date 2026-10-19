@@ -5,8 +5,8 @@ import db from '../config/bd.js';
 // (admin/procesos/fichas-confeccion/nueva, paso "Carga el molde") — la imagen de referencia
 // que la IA usa para generar la vista previa de la prenda (helpers/moldeIa.js). Mismo
 // patrón que FichaConfeccionDxf: UUID, se sube al bucket PRIVADO (carpeta `moldes/`,
-// helpers/almacenamientoDocumentos.js CARPETAS_PRIVADAS), sin `idFicha` todavía porque no
-// existe esa tabla.
+// helpers/almacenamientoDocumentos.js CARPETAS_PRIVADAS). No lleva `idFicha`: la FK va al
+// revés, desde `FichaConfeccion.idMolde`/`.idMoldeIaIntento` (models/FichaConfeccion.js).
 //
 // La generación con IA solo corre hoy si `tipoArchivo` es 'jpg': el endpoint de edición de
 // imágenes de OpenAI no acepta PDF, y este proyecto no tiene cómo rasterizar un PDF a

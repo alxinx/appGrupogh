@@ -36,6 +36,7 @@ import { recibirDxf } from '../middlewares/uploadDxf.js';
 import { subirMolde, iniciarGeneracionMolde, estadoIntentoMolde, aprobarMoldeIa } from '../controller/fichaConfeccionMoldeController.js'
 import { recibirMolde } from '../middlewares/uploadMolde.js';
 import { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo } from '../controller/fichaConfeccionVideoController.js'
+import { finalizarFicha, verFichaPdf } from '../controller/fichaConfeccionController.js'
 import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
@@ -324,6 +325,10 @@ routes.post('/procesos/fichas-confeccion/video/:idVideo/confirmar', pPrc('CREATE
 routes.get('/procesos/fichas-confeccion/video/:idVideo',           pPrc('READ'),   estadoVideo);
 routes.post('/procesos/fichas-confeccion/video/:idVideo/reintentar', pPrc('CREATE'), csrfProtection, reintentarVideo);
 routes.post('/procesos/fichas-confeccion/video/:idVideo/marcar-error', pPrc('CREATE'), csrfProtection, marcarErrorVideo);
+// Último paso: junta DXF + molde + colores + videos en un registro y genera el PDF
+// (controller/fichaConfeccionController.js).
+routes.post('/procesos/fichas-confeccion/finalizar',      pPrc('CREATE'), csrfProtection, finalizarFicha);
+routes.get('/procesos/fichas-confeccion/:idFicha/pdf',    pPrc('READ'),   verFichaPdf);
 routes.get('/procesos/fichas-confeccion/biblioteca',      pPrc('READ'),   csrfProtection, homeFichaConfeccionBiblioteca);
 routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   csrfProtection, homeFichasConfeccion);
 routes.get('/procesos',                                   pPrc('READ'),   csrfProtection, homeProcesosListado);

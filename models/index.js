@@ -49,6 +49,8 @@ import FichaConfeccionDxf from './FichaConfeccionDxf.js'
 import FichaConfeccionMolde from './FichaConfeccionMolde.js'
 import FichaConfeccionMoldeIaIntento from './FichaConfeccionMoldeIaIntento.js'
 import FichaConfeccionVideo from './FichaConfeccionVideo.js'
+import FichaConfeccion from './FichaConfeccion.js'
+import FichaConfeccionColor from './FichaConfeccionColor.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
 import MovimientosCajasBancos from './MovimientosCajasBancos.js'
@@ -350,6 +352,28 @@ FichaConfeccionMoldeIaIntento.belongsTo(Usuarios, { foreignKey: 'idUsuarioSolici
 Usuarios.hasMany(FichaConfeccionVideo, { foreignKey: 'idUsuarioCarga', as: 'videosCargados' });
 FichaConfeccionVideo.belongsTo(Usuarios, { foreignKey: 'idUsuarioCarga', as: 'usuarioCarga' });
 
+// ─── Ficha de confección (entidad final del asistente) ───────────────────────
+Usuarios.hasMany(FichaConfeccion, { foreignKey: 'idUsuarioCreacion', as: 'fichasConfeccionCreadas' });
+FichaConfeccion.belongsTo(Usuarios, { foreignKey: 'idUsuarioCreacion', as: 'usuarioCreacion' });
+
+FichaConfeccionDxf.hasOne(FichaConfeccion, { foreignKey: 'idDxf', as: 'ficha' });
+FichaConfeccion.belongsTo(FichaConfeccionDxf, { foreignKey: 'idDxf', as: 'dxf' });
+
+FichaConfeccionMolde.hasOne(FichaConfeccion, { foreignKey: 'idMolde', as: 'ficha' });
+FichaConfeccion.belongsTo(FichaConfeccionMolde, { foreignKey: 'idMolde', as: 'molde' });
+
+FichaConfeccionMoldeIaIntento.hasOne(FichaConfeccion, { foreignKey: 'idMoldeIaIntento', as: 'ficha' });
+FichaConfeccion.belongsTo(FichaConfeccionMoldeIaIntento, { foreignKey: 'idMoldeIaIntento', as: 'moldeIaIntento' });
+
+FichaConfeccion.hasMany(FichaConfeccionVideo, { foreignKey: 'idFicha', as: 'videos' });
+FichaConfeccionVideo.belongsTo(FichaConfeccion, { foreignKey: 'idFicha', as: 'ficha' });
+
+FichaConfeccion.hasMany(FichaConfeccionColor, { foreignKey: 'idFicha', as: 'colores' });
+FichaConfeccionColor.belongsTo(FichaConfeccion, { foreignKey: 'idFicha', as: 'ficha' });
+
+Atributos.hasMany(FichaConfeccionColor, { foreignKey: 'idAtributoColor', as: 'fichasConfeccionColores' });
+FichaConfeccionColor.belongsTo(Atributos, { foreignKey: 'idAtributoColor', as: 'color' });
+
 
 // ─── DetallesPagosFactura ────────────────────────────────────────────────────
 FacturaClientes.hasMany(DetallesPagosFactura, { foreignKey: 'idFacturaCliente', as: 'pagos' });
@@ -524,4 +548,6 @@ export {
   FichaConfeccionMolde,
   FichaConfeccionMoldeIaIntento,
   FichaConfeccionVideo,
+  FichaConfeccion,
+  FichaConfeccionColor,
 }
