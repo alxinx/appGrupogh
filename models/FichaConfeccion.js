@@ -16,9 +16,14 @@ import db from '../config/bd.js';
 // restricción que el usuario no pidió). El PDF (helpers/fichaConfeccionPdf.js) simplemente
 // omite esas imágenes si no hay nada que mostrar.
 //
-// `cantidadTotal` es la suma de FICHAS_CONFECCION_COLORES.cantidad — se guarda acá también
+// `cantidadTotal` nace como la suma de FICHAS_CONFECCION_COLORES.cantidad al crear la ficha
+// (controller/fichaConfeccionController.js finalizarFicha) — se guarda acá también
 // (desnormalizado) porque la Biblioteca lista fichas sin tener que sumar el detalle de cada
-// una por fila (CLAUDE.md §7, prevención de N+1).
+// una por fila (CLAUDE.md §7, prevención de N+1). Desde el editor (actualizarFichaConfeccion)
+// deja de ser un derivado: el operador la pone a mano y pasa a ser el TOPE de unidades —
+// la suma de los colores nunca puede superarla (pedido explícito del usuario), y si hay
+// insumos ninguno puede pedir menos que ella (un botón/cierre hace falta al menos una vez
+// por prenda).
 //
 // `objectKeyPdf` es la ruta del PDF ya generado en el bucket PRIVADO (carpeta
 // `fichas-confeccion/`, helpers/almacenamientoDocumentos.js CARPETAS_PRIVADAS): el PDF trae
@@ -57,6 +62,13 @@ const FichaConfeccion = db.define('FICHAS_CONFECCION', {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: 'FICHAS_CONFECCION_MOLDES_IA_INTENTOS', key: 'idIntento' },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
+    },
+    idMoldeReferencia: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: 'FICHAS_CONFECCION_MOLDES', key: 'idMolde' },
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
     },

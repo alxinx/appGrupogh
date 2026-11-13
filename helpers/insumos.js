@@ -22,8 +22,10 @@ export const UNIDADES_COMPRA = [
     { valor: 'unidad', etiqueta: 'Unidad' }
 ];
 
-// codigoMaterial es INT en MySQL: el tope es el máximo de un INT con signo.
-export const LIMITES_INSUMO = { codigoMin: 1, codigoMax: 2147483647, nombreMax: 100 };
+// codigoMaterial es VARCHAR(20): acepta un número simple ("1") o un código compuesto
+// familia.material ("1.23"). El separador canónico es el punto — un guión en la entrada
+// se normaliza a punto en codigoDxfValido.
+export const LIMITES_INSUMO = { nombreMax: 100 };
 
 // Carpeta en el bucket público (`grupo-gh`, config/r2.js) donde vive la foto de un material.
 // Sin espacios ni mayúsculas, a diferencia de como se nombró de palabra: el resto de
@@ -56,7 +58,9 @@ const hashIdMaterial = (idMaterial) => {
 const cantidadFicticia = (idMaterial) => (hashIdMaterial(idMaterial) % 500) + 1;
 
 // Lo que la vista necesita de una fila: nada del modelo que no se pinte.
-export const presentarMaterial = (m) => ({
+// `padreNombre` es opcional: se pasa desde el controlador cuando se tiene la lista completa
+// y se puede resolver el padre de las variantes sin un query adicional.
+export const presentarMaterial = (m, padreNombre = null) => ({
     idMaterial:     m.idMaterial,
     codigoMaterial: m.codigoMaterial,
     nombre:         m.nombre,
@@ -66,9 +70,10 @@ export const presentarMaterial = (m) => ({
     unidadEtiqueta: ETIQUETA_UNIDAD[m.unidadCompra] ?? '—',
     activo:         Boolean(m.activo),
     icono:          ICONO_TIPO[m.tipo] ?? ICONO_TIPO.insumo,
-    // Foto real del material si se subió una; si no, la vista cae al ícono genérico del tipo.
     imagenUrl:      urlImagenMaterial(m.imagen),
-    cantidadFicticia: cantidadFicticia(m.idMaterial)
+    cantidadFicticia: cantidadFicticia(m.idMaterial),
+    esVariante:     m.codigoMaterial.includes('.'),
+    padreNombre
 });
 
 // ── Perfil de un material (admin/insumos/:id) — datos de relleno ─────────────────────
@@ -262,27 +267,29 @@ export const historialComprasInsumo = async (idMaterial) => {
     });
 };
 
-// Devuelve el código DXF como número, o null si no es un entero dentro de los límites. Lo usan
-// la validación del alta y la consulta de duplicados, para que las dos digan lo mismo.
+// Devuelve el código normalizado (punto como separador canónico) o null si el formato no
+// es válido. Acepta un número simple ("1") o un código compuesto ("1.23" / "1-23" — el
+// guión se normaliza a punto). Lo usan la validación del alta y la consulta de duplicados.
 export const codigoDxfValido = (texto) => {
     const t = String(texto ?? '').trim();
-    if (!/^\d{1,10}$/.test(t)) return null;
-    const n = Number(t);
-    return n >= LIMITES_INSUMO.codigoMin && n <= LIMITES_INSUMO.codigoMax ? n : null;
+    const compuesto = t.match(/^(\d{1,10})[.\-](\d{1,10})$/);
+    if (compuesto) return `${compuesto[1]}.${compuesto[2]}`;
+    if (/^\d{1,10}$/.test(t)) return t;
+    return null;
 };
 
 // Validación del alta. Devuelve `{ errores }` con un mensaje por campo, o `{ datos }` con
 // solo los campos permitidos (whitelist: nada del body llega al modelo tal cual, §12).
 export const validarInsumo = (body = {}) => {
     const errores = {};
-    const { codigoMin, codigoMax, nombreMax } = LIMITES_INSUMO;
+    const { nombreMax } = LIMITES_INSUMO;
 
     const codigoTxt = String(body.codigoMaterial ?? '').trim();
     const codigoMaterial = codigoDxfValido(codigoTxt);
     if (!codigoTxt) {
         errores.codigoMaterial = 'Escribe el código del material, el número que trae el DXF.';
     } else if (codigoMaterial === null) {
-        errores.codigoMaterial = `El código debe ser un número entero entre ${codigoMin} y ${codigoMax}.`;
+        errores.codigoMaterial = 'El código debe ser un número (ej: 1) o un código compuesto (ej: 1.23).';
     }
 
     const nombre = String(body.nombre ?? '').trim();

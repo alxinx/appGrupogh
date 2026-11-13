@@ -61,7 +61,10 @@ export default {
         ordenCompra         : '/src/js/ordenCompra.js',
         ordenCompraDetalle  : '/src/js/ordenCompraDetalle.js',
         historialCompras    : '/src/js/historialCompras.js',
-        fichaConfeccionNueva: '/src/js/fichaConfeccionNueva.js'
+        fichaConfeccionNueva: '/src/js/fichaConfeccionNueva.js',
+        fichaConfeccionBiblioteca: '/src/js/fichaConfeccionBiblioteca.js',
+        fichaConfeccionEditar: '/src/js/fichaConfeccionEditar.js',
+        procesoDetalle: '/src/js/procesoDetalle.js'
     },
     output: {
         filename: '[name].js',

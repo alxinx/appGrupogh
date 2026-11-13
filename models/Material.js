@@ -1,9 +1,9 @@
 import { DataTypes } from 'sequelize';
 import db from '../config/bd.js';
 
-// Material del catálogo de producción. `codigoMaterial` es el número que trae cada capa del
-// DXF ("Material: 1, 2, 3..."): es la llave con la que se cruza el archivo de corte contra
-// este catálogo, por eso es único.
+// Material del catálogo de producción. `codigoMaterial` es el código que trae cada capa del
+// DXF: un número simple ("1") o un código compuesto familia.material ("1.23") — es la llave
+// con la que se cruza el archivo de corte contra este catálogo, por eso es único.
 //
 // Nombre en mayúscula como el resto de tablas del proyecto (SNAKE_CASE_MAYÚSCULA). El RDS
 // de producción falla con el nombre en minúscula, así que el modelo y la tabla van en
@@ -15,12 +15,15 @@ const Material = db.define('MATERIAL', {
         primaryKey: true
     },
     codigoMaterial: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING(20),
         allowNull: false,
         unique: true,
         validate: {
-            isInt: { msg: 'El código del material debe ser un número entero.' },
-            min:   { args: [1], msg: 'El código del material debe ser mayor a 0.' }
+            isValidCodigo(val) {
+                if (!/^\d{1,10}(\.\d{1,10})?$/.test(String(val))) {
+                    throw new Error('El código del material debe ser un número (ej: 1) o un código compuesto (ej: 1.23).');
+                }
+            }
         }
     },
     nombre: {

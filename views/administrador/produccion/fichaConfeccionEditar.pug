@@ -1,0 +1,340 @@
+extends ../../layout/index
+block contenedor
+    //- "Abrir" una ficha ya creada (admin/procesos/fichas-confeccion/biblioteca → Abrir) —
+    //- editor completo (controller/fichaConfeccionController.js homeFichaConfeccionEditar/
+    //- actualizarFichaConfeccion, src/js/fichaConfeccionEditar.js). La tela y la referencia
+    //- de catálogo (familia) siguen saliendo del DXF y NO se re-editan acá — eso dispararía
+    //- de nuevo toda la resolución de materiales/familia del paso 1 del asistente, que es un
+    //- flujo aparte. Editable: nombre de referencia, colores (agregar/quitar/cantidad),
+    //- insumos (agregar/quitar), talleres de confección con precio propio y los colores que
+    //- le tocan a cada uno, y videos adicionales (mismo pipeline de Cloudflare Stream del
+    //- asistente, solo que asociando a una ficha que ya existe).
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-document-signed',
+                                    titulo:    'Editar ficha de confección',
+                                    subtitulo: ficha.referencia,
+                                    iconoSub:  'fi-rr-tshirt'
+                                })
+                                div(class="flex items-center gap-2 flex-shrink-0")
+                                    a(href="/admin/procesos/fichas-confeccion/biblioteca" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Volver
+                                    if ficha.dxf && ficha.dxf.objectKey
+                                        a(href=`/admin/procesos/fichas-confeccion/${ficha.idFicha}/dxf` class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                            i(class="fi fi-rr-download text-xs")
+                                            | Descargar DXF
+                                    a(id="link-ver-pdf" href=`/admin/procesos/fichas-confeccion/${ficha.idFicha}/pdf` target="_blank" rel="noopener" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-document-signed text-xs")
+                                        | Ver PDF
+
+                            - var materialesFicha = ((ficha.dxf && ficha.dxf.materialesDetalle) || []).filter(function (m) { return m.material; }).map(function (m) { return { idMaterial: m.material.idMaterial, nombre: m.material.nombre }; })
+                            - var coloresIniciales = (ficha.colores || []).map(function (l) { return { idAtributoColor: l.idAtributoColor, nombre: l.color ? l.color.valor : '—', codigo1: l.color ? l.color.codigo1 : '#ccc', cantidad: l.cantidad, idMaterial: l.idMaterial }; })
+                            - var insumosIniciales = (ficha.insumos || []).map(function (l) { return { idMaterial: l.idMaterial, nombre: l.nombreMaterial, cantidad: l.cantidad }; })
+                            - var talleresIniciales = (ficha.talleres || []).map(function (t) { return { idProveedor: t.idProveedor, nombre: t.proveedor ? t.proveedor.razonSocial : '—', precioConfeccion: t.precioConfeccion, colores: (t.colores || []).map(function (c) { return c.idAtributoColor; }) }; })
+
+                            div(
+                                id="asistente-ficha-editar"
+                                data-csrf=csrfToken
+                                data-id-ficha=ficha.idFicha
+                                data-materiales=JSON.stringify(materialesFicha)
+                                data-colores-iniciales=JSON.stringify(coloresIniciales)
+                                data-insumos-iniciales=JSON.stringify(insumosIniciales)
+                                data-talleres-iniciales=JSON.stringify(talleresIniciales)
+                                class="col-span-12 grid grid-cols-1 lg:grid-cols-5 gap-4"
+                            )
+
+                                //- ── Columna izquierda ──────────────────────────────────
+                                div(class="lg:col-span-2 flex flex-col gap-4")
+
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-4")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Información general
+                                        div(class="grid grid-cols-2 gap-3")
+                                            div(class="col-span-2")
+                                                label(class="text-xs font-semibold text-slate-500 mb-1 block" for="ficha-editar-referencia") Referencia
+                                                input#ficha-editar-referencia(type="text" maxlength="150" value=ficha.referencia class="field-text")
+                                            div
+                                                label(class="text-xs font-semibold text-slate-500 mb-1 block" for="ficha-editar-cantidad-total") Cantidad total
+                                                div(class="relative")
+                                                    input#ficha-editar-cantidad-total(type="number" inputmode="numeric" min="1" value=ficha.cantidadTotal class="field-text pr-12")
+                                                    span(class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 uppercase pointer-events-none") und
+                                            div
+                                                span(class="text-xs font-semibold text-slate-500 mb-1 block") Tela
+                                                -
+                                                    var textoTela = ((ficha.dxf && ficha.dxf.materialesDetalle) || [])
+                                                        .filter(function(m){ return m.material; })
+                                                        .map(function(m){
+                                                            return m.material.nombrePadre
+                                                                ? m.material.nombrePadre + ' · ' + m.material.nombre
+                                                                : m.material.nombre;
+                                                        }).join(', ') || ficha.materialNombre;
+                                                div(class="field-text bg-slate-50 text-slate-600 truncate" title=textoTela)= textoTela
+                                        p(class="text-[10px] text-slate-400 -mt-2") La cantidad total es el tope: los colores de la derecha no pueden sumar más. La tela sale del DXF y no se edita acá.
+
+                                    if ficha.molde || (ficha.moldeIaIntento && ficha.moldeIaIntento.aprobado) || ficha.moldeReferencia
+                                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Referencias visuales
+                                            div(class="grid grid-cols-2 gap-3")
+                                                if ficha.molde
+                                                    div(class="flex flex-col gap-1.5")
+                                                        div(class="aspect-square rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center")
+                                                            if moldeImagenUrl
+                                                                img(src=moldeImagenUrl alt="Molde" class="w-full h-full object-cover")
+                                                            else if ficha.molde.tipoArchivo === 'jpg'
+                                                                i(class="fi fi-rr-picture text-2xl text-slate-300")
+                                                            else
+                                                                i(class="fi fi-rr-file-pdf text-2xl text-slate-300")
+                                                        span(class="text-[11px] font-semibold text-slate-500 text-center") Molde técnico
+                                                if ficha.moldeReferencia
+                                                    div(class="flex flex-col gap-1.5")
+                                                        div(class="aspect-square rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center")
+                                                            if moldeReferenciaImagenUrl
+                                                                img(src=moldeReferenciaImagenUrl alt="Foto de referencia" class="w-full h-full object-cover")
+                                                            else
+                                                                i(class="fi fi-rr-picture text-2xl text-slate-300")
+                                                        span(class="text-[11px] font-semibold text-slate-500 text-center") Foto de referencia
+                                                if ficha.moldeIaIntento && ficha.moldeIaIntento.aprobado
+                                                    div(class="flex flex-col gap-1.5")
+                                                        div(class="aspect-square rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center")
+                                                            if moldeIaImagenUrl
+                                                                img(src=moldeIaImagenUrl alt="Generado con IA" class="w-full h-full object-cover")
+                                                            else
+                                                                i(class="fi fi-rr-sparkles text-2xl text-slate-300")
+                                                        span(class="text-[11px] font-semibold text-slate-500 text-center") Generado con IA
+                                            if ficha.molde && ficha.molde.tipoArchivo !== 'jpg'
+                                                p(class="text-[10px] text-slate-400 mt-2") El molde es un PDF — la vista completa está en el PDF de la ficha.
+
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-2.5")
+                                        div(class="flex items-center gap-2")
+                                            div(class="w-7 h-7 rounded-lg bg-white shadow-sm border border-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                i(class="fi fi-rr-tags text-xs")
+                                            label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-editar-complementos") Complementos
+                                        textarea#ficha-editar-complementos(rows="3" placeholder="Botones, cierres, elástico, marquilla…" class="field-text resize-none bg-white")= ficha.complementos || ''
+
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-2.5")
+                                        div(class="flex items-center gap-2")
+                                            div(class="w-7 h-7 rounded-lg bg-white shadow-sm border border-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                i(class="fi fi-rr-comment-alt text-xs")
+                                            label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-editar-observaciones") Observaciones
+                                        textarea#ficha-editar-observaciones(rows="3" placeholder="Instrucciones o notas para confección…" class="field-text resize-none bg-white")= ficha.observaciones || ''
+
+                                //- ── Columna derecha ────────────────────────────────────
+                                div(class="lg:col-span-3 flex flex-col gap-4")
+
+                                    //- Colores — agregar/quitar/editar cantidad. El contador
+                                    //- de la derecha compara contra el tope de "Cantidad
+                                    //- total" en vivo (src/js/fichaConfeccionEditar.js) —
+                                    //- pasa a rojo si ya se pasó, para no esperar a guardar
+                                    //- para enterarse.
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        div(class="flex items-center justify-between mb-3")
+                                            div(class="flex items-center gap-2")
+                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Colores
+                                                span#contador-colores-editar(class="text-[11px] font-semibold text-slate-400 tabular-nums")
+                                            button#btn-agregar-color-editar(type="button" class="btn btn-secondary btn-sm text-xs")
+                                                i(class="fi fi-rr-plus-small text-xs")
+                                                | Agregar color
+                                        div(data-lista-colores-editar class="flex flex-col gap-2")
+                                        p(data-error-colores-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
+
+                                    //- Insumos — agregar/quitar, con foto.
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        div(class="flex items-center justify-between mb-3")
+                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Insumos
+                                            button#btn-agregar-insumo-editar(type="button" class="btn btn-secondary btn-sm text-xs")
+                                                i(class="fi fi-rr-plus-small text-xs")
+                                                | Agregar insumo
+                                        div(data-lista-insumos-editar class="flex flex-col gap-2")
+                                        p#insumos-editar-vacio(class=(ficha.insumos || []).length ? 'hidden text-xs text-slate-400' : 'text-xs text-slate-400') No se agregó ningún insumo todavía.
+                                        p(class="text-[10px] text-slate-400 mt-2") Si agregás un insumo, su cantidad no puede ser menor a la cantidad total de la ficha.
+                                        p(data-error-insumos-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
+
+                                    //- Talleres de confección — cada uno con SU precio y los
+                                    //- colores que le tocan (de los que la ficha tiene a la
+                                    //- derecha, arriba). Solo proveedores categoría
+                                    //- 'Confeccionista' (controller/fichaConfeccionController.js).
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        div(class="flex items-center justify-between mb-3")
+                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Talleres de confección
+                                            button#btn-agregar-taller-editar(type="button" class="btn btn-secondary btn-sm text-xs")
+                                                i(class="fi fi-rr-plus-small text-xs")
+                                                | Agregar taller
+                                        div(data-lista-talleres-editar class="flex flex-col gap-3")
+                                        p#talleres-editar-vacio(class=(ficha.talleres || []).length ? 'hidden text-xs text-slate-400' : 'text-xs text-slate-400') Sin talleres asignados todavía.
+                                        p(data-error-talleres-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
+
+                                    //- Videos — los que ya están listos, más subir hasta 3
+                                    //- en total (mismo pipeline de Cloudflare Stream del
+                                    //- asistente: src/js/fichaConfeccionEditar.js).
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        div(class="flex items-center justify-between mb-3")
+                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Videos del proceso
+                                            span#contador-videos-editar(class="text-[11px] text-slate-400") #{(ficha.videos || []).filter(v => v.estado === 'ready').length}/3
+                                        div(data-lista-videos-editar class="flex flex-col gap-2 mb-2")
+                                            each v in (ficha.videos || [])
+                                                if v.estado === 'ready'
+                                                    div(class="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 rounded-xl px-3 py-2")
+                                                        i(class="fi fi-rr-video-camera text-slate-400 text-sm flex-shrink-0")
+                                                        span(class="flex-1 truncate")= v.nombreOriginal
+                                        div#zona-agregar-video-editar(class="relative")
+                                            input(type="file" accept=".mp4,.mov,.avi" id="input-video-editar" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
+                                            div(class="inputUpload !p-4 !mb-0 flex-row items-center gap-2 text-xs")
+                                                i(class="fi fi-rr-video-camera text-base text-gh-primaryHover")
+                                                span(class="font-semibold text-gray-600") Agregar video del proceso
+                                        div(data-progreso-video-editar class="hidden flex items-center gap-2 text-xs font-semibold text-slate-500 mt-2")
+                                            span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0")
+                                            span(data-texto-progreso-video-editar) Subiendo…
+                                        p(data-error-video-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
+
+                                    //- Precio general + guardar.
+                                    div(class="rounded-2xl border border-gh-primary/20 bg-gh-primarySoft/30 px-5 py-4 flex items-center justify-between gap-4 flex-wrap")
+                                        div(class="flex items-center gap-3")
+                                            div(class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                i(class="fi fi-rr-sack-dollar text-base")
+                                            div
+                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Precio general de confección
+                                                p(class="text-xs text-slate-500") Se usa cuando un taller no tiene uno propio
+                                        div(class="relative")
+                                            span(class="absolute left-4 top-1/2 -translate-y-1/2 text-gh-primaryHover font-bold") $
+                                            input#ficha-editar-precio(type="text" inputmode="numeric" autocomplete="off" value=Math.round(ficha.precioConfeccion).toLocaleString('es-CO') class="w-40 pl-8 pr-4 py-2.5 rounded-xl border border-gh-primary/30 bg-white text-right text-lg font-bold text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-gh-primary/40" aria-label="Precio de confección")
+
+                                    p(id="error-ficha-editar" class="hidden text-xs font-semibold text-rose-600 flex items-center gap-1.5")
+                                    p(id="exito-ficha-editar" class="hidden text-xs font-semibold text-emerald-600 flex items-center gap-1.5")
+
+                                    div(class="flex justify-end gap-2")
+                                        a(href="/admin/procesos/fichas-confeccion/biblioteca" class="btn btn-secondary") Cancelar
+                                        button#btn-guardar-ficha-editar(type="button" class="btn btn-danger")
+                                            i(class="fi fi-rr-disk text-xs")
+                                            | Guardar cambios
+
+                            //- ── MODAL "ELEGIR COLOR" ─────────────────────────────────
+                            //- Mismo lenguaje visual que el del asistente (buscador + grilla
+                            //- de pastillas, una por click) — nunca combinados
+                            //- (coloresCatalogo sale de coloresSimplesDisponibles, CLAUDE.md DRY).
+                            div#modal-elegir-color-editar(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
+                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
+                                        h2(class="text-lg font-bold text-slate-800") Elige un color
+                                        button#cerrar-modal-color-editar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                            i(class="fi fi-rr-cross-small text-xl")
+                                    div(class="px-7 pt-5 flex-shrink-0")
+                                        input#buscador-color-ficha-editar(type="text" autocomplete="off" placeholder="Buscar color…" class="field-text")
+                                    div#grid-colores-ficha-editar(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
+                                        each c in (coloresCatalogo || [])
+                                            button(
+                                                type="button"
+                                                data-opcion-color
+                                                data-id=c.idAtributo
+                                                data-nombre=c.valor
+                                                class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
+                                                span(class="w-5 h-5 rounded-full flex-shrink-0 ring-1 ring-black/10" style=`background-color: ${c.codigo1 || '#ccc'}`)
+                                                span(class="text-sm font-medium text-slate-700 truncate")= c.valor
+
+                            //- ── MODAL "ELEGIR INSUMO" ────────────────────────────────
+                            div#modal-elegir-insumo-editar(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
+                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
+                                        h2(class="text-lg font-bold text-slate-800") Elige un insumo
+                                        button#cerrar-modal-insumo-editar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                            i(class="fi fi-rr-cross-small text-xl")
+                                    div(class="px-7 pt-5 flex-shrink-0")
+                                        input#buscador-insumo-ficha-editar(type="text" autocomplete="off" placeholder="Buscar insumo…" class="field-text")
+                                    div#grid-insumos-ficha-editar(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
+                                        each m in (insumosCatalogo || [])
+                                            button(
+                                                type="button"
+                                                data-opcion-insumo
+                                                data-id=m.idMaterial
+                                                data-nombre=m.nombre
+                                                data-imagen=m.imagenUrl || ''
+                                                class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
+                                                span(class="w-8 h-8 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                                                    if m.imagenUrl
+                                                        img(src=m.imagenUrl alt=m.nombre class="w-full h-full object-cover")
+                                                    else
+                                                        i(class=`fi ${m.icono} text-sm`)
+                                                span(class="text-sm font-medium text-slate-700 truncate")= m.nombre
+
+                            //- ── MODAL "ELEGIR TALLER" ────────────────────────────────
+                            //- Mismo lenguaje visual que los dos de arriba — "+ Agregar
+                            //- taller…" como <select> plano no se leía como botón (aviso
+                            //- del usuario); acá es un botón real que abre esta grilla, uno
+                            //- por click, igual que color/insumo. Solo confeccionistas que
+                            //- la ficha TODAVÍA no tiene (se van ocultando en JS a medida
+                            //- que se agregan — src/js/fichaConfeccionEditar.js).
+                            div#modal-elegir-taller-editar(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
+                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
+                                        h2(class="text-lg font-bold text-slate-800") Elige un taller
+                                        button#cerrar-modal-taller-editar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                            i(class="fi fi-rr-cross-small text-xl")
+                                    div(class="px-7 pt-5 flex-shrink-0")
+                                        input#buscador-taller-ficha-editar(type="text" autocomplete="off" placeholder="Buscar taller…" class="field-text")
+                                    div#grid-talleres-ficha-editar(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
+                                        each p in (confeccionistas || [])
+                                            button(
+                                                type="button"
+                                                data-opcion-taller
+                                                data-id=p.idProveedor
+                                                data-nombre=p.razonSocial
+                                                class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
+                                                span(class="w-8 h-8 rounded-lg bg-gh-primarySoft flex-shrink-0 flex items-center justify-center text-gh-primaryHover")
+                                                    i(class="fi fi-rr-scissors text-sm")
+                                                span(class="text-sm font-medium text-slate-700 truncate")= p.razonSocial
+                                    if !(confeccionistas || []).length
+                                        p(class="px-7 pb-6 text-sm text-slate-400") No hay proveedores de categoría "Confeccionista" todavía.
+
+                            //- Plantilla de una fila "color + cantidad" editable.
+                            template#plantilla-fila-color-editar
+                                div(data-fila-color class="flex items-center gap-2.5")
+                                    button(type="button" data-abrir-color class="field-text flex-1 flex items-center gap-2.5 text-left cursor-pointer")
+                                        span(data-color-swatch class="hidden w-4 h-4 rounded-full flex-shrink-0 ring-1 ring-black/10")
+                                        span(data-color-nombre class="text-slate-400") Elige un color…
+                                    input(type="hidden" data-color-id)
+                                    select(data-color-material class="hidden field-text w-32 flex-shrink-0")
+                                    input(type="number" inputmode="numeric" min="1" data-color-cantidad placeholder="Cantidad" class="field-text w-24 text-right")
+                                    button(type="button" data-quitar-color aria-label="Quitar color" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
+                                        i(class="fi fi-rr-cross-small")
+
+                            //- Plantilla de una fila "insumo + cantidad" editable, con foto.
+                            template#plantilla-fila-insumo-editar
+                                div(data-fila-insumo class="flex items-center gap-2.5")
+                                    button(type="button" data-abrir-insumo class="field-text flex-1 flex items-center gap-2.5 text-left cursor-pointer")
+                                        span(data-insumo-foto class="w-6 h-6 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                                            i(class="fi fi-rr-box text-xs")
+                                        span(data-insumo-nombre class="text-slate-400") Elige un insumo…
+                                    input(type="hidden" data-insumo-id)
+                                    input(type="number" inputmode="numeric" min="1" data-insumo-cantidad placeholder="Cantidad" class="field-text w-24 text-right")
+                                    button(type="button" data-quitar-insumo aria-label="Quitar insumo" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
+                                        i(class="fi fi-rr-cross-small")
+
+                            //- Plantilla de una tarjeta de taller: nombre, precio propio y
+                            //- los colores de la ficha que le tocan (checkboxes — se repintan
+                            //- en JS cada vez que la lista de colores cambia).
+                            template#plantilla-taller-editar
+                                div(data-fila-taller class="rounded-xl border border-slate-200 p-3.5 flex flex-col gap-2.5")
+                                    div(class="flex items-center justify-between gap-2")
+                                        span(data-taller-nombre class="text-sm font-bold text-slate-800 truncate")
+                                        button(type="button" data-quitar-taller aria-label="Quitar taller" class="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
+                                            i(class="fi fi-rr-cross-small text-xs")
+                                    div(class="flex items-center gap-2")
+                                        span(class="text-xs text-slate-500 flex-shrink-0") Precio de confección
+                                        div(class="relative flex-1 max-w-[140px]")
+                                            span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs") $
+                                            input(type="text" inputmode="numeric" data-taller-precio class="field-text pl-6 text-right text-sm")
+                                    div(data-taller-colores class="flex flex-wrap gap-1.5")
+
+        script(src="/js/helpers.js")
+        script(src="/js/fichaConfeccionEditar.js")

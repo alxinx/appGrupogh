@@ -83,32 +83,10 @@ export async function generarPdfFichaConfeccion(ficha) {
              MARGIN + CW - 200, MARGIN + 21, { width: 190, align: 'right' });
     doc.fillColor('#000');
 
-    let y = MARGIN + headerH + 10;
-
-    // ── 2. Tira de datos clave: Referencia · Cantidad · Tela · Complementos ────
-    const tiraH = 42;
-    doc.roundedRect(MARGIN, y, CW, tiraH, 9).fill(PINK_SOFT);
-    const datosTira = [
-        { etiqueta: 'REFERENCIA', valor: ficha.referencia },
-        { etiqueta: 'CANTIDAD', valor: `${ficha.cantidadTotal.toLocaleString('es-CO')} prendas` },
-        { etiqueta: 'TELA', valor: ficha.materialNombre },
-        { etiqueta: 'COMPLEMENTOS', valor: ficha.complementos || '—' }
-    ];
-    const colTiraW = CW / 4;
-    datosTira.forEach((d, i) => {
-        const cx = MARGIN + i * colTiraW + 16;
-        doc.circle(cx, y + tiraH / 2, 3.5).fill(PINK);
-        doc.fillColor(SLATE_400).font('Helvetica-Bold').fontSize(6.5).text(d.etiqueta, cx + 11, y + 9, { width: colTiraW - 26 });
-        doc.fillColor(SLATE_900).font('Helvetica-Bold').fontSize(9)
-           .text(d.valor, cx + 11, y + 20, { width: colTiraW - 26, height: 16, ellipsis: true });
-    });
-    doc.fillColor('#000');
-    y += tiraH + 12;
-
-    // ── 3. Dos columnas ──────────────────────────────────────────────────────
+    // ── 2. Dos columnas (inician justo después del encabezado para ganar espacio) ──
+    const topY = MARGIN + headerH + 12;
     const leftW = CW * 0.55, gap = 16, rightW = CW - leftW - gap;
     const leftX = MARGIN, rightX = MARGIN + leftW + gap;
-    const topY = y;
 
     // ── Columna izquierda: molde subido + generado con IA (solo esos dos —
     // no hay "vistas frente/espalda" reales que mostrar en este flujo), una
@@ -153,9 +131,19 @@ export async function generarPdfFichaConfeccion(ficha) {
             bufferIa = await sharp(webp).png().toBuffer();
         } catch { /* ídem */ }
     }
+    let bufferReferencia = null;
+    if (ficha.moldeReferencia?.tipoArchivo === 'jpg' && ficha.moldeReferencia?.objectKey) {
+        try { bufferReferencia = await descargarObjeto(ficha.moldeReferencia.objectKey); } catch { /* se omite si falla */ }
+    }
 
-    yL = await cajaImagen(leftX, yL, 'Molde', bufferMolde);
-    yL = await cajaImagen(leftX, yL, 'Generado con IA', bufferIa);
+    // El molde técnico siempre va — es lo que necesita la confeccionista.
+    // La imagen adicional (IA o foto de referencia) va debajo si existe.
+    yL = await cajaImagen(leftX, yL, 'Molde técnico', bufferMolde);
+    if (bufferIa) {
+        yL = await cajaImagen(leftX, yL, 'Generado con IA', bufferIa);
+    } else if (bufferReferencia) {
+        yL = await cajaImagen(leftX, yL, 'Foto de referencia', bufferReferencia);
+    }
 
     // ── Columna derecha: información general, colores, información adicional ──
     let yR = seccionHeader('Información general', rightX, topY, rightW);
@@ -178,9 +166,12 @@ export async function generarPdfFichaConfeccion(ficha) {
     yR += 4;
 
     // Colores y cantidades — reemplaza "detalle de materiales": una fila por color, con su
-    // pastilla de color real (ATRIBUTOS.codigo1) y la cantidad.
+    // pastilla de color real (ATRIBUTOS.codigo1) y la cantidad. Con más de una tela en la
+    // ficha, "verde" puede repartirse entre dos materiales distintos (FichaConfeccionColor.
+    // idMaterial) — ahí sí hace falta decir cuál, o las dos líneas se verían idénticas.
     yR = seccionHeader('Colores', rightX, yR, rightW);
     const colores = ficha.colores || [];
+    const variasTelas = new Set(colores.map((l) => l.idMaterial).filter(Boolean)).size > 1;
     if (!colores.length) {
         doc.fillColor(SLATE_400).font('Helvetica-Oblique').fontSize(8.5).text('Sin colores registrados.', rightX, yR);
         doc.fillColor('#000');
@@ -189,7 +180,10 @@ export async function generarPdfFichaConfeccion(ficha) {
         colores.forEach((linea) => {
             doc.circle(rightX + 6, yR + 7, 5).fill(linea.color?.codigo1 || '#cccccc');
             doc.circle(rightX + 6, yR + 7, 5).lineWidth(0.5).stroke('#D4D4D8');
-            doc.fillColor(SLATE_900).font('Helvetica').fontSize(9).text(linea.color?.valor || '—', rightX + 18, yR + 2, { width: rightW * 0.55 });
+            const textoColor = variasTelas && linea.material?.nombre
+                ? `${linea.color?.valor || '—'} · ${linea.material.nombre}`
+                : (linea.color?.valor || '—');
+            doc.fillColor(SLATE_900).font('Helvetica').fontSize(9).text(textoColor, rightX + 18, yR + 2, { width: rightW * 0.55 });
             doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(9)
                .text(`${linea.cantidad.toLocaleString('es-CO')}`, rightX, yR + 2, { width: rightW, align: 'right' });
             doc.fillColor('#000');
@@ -197,6 +191,38 @@ export async function generarPdfFichaConfeccion(ficha) {
         });
     }
     yR += 6;
+
+    // Insumos adicionales — EN TABLA (pedido explícito), con encabezado y bordes como la
+    // tabla de "Información adicional" de más abajo. Solo si la ficha de verdad agregó
+    // alguno (FICHAS_CONFECCION_INSUMOS): sin eso, la sección ni aparece — es opcional, no
+    // tiene sentido un "Sin insumos registrados" ocupando espacio en un PDF de una sola hoja.
+    const insumos = ficha.insumos || [];
+    if (insumos.length) {
+        yR = seccionHeader('Insumos', rightX, yR, rightW);
+        const colInsumoW = rightW * 0.7, colCantidadW = rightW - colInsumoW;
+
+        const filaEncabezadoH = 18;
+        doc.rect(rightX, yR, rightW, filaEncabezadoH).fill('#F8F8F9');
+        doc.rect(rightX, yR, rightW, filaEncabezadoH).strokeColor(BORDE).lineWidth(1).stroke();
+        doc.moveTo(rightX + colInsumoW, yR).lineTo(rightX + colInsumoW, yR + filaEncabezadoH).strokeColor(BORDE).lineWidth(1).stroke();
+        doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(7.5).text('INSUMO', rightX + 8, yR + 5, { width: colInsumoW - 16 });
+        doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(7.5).text('CANTIDAD', rightX + colInsumoW, yR + 5, { width: colCantidadW - 8, align: 'right' });
+        doc.fillColor('#000');
+        yR += filaEncabezadoH;
+
+        insumos.forEach((linea) => {
+            const alturaNombre = doc.font('Helvetica').fontSize(8.5).heightOfString(linea.nombreMaterial, { width: colInsumoW - 16 });
+            const altoFila = Math.max(16, alturaNombre + 6);
+            doc.rect(rightX, yR, rightW, altoFila).strokeColor(BORDE).lineWidth(1).stroke();
+            doc.moveTo(rightX + colInsumoW, yR).lineTo(rightX + colInsumoW, yR + altoFila).strokeColor(BORDE).lineWidth(1).stroke();
+            doc.fillColor(SLATE_900).font('Helvetica').fontSize(8.5).text(linea.nombreMaterial, rightX + 8, yR + 4, { width: colInsumoW - 16 });
+            doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(8.5)
+               .text(`${linea.cantidad.toLocaleString('es-CO')}`, rightX + colInsumoW, yR + 4, { width: colCantidadW - 8, align: 'right' });
+            doc.fillColor('#000');
+            yR += altoFila;
+        });
+        yR += 6;
+    }
 
     // Información adicional — reemplaza "tabla de consumo": los datos de taller que este
     // sistema todavía no registra (cortador, fechas, taller) quedan en blanco para llenar a
@@ -273,8 +299,6 @@ export async function generarPdfFichaConfeccion(ficha) {
         const filasQR = Math.ceil(videosConLink.length / porFila);
         yR += filasQR * (ladoQR + 20);
     }
-
-    y = Math.max(yL, yR);
 
     doc.end();
     return fin;

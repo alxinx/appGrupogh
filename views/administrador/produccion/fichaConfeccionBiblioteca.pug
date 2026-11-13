@@ -1,9 +1,11 @@
 extends ../../layout/index
 block contenedor
     //- Biblioteca de fichas de confección (admin/procesos/fichas-confeccion/biblioteca).
-    //- `fichas` sale de un solo findAll en produccionController.js (sin joins: referencia y
-    //- materialNombre son fotos congeladas en la propia fila, CLAUDE.md §7). Sin paginación
-    //- todavía — volumen de un solo negocio (CLAUDE.md §8); se agrega cuando haga falta.
+    //- La tabla arranca VACÍA a propósito — la llena src/js/fichaConfeccionBiblioteca.js por
+    //- fetch a GET /admin/json/fichas-confeccion (filtros + LIMIT/OFFSET + paginador global
+    //- window.generarPaginacion), mismo contrato que el listado de inventario
+    //- (src/js/productList.js, controller/adminControllers.js filterProductListJson —
+    //- CLAUDE.md DRY, "mismos principios de paginación" pedidos explícitamente).
     include ../../components/headerAdmin
 
     body(class="bg-gray-100 min-h-screen")
@@ -27,32 +29,36 @@ block contenedor
                                     i(class="fi fi-rr-arrow-left text-xs")
                                     | Volver
 
-                            if !fichas.length
-                                div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 px-6 py-14 flex flex-col items-center text-center gap-2")
-                                    i(class="fi fi-rr-document text-2xl text-slate-300")
-                                    span(class="text-sm font-semibold text-slate-500") Todavía no hay fichas guardadas
-                                    a(href="/admin/procesos/fichas-confeccion/nueva" class="btn btn-danger btn-sm mt-2") Nueva ficha de confección
-                            else
-                                div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
-                                    div(class="overflow-x-auto")
-                                        table(class="w-full text-sm")
-                                            thead
-                                                tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
-                                                    th(class="py-3 px-5 font-semibold") Referencia
-                                                    th(class="py-3 px-5 font-semibold") Tela
-                                                    th(class="py-3 px-5 font-semibold text-right") Cantidad
-                                                    th(class="py-3 px-5 font-semibold text-right") Precio confección
-                                                    th(class="py-3 px-5 font-semibold text-right") Creada
-                                                    th(class="py-3 px-5 font-semibold text-right") PDF
-                                            tbody
-                                                each f in fichas
-                                                    tr(class="border-b border-slate-100 last:border-0")
-                                                        td(class="py-3.5 px-5 font-semibold text-slate-800") #{f.referencia}
-                                                        td(class="py-3.5 px-5 text-slate-600") #{f.materialNombre}
-                                                        td(class="py-3.5 px-5 text-right tabular-nums") #{f.cantidadTotal.toLocaleString('es-CO')}
-                                                        td(class="py-3.5 px-5 text-right tabular-nums") $#{Math.round(f.precioConfeccion).toLocaleString('es-CO')}
-                                                        td(class="py-3.5 px-5 text-right text-slate-500 text-xs") #{new Date(f.createdAt).toLocaleDateString('es-CO')}
-                                                        td(class="py-3.5 px-5 text-right")
-                                                            a(href=`/admin/procesos/fichas-confeccion/${f.idFicha}/pdf` target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs font-bold text-gh-primaryHover hover:underline")
-                                                                i(class="fi fi-rr-document-signed text-xs")
-                                                                | Ver PDF
+                            //- Filtros — búsqueda libre (referencia o tela) + familia exacta +
+                            //- tela (LIKE, una ficha puede tener más de una — helpers/dxf.js).
+                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-5 grid grid-cols-1 sm:grid-cols-3 gap-3")
+                                div(class="relative")
+                                    i(class="fi fi-rr-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
+                                    input#busquedaFichas(type="text" autocomplete="off" placeholder="Busca por referencia o tela…" class="field-text pl-9")
+                                select#familiaFichas(class="field-select")
+                                    option(value="") Familia
+                                    each f in (familias || [])
+                                        option(value=f.nombreFamilia)= f.nombreFamilia
+                                select#telaFichas(class="field-select")
+                                    option(value="") Tela
+                                    each m in (telas || [])
+                                        option(value=m.nombre)= m.nombre
+
+                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                div(class="overflow-x-auto")
+                                    table(class="w-full text-sm")
+                                        thead
+                                            tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
+                                                th(class="py-3 px-5 font-semibold") Referencia
+                                                th(class="py-3 px-5 font-semibold") Tela
+                                                th(class="py-3 px-5 font-semibold text-right") Cantidad
+                                                th(class="py-3 px-5 font-semibold text-right") Precio confección
+                                                th(class="py-3 px-5 font-semibold text-right") Creada
+                                                th(class="py-3 px-5 font-semibold text-right") Acciones
+                                        tbody#contenedor-fichas
+
+                            div(class="col-span-12")
+                                #paginacionFichas
+
+        script(src="/js/fichaConfeccionBiblioteca.js")
+        script(src="/js/paginador.js")

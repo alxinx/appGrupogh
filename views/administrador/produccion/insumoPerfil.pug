@@ -314,23 +314,52 @@ block contenedor
 
                                         form(id="form-editar-insumo" novalidate class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-5"
                                             data-csrf=csrfToken
-                                            data-codigo-min=limites.codigoMin
-                                            data-codigo-max=limites.codigoMax
                                             data-nombre-max=limites.nombreMax
-                                            data-id-material=material.idMaterial)
+                                            data-id-material=material.idMaterial
+                                            data-codigo-material=material.codigoMaterial)
 
-                                            div(class="grid grid-cols-12 gap-4 items-start")
+                                            //- ¿Es variante de otro material? Dos botones de modo.
+                                            div(class="flex gap-2")
+                                                button#btn-modo-base(type="button" class="btn btn-secondary flex-1 justify-center gap-1.5")
+                                                    i(class="fi fi-rr-hashtag")
+                                                    | Material base
+                                                button#btn-modo-variante(type="button" class="btn btn-danger flex-1 justify-center gap-1.5")
+                                                    i(class="fi fi-rr-diagram-project")
+                                                    | Variante de otro
+
+                                            //- Panel VARIANTE: aparece antes del nombre cuando está activo
+                                            div#panel-codigo-variante(class="grid grid-cols-12 gap-4 items-end")
+                                                div(class="col-span-5 flex flex-col gap-1")
+                                                    label(class="label label-required" for="grupoMaterial") Material base
+                                                    div(class="select-wrapper")
+                                                        select#grupoMaterial.field-text.appearance-none.pr-10
+                                                            option(value="") — cargando… —
+                                                        span(class="select-icon")
+                                                            i(class="fi-rr-chevron-double-down")
+                                                    p#error-grupoMaterial(class="label-error text-xs hidden")
+                                                div(class="col-span-3 flex flex-col gap-1")
+                                                    label(class="label label-required" for="subCodigoMaterial") Nro. variante
+                                                    input#subCodigoMaterial.field-text(type="text" inputmode="numeric" placeholder="1" maxlength="10" autocomplete="off")
+                                                    p#error-subCodigoMaterial(class="label-error text-xs hidden")
                                                 div(class="col-span-4 flex flex-col gap-1")
+                                                    p(class="label") Código resultante
+                                                    div(class="field-text bg-slate-50 text-slate-700 font-mono flex items-center min-h-[2.5rem] select-none")
+                                                        span#codigoResultante(class="text-slate-400") —
+
+                                            //- Grid código + nombre: base=[código col-3 | nombre col-9],
+                                            //- variante=panel-base oculto y nombre arranca desde col-1 en 9 cols.
+                                            div(class="grid grid-cols-12 gap-4 items-start")
+                                                div#panel-codigo-base(class="col-span-3 hidden flex flex-col gap-1")
                                                     label(class="label label-required" for="codigoMaterial") Código DXF
                                                     input#codigoMaterial.field-text(name="codigoMaterial" type="text" inputmode="numeric" autocomplete="off" value=material.codigoMaterial maxlength="10")
-                                                    p#error-codigoMaterial(class="label-error text-xs hidden")
-
-                                                div(class="col-span-8 flex flex-col gap-1")
+                                                div(class="col-span-9 flex flex-col gap-1")
                                                     label#label-nombre(class="label label-required" for="nombre") Nombre insumo / materia prima
                                                     input#nombre.field-text(name="nombre" type="text" autocomplete="off" value=material.nombre maxlength=limites.nombreMax)
                                                     p#error-nombre(class="label-error text-xs hidden")
 
-                                            p(class="helper-text") Es el número de Material que trae el archivo de corte (1, 2, 3…).
+                                            //- Error del código (aplica a ambos modos)
+                                            p#error-codigoMaterial(class="label-error text-xs hidden")
+                                            p#helper-codigo(class="helper-text") Es el número principal del material en el archivo DXF (1, 2, 3…).
 
                                             fieldset(class="flex flex-col gap-2")
                                                 legend(class="label label-required") Tipo

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
-import { FichaConfeccionMolde, FichaConfeccionMoldeIaIntento, FichaConfeccionDxf, Material } from '../models/index.js';
+import { FichaConfeccionMolde, FichaConfeccionMoldeIaIntento, FichaConfeccionDxf, FichaConfeccionDxfMaterial, Material } from '../models/index.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { keyDocumento, urlDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { validarImagen, detectarTipoReal, aWebp } from '../helpers/imagenSegura.js';
@@ -88,14 +88,21 @@ const iniciarGeneracionMolde = async (req, res) => {
         const colors = String(req.body?.colors ?? '').trim().slice(0, 255) || null;
         const idDxf = req.body?.idDxf || null;
 
-        // El Fabric sale del material ya resuelto en el análisis del DXF (helpers/dxf.js
-        // asociarCamposDxf, paso anterior del asistente) — nunca se vuelve a preguntar.
+        // El Fabric sale del/los material(es) ya resueltos en el análisis del DXF
+        // (helpers/dxf.js asociarCamposDxf, paso anterior del asistente) — nunca se vuelve
+        // a preguntar. Puede haber más de uno ("Mayatext, Polilicra" si el DXF traía dos
+        // códigos de material distintos).
         let fabric = null;
         if (idDxf) {
             const dxf = await FichaConfeccionDxf.findByPk(idDxf, {
-                include: [{ model: Material, as: 'materialAsociado', attributes: ['nombre'] }]
+                include: [{
+                    model: FichaConfeccionDxfMaterial, as: 'materialesDetalle',
+                    separate: true, order: [['orden', 'ASC']],
+                    include: [{ model: Material, as: 'material', attributes: ['nombre'] }]
+                }]
             });
-            fabric = dxf?.materialAsociado?.nombre || null;
+            const nombres = (dxf?.materialesDetalle || []).map((m) => m.material?.nombre).filter(Boolean);
+            fabric = nombres.length ? nombres.join(', ') : null;
         }
 
         const promptFinal = construirPromptMolde({ fabric, pattern, colors });

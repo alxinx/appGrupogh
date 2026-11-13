@@ -62,27 +62,16 @@ const FichaConfeccionDxf = db.define('FICHAS_CONFECCION_DXF', {
         type: DataTypes.JSON,
         allowNull: true
     },
-    material: {
-        type: DataTypes.STRING(255),
-        allowNull: true
-    },
-    // Resolución automática contra el catálogo real (helpers/dxf.js asociarCamposDxf):
-    // `material` (el código del DXF) cruzado contra MATERIAL.codigoMaterial, `estiloNombre`
-    // cruzado contra FAMILIA.nombreFamilia. Las dos quedan en null si no hubo coincidencia —
-    // no es un error, es "no se encontró".
+    // Los materiales detectados (uno por código DISTINTO de "Material: X" en el DXF — una
+    // prenda puede cortarse en más de una tela) ya NO viven en esta fila: son
+    // FICHAS_CONFECCION_DXF_MATERIALES (models/FichaConfeccionDxfMaterial.js, as
+    // 'materialesDetalle'), una fila por código con su propia resolución contra MATERIAL.
+    // Antes esta tabla tenía `material` (STRING) + `idMaterialAsociado` (CHAR(36), FK) para
+    // un solo código — se reemplazaron por esa tabla de detalle cuando se vio que un mismo
+    // DXF puede traer más de un código de material (seed/migracionFichasConfeccionDxfMateriales.js).
     //
-    // CHAR(36) plano (no DataTypes.UUID): Sequelize le agrega BINARY a un UUID en MySQL, que
-    // termina en collation utf8mb4_bin — y MATERIAL.idMaterial NO tiene esa collation (quedó
-    // en la default de su tabla, utf8mb4_0900_ai_ci, de una migración anterior a este
-    // archivo). La migración (seed/migracionFichasConfeccionDxf.js) arma el ALTER leyendo la
-    // collation real de cada tabla referenciada en vez de asumirla — ver el aviso ahí.
-    idMaterialAsociado: {
-        type: DataTypes.CHAR(36),
-        allowNull: true,
-        references: { model: 'MATERIAL', key: 'idMaterial' },
-        onUpdate: 'CASCADE',
-        onDelete: 'SET NULL'
-    },
+    // `idFamiliaAsociada` sigue acá porque la referencia (Style Name) sí es una sola por
+    // archivo — no hay el mismo caso de "más de un valor" que con material.
     idFamiliaAsociada: {
         type: DataTypes.UUID,
         allowNull: true,

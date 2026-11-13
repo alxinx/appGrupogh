@@ -72,6 +72,11 @@
     "db:migrar-fichas-confeccion-moldes-ia": "node ./seed/migracionFichasConfeccionMoldesIa.js",
     "db:migrar-fichas-confeccion-videos": "node ./seed/migracionFichasConfeccionVideos.js",
     "db:migrar-ficha-confeccion-tabla": "node ./seed/migracionFichaConfeccionTabla.js",
+    "db:migrar-fichas-confeccion-dxf-materiales": "node ./seed/migracionFichasConfeccionDxfMateriales.js",
+    "db:migrar-ficha-confeccion-color-material": "node ./seed/migracionFichaConfeccionColorMaterial.js",
+    "db:migrar-ficha-confeccion-insumos": "node ./seed/migracionFichaConfeccionInsumos.js",
+    "db:migrar-ficha-confeccion-talleres": "node ./seed/migracionFichaConfeccionTalleres.js",
+    "db:migrar-ficha-confeccion-procesos": "node ./seed/migracionFichaConfeccionProcesos.js",
     "test": "DB_NAME=grupogh_test DB_HOST=127.0.0.1 REDIS_HOST= node --test --test-concurrency=1 --test-force-exit \"tests/**/*.test.js\""
   },
   "keywords": [

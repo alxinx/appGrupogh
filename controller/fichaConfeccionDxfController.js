@@ -1,11 +1,13 @@
 import crypto from 'crypto';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 
-import { FichaConfeccionDxf, Material, Familia } from '../models/index.js';
+import db from '../config/bd.js';
+import { FichaConfeccionDxf, FichaConfeccionDxfMaterial, Material, Familia } from '../models/index.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { keyDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { esDxfValido, analizarDxf, asociarCamposDxf } from '../helpers/dxf.js';
 import { urlImagenMaterial } from '../helpers/insumos.js';
+import { resolverIdFamilia } from '../helpers/productos.js';
 
 // Subida + análisis del DXF de una ficha de confección (admin/procesos/fichas-confeccion/
 // nueva, paso 1). Asíncrono a propósito: el navegador no espera a que termine el parseo ni
@@ -95,17 +97,33 @@ async function procesarDxfEnSegundoPlano(idArchivoDxf, buffer, nombreOriginal) {
             Metadata: { sha256: hash, nombreOriginal: encodeURIComponent(nombreOriginal) }
         }));
 
-        await FichaConfeccionDxf.update({
-            estado: 'listo',
-            objectKey,
-            shaHash: hash,
-            estiloNombre: campos.estiloNombre,
-            talla: campos.talla,
-            material: campos.material,
-            idMaterialAsociado: asociaciones.materialAsociado?.idMaterial || null,
-            idFamiliaAsociada: asociaciones.familiaAsociada?.idFamilia || null,
-            analizadoEn: new Date()
-        }, { where: { idArchivoDxf } });
+        // Los materiales van en su propia tabla (uno por código DISTINTO — helpers/dxf.js),
+        // así que el update de la fila principal y el bulkCreate del detalle van juntos en
+        // una transacción: si el detalle fallara, la fila no debe quedar en 'listo' sin sus
+        // materiales.
+        await db.transaction(async (t) => {
+            await FichaConfeccionDxf.update({
+                estado: 'listo',
+                objectKey,
+                shaHash: hash,
+                estiloNombre: campos.estiloNombre,
+                talla: campos.talla,
+                idFamiliaAsociada: asociaciones.familiaAsociada?.idFamilia || null,
+                analizadoEn: new Date()
+            }, { where: { idArchivoDxf }, transaction: t });
+
+            if (asociaciones.materialesAsociados.length) {
+                await FichaConfeccionDxfMaterial.bulkCreate(
+                    asociaciones.materialesAsociados.map((m, i) => ({
+                        idArchivoDxf,
+                        codigoMaterial: m.codigoMaterial,
+                        idMaterial: m.idMaterial,
+                        orden: i + 1
+                    })),
+                    { transaction: t }
+                );
+            }
+        });
     } catch (e) {
         console.error('fichaConfeccionDxfController(procesar):', e);
         await FichaConfeccionDxf.update({
@@ -123,22 +141,52 @@ async function procesarDxfEnSegundoPlano(idArchivoDxf, buffer, nombreOriginal) {
 const estadoDxfFicha = async (req, res) => {
     try {
         const archivo = await FichaConfeccionDxf.findByPk(req.params.idArchivoDxf, {
-            attributes: ['idArchivoDxf', 'nombreOriginal', 'pesoBytes', 'estado', 'estiloNombre', 'talla', 'material', 'errorMensaje'],
+            attributes: ['idArchivoDxf', 'nombreOriginal', 'pesoBytes', 'estado', 'estiloNombre', 'talla', 'errorMensaje'],
             include: [
-                { model: Material, as: 'materialAsociado', attributes: ['idMaterial', 'nombre', 'codigoMaterial', 'imagen'] },
+                {
+                    model: FichaConfeccionDxfMaterial, as: 'materialesDetalle',
+                    attributes: ['idDetalle', 'codigoMaterial', 'orden'],
+                    separate: true, order: [['orden', 'ASC']],
+                    include: [{ model: Material, as: 'material', attributes: ['idMaterial', 'nombre', 'codigoMaterial', 'imagen'] }]
+                },
                 { model: Familia, as: 'familiaAsociada', attributes: ['idFamilia', 'nombreFamilia'] }
             ]
         });
         if (!archivo) return res.status(404).json({ success: false, mensaje: 'Ese archivo no existe.' });
 
-        // La foto del material (paso "Tela y colores" del asistente) sale del mismo catálogo
-        // que ya la sirve en /admin/insumos — mismo helper, nunca una segunda forma de armar
-        // la URL (CLAUDE.md DRY).
+        // La foto de cada material (paso "Tela y colores" del asistente) sale del mismo
+        // catálogo que ya la sirve en /admin/insumos — mismo helper, nunca una segunda forma
+        // de armar la URL (CLAUDE.md DRY). Son pocos materiales por DXF (1 o 2, casi nunca
+        // más), así que recorrerlos en memoria acá no es un N+1 — no hay ninguna consulta
+        // dentro del loop.
         const respuesta = archivo.toJSON();
-        if (respuesta.materialAsociado) {
-            respuesta.materialAsociado.imagenUrl = urlImagenMaterial(respuesta.materialAsociado.imagen);
-            delete respuesta.materialAsociado.imagen;
-        }
+
+        // Para materiales con código compuesto (ej. "2.1"), buscar el nombre del padre ("2")
+        // en una sola consulta y adjuntarlo como nombrePadre — sin N+1.
+        const codigosPadre = [...new Set(
+            (respuesta.materialesDetalle || [])
+                .map(f => f.material?.codigoMaterial)
+                .filter(c => c?.includes('.'))
+                .map(c => c.split('.')[0])
+        )];
+        const padresPorCodigo = codigosPadre.length
+            ? new Map((await Material.findAll({
+                where: { codigoMaterial: codigosPadre },
+                attributes: ['codigoMaterial', 'nombre']
+              })).map(m => [m.codigoMaterial, m.nombre]))
+            : new Map();
+
+        respuesta.materialesDetalle = (respuesta.materialesDetalle || []).map((fila) => {
+            if (fila.material) {
+                fila.material.imagenUrl = urlImagenMaterial(fila.material.imagen);
+                delete fila.material.imagen;
+                if (fila.material.codigoMaterial?.includes('.')) {
+                    const codigoPadre = fila.material.codigoMaterial.split('.')[0];
+                    fila.material.nombrePadre = padresPorCodigo.get(codigoPadre) || null;
+                }
+            }
+            return fila;
+        });
 
         return res.json({ success: true, archivo: respuesta });
     } catch (e) {
@@ -147,4 +195,45 @@ const estadoDxfFicha = async (req, res) => {
     }
 };
 
-export { subirDxfFicha, estadoDxfFicha };
+// POST /admin/procesos/fichas-confeccion/dxf/:idArchivoDxf/familia — cuando el Style Name
+// del DXF no matcheó ninguna FAMILIA (asociarCamposDxf no encontró fila, o el heurístico no
+// detectó ningún "Style Name" para buscar), el asistente ofrece asignar una ahí mismo en
+// vez de bloquear el paso 1 hasta que alguien la cree desde Inventario. El operador puede
+// escribir un nombre nuevo o elegir uno de los que ya existen (datalist en la vista,
+// fichaConfeccionNueva.pug) — el endpoint resuelve los dos casos igual.
+//
+// Mismo helper que ya usa el alta de producto (helpers/productos.js resolverIdFamilia,
+// findOrCreate por nombre normalizado): si el nombre YA existe (lo haya elegido del
+// datalist o lo haya escrito con otra mayúscula/espacio), se asocia esa fila existente en
+// vez de duplicarla (CLAUDE.md DRY).
+const crearFamiliaDxf = async (req, res) => {
+    try {
+        const idUsuario = req.usuario.idUsuario;
+        const nombre = String(req.body?.nombre ?? '').trim();
+        if (!nombre) return res.status(422).json({ success: false, mensaje: 'Escribe el nombre de la familia.' });
+
+        const archivo = await FichaConfeccionDxf.findOne({
+            where: { idArchivoDxf: req.params.idArchivoDxf, idUsuarioCarga: idUsuario }
+        });
+        if (!archivo || archivo.estado !== 'listo') {
+            return res.status(422).json({ success: false, mensaje: 'El DXF no está listo todavía.' });
+        }
+
+        let idFamilia = null;
+        await db.transaction(async (t) => {
+            idFamilia = await resolverIdFamilia(nombre, t);
+            await FichaConfeccionDxf.update(
+                { idFamiliaAsociada: idFamilia },
+                { where: { idArchivoDxf: archivo.idArchivoDxf }, transaction: t }
+            );
+        });
+
+        const familia = await Familia.findByPk(idFamilia, { attributes: ['idFamilia', 'nombreFamilia'] });
+        return res.status(201).json({ success: true, familia });
+    } catch (e) {
+        console.error('fichaConfeccionDxfController(crearFamilia):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo asignar la familia.' });
+    }
+};
+
+export { subirDxfFicha, estadoDxfFicha, crearFamiliaDxf };

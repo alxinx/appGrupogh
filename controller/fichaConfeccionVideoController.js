@@ -1,4 +1,4 @@
-import { FichaConfeccionVideo } from '../models/index.js';
+import { FichaConfeccion, FichaConfeccionVideo } from '../models/index.js';
 import { crearSubidaDirecta, crearSubidaTus, obtenerEstadoVideoCloudflare } from '../helpers/cloudflareStream.js';
 
 // Cloudflare le pone un tope DURO de 200MB al POST simple (helpers/cloudflareStream.js) —
@@ -153,4 +153,36 @@ const marcarErrorVideo = async (req, res) => {
     }
 };
 
-export { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo };
+// POST /admin/procesos/fichas-confeccion/:idFicha/videos/:idVideo/asociar — "Agregar más
+// videos" desde el editor de una ficha YA creada (admin/procesos/fichas-confeccion/
+// :idFicha). Mismo pipeline de arriba (solicitar-subida → Cloudflare → confirmar); esto es
+// el único paso que cambia respecto al asistente: ahí `finalizarFicha` asocia todos los
+// videos de una, acá se asocia uno a la vez, a una ficha que ya existe.
+const asociarVideoFicha = async (req, res) => {
+    try {
+        const ficha = await FichaConfeccion.findOne({ where: { idFicha: req.params.idFicha, estado: 'activa' }, attributes: ['idFicha'] });
+        if (!ficha) return res.status(404).json({ success: false, mensaje: 'Esa ficha no existe.' });
+
+        // Mismo tope de 3 que el asistente (ver el aviso de arriba) — acá sí hay contra qué
+        // contar: los videos que la ficha YA tiene.
+        const yaTiene = await FichaConfeccionVideo.count({ where: { idFicha: ficha.idFicha } });
+        if (yaTiene >= 3) {
+            return res.status(422).json({ success: false, mensaje: 'Esta ficha ya tiene 3 videos — el máximo.' });
+        }
+
+        const [filas] = await FichaConfeccionVideo.update(
+            { idFicha: ficha.idFicha },
+            { where: { idVideo: req.params.idVideo, idUsuarioCarga: req.usuario.idUsuario, estado: 'ready', idFicha: null } }
+        );
+        if (!filas) {
+            return res.status(422).json({ success: false, mensaje: 'Ese video no está listo o ya pertenece a otra ficha.' });
+        }
+
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('fichaConfeccionVideoController(asociar):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo asociar el video a la ficha.' });
+    }
+};
+
+export { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo, asociarVideoFicha };

@@ -1,10 +1,11 @@
 import { UniqueConstraintError, Op } from 'sequelize';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
-import { Material, Atributos, FichaConfeccion } from '../models/index.js';
+import { Material, FichaConfeccion, Familia } from '../models/index.js';
 import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, validarInsumo, codigoDxfValido, datosFicticiosInsumo, historialComprasInsumo } from '../helpers/insumos.js';
 import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
 import { borrarObjetos } from '../helpers/almacenamientoDocumentos.js';
+import { coloresSimplesDisponibles } from '../helpers/ordenesCompra.js';
 
 // Caja de recorte de la foto de un material: igual a la de una foto de producto
 // (FOTO_PRODUCTO en adminControllers.js) — cuadrada, sin recortar ('inside'), porque acá
@@ -51,12 +52,9 @@ const homeProcesosNuevo = paginaBase({
     icono:     'fi-rr-plus'
 });
 
-const homeProcesosListado = paginaBase({
-    folder:    '/procesos',
-    titulo:    'Listado de procesos',
-    subtitulo: 'Etapas de producción: corte, confección, lavandería, estampado y empaque',
-    icono:     'fi-rr-interchange'
-});
+// `homeProcesosListado` ya tiene su propia lógica — ganó un listado real de seguimiento por
+// taller apenas una ficha tiene confeccionistas asignados, así que salió de `paginaBase`
+// (ver el comentario de arriba) para controller/fichaConfeccionProcesoController.js.
 
 // Fichas de confección ya tiene su propia pantalla (dos caminos: crear una o consultar la
 // biblioteca) — salió de `paginaBase` por eso, igual que Insumos ya había salido antes.
@@ -82,23 +80,33 @@ const homeFichasConfeccion = (req, res) => {
 // Piezas.tsx useTransicionPasos): lo que sale se desliza y encoge, lo que entra llega con
 // un leve rebote y un destello marca el avance — portado a CSS/JS plano acá (sin React) y
 // con los tokens gh-* en vez del rosa del sitio público (public/css/input.css,
-// src/js/fichaConfeccionNueva.js). `colores` es el catálogo de ATRIBUTOS tipo='COLOR'
-// (mismo patrón que controller/importacionesController.js) para el paso de "color +
-// cantidad" — se pasa server-side una sola vez, no por un endpoint JSON aparte.
+// src/js/fichaConfeccionNueva.js). `colores` es el catálogo de ATRIBUTOS tipo='COLOR' PARA
+// LA TABLA DE COLORES de la ficha, nunca con combinados — una ficha de confección corta UNA
+// tela de UN color, "Blanco + Negro" no es nada que un operario pueda elegir acá (mismo
+// filtro y mismo motivo que ya usa una orden de compra: helpers/ordenesCompra.js
+// coloresSimplesDisponibles, CLAUDE.md DRY).
 const homeFichaConfeccionNueva = async (req, res) => {
     try {
-        const colores = await Atributos.findAll({
-            where: { tipo: 'COLOR' },
-            attributes: ['idAtributo', 'valor', 'codigo1', 'codigo2'],
-            order: [['valor', 'ASC']],
-            raw: true
-        });
+        const colores = await coloresSimplesDisponibles();
+        // Familias existentes para el datalist de "Crear familia" del paso 1 — mismo
+        // criterio que el datalist de familia del alta de producto (adminControllers.js
+        // dashboardInventorys): escribir el nombre exacto de una que ya existe es lo que
+        // hace que crearFamiliaDxf la asocie en vez de crear una nueva (CLAUDE.md DRY).
+        const familias = await Familia.findAll({ attributes: ['idFamilia', 'nombreFamilia'], order: [['nombreFamilia', 'ASC']] });
+        // Insumos para el picker opcional del paso 3 (botones, cierres, elástico…) — solo
+        // los activos, igual criterio que materialesDisponibles() de una orden de compra
+        // (helpers/ordenesCompra.js). `presentarMaterial` (ya usado en homeInsumos) es lo
+        // que le agrega `imagenUrl`: la foto es importante acá, a diferencia de una línea
+        // de orden de compra, para que el operario reconozca el insumo de un vistazo.
+        const insumos = (await Material.findAll({ where: { activo: true }, order: [['nombre', 'ASC']] })).map(presentarMaterial);
         return res.render('./administrador/produccion/fichaConfeccionNueva', {
             pagina: 'Fichas de confección',
             subPagina: 'Nueva ficha de confección',
             csrfToken: req.csrfToken(),
             currentPath: '/procesos',
-            colores
+            colores,
+            familias,
+            insumos
         });
     } catch (e) {
         console.error('produccionController(fichaConfeccionNueva):', e);
@@ -106,26 +114,90 @@ const homeFichaConfeccionNueva = async (req, res) => {
     }
 };
 
-// GET /admin/procesos/fichas-confeccion/biblioteca — listado real. `referencia` y
-// `materialNombre` son fotos congeladas en la propia fila (models/FichaConfeccion.js), así
-// que un solo findAll alcanza — sin joins ni consulta por fila (CLAUDE.md §7).
+// GET /admin/procesos/fichas-confeccion/biblioteca — la página es solo el molde (filtros +
+// tabla vacía); el listado en sí lo trae filterFichaConfeccionListJson por fetch, igual
+// patrón que el listado de inventario (src/js/productList.js + controller/
+// adminControllers.js filterProductListJson, CLAUDE.md DRY).
 const homeFichaConfeccionBiblioteca = async (req, res) => {
     try {
-        const fichas = await FichaConfeccion.findAll({
-            where: { estado: 'activa' },
-            attributes: ['idFicha', 'referencia', 'materialNombre', 'cantidadTotal', 'precioConfeccion', 'createdAt'],
-            order: [['createdAt', 'DESC']]
-        });
+        const [familias, telas] = await Promise.all([
+            Familia.findAll({ attributes: ['idFamilia', 'nombreFamilia'], order: [['nombreFamilia', 'ASC']] }),
+            Material.findAll({ where: { tipo: 'materia_prima' }, attributes: ['idMaterial', 'nombre'], order: [['nombre', 'ASC']] })
+        ]);
         return res.render('./administrador/produccion/fichaConfeccionBiblioteca', {
             pagina: 'Fichas de confección',
             subPagina: 'Biblioteca de fichas de confección',
             csrfToken: req.csrfToken(),
             currentPath: '/procesos',
-            fichas
+            familias,
+            telas
         });
     } catch (e) {
         console.error('produccionController(fichaConfeccionBiblioteca):', e);
         return res.status(500).send('No se pudo cargar la página.');
+    }
+};
+
+// Condiciones del listado de la Biblioteca — las usa solo filterFichaConfeccionListJson
+// hoy, pero en un único lugar por si mañana hace falta compartirlas con una exportación
+// (mismo criterio que condicionesListadoProductos, adminControllers.js). `referencia` y
+// `materialNombre` son las fotos congeladas de familia/tela en la propia fila (CLAUDE.md
+// §7) — filtrar contra ellas directo evita el join a FICHAS_CONFECCION_DXF que, si la ficha
+// tiene dos telas, ni siquiera identificaría una sola fila de forma simple.
+const condicionesListadoFichas = ({ busqueda, familia, tela } = {}) => {
+    const y = [];
+
+    // Búsqueda libre: referencia O tela, igual criterio que nombreProducto/sku/ean del
+    // inventario (un solo cuadro de texto, varias columnas).
+    const texto = String(busqueda || '').trim();
+    if (texto) {
+        const term = `%${texto}%`;
+        y.push({ [Op.or]: [{ referencia: { [Op.like]: term } }, { materialNombre: { [Op.like]: term } }] });
+    }
+
+    // Familia: coincidencia EXACTA — `referencia` es siempre el nombre completo de UNA
+    // familia (nunca una lista), a diferencia de `materialNombre`.
+    const familiaNombre = String(familia || '').trim();
+    if (familiaNombre) y.push({ referencia: familiaNombre });
+
+    // Tela: LIKE, no exacto — `materialNombre` puede ser "Mayatext, Polilicra" cuando el
+    // DXF traía más de un material (helpers/dxf.js), y elegir "Mayatext" en el filtro debe
+    // encontrar esa fila igual que una de tela única.
+    const telaNombre = String(tela || '').trim();
+    if (telaNombre) y.push({ materialNombre: { [Op.like]: `%${telaNombre}%` } });
+
+    return { estado: 'activa', ...(y.length ? { [Op.and]: y } : {}) };
+};
+
+// GET /admin/json/fichas-confeccion — mismo contrato que /admin/json/productos/: página +
+// filtros por querystring, `findAndCountAll` con LIMIT/OFFSET y un desempate por id en el
+// ORDER BY para que el orden sea total (CLAUDE.md §8 — createdAt solo no alcanza si dos
+// fichas se guardan en el mismo segundo).
+const filterFichaConfeccionListJson = async (req, res) => {
+    try {
+        const { pagina = 1 } = req.query;
+        const numPagina = parseInt(pagina) || 1;
+        const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
+        const offset = (numPagina - 1) * limite;
+
+        const { count, rows } = await FichaConfeccion.findAndCountAll({
+            where: condicionesListadoFichas(req.query),
+            attributes: ['idFicha', 'referencia', 'materialNombre', 'cantidadTotal', 'precioConfeccion', 'createdAt'],
+            order: [['createdAt', 'DESC'], ['idFicha', 'ASC']],
+            limit: limite,
+            offset
+        });
+
+        return res.json({
+            success: true,
+            fichas: rows,
+            totalPaginas: Math.ceil(count / limite),
+            paginaActual: numPagina,
+            totalRegistros: count
+        });
+    } catch (e) {
+        console.error('produccionController(filterFichaConfeccionListJson):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo consultar la biblioteca.' });
     }
 };
 
@@ -135,6 +207,8 @@ const homeFichaConfeccionBiblioteca = async (req, res) => {
 const homeInsumos = async (req, res) => {
     try {
         const materiales = await Material.findAll({ order: [['codigoMaterial', 'ASC']] });
+        // Mapa base→nombre para resolver el padre de cada variante sin query adicional.
+        const nombrePorCodigo = new Map(materiales.map(m => [m.codigoMaterial, m.nombre]));
         return res.render('./administrador/produccion/insumos', {
             pagina:    'Insumos',
             subPagina: 'Insumos',
@@ -143,7 +217,12 @@ const homeInsumos = async (req, res) => {
             titulo:    'Insumos',
             subtitulo: 'Materias primas e insumos del catálogo de producción',
             icono:     'fi-rr-boxes',
-            materiales: materiales.map(presentarMaterial),
+            materiales: materiales.map(m => {
+                const padre = m.codigoMaterial.includes('.')
+                    ? (nombrePorCodigo.get(m.codigoMaterial.split('.')[0]) ?? null)
+                    : null;
+                return presentarMaterial(m, padre);
+            }),
             tiposInsumo: TIPOS_INSUMO,
             unidadesCompra: UNIDADES_COMPRA,
             limites: LIMITES_INSUMO
@@ -220,6 +299,23 @@ const crearInsumo = async (req, res) => {
 // garantía: el alta (y la edición) vuelven a rechazar el duplicado con el UNIQUE (409) por si
 // dos personas guardan el mismo código a la vez.
 //
+// GET /admin/insumos/grupos — lista de materiales "cabeza de grupo" (código simple, sin punto).
+// Se usa para poblar el selector "Material base" del formulario de alta/edición en variante mode.
+const gruposInsumo = async (req, res) => {
+    try {
+        const grupos = await Material.findAll({
+            where: { codigoMaterial: { [Op.notLike]: '%.%' }, activo: true },
+            attributes: ['idMaterial', 'codigoMaterial', 'nombre'],
+            order: [['codigoMaterial', 'ASC']],
+            raw: true
+        });
+        return res.json({ success: true, grupos });
+    } catch (e) {
+        console.error('[insumos] grupos:', e);
+        return res.status(500).json({ success: false, grupos: [] });
+    }
+};
+
 // `?excluir=idMaterial` lo manda el formulario de edición: el propio material no cuenta como
 // "ocupado" si la persona no tocó el código. Gateado por READ (no CREATE/EDIT): el catálogo
 // ya muestra todos los códigos a cualquiera con lectura, así que esta consulta no revela nada
@@ -227,7 +323,7 @@ const crearInsumo = async (req, res) => {
 const codigoInsumoOcupado = async (req, res) => {
     const codigo = codigoDxfValido(req.params.codigo);
     if (codigo === null) {
-        return res.status(400).json({ success: false, mensaje: 'El código debe ser un número entero entre 1 y 2147483647.' });
+        return res.status(400).json({ success: false, mensaje: 'El código debe ser un número (ej: 1) o un código compuesto (ej: 1.23).' });
     }
     try {
         const where = { codigoMaterial: codigo };
@@ -380,7 +476,7 @@ const cambiarEstadoInsumo = async (req, res) => {
 };
 
 export {
-    homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion,
-    homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, homeInsumos,
-    crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado
+    homeConfeccionistas, homeProcesosNuevo, homeFichasConfeccion,
+    homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, filterFichaConfeccionListJson, homeInsumos,
+    crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo
 };

@@ -30,10 +30,11 @@ const FichaConfeccionMoldeIaIntento = db.define('FICHAS_CONFECCION_MOLDES_IA_INT
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
     },
-    // El DXF de la misma ficha, para sacar el Fabric (MATERIAL.nombre vía idMaterialAsociado
-    // — helpers/dxf.js ya lo resuelve en el paso anterior). Nullable: si todavía no se
-    // terminó de analizar el DXF, o no se encontró el material, Fabric queda "not
-    // specified" en el prompt en vez de bloquear la generación.
+    // El DXF de la misma ficha, para sacar el Fabric (nombres de MATERIAL vía
+    // FichaConfeccionDxfMaterial.materialesDetalle — helpers/dxf.js ya los resuelve en el
+    // paso anterior; puede ser más de un material). Nullable: si todavía no se terminó de
+    // analizar el DXF, o no se encontró ningún material, Fabric queda "not specified" en el
+    // prompt en vez de bloquear la generación.
     idDxf: {
         type: DataTypes.UUID,
         allowNull: true,

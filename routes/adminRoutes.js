@@ -30,13 +30,14 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR PRODUCCIÓN (Confeccionistas, Procesos, Insumos):
-import { homeConfeccionistas, homeProcesosNuevo, homeProcesosListado, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, homeInsumos, crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado } from '../controller/produccionController.js'
-import { subirDxfFicha, estadoDxfFicha } from '../controller/fichaConfeccionDxfController.js'
+import { homeConfeccionistas, homeProcesosNuevo, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, filterFichaConfeccionListJson, homeInsumos, crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo } from '../controller/produccionController.js'
+import { homeProcesosListado, verProceso, avanzarProceso, agregarBitacora } from '../controller/fichaConfeccionProcesoController.js'
+import { subirDxfFicha, estadoDxfFicha, crearFamiliaDxf } from '../controller/fichaConfeccionDxfController.js'
 import { recibirDxf } from '../middlewares/uploadDxf.js';
 import { subirMolde, iniciarGeneracionMolde, estadoIntentoMolde, aprobarMoldeIa } from '../controller/fichaConfeccionMoldeController.js'
 import { recibirMolde } from '../middlewares/uploadMolde.js';
-import { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo } from '../controller/fichaConfeccionVideoController.js'
-import { finalizarFicha, verFichaPdf } from '../controller/fichaConfeccionController.js'
+import { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo, asociarVideoFicha } from '../controller/fichaConfeccionVideoController.js'
+import { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion } from '../controller/fichaConfeccionController.js'
 import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
@@ -308,6 +309,11 @@ routes.get('/procesos/fichas-confeccion/nueva',           pPrc('CREATE'), csrfPr
 // multipart — mismo orden que /bankentities/:idEntidad/qr.
 routes.post('/procesos/fichas-confeccion/dxf',            pPrc('CREATE'), csrfProtection, recibirDxf, subirDxfFicha);
 routes.get('/procesos/fichas-confeccion/dxf/:idArchivoDxf', pPrc('READ'), estadoDxfFicha);
+// Crear/asociar la familia ahí mismo cuando el Style Name del DXF no matcheó ninguna
+// (controller/fichaConfeccionDxfController.js crearFamiliaDxf) — mismo permiso de
+// escritura del asistente, no el de Inventario y Productos (CREATE de Familia normalmente
+// vive del lado del alta de producto, pero acá la dispara el asistente de fichas).
+routes.post('/procesos/fichas-confeccion/dxf/:idArchivoDxf/familia', pPrc('CREATE'), csrfProtection, crearFamiliaDxf);
 // Molde (JPG/PDF) + generación de imagen con IA (controller/fichaConfeccionMoldeController.js).
 // El resultado se estira por GET/POST, igual que el DXF — la notificación en vivo cuando
 // termina la IA viaja por el SSE que ya existe (/admin/sse, helpers/sseManager.js), no por
@@ -330,12 +336,33 @@ routes.post('/procesos/fichas-confeccion/video/:idVideo/marcar-error', pPrc('CRE
 routes.post('/procesos/fichas-confeccion/finalizar',      pPrc('CREATE'), csrfProtection, finalizarFicha);
 routes.get('/procesos/fichas-confeccion/:idFicha/pdf',    pPrc('READ'),   verFichaPdf);
 routes.get('/procesos/fichas-confeccion/biblioteca',      pPrc('READ'),   csrfProtection, homeFichaConfeccionBiblioteca);
+// El listado de la Biblioteca en sí (src/js/fichaConfeccionBiblioteca.js, filtra + pagina
+// por fetch) — mismo contrato que /json/productos/ (CLAUDE.md DRY).
+routes.get('/json/fichas-confeccion',                     pPrc('READ'),   filterFichaConfeccionListJson);
+// "Abrir" desde la Biblioteca — base del editor (controller/fichaConfeccionController.js
+// homeFichaConfeccionEditar/actualizarFichaConfeccion). Va DESPUÉS de /biblioteca y antes
+// del bare /procesos/fichas-confeccion para que ninguno de los dos caiga en :idFicha.
+routes.get('/procesos/fichas-confeccion/:idFicha',        pPrc('READ'),   csrfProtection, homeFichaConfeccionEditar);
+routes.post('/procesos/fichas-confeccion/:idFicha/actualizar', pPrc('EDIT'), csrfProtection, actualizarFichaConfeccion);
+routes.get('/procesos/fichas-confeccion/:idFicha/dxf',    pPrc('READ'),   verFichaDxf);
+// "Agregar más videos" desde el editor — mismo pipeline de Cloudflare Stream que el
+// asistente (controller/fichaConfeccionVideoController.js), solo que asocia a una ficha
+// que ya existe en vez de esperar a finalizarFicha.
+routes.post('/procesos/fichas-confeccion/:idFicha/videos/:idVideo/asociar', pPrc('EDIT'), csrfProtection, asociarVideoFicha);
 routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   csrfProtection, homeFichasConfeccion);
 routes.get('/procesos',                                   pPrc('READ'),   csrfProtection, homeProcesosListado);
+// Seguimiento de producción por taller (controller/fichaConfeccionProcesoController.js) —
+// nace solo cuando se asigna un confeccionista a una ficha. Va DESPUÉS de las rutas
+// literales de /procesos/* de arriba (nuevo, fichas-confeccion/...) para que :idProceso no
+// se las coma.
+routes.get('/procesos/:idProceso',                        pPrc('READ'),   csrfProtection, verProceso);
+routes.post('/procesos/:idProceso/avanzar',                pPrc('EDIT'),   csrfProtection, avanzarProceso);
+routes.post('/procesos/:idProceso/bitacora',                pPrc('EDIT'),   csrfProtection, agregarBitacora);
 routes.get('/insumos',         pIns('READ'), csrfProtection, homeInsumos);
 routes.post('/insumos',        pIns('CREATE'), uploadImages.single('imagen'), csrfProtection, crearInsumo);
 // READ, no CREATE: el catálogo (abajo) ya muestra todos los códigos a cualquiera con lectura,
 // así que esta consulta no revela nada nuevo — y la necesita también quien solo tiene EDIT.
+routes.get('/insumos/grupos',         pIns('READ'), apiRateLimit, gruposInsumo);
 routes.get('/insumos/codigo/:codigo', pIns('READ'), apiRateLimit, codigoInsumoOcupado);
 routes.get('/insumos/empleado/validar/:codigo', pIns('EDIT'), apiRateLimit, validarEmpleadoInsumos);
 
