@@ -1,5 +1,4 @@
 import { montarDropzoneExcel } from './dropzoneExcel.js';
-const CSRF_TOKEN = document.getElementById('csrfImportaciones')?.value || '';
 
 (() => {
     'use strict';
@@ -39,7 +38,6 @@ const CSRF_TOKEN = document.getElementById('csrfImportaciones')?.value || '';
         // mismo archivo y el mismo checklist, solo agrega la autorización.
         const enviar = (generarSku) => {
             const fd = new FormData();
-            fd.append('_csrf', CSRF_TOKEN);
             fd.append('archivo', archivo);
             form.querySelectorAll('input[type="checkbox"]').forEach((chk) => {
                 fd.append(chk.name, chk.checked ? 'true' : 'false');
@@ -47,7 +45,7 @@ const CSRF_TOKEN = document.getElementById('csrfImportaciones')?.value || '';
             if (generarSku) fd.append('generarSku', 'true');
             return fetch('/admin/configuracion/importaciones', {
                 method: 'POST',
-                headers: { 'CSRF-Token': CSRF_TOKEN },
+                
                 body: fd
             });
         };

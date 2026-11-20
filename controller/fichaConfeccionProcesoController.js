@@ -1,4 +1,5 @@
 import { FichaConfeccionProceso, FichaConfeccionProcesoHistorial, FichaConfeccionProcesoBitacora, FichaConfeccionTaller, FichaConfeccionTallerColor, FichaConfeccion, Provedores, Atributos, Usuarios } from '../models/index.js';
+import { ETIQUETA_ESTADO_PROCESO } from '../helpers/bibliotecaFichas.js';
 
 // Seguimiento de producción por taller (admin/procesos) — nace solo cuando se asigna un
 // confeccionista a una ficha (controller/fichaConfeccionController.js
@@ -8,12 +9,8 @@ import { FichaConfeccionProceso, FichaConfeccionProcesoHistorial, FichaConfeccio
 // aparte que ya existe, CLAUDE.md §6 — acá solo se marca el estado, no se toca esa tabla).
 export const ORDEN_ESTADOS = ['asignado', 'entregado_taller', 'en_revision', 'entregada'];
 
-const ETIQUETA_ESTADO = {
-    asignado: 'Asignado',
-    entregado_taller: 'Entregado al taller',
-    en_revision: 'En revisión',
-    entregada: 'Entregada'
-};
+// Una sola copia de las etiquetas: también las usa la Biblioteca de fichas.
+const ETIQUETA_ESTADO = ETIQUETA_ESTADO_PROCESO;
 
 const INCLUDES_PROCESO = [
     {
@@ -39,7 +36,6 @@ const homeProcesosListado = async (req, res) => {
         return res.render('./administrador/produccion/procesosListado', {
             pagina: 'Procesos',
             subPagina: 'Listado de procesos',
-            csrfToken: req.csrfToken(),
             currentPath: '/procesos',
             procesos,
             etiquetaEstado: ETIQUETA_ESTADO
@@ -81,7 +77,6 @@ const verProceso = async (req, res) => {
         return res.render('./administrador/produccion/procesoDetalle', {
             pagina: 'Procesos',
             subPagina: proceso.taller.ficha.referencia,
-            csrfToken: req.csrfToken(),
             currentPath: '/procesos',
             proceso,
             etiquetaEstado: ETIQUETA_ESTADO,

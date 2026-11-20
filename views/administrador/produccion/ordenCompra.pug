@@ -13,6 +13,10 @@ block contenedor
     //- Modal "Agregar insumo" + su caja de colores — compartido con la edición de una
     //- cotización (admin/insumos/compra/:idOrdenCompra).
     include ../../components/modalInsumoOrden.pug
+    //- Modal "Crear proveedor": solo para quien puede crearlos (ordenesCompraController.js).
+    include ../../components/modalNuevoProveedor.pug
+    //- "La mercancía ya llegó": misma ventana que "Recibir orden" del detalle.
+    include ../../components/modalRecepcionOrden.pug
 
     //- Orden de compra de insumos a un proveedor REGISTRADO (admin/insumos/compra).
     //- Proveedor y colores son reales (helpers/ordenesCompra.js, controller/
@@ -29,7 +33,7 @@ block contenedor
                 div(class="flex-1 flex flex-col")
                     include ../../partials/header
                     main(class="flex-1 overflow-y-auto md:p-4")
-                        form#form-orden-compra(class="mainDashboard" data-csrf=csrfToken data-iva=ivaPorcentaje)
+                        form#form-orden-compra(class="mainDashboard" data-iva=ivaPorcentaje)
 
                             //- ── MIGA DE PAN ───────────────────────────────────────────
                             div(class="col-span-12 flex items-center gap-2 text-sm")
@@ -211,12 +215,28 @@ block contenedor
                                         div#lista-historial-proveedor(class="divide-y divide-slate-50")
 
                                     //- ── ACCIONES ─────────────────────────────────────────────
+                                    //- La factura llegó con la mercancía: se crea y se recibe en un solo paso
+                                    //- (ordenesCompraController.js crearOrdenCompra, recibirAhora). Solo para
+                                    //- una orden de compra: se oculta en modo cotización (src/js/ordenCompra.js).
+                                    label#caja-recibir-ahora(class="flex items-start gap-3 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 cursor-pointer")
+                                        input#recibir-ahora(type="checkbox" class="checkbox checkbox-sm mt-0.5")
+                                        span(class="flex flex-col")
+                                            span(class="text-sm font-bold text-emerald-800") La mercancía ya llegó
+                                            span(class="text-xs text-emerald-700") Al crear la orden se recibe de una vez y entra al inventario.
                                     div(class="flex flex-col gap-2")
                                         button#btn-crear-orden(type="submit" class="btn btn-danger w-full justify-center") Crear orden de compra
                                         button#btn-guardar-borrador(type="button" class="btn btn-secondary w-full justify-center") Guardar borrador
 
-                    +modalInsumoOrden(materiales, colores)
+                    +modalInsumoOrden(materiales, colores, altaInsumo, presentaciones)
+                    +modalRecepcionOrden()
+                    - const datosRecepcionJson = JSON.stringify(datosRecepcion).replace(/</g, '\\u003c')
+                    script#datos-recepcion(type="application/json")!= datosRecepcionJson
+                    if puedeCrearProveedor
+                        +modalNuevoProveedor({ tiposDocumento, departamentos, categorias: categoriasProvedores })
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script(src="/js/helpers.js")
+        if puedeCrearProveedor
+            script(src="/js/documentoProveedor.js")
+            script(src="/js/ubicacionProveedor.js")
         script(src="/js/ordenCompra.js")

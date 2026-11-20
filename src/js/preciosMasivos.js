@@ -27,10 +27,9 @@ const sinTildes = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''
 const productos = (n) => (n === 1 ? '1 producto' : `${Number(n).toLocaleString('es-CO')} productos`);
 
 /**
- * @param csrfToken   token de la vista (el POST pasa por csrfProtection)
  * @param alTerminar  se llama después de aplicar, para recargar el listado
  */
-export function abrirPreciosMasivos({ csrfToken, alTerminar }) {
+export function abrirPreciosMasivos({ alTerminar }) {
     const estado = {
         alcance: 'familias',
         familias: null,            // se cargan una vez al abrir
@@ -492,7 +491,7 @@ export function abrirPreciosMasivos({ csrfToken, alTerminar }) {
                 try {
                     const r = await fetch('/admin/inventario/precios-masivos', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'CSRF-Token': csrfToken },
+                        headers: { 'Content-Type': 'application/json'},
                         body: JSON.stringify({
                             alcance: estado.alcance, ids: lista.map(e => e.id), codigoEmpleado,
                             precios: { publico: p.publico, mayorista: p.mayorista, surtido: p.surtido }

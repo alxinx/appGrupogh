@@ -1358,42 +1358,10 @@
     @apply translate-x-0;
   }
 
-  /* Ajustes para el modo "solo iconos" en móvil si fuera necesario */
-  @media (max-width: 768px) {
-
-    .menu-item span,
-    .menu-item i:last-child,
-    .h-40 img {
-      @apply hidden;
-    }
-
-    .menu-item {
-      @apply justify-center px-0 py-4;
-    }
-
-    #sidebar {
-      @apply w-20;
-    }
-
-    /* Mostrar texto solo cuando el sidebar está 'expandido' o en submenús específicos */
-    .sidebar-expanded {
-      @apply w-64;
-    }
-
-    .sidebar-expanded .menu-item span,
-    .sidebar-expanded .menu-item i:last-child,
-    .sidebar-expanded .h-40 img {
-      @apply inline-block;
-    }
-
-    .sidebar-expanded .menu-item {
-      @apply justify-start px-4 py-3;
-    }
-
-    .submenu-item {
-      @apply pl-4 text-xs;
-    }
-  }
+  /* En el celular el menú es un cajón que se abre encima de la página con su ancho completo
+     (w-64, navigation.js), así que lleva logo y textos igual que en escritorio. Acá había un
+     modo "solo iconos" que escondía textos y logo, pero nada encogía el cajón —la clase
+     `sidebar-expanded` no la ponía ningún script—: quedaba un panel ancho con íconos sueltos. */
 
   /* OVERLAY PARA MOVIL */
   #sidebar-overlay {

@@ -1,6 +1,8 @@
 import { Op } from 'sequelize';
 import { Atributos, Material, Provedores, OrdenesCompraHistorial } from '../models/index.js';
 import { round2 } from './formatMoney.js';
+import { cantidadValida, resolverContenido } from './unidadesInsumo.js';
+import { presentarMaterial, UNIDADES_COMPRA } from './insumos.js';
 
 // Orden de compra de insumos (admin/insumos/compra). Una sola fuente para la validación
 // de cabecera y líneas, y para el cálculo de totales — el formulario del navegador valida
@@ -50,12 +52,17 @@ export const coloresSimplesDisponibles = () =>
 // Catálogo de materiales activos para armar una línea de orden — igual criterio que el
 // catálogo de Insumos (es chico, se trae completo y se filtra en el navegador; ver
 // produccionController.js homeInsumos).
-export const materialesDisponibles = () =>
-    Material.findAll({
+// Con la foto del material (o el ícono de su tipo si no tiene) para el buscador del modal
+// "Agregar insumo": la URL la arma presentarMaterial, igual que en el catálogo.
+export const materialesDisponibles = async () =>
+    (await Material.findAll({
         where: { activo: true },
-        attributes: ['idMaterial', 'codigoMaterial', 'nombre', 'tipo', 'unidadCompra'],
+        attributes: ['idMaterial', 'codigoMaterial', 'nombre', 'tipo', 'unidadCompra', 'unidadConsumo', 'imagen'],
         order: [['nombre', 'ASC']],
         raw: true
+    })).map(m => {
+        const { imagenUrl, icono } = presentarMaterial(m);
+        return { idMaterial: m.idMaterial, codigoMaterial: m.codigoMaterial, nombre: m.nombre, tipo: m.tipo, unidadCompra: m.unidadCompra, unidadConsumo: m.unidadConsumo, imagenUrl, icono };
     });
 
 // Cantidad y valor unitario llegan del navegador con el mismo formato de miles que un
@@ -71,23 +78,9 @@ export const enteroPositivo = (valorCrudo) => {
     return Number.isFinite(valor) && valor > 0 ? valor : null;
 };
 
-// Como `enteroPositivo`, pero admite 0 — al recibir una orden (ver más abajo,
-// validarRecepcionOrden), "no llegó nada de este insumo" es una cantidad recibida real y
-// válida, a diferencia de la cantidad PEDIDA, que nunca puede ser 0.
-export const enteroNoNegativo = (valorCrudo) => {
-    const texto = String(valorCrudo ?? '').trim();
-    if (texto.startsWith('-')) return null;
-    const limpio = texto.replace(/[^0-9]/g, '');
-    if (!limpio) return null;
-    const valor = parseInt(limpio, 10);
-    return Number.isFinite(valor) && valor >= 0 ? valor : null;
-};
-
-// Forma corta de la unidad para un texto en línea ("950 kg"), aparte de UNIDADES_COMPRA de
-// helpers/insumos.js (que trae la forma larga, "Kilogramo (kg)", para un <select>). Mismo
-// mapa que ya usan ordenCompra.js/ordenCompraDetalle.js en el navegador — acá es la única
-// copia del lado del servidor (el resumen de una recepción, helpers/ordenesCompra.js).
-export const UNIDAD_ETIQUETA_CORTA = { kg: 'kg', metro: 'm', rollo: 'rollos', unidad: 'uds' };
+// Forma corta de la presentación para un texto en línea ("950 kg"). Vive en helpers/insumos.js
+// junto a UNIDADES_COMPRA; se reexporta con el nombre que ya usaba este módulo.
+export { UNIDAD_COMPRA_CORTA as UNIDAD_ETIQUETA_CORTA } from './insumos.js';
 
 // Valida una línea de la orden contra el catálogo real — nunca confía en nombre/código que
 // mande el navegador (whitelist, CLAUDE.md §12): nombreMaterial/codigoMaterialDxf se
@@ -106,6 +99,13 @@ export const validarLineaOrden = async (linea = {}) => {
 
     const cantidad = enteroPositivo(linea.cantidad);
     if (cantidad === null) errores.cantidad = 'La cantidad debe ser un número mayor a 0.';
+
+    // Presentación de esta compra (kg, bolsa, rollo…): la de la línea si es una válida, si no
+    // la que el material trae por defecto. Un mismo insumo puede comprarse distinto cada vez.
+    const presentacionTxt = String(linea.unidadCompra ?? '').trim();
+    if (presentacionTxt && !UNIDADES_COMPRA.some(u => u.valor === presentacionTxt)) {
+        errores.unidadCompra = 'Elige una presentación de la lista.';
+    }
 
     const valorUnitario = enteroPositivo(linea.valorUnitario);
     if (valorUnitario === null) errores.valorUnitario = 'El valor unitario debe ser mayor a 0.';
@@ -137,7 +137,7 @@ export const validarLineaOrden = async (linea = {}) => {
             nombreMaterial: material.nombre,
             codigoMaterialDxf: material.codigoMaterial,
             cantidad,
-            unidadCompra: material.unidadCompra,
+            unidadCompra: presentacionTxt || material.unidadCompra,
             valorUnitario,
             valorTotal,
             idAtributoColor,
@@ -229,6 +229,17 @@ export const validarEdicionOrden = async (body = {}, ordenActual) => {
 
     const estado = String(body.estado ?? '');
     if (!ESTADOS_ORDEN.some(e => e.valor === estado)) errores.estado = 'Elige un estado válido.';
+    // "Recibida" se gana recibiendo, no eligiéndola: el que mete la mercancía al inventario es
+    // "Recibir orden" (recibirOrden). Antes el estado se podía cambiar a mano y la orden
+    // quedaba "Recibida" sin que nada entrara al inventario.
+    else if (estado === 'recibida' && ordenActual.estado !== 'recibida') {
+        errores.estado = 'Para dejarla en Recibida usa "Recibir orden": así lo que llegó entra al inventario.';
+    }
+    // Y al revés: lo que ya entró al inventario no se deshace cambiando el estado (se corrige
+    // con un ajuste en el perfil del insumo).
+    else if (ordenActual.entroAlInventario && estado !== 'recibida') {
+        errores.estado = 'Esta orden ya entró al inventario: no se le cambia el estado. Si algo llegó mal, corrígelo con un ajuste en el perfil del insumo.';
+    }
 
     const notas = String(body.notas ?? '').trim().slice(0, 1000) || null;
 
@@ -306,29 +317,50 @@ export const validarColorNuevo = async (body = {}) => {
 // (no tiene sentido recibir algo que se anuló) — y también para una orden que YA está
 // 'recibida', para poder corregir una cantidad mal anotada sin tener que anular y rehacer
 // toda la orden.
-export const permiteRecibirOrden = (orden) => orden.estado !== 'cancelada';
+// Solo una ORDEN DE COMPRA se recibe: recibir es lo que mete la mercancía al inventario de
+// insumos, y una cotización todavía no es una compra (se convierte primero, convertirACompra).
+export const permiteRecibirOrden = (orden) => orden.tipo === 'orden_compra' && orden.estado !== 'cancelada';
 
-// Whitelist contra las líneas reales de la orden (CLAUDE.md §12) — un idDetalleOrdenCompra
-// que no es de esta orden se ignora en silencio, nunca toca la línea de otra.
-export const validarRecepcionOrden = (body = {}, idsLineasActuales = []) => {
-    const idsValidos = new Set(idsLineasActuales);
+// Recepción de una orden = entrada al inventario de insumos (PLAN_COSTEO_PRODUCCION.md §2).
+// Es ACUMULATIVA: cada recepción dice cuánto llega AHORA de cada línea, se suma a lo ya
+// recibido y entra como su propia capa de inventario (con su costo). Corregir hacia abajo
+// algo ya recibido no se hace acá sino con un ajuste en el perfil del insumo: lo recibido ya
+// es inventario y puede estar gastado.
+//
+// Por línea llega `cantidadLlega` (en la presentación de la línea: kg, bolsas…) y, si la
+// presentación no tiene conversión fija a la unidad de consumo, `contenido` (cuánto trae
+// cada una). Whitelist contra las líneas reales (CLAUDE.md §12): un id ajeno se ignora.
+// `detalles` trae cada línea con su `material` (unidadConsumo).
+export const validarRecepcionOrden = (body = {}, detalles = []) => {
+    const porId = new Map(detalles.map(d => [d.idDetalleOrdenCompra, d]));
+    const vistas = new Set();
     const cuerpoLineas = Array.isArray(body.lineas) ? body.lineas : [];
 
     const lineas = [];
     const errores = [];
     for (const l of cuerpoLineas) {
-        const idDetalleOrdenCompra = parseInt(l?.idDetalleOrdenCompra, 10);
-        if (!idsValidos.has(idDetalleOrdenCompra)) continue;
+        const id = parseInt(l?.idDetalleOrdenCompra, 10);
+        const detalle = porId.get(id);
+        if (!detalle || vistas.has(id)) continue;
+        vistas.add(id);
 
-        const cantidadRecibida = enteroNoNegativo(l?.cantidadRecibida);
-        if (cantidadRecibida === null) {
-            errores.push({ idDetalleOrdenCompra, mensaje: 'La cantidad recibida debe ser un número mayor o igual a 0.' });
+        const llega = cantidadValida(l?.cantidadLlega, { permitirCero: true });
+        if (!llega) {
+            errores.push({ idDetalleOrdenCompra: id, mensaje: `${detalle.nombreMaterial}: la cantidad que llega debe ser un número mayor o igual a 0.` });
             continue;
         }
-        lineas.push({ idDetalleOrdenCompra, cantidadRecibida });
+        if (llega.eq(0)) continue;   // de esta línea no llegó nada ahora
+
+        const r = resolverContenido({
+            presentacion: detalle.unidadCompra || 'unidad',
+            unidadConsumo: detalle.material?.unidadConsumo || 'unidad',
+            contenidoCrudo: l?.contenido
+        });
+        if (r.error) errores.push({ idDetalleOrdenCompra: id, mensaje: `${detalle.nombreMaterial}: ${r.error}` });
+        else lineas.push({ detalle, llega, contenido: r.contenido, fijo: r.fijo });
     }
 
-    if (!lineas.length) errores.push({ mensaje: 'No hay insumos válidos para registrar.' });
+    if (!errores.length && !lineas.length) errores.push({ mensaje: 'Escribe cuánto llegó de al menos un insumo.' });
     if (errores.length) return { errores };
     return { datos: { lineas } };
 };

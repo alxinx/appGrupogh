@@ -194,7 +194,6 @@ import { campoCodigoEmpleado, codigoRequerido, pintarCodigo } from './codigoCaji
         Swal.fire({ icon: 'error', title: 'No se pudo completar', text: data.mensaje });
     };
 
-    const csrfToken = () => document.querySelector('[name="_csrf"]')?.value || '';
 
     // sanea texto de cliente antes de inyectarlo en el html del modal (nombre viene del
     // propio panel, ya renderizado, pero el modal lo escribe crudo en innerHTML).
@@ -247,7 +246,7 @@ import { campoCodigoEmpleado, codigoRequerido, pintarCodigo } from './codigoCaji
                 const r = await fetch('/admin/api/clientes/verificar-codigo-credito', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ codigoEmpleado: codigo, _csrf: csrfToken() })
+                    body: JSON.stringify({ codigoEmpleado: codigo})
                 });
                 const data = await r.json();
 
@@ -524,8 +523,8 @@ import { campoCodigoEmpleado, codigoRequerido, pintarCodigo } from './codigoCaji
 
         const ruta = reactivar ? 'credito/otorgar' : 'credito-disponible';
         const body = reactivar
-            ? { codigoEmpleado, _csrf: csrfToken() }
-            : { valorCreditoCliente: valor, tiempoCredito, codigoEmpleado, _csrf: csrfToken() };
+            ? { codigoEmpleado}
+            : { valorCreditoCliente: valor, tiempoCredito, codigoEmpleado};
 
         try {
             const r = await fetch(`/admin/api/clientes/${idClienteActivo}/${ruta}`, {
@@ -729,14 +728,6 @@ import { campoCodigoEmpleado, codigoRequerido, pintarCodigo } from './codigoCaji
     window.cargarHistorialPag = (p) => cargarHistorial(idClienteActivo, p);
 
     // ─── PANEL: ARCHIVOS ──────────────────────────────────────────────────────
-    const iconoFormato = (fmt) => {
-        const f = (fmt || '').toLowerCase();
-        if (f === 'pdf')  return 'fi-rr-file-pdf text-red-400';
-        if (f === 'doc' || f === 'docx') return 'fi-rr-file-word text-blue-400';
-        if (f === 'xls' || f === 'xlsx') return 'fi-rr-file-spreadsheet text-emerald-500';
-        if (['jpg','jpeg','png','webp','gif'].includes(f)) return 'fi-rr-picture text-purple-400';
-        return 'fi-rr-document text-slate-400';
-    };
 
     const cargarArchivos = async (idCliente) => {
         const list = document.getElementById('panel-archivos-list');
@@ -760,7 +751,7 @@ import { campoCodigoEmpleado, codigoRequerido, pintarCodigo } from './codigoCaji
             list.innerHTML = d.archivos.map(a => `
                 <li class="flex items-center gap-3 py-2.5 border-b border-slate-50 last:border-0">
                     <div class="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 border border-slate-100">
-                        <i class="fi ${iconoFormato(a.formato)} text-lg"></i>
+                        <i class="fi ${window.iconoDoc(a.formato, { conColor: true })} text-lg"></i>
                     </div>
                     <div class="min-w-0 flex-1">
                         <p class="text-xs font-semibold text-slate-700 truncate">${a.nombreDocumento}</p>

@@ -41,16 +41,13 @@ block contenedor
                                         | Ver PDF
 
                             - var materialesFicha = ((ficha.dxf && ficha.dxf.materialesDetalle) || []).filter(function (m) { return m.material; }).map(function (m) { return { idMaterial: m.material.idMaterial, nombre: m.material.nombre }; })
-                            - var coloresIniciales = (ficha.colores || []).map(function (l) { return { idAtributoColor: l.idAtributoColor, nombre: l.color ? l.color.valor : '—', codigo1: l.color ? l.color.codigo1 : '#ccc', cantidad: l.cantidad, idMaterial: l.idMaterial }; })
                             - var insumosIniciales = (ficha.insumos || []).map(function (l) { return { idMaterial: l.idMaterial, nombre: l.nombreMaterial, cantidad: l.cantidad }; })
                             - var talleresIniciales = (ficha.talleres || []).map(function (t) { return { idProveedor: t.idProveedor, nombre: t.proveedor ? t.proveedor.razonSocial : '—', precioConfeccion: t.precioConfeccion, colores: (t.colores || []).map(function (c) { return c.idAtributoColor; }) }; })
 
                             div(
                                 id="asistente-ficha-editar"
-                                data-csrf=csrfToken
                                 data-id-ficha=ficha.idFicha
                                 data-materiales=JSON.stringify(materialesFicha)
-                                data-colores-iniciales=JSON.stringify(coloresIniciales)
                                 data-insumos-iniciales=JSON.stringify(insumosIniciales)
                                 data-talleres-iniciales=JSON.stringify(talleresIniciales)
                                 class="col-span-12 grid grid-cols-1 lg:grid-cols-5 gap-4"
@@ -65,12 +62,7 @@ block contenedor
                                             div(class="col-span-2")
                                                 label(class="text-xs font-semibold text-slate-500 mb-1 block" for="ficha-editar-referencia") Referencia
                                                 input#ficha-editar-referencia(type="text" maxlength="150" value=ficha.referencia class="field-text")
-                                            div
-                                                label(class="text-xs font-semibold text-slate-500 mb-1 block" for="ficha-editar-cantidad-total") Cantidad total
-                                                div(class="relative")
-                                                    input#ficha-editar-cantidad-total(type="number" inputmode="numeric" min="1" value=ficha.cantidadTotal class="field-text pr-12")
-                                                    span(class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 uppercase pointer-events-none") und
-                                            div
+                                            div(class="col-span-2")
                                                 span(class="text-xs font-semibold text-slate-500 mb-1 block") Tela
                                                 -
                                                     var textoTela = ((ficha.dxf && ficha.dxf.materialesDetalle) || [])
@@ -81,7 +73,7 @@ block contenedor
                                                                 : m.material.nombre;
                                                         }).join(', ') || ficha.materialNombre;
                                                 div(class="field-text bg-slate-50 text-slate-600 truncate" title=textoTela)= textoTela
-                                        p(class="text-[10px] text-slate-400 -mt-2") La cantidad total es el tope: los colores de la derecha no pueden sumar más. La tela sale del DXF y no se edita acá.
+                                        p(class="text-[10px] text-slate-400 -mt-2") La tela sale del DXF y no se edita acá. Colores y cantidades van en la orden de producción.
 
                                     if ficha.molde || (ficha.moldeIaIntento && ficha.moldeIaIntento.aprobado) || ficha.moldeReferencia
                                         div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
@@ -133,22 +125,6 @@ block contenedor
                                 //- ── Columna derecha ────────────────────────────────────
                                 div(class="lg:col-span-3 flex flex-col gap-4")
 
-                                    //- Colores — agregar/quitar/editar cantidad. El contador
-                                    //- de la derecha compara contra el tope de "Cantidad
-                                    //- total" en vivo (src/js/fichaConfeccionEditar.js) —
-                                    //- pasa a rojo si ya se pasó, para no esperar a guardar
-                                    //- para enterarse.
-                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
-                                        div(class="flex items-center justify-between mb-3")
-                                            div(class="flex items-center gap-2")
-                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Colores
-                                                span#contador-colores-editar(class="text-[11px] font-semibold text-slate-400 tabular-nums")
-                                            button#btn-agregar-color-editar(type="button" class="btn btn-secondary btn-sm text-xs")
-                                                i(class="fi fi-rr-plus-small text-xs")
-                                                | Agregar color
-                                        div(data-lista-colores-editar class="flex flex-col gap-2")
-                                        p(data-error-colores-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
-
                                     //- Insumos — agregar/quitar, con foto.
                                     div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
                                         div(class="flex items-center justify-between mb-3")
@@ -158,7 +134,7 @@ block contenedor
                                                 | Agregar insumo
                                         div(data-lista-insumos-editar class="flex flex-col gap-2")
                                         p#insumos-editar-vacio(class=(ficha.insumos || []).length ? 'hidden text-xs text-slate-400' : 'text-xs text-slate-400') No se agregó ningún insumo todavía.
-                                        p(class="text-[10px] text-slate-400 mt-2") Si agregás un insumo, su cantidad no puede ser menor a la cantidad total de la ficha.
+                                        p(class="text-[10px] text-slate-400 mt-2") La cantidad de cada insumo es lo que lleva una prenda.
                                         p(data-error-insumos-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
 
                                     //- Talleres de confección — cada uno con SU precio y los
@@ -219,29 +195,6 @@ block contenedor
                                             i(class="fi fi-rr-disk text-xs")
                                             | Guardar cambios
 
-                            //- ── MODAL "ELEGIR COLOR" ─────────────────────────────────
-                            //- Mismo lenguaje visual que el del asistente (buscador + grilla
-                            //- de pastillas, una por click) — nunca combinados
-                            //- (coloresCatalogo sale de coloresSimplesDisponibles, CLAUDE.md DRY).
-                            div#modal-elegir-color-editar(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
-                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
-                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
-                                        h2(class="text-lg font-bold text-slate-800") Elige un color
-                                        button#cerrar-modal-color-editar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
-                                            i(class="fi fi-rr-cross-small text-xl")
-                                    div(class="px-7 pt-5 flex-shrink-0")
-                                        input#buscador-color-ficha-editar(type="text" autocomplete="off" placeholder="Buscar color…" class="field-text")
-                                    div#grid-colores-ficha-editar(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
-                                        each c in (coloresCatalogo || [])
-                                            button(
-                                                type="button"
-                                                data-opcion-color
-                                                data-id=c.idAtributo
-                                                data-nombre=c.valor
-                                                class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
-                                                span(class="w-5 h-5 rounded-full flex-shrink-0 ring-1 ring-black/10" style=`background-color: ${c.codigo1 || '#ccc'}`)
-                                                span(class="text-sm font-medium text-slate-700 truncate")= c.valor
-
                             //- ── MODAL "ELEGIR INSUMO" ────────────────────────────────
                             div#modal-elegir-insumo-editar(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
                                 div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
@@ -295,18 +248,6 @@ block contenedor
                                                 span(class="text-sm font-medium text-slate-700 truncate")= p.razonSocial
                                     if !(confeccionistas || []).length
                                         p(class="px-7 pb-6 text-sm text-slate-400") No hay proveedores de categoría "Confeccionista" todavía.
-
-                            //- Plantilla de una fila "color + cantidad" editable.
-                            template#plantilla-fila-color-editar
-                                div(data-fila-color class="flex items-center gap-2.5")
-                                    button(type="button" data-abrir-color class="field-text flex-1 flex items-center gap-2.5 text-left cursor-pointer")
-                                        span(data-color-swatch class="hidden w-4 h-4 rounded-full flex-shrink-0 ring-1 ring-black/10")
-                                        span(data-color-nombre class="text-slate-400") Elige un color…
-                                    input(type="hidden" data-color-id)
-                                    select(data-color-material class="hidden field-text w-32 flex-shrink-0")
-                                    input(type="number" inputmode="numeric" min="1" data-color-cantidad placeholder="Cantidad" class="field-text w-24 text-right")
-                                    button(type="button" data-quitar-color aria-label="Quitar color" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
-                                        i(class="fi fi-rr-cross-small")
 
                             //- Plantilla de una fila "insumo + cantidad" editable, con foto.
                             template#plantilla-fila-insumo-editar

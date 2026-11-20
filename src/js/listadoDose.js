@@ -108,47 +108,32 @@
     }
 
     // --- DELEGACIÓN DE EVENTOS ---
+    // Un solo oyente. Antes este registraba OTRO oyente adentro en cada clic: el primer clic
+    // no abría nada (un oyente agregado durante el evento no recibe ese mismo evento) y desde
+    // el segundo cada clic disparaba una consulta más al servidor.
     document.addEventListener('click', async (e) => {
-        // Clic en Ver Productos (Modal)
-        if (e.target.closest('.btn-ver-productos')) {
-            const id = e.target.closest('.btn-ver-productos').dataset.id;
+        const btnProductos = e.target.closest('.btn-ver-productos');
+        if (!btnProductos) return;
 
-            //ABRO el modal
-    document.addEventListener('click', async (e) => {
-    // 1. Manejo del Modal (usando closest para capturar el botón aunque toquen el icono)
-    const btnProductos = e.target.closest('.btn-ver-productos');
-    
-    if (btnProductos) {
         const id = btnProductos.dataset.id;
         const modal = document.querySelector('#modal-productos');
         const modalBody = document.querySelector('#modal-body-productos');
+        if (!modal || !modalBody) return;
 
-        // Reset y mostrar modal
-        if (modal) {
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            modalBody.innerHTML = '<p class="text-center w-full">Cargando...</p>';
-        }
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        modalBody.innerHTML = '<p class="text-center w-full">Cargando...</p>';
 
         try {
             const res = await fetch(`/admin/api/dosificaciones/productos/${id}`);
             const data = await res.json();
-            
-            // Renderizar productos
             modalBody.innerHTML = data.productos.map(p => `
                 <span class="subItems">
                     ${p}
                 </span>
             `).join('') || ' 🫠 No hay productos';
-            
         } catch (error) {
             modalBody.innerHTML = '<p class="text-red-500">Error al cargar productos</p>';
-        }
-    }
-
-  
-});
-            
         }
     });
 

@@ -1,22 +1,18 @@
-import { Departamentos, Municipios, Categorias, Atributos, VariacionesProducto, Productos , CategoriasDeProvedores} from "../models/index.js";
-//import nombresData from "./departamentosData.js";
-//import nombresData from "./atributos.js";
-//import nombresData from "./categorias.js";
+import { CategoriasDeProvedores } from "../models/index.js";
 import categoriaProvedores from './categoriasProvedores.js';
-//import productosData from './productosData.js'
 import db from '../config/bd.js'
 
+// `npm run db:importar` (-i): carga las categorías de proveedores.
+// Departamentos y municipios NO se cargan acá: los administra `npm run db:migrar-municipios-dane`.
+// Había además un `-e` que hacía TRUNCATE de DEPARTAMENTOS; se quitó: ningún script lo
+// usaba y esa tabla tiene llaves foráneas desde clientes, tiendas y pedidos.
 const importarDatos = async () => {
     try {
-        // Autentico
         await db.authenticate();
         console.log('Conexión a DB OK');
-        // Sincronizoz
-        await db.sync(); 
+        await db.sync();
         await CategoriasDeProvedores.bulkCreate(categoriaProvedores)
-       // await Departamentos.bulkCreate(nombresData);
-       // await Municipios.bulkCreate(municipios)
-        
+
         console.log('Datos Importados Correctamente');
         process.exit(0);
 
@@ -26,23 +22,6 @@ const importarDatos = async () => {
     }
 }
 
-const eliminarDatos = async () => {
-    try {   
-        // Usamos truncate: true para reiniciar los IDs y limpiar todo rápido
-        await Departamentos.destroy({ where: {}, truncate: true });
-        console.log('Datos Eliminados');
-        process.exit(0);
-        
-    } catch (error) {
-        console.log(`Error al eliminar : ${error}`);
-        process.exit(1);
-    }
-}
-
 if(process.argv[2] === '-i'){
     importarDatos();
-}
-
-if(process.argv[2] === '-e'){
-    eliminarDatos();
 }

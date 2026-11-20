@@ -10,6 +10,7 @@ block contenedor
     include ../../components/selectBuscable.pug
     include ../../components/fechaInput.pug
     include ../../components/modalInsumoOrden.pug
+    include ../../components/modalRecepcionOrden.pug
 
     body(class="bg-gray-100 min-h-screen")
         main(class="flex-1 overflow-y-auto")
@@ -21,7 +22,6 @@ block contenedor
                     main(class="flex-1 overflow-y-auto md:p-4")
                         form#form-orden-detalle(
                             class="mainDashboard"
-                            data-csrf=csrfToken
                             data-id-orden=orden.idOrdenCompra
                             data-permite-lineas=permiteEditarLineas ? '1' : '0'
                             data-fecha-orden=orden.fechaOrden
@@ -218,7 +218,7 @@ block contenedor
                                                     span(class=`gh-estado-texto text-xs font-semibold flex-1 truncate ${estadoActivo ? e.texto : 'text-slate-600'}`)= e.etiqueta
                                                     span(class=`gh-estado-check w-4 h-4 rounded-full items-center justify-center flex-shrink-0 ${e.check} ${estadoActivo ? 'flex' : 'hidden'}`)
                                                         i(class="fi fi-rr-check text-white text-[8px]")
-                                        p(class="helper-text") Cualquier estado se puede elegir — lo decide quien autoriza el cambio, con su código.
+                                        p(class="helper-text") "Recibida" se marca con "Recibir orden", para que lo que llegó entre al inventario. Los demás estados los decide quien autoriza, con su código.
 
                                     //- ── FECHAS ───────────────────────────────────────────────
                                     div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-4")
@@ -284,35 +284,17 @@ block contenedor
                                                             p(class="text-xs text-slate-700 leading-relaxed")= h.resumen
                                                             p(class="text-[11px] text-slate-400 mt-0.5")= `${h.quien} · ${h.fecha}`
 
-                    +modalInsumoOrden(materiales, colores)
+                    +modalInsumoOrden(materiales, colores, altaInsumo, presentaciones)
 
                     //- ── MODAL "RECIBIR ORDEN" ───────────────────────────────────────────
                     //- Propio de esta pantalla (no es un mixin compartido): confirma cuánto
                     //- llegó de verdad por línea, aparte de lo pedido — controller/
                     //- ordenesCompraController.js recibirOrden, helpers/ordenesCompra.js
-                    //- validarRecepcionOrden. No se restringe por `permiteEditarLineas`: se
-                    //- puede recibir una orden ya "recibida" para corregir un dato mal
-                    //- capturado, sin tener que cancelarla y crear otra.
+                    //- validarRecepcionOrden. Acumulativa: cada recepción dice cuánto llega
+                    //- AHORA y entra al inventario de insumos; corregir hacia abajo es un
+                    //- ajuste en el perfil del insumo. Solo órdenes de compra (no cotizaciones).
                     if permiteRecibir
-                        div#modal-recibir-orden(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
-                            div(class="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden")
-                                div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
-                                    div(class="flex items-center gap-4")
-                                        div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
-                                            i(class="fi fi-rr-box-check text-white")
-                                        div
-                                            h2(class="text-lg font-bold text-slate-800") Recibir orden
-                                            p(class="text-sm text-slate-500") Confirma cuánto llegó de cada insumo.
-                                    button#modal-recibir-orden-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
-                                        i(class="fi fi-rr-cross-small text-xl")
-
-                                div(class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-4")
-                                    p(class="helper-text -mt-1") Si lo que llegó es distinto a lo pedido, cámbialo acá — lo pedido no se toca.
-                                    div#filas-recibir-orden(class="flex flex-col gap-3")
-
-                                div(class="flex items-center justify-end gap-3 px-8 py-5 border-t border-slate-100 flex-shrink-0")
-                                    button(type="button" id="btn-cancelar-recibir" class="btn btn-secondary") Cancelar
-                                    button(type="button" id="btn-confirmar-recibir" class="btn btn-danger") Confirmar recepción
+                        +modalRecepcionOrden()
 
                         //- Datos de las líneas para precargar el modal — mismo criterio que
                         //- #datos-lineas-orden: JSON, nunca `window.x = !{...}`.

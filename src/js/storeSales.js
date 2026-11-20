@@ -84,7 +84,7 @@ function renderTabla(ventas) {
 // ── Renderizar panel derecho ──────────────────────────────────────────────────
 
 function renderPanel(data) {
-    const { fecha, esHoy, resumen, facturas, totalFacturas, page, totalPages, idCajaTienda } = data;
+    const { fecha, esHoy, resumen, facturas, page, totalPages, idCajaTienda } = data;
 
     detalleActualFecha = fecha;
     detalleActualPage  = page;

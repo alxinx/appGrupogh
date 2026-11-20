@@ -50,8 +50,20 @@ import { buscarAbonosPeriodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, 
 import { round2 as _round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
 import { TIPOS_DOC_CLIENTE, resolverUbicacionDane, toPascal, normalizarResponsabilidades } from '../helpers/clientes.js';
+import { filaColumnas } from '../helpers/tirilla.js';
 
 // ─── PÁGINAS ────────────────────────────────────────────────────────────────
+
+// Lo que el POS muestra de un pedido web pendiente de facturar. Lo arman la carga del POS
+// y el endpoint que refresca la lista; estaba escrito igual en los dos.
+const resumenPedidoWebPos = (p) => ({
+    idPedido: p.idPedido,
+    numeroPedido: p.numeroPedido,
+    nombreCliente: `${p.nombreCliente} ${p.apellidoCliente}`,
+    total: p.total,
+    metodoPago: p.metodoPago,
+    tipoEntrega: p.tipoEntrega
+});
 
 const dashboardStores = async (req, res) => {
     const idPuntoDeVenta = req.idPuntoDeVenta;
@@ -108,7 +120,6 @@ const dashboardStores = async (req, res) => {
 
     return res.render('./tienda/layout', {
         pagina: `Panel principal de ${req.usuario.nombreUsuario}`,
-        csrfToken: req.csrfToken(),
         currentPath: req.path,
         trasladosPendientes,
         wholesaleMin: parseInt(process.env.WHOLESALE_PRICE_MIN_PRODUCT) || 6,
@@ -117,21 +128,13 @@ const dashboardStores = async (req, res) => {
         clienteGenerico,
         cajaMenorDefault: parseFloat(process.env.PETTY_CASH_FOUND) || 0,
         cajaDelDiaAnterior: cajaDelDiaAnterior || null,
-        pedidosWebPendientes: pedidosWebPendientes.map(p => ({
-            idPedido: p.idPedido,
-            numeroPedido: p.numeroPedido,
-            nombreCliente: `${p.nombreCliente} ${p.apellidoCliente}`,
-            total: p.total,
-            metodoPago: p.metodoPago,
-            tipoEntrega: p.tipoEntrega
-        }))
+        pedidosWebPendientes: pedidosWebPendientes.map(resumenPedidoWebPos)
     });
 };
 
 const getTraslados = async (req, res) => {
     return res.render('./tienda/traslados/getTraslados', {
         pagina: 'Traslados',
-        csrfToken: req.csrfToken(),
         currentPath: '/traslados'
     });
 };
@@ -139,7 +142,6 @@ const getTraslados = async (req, res) => {
 const getInventarioLista = async (req, res) => {
     return res.render('./tienda/inventario/lista', {
         pagina: 'Inventario',
-        csrfToken: req.csrfToken(),
         currentPath: '/inventario/lista'
     });
 };
@@ -199,14 +201,7 @@ const getPedidosWebPendientesJSON = async (req, res) => {
         });
         return res.json({
             success: true,
-            pedidos: pedidos.map(p => ({
-                idPedido: p.idPedido,
-                numeroPedido: p.numeroPedido,
-                nombreCliente: `${p.nombreCliente} ${p.apellidoCliente}`,
-                total: p.total,
-                metodoPago: p.metodoPago,
-                tipoEntrega: p.tipoEntrega
-            }))
+            pedidos: pedidos.map(resumenPedidoWebPos)
         });
     } catch (e) {
         console.error('getPedidosWebPendientesJSON:', e);
@@ -289,7 +284,6 @@ const getPedidoWebParaCargarJSON = async (req, res) => {
 const pedidosWebStorePage = async (req, res) => {
     return res.render('./tienda/pedidosWeb/lista', {
         pagina: 'Pedidos Web',
-        csrfToken: req.csrfToken(),
         currentPath: '/pedidos-web'
     });
 };
@@ -1126,7 +1120,6 @@ const getPerfilProducto = async (req, res) => {
 
         return res.render('./tienda/inventario/perfilProducto', {
             pagina:         producto.nombreProducto,
-            csrfToken:      req.csrfToken(),
             currentPath:    '/inventario/lista',
             producto:       producto.toJSON(),
             stockPorTienda,
@@ -1493,7 +1486,7 @@ const misClientesPage = async (req, res) => {
         const idPuntoDeVenta = req.idPuntoDeVenta;
         if (!idPuntoDeVenta) {
             return res.render('./tienda/clientes/lista', {
-                pagina: 'Mis Clientes', currentPath: req.path, csrfToken: req.csrfToken(),
+                pagina: 'Mis Clientes', currentPath: req.path,
                 clientes: [], totalRegistros: 0
             });
         }
@@ -1552,14 +1545,13 @@ const misClientesPage = async (req, res) => {
         return res.render('./tienda/clientes/lista', {
             pagina: 'Mis Clientes',
             currentPath: req.path,
-            csrfToken: req.csrfToken(),
             clientes,
             totalRegistros: clientes.length
         });
     } catch (e) {
         console.error('misClientesPage:', e);
         return res.render('./tienda/clientes/lista', {
-            pagina: 'Mis Clientes', currentPath: req.path, csrfToken: req.csrfToken(),
+            pagina: 'Mis Clientes', currentPath: req.path,
             clientes: [], totalRegistros: 0
         });
     }
@@ -1634,7 +1626,6 @@ const misClienteDetallePage = async (req, res) => {
         return res.render('./tienda/clientes/detalle', {
             pagina: 'Mis Clientes',
             currentPath: '/clientes',
-            csrfToken: req.csrfToken(),
             cliente: { idCliente: cliente.idCliente, nombre: nombre || 'Cliente', documento: `${cliente.tipoDocumento || 'CC'} ${cliente.numero_doc || ''}`.trim(), telefono: cliente.telefono },
             facturas: facturasVista,
             deudaTotal: _round2(facturasVista.reduce((s, f) => s + f.deudaActual, 0)),
@@ -1842,16 +1833,7 @@ const getVoucherAbonoPDF = async (req, res) => {
         doc.on('data', c => chunks.push(c));
         const pdfEnd = new Promise(r => doc.on('end', r));
 
-        const row = (cols, startY) => {
-            let maxY = startY;
-            for (const { txt, x, w, align, bold, size } of cols) {
-                doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size || 6.5);
-                doc.text(txt, x, startY, { width: w, align: align || 'left', lineBreak: true });
-                if (doc.y > maxY) maxY = doc.y;
-                doc.y = startY;
-            }
-            doc.y = maxY + 1;
-        };
+        const row = (cols, startY) => filaColumnas(doc, cols, startY);
         const hr = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.5).stroke(); doc.moveDown(0.3); };
 
         const logoX = MARGIN + (CW - LOGO_SIZE) / 2;
@@ -2821,17 +2803,7 @@ const getTirillaPDF = async (req, res) => {
         const pdv = factura.puntoDeVenta;
         const cli = factura.cliente;
 
-        // Helper: fila multi-columna
-        const row = (cols, startY) => {
-            let maxY = startY;
-            for (const { txt, x, w, align, bold, size } of cols) {
-                doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size || 6.5);
-                doc.text(txt, x, startY, { width: w, align: align || 'left', lineBreak: true });
-                if (doc.y > maxY) maxY = doc.y;
-                doc.y = startY;
-            }
-            doc.y = maxY + 1;
-        };
+        const row = (cols, startY) => filaColumnas(doc, cols, startY);
         const hr = () => { doc.moveTo(MARGIN, doc.y).lineTo(MARGIN + CW, doc.y).strokeColor('#888').lineWidth(0.5).stroke(); doc.moveDown(0.3); };
 
         // CABECERA — logo centrado
@@ -3261,7 +3233,6 @@ const getExpensesPage = async (req, res) => {
 
     return res.render('./tienda/storebehivors/expenses', {
         pagina: 'Egresos',
-        csrfToken: req.csrfToken(),
         currentPath: '/storebehivors/expenses',
         cuentas,
         gruposPuc
@@ -3305,7 +3276,6 @@ const getEfectivoDisponible = async (req, res) => {
 const cuadrarCajaPage = async (req, res) => {
     return res.render('./tienda/storebehivors/cuadrarCaja', {
         pagina: 'Cuadre de Caja',
-        csrfToken: req.csrfToken(),
         currentPath: '/storebehivors/',
         // Para el egreso olvidado, que pasa por el mismo endpoint que el formulario de
         // egresos y exige la misma cuenta PUC.
@@ -3507,7 +3477,7 @@ const cerrarCajaAPI = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
 
-    const { idCajaTienda, codigoEmpleado, operadorEgresos, operadorEfectivo, operadorElectronicos, operadorCredito, operadorCreditoTienda, operadorBase, nota } = req.body;
+    const { idCajaTienda, operadorEgresos, operadorEfectivo, operadorElectronicos, operadorCredito, operadorCreditoTienda, operadorBase, nota } = req.body;
 
     if (!idCajaTienda) return res.status(400).json({ success: false, mensaje: 'idCajaTienda requerido.' });
 
@@ -3528,7 +3498,7 @@ const cerrarCajaAPI = async (req, res) => {
         const inicio = new Date(caja.fechaApertura);
         const fin    = new Date();
 
-        const { sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos, sVentas, txElectronicos, txCredito, txCreditoTienda, txEgresos, idFacturas, idFacturasCreditoTienda } =
+        const { sEfectivo, sMedios, sCredito, sCreditoTienda, sEgresos, sVentas, idFacturas, idFacturasCreditoTienda } =
             await _calcularTransaccionesCaja(idPdv, inicio, fin);
 
         const oEgresos       = Math.round(parseFloat(operadorEgresos)       || 0);
@@ -4887,7 +4857,6 @@ const getEgresoComprobantePDF = async (req, res) => {
         doc.moveDown(0.2); hr();
 
         const nombreEmp  = egreso.empleado ? `${egreso.empleado.PrimerNombre} ${egreso.empleado.PrimerApellido}` : 'N/A';
-        const codigoEmp  = egreso.empleado?.codigoEmpleado || 'N/A';
 
         fila('Responsable:', nombreEmp);
 
@@ -5025,7 +4994,7 @@ const trasladarDesdePerfil = async (req, res) => {
     const idPdv = req.idPuntoDeVenta;
     if (!idPdv) return res.status(403).json({ success: false, mensaje: 'Sin punto de venta.' });
 
-    const { idProducto, cantidad, idDestino, codigoEmpleado, notas } = req.body;
+    const { idProducto, cantidad, idDestino, codigoEmpleado } = req.body;
 
     if (!idProducto || !cantidad || !idDestino || !codigoEmpleado) {
         return res.status(400).json({ success: false, mensaje: 'Datos incompletos.' });
@@ -5041,7 +5010,6 @@ const trasladarDesdePerfil = async (req, res) => {
 const getSalesPage = async (req, res) => {
     return res.render('./tienda/storebehivors/sales', {
         pagina: 'Mis Ventas',
-        csrfToken: req.csrfToken(),
         currentPath: '/storebehivors/sales'
     });
 };

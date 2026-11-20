@@ -1,6 +1,5 @@
 import { tituloLista as tc } from '../../helpers/textoLista.js';
 import { escaparHtml as esc } from './escaparHtml.js';
-const CSRF_TOKEN = document.getElementById('csrfBatch')?.value || '';
 
 // ─── SUPPLIER AUTOCOMPLETE ─────────────────────────────────────
 const proveedorInput   = document.getElementById('proveedorInput');
@@ -175,7 +174,6 @@ document.getElementById('btnGuardarProveedor')?.addEventListener('click', async 
     }
 
     const fd = new FormData();
-    fd.append('_csrf', CSRF_TOKEN);
     fd.append('razonSocial', razonSocial);
     fd.append('tipoDocumento', tipoDoc);
     fd.append('nit', nit);
@@ -626,7 +624,6 @@ document.getElementById('formBatchOrder')?.addEventListener('submit', async e =>
 
     // ── 7. Envío al backend ───────────────────────────────────
     const fd = new FormData();
-    fd.append('_csrf',               CSRF_TOKEN);
     fd.append('idProveedor',         idProveedor);
     fd.append('nroFactura',          nroFactura);
     fd.append('fechaFactura',        fechaFactura);

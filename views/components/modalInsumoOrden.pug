@@ -11,7 +11,13 @@
 //-
 //- El JS que llena esto (src/js/ordenCompra.js y src/js/ordenCompraDetalle.js) referencia
 //- los mismos ids en los dos lados — cualquier id nuevo acá tiene que agregarse en ambos.
-mixin modalInsumoOrden(materiales, colores)
+include ./modalNuevoInsumo.pug
+
+//- `altaInsumo` (opcional): { tiposInsumo, unidadesCompra, limites } si quien entra puede
+//- crear insumos (ordenesCompraController.js altaInsumoSiPuede). Con él se dibuja también el
+//- modal "Nuevo insumo" y el buscador ofrece crear el que no existe (modalLineaInsumo.js).
+//- `presentaciones`: UNIDADES_COMPRA (helpers/insumos.js) — cómo se compra en ESTA línea.
+mixin modalInsumoOrden(materiales, colores, altaInsumo, presentaciones)
     //- ── MODAL "AGREGAR INSUMO" ──────────────────────────────────────────
     //- Mismo estilo de modal que el resto del módulo (Nuevo/Editar insumo).
     //- Color: SOLO colores simples de ATRIBUTOS (ya filtrados por el servidor,
@@ -35,10 +41,23 @@ mixin modalInsumoOrden(materiales, colores)
                         select#li-material.field-text.appearance-none.pr-10
                             option(value="") Selecciona un insumo...
                             each m in materiales
-                                option(value=m.idMaterial data-unidad=m.unidadCompra || '' data-nombre=m.nombre data-codigo=m.codigoMaterial)= `${m.nombre} · código ${m.codigoMaterial}`
+                                option(value=m.idMaterial data-unidad=m.unidadCompra || '' data-consumo=m.unidadConsumo data-nombre=m.nombre data-codigo=m.codigoMaterial data-imagen=m.imagenUrl || m.icono data-sin-foto=m.imagenUrl ? false : '')= `${m.nombre} · código ${m.codigoMaterial}`
                         span(class="select-icon")
                             i(class="fi-rr-chevron-double-down")
                     p#error-li-material(class="label-error text-xs hidden")
+
+                //- Presentación de esta compra: arranca en la del insumo y se puede cambiar —
+                //- un mismo insumo puede llegar por kilo, por metro o en bolsas. Al recibir la
+                //- orden se confirma cuánto trae cada una (PLAN_COSTEO_PRODUCCION.md D4).
+                div(class="flex flex-col gap-1")
+                    label(class="label" for="li-presentacion") Se compra por
+                    div(class="select-wrapper")
+                        select#li-presentacion.field-text.appearance-none.pr-10
+                            option(value="") La del insumo
+                            each u in presentaciones || []
+                                option(value=u.valor)= u.etiqueta
+                        span(class="select-icon")
+                            i(class="fi-rr-chevron-double-down")
 
                 //- Color: catálogo REAL, ya filtrado a colores simples. 0, 1 o varios — con
                 //- dos o más, cada color se compra con su propia cantidad y valor (abajo).
@@ -127,3 +146,7 @@ mixin modalInsumoOrden(materiales, colores)
 
             div(class="px-6 py-4 border-t border-gray-100 flex-shrink-0")
                 button#btn-usar-colores(type="button" class="btn btn-danger w-full justify-center") Usar colores seleccionados
+
+    //- Después del modal "Agregar insumo" para quedar encima de él (mismo z-50).
+    if altaInsumo
+        +modalNuevoInsumo(altaInsumo)

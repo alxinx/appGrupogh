@@ -2,6 +2,7 @@
 .env.*
 .env.production
 .env.production.bak
+.md
 
 # Dependencias
 node_modules/

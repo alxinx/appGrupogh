@@ -106,7 +106,6 @@ block contenedor
                                     p(class="text-sm text-slate-400 mb-4") Pega el código de tu script de seguimiento
 
                                     form#form-etiqueta(class="flex flex-col gap-4 px-4 pb-4")
-                                        input(type="hidden" name="_csrf" value=csrfToken)
                                         input#campo-id(type="hidden" name="idEtiqueta" value="")
 
                                         div
@@ -173,7 +172,6 @@ block contenedor
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
-            const csrfToken = '!{csrfToken}';
             let editandoId = null;
 
             // ── Modo edición ─────────────────────────────────────────────────
@@ -227,7 +225,7 @@ block contenedor
                 try {
                     const resp = await fetch(url, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                        headers: { 'Content-Type': 'application/json'},
                         body: JSON.stringify({ nombre, tipo, posicion, script, activo })
                     });
                     const data = await resp.json();
@@ -265,7 +263,7 @@ block contenedor
                     try {
                         const resp = await fetch(`/admin/web/tracking/eliminar/${id}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                            headers: { 'Content-Type': 'application/json'},
                             body: JSON.stringify({})
                         });
                         const data = await resp.json();

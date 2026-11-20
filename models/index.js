@@ -1,4 +1,5 @@
 import Usuarios from './Usuarios.js'
+import RecuperacionContrasena from './RecuperacionContrasena.js'
 import Departamentos from './Departamentos.js'
 import Municipios from './Municipios.js'
 import PuntosDeVenta from './PuntosDeVenta.js'
@@ -44,6 +45,9 @@ import ProductosCambiosPrecio from './ProductosCambiosPrecio.js'
 import Material from './Material.js'
 import OrdenesCompra from './OrdenesCompra.js'
 import DetallesOrdenCompra from './DetallesOrdenCompra.js'
+import InsumoCapa from './InsumoCapa.js'
+import InsumoMovimiento from './InsumoMovimiento.js'
+import MaterialPresentacion from './MaterialPresentacion.js'
 import OrdenesCompraHistorial from './OrdenesCompraHistorial.js'
 import FichaConfeccionDxf from './FichaConfeccionDxf.js'
 import FichaConfeccionDxfMaterial from './FichaConfeccionDxfMaterial.js'
@@ -299,6 +303,8 @@ DetallesImpuestosFacturaCliente.belongsTo(DetallesFactura, { foreignKey: 'idDeta
 // El idUsuario en Empleados es opcional (null para operativos)
 Usuarios.hasOne(Empleados, { foreignKey: 'idUsuario', as: 'perfil' });
 Empleados.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'cuenta' });
+Usuarios.hasMany(RecuperacionContrasena, { foreignKey: 'idUsuario', as: 'recuperaciones' });
+RecuperacionContrasena.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
 
 // 2. Relación con Sedes (Fábrica, Tiendas, Bodegas)
 PuntosDeVenta.hasMany(Empleados, { foreignKey: 'idPuntoDeVenta', as: 'personal' });
@@ -321,6 +327,17 @@ Material.hasMany(DetallesOrdenCompra, { foreignKey: 'idMaterial', as: 'comprasDe
 DetallesOrdenCompra.belongsTo(Material, { foreignKey: 'idMaterial', as: 'material' });
 
 Atributos.hasMany(DetallesOrdenCompra, { foreignKey: 'idAtributoColor', as: 'detallesOrdenCompra' });
+
+// Inventario de insumos (helpers/inventarioInsumos.js, PLAN_COSTEO_PRODUCCION.md).
+Material.hasMany(InsumoCapa, { foreignKey: 'idMaterial', as: 'capas' });
+InsumoCapa.belongsTo(Material, { foreignKey: 'idMaterial', as: 'material' });
+InsumoCapa.belongsTo(Atributos, { foreignKey: 'idAtributoColor', as: 'color' });
+InsumoCapa.belongsTo(DetallesOrdenCompra, { foreignKey: 'idDetalleOrdenCompra', as: 'detalleOrdenCompra' });
+DetallesOrdenCompra.hasMany(InsumoCapa, { foreignKey: 'idDetalleOrdenCompra', as: 'capas' });
+InsumoCapa.hasMany(InsumoMovimiento, { foreignKey: 'idCapa', as: 'movimientos' });
+InsumoMovimiento.belongsTo(InsumoCapa, { foreignKey: 'idCapa', as: 'capa' });
+Material.hasMany(InsumoMovimiento, { foreignKey: 'idMaterial', as: 'movimientosInventario' });
+Material.hasMany(MaterialPresentacion, { foreignKey: 'idMaterial', as: 'presentaciones' });
 DetallesOrdenCompra.belongsTo(Atributos, { foreignKey: 'idAtributoColor', as: 'color' });
 
 OrdenesCompra.hasMany(OrdenesCompraHistorial, { foreignKey: 'idOrdenCompra', as: 'historial', onDelete: 'CASCADE' });
@@ -564,6 +581,7 @@ MovimientosCajasBancos.belongsTo(PucEgresos, { foreignKey: 'idPucEgreso', as: 'p
 
 export {
   Usuarios,
+  RecuperacionContrasena,
   Departamentos,
   Municipios,
   PuntosDeVenta,
@@ -600,6 +618,9 @@ export {
   OrdenesCompra,
   DetallesOrdenCompra,
   OrdenesCompraHistorial,
+  InsumoCapa,
+  InsumoMovimiento,
+  MaterialPresentacion,
   FichaConfeccionDxf,
   FichaConfeccionDxfMaterial,
   FichaConfeccionMolde,

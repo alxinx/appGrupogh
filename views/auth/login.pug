@@ -1,25 +1,14 @@
 extends ../layout/index
+include ../components/campoContrasena
+include ../components/tarjetaAuth
 block contenedor
-    // Card
-    div(class="w-full max-w-md cardLogin rounded-xl shadow-lg p-6 sm:p-8")
-      
-      // Logo placeholder
-      div(class="flex justify-center mb-6")
-            img(src="/img/logo.png" width="100" alt="")
-
-      // Title
-      h1(class="h1")
-        | Hola de nuevo!! 👋
-      
-      p(class="p")
-        | Logueate para empezar a trabajar 😎
-      
+    script(src="/js/verContrasena.js" defer)
+    +tarjetaAuth({ titulo: 'Hola de nuevo!! 👋', texto: 'Logueate para empezar a trabajar 😎' })
       if errores 
         p(class="error")=errores.msg
 
       // Form
       form(action="", method="post") 
-        input(type="hidden", name="_csrf" value = csrfToken)
         // Email
         div
           label(class="label")
@@ -27,6 +16,7 @@ block contenedor
           input(
             type="email"
             name = "emailUsuario"
+            autocomplete="username"
             value = usuario ? usuario.emailUsuario : ""
             placeholder="Ingresa el email con que estas registrado"
             class="field-text"
@@ -36,17 +26,9 @@ block contenedor
 
         // Password
         div
-          label(class="label mt-4")
+          label(class="label mt-4" for="login-password")
             | Password  
-          div(class="relative")
-            input(
-              type="password"
-              name = "password"
-              placeholder="••••••••"
-              class="field-text"
-            )
-            span(class="absolute inset-y-0 right-3 flex items-center text-gray-400")
-              | 👁️
+          +campoContrasena({ name: 'password', id: 'login-password', autocomplete: 'current-password' })
           if errores && errores.password != null
            p(class="error")=errores.password
           div

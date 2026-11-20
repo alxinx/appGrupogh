@@ -1,11 +1,11 @@
-import { DataTypes, UUIDV4 } from "sequelize";
+import { DataTypes } from "sequelize";
 import bcrypt from "bcrypt";
 import db from "../config/bd.js"
 
 // Factor de costo del hash. Las contraseñas ya guardadas con costo 10 siguen validando
 // sin tocar nada: bcrypt lleva el costo dentro del propio hash y compare() lo lee de ahí.
 // Solo las contraseñas nuevas o cambiadas se guardan con el costo de acá.
-const COSTO_BCRYPT = 12;
+export const COSTO_BCRYPT = 12;
 
 const Usuarios =  db.define('USUARIOS', {
     idUsuario : {
@@ -32,6 +32,12 @@ const Usuarios =  db.define('USUARIOS', {
         type : DataTypes.STRING,
         allowNull : true,
     },
+    // Cuándo cambió la contraseña por última vez. Un JWT emitido antes deja de valer
+    // (authMiddleware.js): así un cambio o una recuperación cierra las otras sesiones.
+    passwordCambiadoEn : {
+        type : DataTypes.DATE,
+        allowNull : true,
+    },
     permisos : {
         type : DataTypes.ENUM('ADMIN', 'STORE', 'EMPLOYER'),
         defaultValue : 'ADMIN'
@@ -49,6 +55,7 @@ const Usuarios =  db.define('USUARIOS', {
             if (usuario.changed('password')) {
                 const salt = await bcrypt.genSalt(COSTO_BCRYPT);
                 usuario.password = await bcrypt.hash(usuario.password, salt);
+                usuario.passwordCambiadoEn = new Date();
             }
 }
     }

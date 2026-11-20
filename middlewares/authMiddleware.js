@@ -1,6 +1,7 @@
-import jwt from "jsonwebtoken"
+import { verificarJwt, OPCIONES_COOKIE_SESION } from '../helpers/genToken.js';
 import dotenv from "dotenv"
 import {Usuarios} from '../models/index.js';
+import { redireccion } from '../helpers/redireccion.js';
 dotenv.config();
 
 const rutaProtegida = async (req, res, next)=>{
@@ -13,7 +14,7 @@ const rutaProtegida = async (req, res, next)=>{
     }
     try {
        
-        const decoded = jwt.verify(token, process.env.APP_PRIVATEKEY);
+        const decoded = verificarJwt(token);
         // Excluye el hash de bcrypt: este usuario queda colgado como req.usuario/res.locals.usuario
         // en TODA la sesión autenticada (controladores y vistas). Nada de lo que ya pasó por acá
         // necesita el hash — la contraseña se validó en el login, no en cada request.
@@ -22,6 +23,15 @@ const rutaProtegida = async (req, res, next)=>{
         });
         
         if (!usuario){
+            return res.redirect('/');
+        }
+
+        // Cambió la contraseña después de emitirse este token (la cambió o la recuperó,
+        // o la reinició el panel): la sesión vieja ya no vale. iat va en segundos, por eso
+        // se compara contra el segundo entero del cambio — el token que se emite en el
+        // mismo acto del cambio (loginControllers.iniciarSesion) sigue valiendo.
+        if (usuario.passwordCambiadoEn && decoded.iat < Math.floor(new Date(usuario.passwordCambiadoEn).getTime() / 1000)) {
+            res.clearCookie('_token', OPCIONES_COOKIE_SESION);
             return res.redirect('/');
         }
 
@@ -38,7 +48,7 @@ const rutaProtegida = async (req, res, next)=>{
         // rendía, y un fetch del panel (validar el código de empleado, por ejemplo) se
         // quedaba esperando para siempre.
         console.error('Error en protegerRuta:', e.message);
-        res.clearCookie('_token');
+        res.clearCookie('_token', OPCIONES_COOKIE_SESION);
         return res.redirect('/');
       }
 }
@@ -48,20 +58,14 @@ const verificarRol = (...rolesPermitidos) => {
         // req.usuario y req.rol ya existen gracias a 'rutaProtegida'
         
         if (!rolesPermitidos.includes(req.rol)) {
-            // LÓGICA DE REBOTE INTELIGENTE
-            
-            // Si es TIENDA intentando entrar a ADMIN -> Mándalo a su tienda
-            if (req.rol === 'STORE' || req.rol === 'EMPLOYER') {
-                return res.redirect('/store/');
-            }
-            
-            // Si es ADMIN intentando entrar a TIENDA (Opcional, a veces los admin pueden ver todo)
-            if (req.rol === 'ADMIN') {
-               // Puedes dejarlo pasar o mandarlo al admin dashboard
-               // return res.redirect('/admin/dashboard'); 
-            }
+            // Se rebota al área que le corresponde a su rol (la misma que usa el login). Si
+            // esa área es justo la que lo está rechazando, o el rol no tiene área, rebotar
+            // de nuevo sería un bucle de redirecciones: se cierra la sesión y va al login.
+            const destino = redireccion(req.rol);
+            if (destino && destino !== req.baseUrl) return res.redirect(destino);
 
-            // Si no cuadra nada, al home o login
+            console.warn(`[auth] rol sin área accesible · rol=${req.rol} · ruta=${req.originalUrl}`);
+            res.clearCookie('_token', OPCIONES_COOKIE_SESION);
             return res.redirect('/');
         }
         

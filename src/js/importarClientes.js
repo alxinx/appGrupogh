@@ -6,7 +6,6 @@ import { montarDropzoneExcel } from './dropzoneExcel.js';
 // importación de productos (importaciones.js): el servidor devuelve el .xlsx del informe, no
 // un JSON, así que el éxito se reconoce por el Content-Type y los totales vienen en headers.
 
-const CSRF_TOKEN = document.getElementById('csrfImportarClientes')?.value || '';
 
 (() => {
     'use strict';
@@ -42,12 +41,11 @@ const CSRF_TOKEN = document.getElementById('csrfImportarClientes')?.value || '';
 
         try {
             const fd = new FormData();
-            fd.append('_csrf', CSRF_TOKEN);
             fd.append('archivo', archivo);
 
             const respuesta = await fetch('/admin/configuracion/clientes', {
                 method: 'POST',
-                headers: { 'CSRF-Token': CSRF_TOKEN },
+                
                 body: fd
             });
 

@@ -7,7 +7,6 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
     const form = document.getElementById('formularioEmpleado');
     const filePhoto = document.getElementById('upload-foto');
     const fileDocs = document.getElementById('upload-images');
-    const idPuntoDeVenta = document.getElementById('idPuntoDeVenta');
     const previewContainer = document.getElementById('preview-container');
     const guardarBtn = document.getElementById('guardar');
     const photoIconContainer = document.querySelector('.inputUpload_mini .fi-rr-mode-portrait')?.parentElement;
@@ -51,7 +50,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 const response = await fetch(url);
                 const data = await response.json();
                 if (data.exists) {
-                    Swal.fire({ icon: 'error', title: '¡Documento Duplicado!', text: 'Este empleado ya se encuentra registrado.', confirmButtonColor: '#7e22ce' });
+                    Swal.fire({ icon: 'error', title: '¡Documento Duplicado!', text: data.mensaje || 'Este empleado ya se encuentra registrado.', confirmButtonColor: '#7e22ce' });
                     idNumberInput.value = '';
                 }
             } catch (error) { console.error(error); }
@@ -70,7 +69,7 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
                 const response = await fetch(url);
                 const data = await response.json();
                 if (data.exists) {
-                    Swal.fire({ icon: 'error', title: '¡Email Duplicado!', text: 'Este correo electrónico ya está en uso.', confirmButtonColor: '#7e22ce' });
+                    Swal.fire({ icon: 'error', title: '¡Email Duplicado!', text: 'Este correo ya está en uso por otro empleado o es el usuario de acceso de otra persona.', confirmButtonColor: '#7e22ce' });
                     this.value = '';
                 }
             } catch (error) { console.error(error); }
@@ -501,7 +500,6 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
         btn.addEventListener('click', async function () {
             const idDoc  = this.dataset.id;
             const nombre = this.dataset.nombre;
-            const csrf   = document.querySelector('[name="_csrf"]')?.value;
 
             const confirm = await Swal.fire({
                 icon: 'warning',
@@ -517,7 +515,6 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 
             try {
                 const fd = new FormData();
-                if (csrf) fd.append('_csrf', csrf);
                 const res  = await fetch(`/admin/personal/documentos/eliminar/${idDoc}`, { method: 'POST', body: fd });
                 const data = await res.json();
                 if (data.success) {
@@ -599,12 +596,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             if (!isConfirmed) return;
 
             try {
-                const csrf = document.querySelector('[name="_csrf"]')?.value;
                 const response = await fetch(`/admin/personal/estado/${empleadoId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrf || '',
                     },
                     body: JSON.stringify({ estado }),
                 });

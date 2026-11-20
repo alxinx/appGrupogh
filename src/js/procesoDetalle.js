@@ -4,7 +4,6 @@
     const raiz = document.getElementById('proceso-detalle');
     if (!raiz) return;
 
-    const CSRF = raiz.dataset.csrf;
     const idProceso = raiz.dataset.idProceso;
 
     // ── Avanzar etapa ────────────────────────────────────────────────────────────────────
@@ -33,7 +32,7 @@
             try {
                 const r = await fetch(`/admin/procesos/${idProceso}/avanzar`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         estado: siguienteEstado,
                         cantidad: inputCantidad ? inputCantidad.value : null,
@@ -74,7 +73,7 @@
             try {
                 const r = await fetch(`/admin/procesos/${idProceso}/bitacora`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({ nota })
                 });
                 const d = await r.json().catch(() => ({}));

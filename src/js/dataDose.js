@@ -372,17 +372,11 @@ if (btnGuardar) {
         btnGuardar.innerText = 'Procesando...';
 
         try {
-            const inputCsrf = document.querySelector('input[name="_csrf"]');
-            if (!inputCsrf) {
-                throw new Error("No se encontró el token de seguridad CSRF");
-            }
-            const token = inputCsrf.value;
     
             const respuesta = await fetch('/admin/dosificaciones/guardar', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'CSRF-Token': token // O 'X-CSRF-TOKEN' dependiendo de cómo lo espere tu middleware
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     productos,

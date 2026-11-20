@@ -1,3 +1,5 @@
+import { duracionVideo } from './duracionVideo.js';
+
 // Asistente "Nueva ficha de confección" (admin/procesos/fichas-confeccion/nueva).
 //
 // Motor de pasos PORTADO de /formularios/registroClientes (grupoghweb,
@@ -18,8 +20,15 @@
 // archivo corra; acá solo hace falta suscribirse a un evento más.
 import { adminSSE } from './sseCompartido.js';
 
-const CSRF = document.getElementById('asistente-ficha')?.dataset.csrf;
 const INTERVALO_POLL_MS = 1500;
+
+// Peso de un archivo para mostrar ("320 KB", "1.4 MB"). Una sola vez para todo el módulo:
+// había tres copias, una por cada sección del asistente.
+const pesoLegible = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+};
 
 // Estado compartido entre los distintos IIFE de este archivo (archivos, colores, envío
 // final) — cada slot vive en su propio closure, así que lo que uno resuelve y otro necesita
@@ -65,10 +74,6 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     let timerPoll = null;
     const detenerPoll = () => { clearInterval(timerPoll); timerPoll = null; };
 
-    const pesoLegible = (bytes) => {
-        if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    };
 
     // Solo para slots con `data-subida-url` (hoy, el DXF): manda el archivo, muestra
     // "Analizando…" y hace polling de GET `${urlSubida}/${id}` hasta 'listo' o 'error'. El
@@ -123,7 +128,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         try {
             const r = await fetch(`${urlSubida}/${estadoFicha.idArchivoDxf}/familia`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({ nombre })
             });
             const d = await r.json().catch(() => ({}));
@@ -159,7 +164,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         try {
             const formData = new FormData();
             formData.append('dxf', archivo);
-            const r = await fetch(urlSubida, { method: 'POST', headers: { 'CSRF-Token': CSRF }, body: formData });
+            const r = await fetch(urlSubida, { method: 'POST', body: formData });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo subir el archivo.');
             estadoFicha.idArchivoDxf = d.idArchivoDxf;
@@ -353,9 +358,9 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
 // ── Molde: elección foto vs. IA ─────────────────────────────────────────────────────────
 // El operador elige el archivo (input directo en la caja) → se sube al servidor → DESPUÉS
 // aparece el modal de elección: "Foto de referencia" (slot listo, el molde ya subido ES la
-// imagen del PDF) o "Generar con IA" (abre el modal Pattern/Colors). Las dos rutas son
-// mutuamente excluyentes. El PDF muestra la IA si se aprobó, si no muestra el molde como
-// foto de referencia (helpers/fichaConfeccionPdf.js — mismo `bufferMolde`, etiqueta cambia).
+// imagen del PDF) o "Generar con IA" (abre el modal Pattern/Colors). NO son excluyentes:
+// después de la primera elección, la otra queda a un clic en la misma caja
+// ([data-agregar-extras]), y el PDF lleva las dos (helpers/fichaConfeccionPdf.js).
 (function () {
     const slotMolde = document.querySelector('[data-slot-archivo="molde"][data-usa-eleccion="1"]');
     if (!slotMolde) return;
@@ -382,6 +387,9 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     const imagenReferencia = slotMolde.querySelector('[data-imagen-referencia]');
     const nombreReferencia = slotMolde.querySelector('[data-nombre-referencia]');
     const inputMoldeReferencia = document.getElementById('input-molde-referencia');
+    const agregarExtras = slotMolde.querySelector('[data-agregar-extras]');
+    const btnAgregarReferencia = slotMolde.querySelector('[data-btn-agregar-referencia]');
+    const btnAgregarIa = slotMolde.querySelector('[data-btn-agregar-ia]');
 
     const modalEleccion = document.getElementById('modal-elegir-molde');
     const btnFoto = document.getElementById('btn-molde-foto');
@@ -401,10 +409,6 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
 
     const detenerPollGeneracion = () => { clearInterval(timerPollGeneracion); timerPollGeneracion = null; };
 
-    const pesoLegible = (bytes) => {
-        if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    };
 
     const abrirModalEleccion = () => { modalEleccion?.classList.remove('hidden'); modalEleccion?.classList.add('flex'); };
     const cerrarModalEleccion = () => { modalEleccion?.classList.add('hidden'); modalEleccion?.classList.remove('flex'); };
@@ -435,6 +439,30 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
 
     btnQuitar?.addEventListener('click', resetSlot);
 
+    // Qué imagen adicional falta todavía. Se lee del propio slot (lo que está a la vista) y
+    // se recalcula sola cada vez que una de sus partes se muestra u oculta, así ningún
+    // camino (subida, generación, error, quitar, reset) tiene que acordarse de llamarla.
+    const visible = (el) => el && !el.classList.contains('hidden');
+    const actualizarExtras = () => {
+        const hayMolde = Boolean(idMoldeActual) && visible(zonaLlena);
+        const hayReferencia = visible(resultadoReferencia);
+        const hayIa = visible(estadoGeneracion) || visible(resultadoGeneracion);
+        btnAgregarReferencia?.classList.toggle('hidden', hayReferencia);
+        btnAgregarIa?.classList.toggle('hidden', hayIa);
+        // Con el molde arriba, mientras falte alguna de las dos (también si se cerró el modal
+        // de elección sin elegir nada).
+        const mostrar = hayMolde && !(hayReferencia && hayIa);
+        agregarExtras?.classList.toggle('hidden', !mostrar);
+        agregarExtras?.classList.toggle('flex', mostrar);
+    };
+    new MutationObserver(actualizarExtras).observe(slotMolde, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    btnAgregarReferencia?.addEventListener('click', () => inputMoldeReferencia?.click());
+    btnAgregarIa?.addEventListener('click', () => {
+        inputPattern.value = ultimoPattern || '';
+        inputColors.value = ultimoColors || '';
+        abrirModalIa();
+    });
+
     // ── Cierre del modal de elección ─────────────────────────────────────────────────────
     document.getElementById('cerrar-modal-elegir-molde')?.addEventListener('click', cerrarModalEleccion);
     modalEleccion?.addEventListener('click', (e) => { if (e.target === modalEleccion) cerrarModalEleccion(); });
@@ -456,7 +484,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         try {
             const formData = new FormData();
             formData.append('molde', archivo);
-            const r = await fetch(URL_MOLDE, { method: 'POST', headers: { 'CSRF-Token': CSRF }, body: formData });
+            const r = await fetch(URL_MOLDE, { method: 'POST', body: formData });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo subir la foto de referencia.');
             estadoFicha.idMoldeReferencia = d.idMolde;
@@ -464,6 +492,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             if (nombreReferencia) nombreReferencia.textContent = archivo.name;
             resultadoReferencia?.classList.remove('hidden');
             resultadoReferencia?.classList.add('flex-col');
+            actualizarExtras();
         } catch (e2) {
             if (errorGeneracion) { errorGeneracion.textContent = e2.message; errorGeneracion.classList.remove('hidden'); }
         }
@@ -475,6 +504,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         if (inputMoldeReferencia) inputMoldeReferencia.value = '';
         resultadoReferencia?.classList.add('hidden');
         resultadoReferencia?.classList.remove('flex-col');
+        actualizarExtras();
     });
 
     // "Generar con IA" — el molde ya subió y sirve de base para images.edit de OpenAI.
@@ -502,13 +532,14 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         try {
             const formData = new FormData();
             formData.append('molde', archivo);
-            const r = await fetch(URL_MOLDE, { method: 'POST', headers: { 'CSRF-Token': CSRF }, body: formData });
+            const r = await fetch(URL_MOLDE, { method: 'POST', body: formData });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo subir el molde.');
             idMoldeActual = d.idMolde;
             idIntentoActual = null;
             estadoFicha.idMolde = d.idMolde;
             estadoFicha.idMoldeIaIntentoAprobado = null;
+            actualizarExtras();   // el molde ya tiene id: no cambió ninguna clase del slot
             abrirModalEleccion();
         } catch (e2) {
             resetSlot();
@@ -545,7 +576,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         try {
             const r = await fetch(`${URL_MOLDE}/${idMoldeActual}/generar`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({ pattern, colors, idDxf: estadoFicha.idArchivoDxf })
             });
             const d = await r.json().catch(() => ({}));
@@ -578,8 +609,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         try {
             const r = await fetch(`${URL_MOLDE}/intento/${idIntentoActual}/aprobar`, {
                 method: 'POST',
-                headers: { 'CSRF-Token': CSRF }
-            });
+                });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo aprobar la imagen.');
 
@@ -660,11 +690,6 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     // manda a pedir.
     estadoFicha.obtenerVideosListos = () => [...videos.values()].filter((v) => v.estado === 'completado' && v.idVideo).map((v) => v.idVideo);
 
-    const pesoLegible = (bytes) => {
-        if (!bytes) return '';
-        if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    };
 
     const actualizarZonaVacia = () => {
         const llenos = videos.size >= MAX_VIDEOS;
@@ -857,10 +882,12 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             v.estado = 'pendiente';
             pintarFila(v);
 
+            // El servidor rechaza un video más largo que el máximo antes de que suba un byte.
+            const duracionSegundos = await duracionVideo(v.archivo);
             const r = await fetch(`${URL_VIDEO}/solicitar-subida`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
-                body: JSON.stringify({ orden: [...videos.values()].indexOf(v) + 1, nombreOriginal: v.archivo.name, pesoBytes: v.archivo.size })
+                headers: { 'Content-Type': 'application/json'},
+                body: JSON.stringify({ orden: [...videos.values()].indexOf(v) + 1, nombreOriginal: v.archivo.name, pesoBytes: v.archivo.size, duracionSegundos })
             });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo iniciar la subida.');
@@ -873,7 +900,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             await subirArchivoDirecto(v, d.uploadURL);
             console.debug('[video]', v.idVideo, 'subida directa resuelta, confirmando con el backend…');
 
-            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', headers: { 'CSRF-Token': CSRF } });
+            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', });
             const dConfirmar = await rConfirmar.json().catch(() => ({}));
             if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
             console.debug('[video]', v.idVideo, 'confirmar respondió estado =', dConfirmar.estado);
@@ -895,7 +922,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             if (v.idVideo) {
                 fetch(`${URL_VIDEO}/${v.idVideo}/marcar-error`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({ mensaje: e.message })
                 }).catch(() => {});
             }
@@ -910,7 +937,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         v.porcentaje = 0;
         pintarFila(v);
         try {
-            const r = await fetch(`${URL_VIDEO}/${v.idVideo}/reintentar`, { method: 'POST', headers: { 'CSRF-Token': CSRF } });
+            const r = await fetch(`${URL_VIDEO}/${v.idVideo}/reintentar`, { method: 'POST', });
             const d = await r.json().catch(() => ({}));
             if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo reintentar.');
             v.modoSubida = d.modo;
@@ -919,7 +946,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             pintarFila(v);
             await subirArchivoDirecto(v, d.uploadURL);
 
-            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', headers: { 'CSRF-Token': CSRF } });
+            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', });
             const dConfirmar = await rConfirmar.json().catch(() => ({}));
             if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
             if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'Cloudflare no pudo procesar el video.');
@@ -946,151 +973,6 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         });
         actualizarZonaVacia();
     });
-})();
-
-// ── Paso 2: tela (auto-cargada, ver más arriba) + colores y cantidades ─────────────────
-// "mayatext verde 200, mayatext azul 140": una fila por color con una cantidad — se
-// agregan y quitan libremente, sin tope. El color se elige en #modal-elegir-color (pastilla
-// con su círculo de color, buscador arriba) en vez de un <select> plano — mismo lenguaje
-// visual que #modalColores en views/administrador/inventarios/forms/product.pug, adaptado a
-// una sola elección por fila en vez de multi-selección por talla.
-(function () {
-    const lista = document.querySelector('[data-lista-colores]');
-    const plantilla = document.getElementById('plantilla-fila-color');
-    const btnAgregar = document.getElementById('btn-agregar-color');
-    const errorColores = document.querySelector('[data-error-colores]');
-    const modal = document.getElementById('modal-elegir-color');
-    const buscador = document.getElementById('buscador-color-ficha');
-    const grid = document.getElementById('grid-colores-ficha');
-    const btnCerrarModalColor = document.getElementById('cerrar-modal-color');
-    if (!lista || !plantilla || !btnAgregar) return;
-
-    let filaActual = null; // qué fila está esperando la elección del modal
-
-    const cerrarModalColor = () => {
-        modal?.classList.add('hidden');
-        modal?.classList.remove('flex');
-        filaActual = null;
-        if (buscador) buscador.value = '';
-        grid?.querySelectorAll('[data-opcion-color]').forEach((b) => { b.style.display = ''; });
-    };
-
-    const abrirModalColor = (fila) => {
-        filaActual = fila;
-        modal?.classList.remove('hidden');
-        modal?.classList.add('flex');
-        buscador?.focus();
-    };
-
-    btnCerrarModalColor?.addEventListener('click', cerrarModalColor);
-    modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarModalColor(); });
-
-    buscador?.addEventListener('input', (e) => {
-        const termino = e.target.value.toLowerCase().trim();
-        grid?.querySelectorAll('[data-opcion-color]').forEach((b) => {
-            const coincide = (b.dataset.nombre || '').toLowerCase().includes(termino);
-            b.style.display = coincide ? '' : 'none';
-        });
-    });
-
-    grid?.addEventListener('click', (e) => {
-        const opcion = e.target.closest('[data-opcion-color]');
-        if (!opcion || !filaActual) return;
-
-        const swatch = filaActual.querySelector('[data-color-swatch]');
-        const nombreEl = filaActual.querySelector('[data-color-nombre]');
-        const inputId = filaActual.querySelector('[data-color-id]');
-        if (inputId) inputId.value = opcion.dataset.id;
-        if (nombreEl) { nombreEl.textContent = opcion.dataset.nombre; nombreEl.classList.remove('text-slate-400'); nombreEl.classList.add('text-slate-800', 'font-semibold'); }
-        if (swatch) {
-            swatch.style.backgroundColor = opcion.querySelector('span')?.style.backgroundColor || '#ccc';
-            swatch.classList.remove('hidden');
-        }
-        errorColores?.classList.add('hidden');
-        cerrarModalColor();
-    });
-
-    // Tela de una fila: con un solo material resuelto se asigna sola y el <select> queda
-    // oculto (no hay nada que elegir); con más de uno se muestra y es obligatorio — "verde"
-    // puede ser 200 unidades en Mayatext y 80 en Polilicra, dos líneas distintas con el
-    // mismo color (models/FichaConfeccionColor.js). Se reconstruyen las opciones cada vez
-    // (no solo al crear la fila) porque el operador puede volver al paso 1 y cambiar el DXF
-    // mientras ya había filas de color agregadas.
-    const actualizarSelectMaterial = (fila) => {
-        const select = fila.querySelector('[data-color-material]');
-        if (!select) return;
-        const materiales = estadoFicha.materiales || [];
-        if (materiales.length <= 1) {
-            select.classList.add('hidden');
-            select.required = false;
-            select.innerHTML = '';
-            return;
-        }
-        const valorActual = select.value;
-        select.innerHTML = '';
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.disabled = true;
-        placeholder.textContent = 'Tela…';
-        select.appendChild(placeholder);
-        materiales.forEach((m) => {
-            const opt = document.createElement('option');
-            opt.value = m.idMaterial;
-            opt.textContent = m.nombre;
-            select.appendChild(opt);
-        });
-        select.value = materiales.some((m) => m.idMaterial === valorActual) ? valorActual : '';
-        if (!select.value) placeholder.selected = true;
-        select.classList.remove('hidden');
-        select.required = true;
-    };
-
-    const agregarFila = () => {
-        const nodo = plantilla.content.firstElementChild.cloneNode(true);
-        lista.appendChild(nodo);
-        nodo.querySelector('[data-abrir-color]')?.addEventListener('click', () => abrirModalColor(nodo));
-        nodo.querySelector('[data-quitar-color]')?.addEventListener('click', () => nodo.remove());
-        nodo.querySelector('[data-color-material]')?.addEventListener('change', () => errorColores?.classList.add('hidden'));
-        actualizarSelectMaterial(nodo);
-        errorColores?.classList.add('hidden');
-    };
-
-    btnAgregar.addEventListener('click', agregarFila);
-    agregarFila(); // arranca con una fila lista para no obligar a tocar "Agregar color".
-
-    // El bloque del DXF (más arriba) llama esto cada vez que estadoFicha.materiales cambia
-    // — al terminar de analizar un DXF, o al elegir uno nuevo encima de uno ya analizado.
-    estadoFicha.actualizarSelectsMaterialColor = () => {
-        lista.querySelectorAll('[data-fila-color]').forEach(actualizarSelectMaterial);
-    };
-
-    // Lee las filas con color Y cantidad > 0 elegidos — una fila vacía (recién agregada, sin
-    // tocar) simplemente no cuenta, no es un error. Con un solo material se asigna sin
-    // preguntar; con más de uno sale del <select> de la fila (vacío si no se eligió).
-    estadoFicha.obtenerColores = () => [...lista.querySelectorAll('[data-fila-color]')]
-        .map((fila) => {
-            const materiales = estadoFicha.materiales || [];
-            const selectMaterial = fila.querySelector('[data-color-material]');
-            const idMaterial = materiales.length === 1
-                ? materiales[0].idMaterial
-                : (selectMaterial?.value || null);
-            return {
-                idAtributoColor: parseInt(fila.querySelector('[data-color-id]')?.value, 10),
-                cantidad: parseInt(fila.querySelector('[data-color-cantidad]')?.value, 10),
-                idMaterial
-            };
-        })
-        .filter((f) => Number.isInteger(f.idAtributoColor) && f.idAtributoColor > 0 && Number.isInteger(f.cantidad) && f.cantidad > 0);
-
-    estadoFicha.validarColores = () => {
-        const validas = estadoFicha.obtenerColores();
-        // Colores son opcionales — solo falla si hay filas con color pero sin tela asignada
-        // en un DXF con múltiples materiales.
-        const ok = !(validas.length > 0 && (estadoFicha.materiales || []).length > 1 && validas.some((f) => !f.idMaterial));
-        errorColores?.classList.toggle('hidden', ok);
-        if (errorColores && !ok) errorColores.textContent = 'Elige a qué tela corresponde cada color.';
-        return ok;
-    };
 })();
 
 // ── Paso 3: insumos adicionales (botones, cierres, elástico…) ──────────────────────────
@@ -1206,7 +1088,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             if (errorFinalizar) { errorFinalizar.textContent = 'Falta el DXF del paso 1.'; errorFinalizar.classList.remove('hidden'); }
             return false;
         }
-        if (!estadoFicha.validarColores() || !estadoFicha.validarPrecio()) return false;
+        if (!estadoFicha.validarPrecio()) return false;
 
         const precio = window.parseMoney ? window.parseMoney(inputPrecio.value) : 0;
         const textoOriginal = btnContinuar.textContent;
@@ -1217,13 +1099,12 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         try {
             const r = await fetch('/admin/procesos/fichas-confeccion/finalizar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     idDxf: estadoFicha.idArchivoDxf,
                     idMolde: estadoFicha.idMolde,
                     idMoldeIaIntento: estadoFicha.idMoldeIaIntentoAprobado,
                     idMoldeReferencia: estadoFicha.idMoldeReferencia,
-                    colores: estadoFicha.obtenerColores(),
                     insumos: estadoFicha.obtenerInsumos ? estadoFicha.obtenerInsumos() : [],
                     idsVideos: estadoFicha.obtenerVideosListos(),
                     complementos: inputComplementos?.value || '',
@@ -1335,10 +1216,6 @@ if (contenedor) {
             await estadoFicha.enviarFichaFinal?.(btnContinuar);
             return;
         }
-        // Salir del paso 2 (colores) sin al menos uno cargado no tiene nada que guardar
-        // después — se valida acá, no al final, para no dejar al usuario llegar hasta
-        // "Guardar ficha" y recién ahí enterarse.
-        if (actual === 1 && estadoFicha.validarColores && !estadoFicha.validarColores()) return;
         irA(actual + 1, 1);
     });
     indicadores.forEach((boton, i) => boton.addEventListener('click', () => irA(i, -1)));

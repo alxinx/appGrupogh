@@ -97,7 +97,6 @@ block contenedor
 
                                     //- Cuerpo (2 columnas) — scrollable
                                     form#form-banner(class="flex-1 overflow-y-auto p-6" enctype="multipart/form-data")
-                                        input(type="hidden" name="_csrf" value=csrfToken)
                                         input#banner-id(type="hidden" name="idBanner")
 
                                         div(class="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8")
@@ -466,7 +465,7 @@ block contenedor
                 btn.addEventListener('click', async () => {
                     const { isConfirmed } = await Swal.fire({ icon: 'warning', title: '¿Eliminar banner?', showCancelButton: true, confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar', confirmButtonColor: '#ef4444' });
                     if (!isConfirmed) return;
-                    const resp = await fetch(`/admin/web/banners/eliminar/${btn.dataset.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _csrf: document.querySelector('[name=_csrf]').value }) });
+                    const resp = await fetch(`/admin/web/banners/eliminar/${btn.dataset.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ }) });
                     const data = await resp.json();
                     if (data.success) { Swal.fire({ icon: 'success', title: 'Eliminado', timer: 1500, showConfirmButton: false }).then(() => location.reload()); }
                     else Swal.fire({ icon: 'error', title: 'Error', text: data.mensaje });

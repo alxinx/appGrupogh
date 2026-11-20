@@ -13,11 +13,10 @@ import { montoPositivo } from '../helpers/helpers.js';
 import { generarPdfFichaConfeccion } from '../helpers/fichaConfeccionPdf.js';
 import { coloresSimplesDisponibles } from '../helpers/ordenesCompra.js';
 import { presentarMaterial } from '../helpers/insumos.js';
+import { CATEGORIA_CONFECCIONISTA } from '../helpers/proveedores.js';
 
-// Nombre EXACTO de la categoría de proveedor que puede ser "taller de confección" en una
-// ficha (CATEGORIAS_DE_PROVEDORES.nombre, seed/categoriasDeProvedores — mismo criterio que
-// CATEGORIAS_CON_FOTOS de helpers/proveedores.js para el registro web de proveedores).
-const CATEGORIA_TALLER = 'Confeccionista';
+// La categoría de proveedor que puede ser taller de una ficha vive en helpers/proveedores.js.
+const CATEGORIA_TALLER = CATEGORIA_CONFECCIONISTA;
 
 // Último paso del asistente "Nueva ficha de confección" — junta lo que el DXF, el molde y
 // los videos venían subiendo sueltos (FichaConfeccionDxf/Molde/MoldeIaIntento/Video, todos
@@ -55,42 +54,12 @@ async function generarYGuardarPdf(idFicha) {
 // y tienen que aplicar las MISMAS reglas (CLAUDE.md DRY). Nunca lanzan: devuelven
 // `{ error }` para que el controlador decida el status/mensaje de la respuesta.
 
-// Puede haber más de un material en el DXF (helpers/dxf.js) — con uno solo se asigna sin
-// preguntar (el body no decide nada, §12 mass assignment); con más de uno, cada línea tiene
-// que traer uno de los que el DXF realmente tiene.
-async function validarColoresBody(coloresBody, materialesDetalle) {
-    if (!coloresBody.length) return { coloresLimpios: [] };
-
-    const idsMaterialesValidos = new Set(materialesDetalle.map((m) => m.material.idMaterial));
-    const idMaterialUnico = idsMaterialesValidos.size === 1 ? [...idsMaterialesValidos][0] : null;
-
-    const coloresLimpios = [];
-    for (const fila of coloresBody) {
-        const idAtributoColor = parseInt(fila?.idAtributoColor, 10);
-        const cantidad = parseInt(fila?.cantidad, 10);
-        if (!Number.isInteger(idAtributoColor) || idAtributoColor <= 0) return { error: 'Hay un color inválido en la lista.' };
-        if (!Number.isInteger(cantidad) || cantidad <= 0) return { error: 'Cada color necesita una cantidad mayor a 0.' };
-        let idMaterial = idMaterialUnico;
-        if (!idMaterial) {
-            idMaterial = String(fila?.idMaterial ?? '');
-            if (!idsMaterialesValidos.has(idMaterial)) return { error: 'Elige a qué tela corresponde cada color.' };
-        }
-        coloresLimpios.push({ idAtributoColor, cantidad, idMaterial });
-    }
-
-    const idsColores = [...new Set(coloresLimpios.map((c) => c.idAtributoColor))];
-    const atributosColor = await Atributos.findAll({ where: { idAtributo: idsColores, tipo: 'COLOR' } });
-    if (atributosColor.length !== idsColores.length) return { error: 'Alguno de los colores elegidos no es válido.' };
-
-    return { coloresLimpios };
-}
-
-// Insumos: OPCIONALES (a diferencia de colores, una ficha puede no llevar ninguno —
-// CLAUDE.md, no inventar una obligación que nadie pidió). `nombreMaterial` se congela acá
-// con el nombre que el material tiene HOY, nunca con el que mande el navegador. Si hay
-// insumos, ninguno puede pedir MENOS que la cantidad total de la ficha (pedido explícito
-// del usuario): un botón, cierre o marquilla hace falta al menos una vez por prenda.
-async function validarInsumosBody(insumosBody, cantidadTotal) {
+// Insumos: OPCIONALES (una ficha puede no llevar ninguno — CLAUDE.md, no inventar una
+// obligación que nadie pidió). La cantidad es POR PRENDA ("2 botones"): la ficha describe la
+// prenda y la orden de producción multiplica (wiki "Proceso de confección").
+// `nombreMaterial` se congela acá con el nombre que el material tiene HOY, nunca con el que
+// mande el navegador.
+async function validarInsumosBody(insumosBody) {
     if (!insumosBody.length) return { insumosLimpios: [] };
 
     const insumosLimpios = [];
@@ -107,11 +76,6 @@ async function validarInsumosBody(insumosBody, cantidadTotal) {
     const nombrePorId = new Map(materialesInsumo.map((m) => [m.idMaterial, m.nombre]));
     insumosLimpios.forEach((i) => { i.nombreMaterial = nombrePorId.get(i.idMaterial); });
 
-    const insumoCorto = insumosLimpios.find((i) => i.cantidad < cantidadTotal);
-    if (insumoCorto) {
-        return { error: `${insumoCorto.nombreMaterial}: necesita al menos ${cantidadTotal.toLocaleString('es-CO')} (la cantidad total de la ficha).` };
-    }
-
     return { insumosLimpios };
 }
 
@@ -119,7 +83,7 @@ async function validarInsumosBody(insumosBody, cantidadTotal) {
 // 'Confeccionista' (nunca cualquier proveedor) con su propio precio de confección — dos
 // talleres pueden cobrar distinto por la misma prenda (models/FichaConfeccionTaller.js). Los
 // colores que se le asignan a un taller tienen que ser de los que la ficha REALMENTE tiene
-// (idsColoresFicha, ya validados por validarColoresBody) — nunca uno que el navegador
+// (idsColoresFicha, los que la ficha ya tiene guardados) — nunca uno que el navegador
 // inventó. Es un tag informativo, no reparte cantidad (models/FichaConfeccionTallerColor.js).
 async function validarTalleresBody(talleresBody, idsColoresFicha) {
     if (!talleresBody.length) return { talleresLimpios: [] };
@@ -197,22 +161,12 @@ const finalizarFicha = async (req, res) => {
         }
         if (!dxf.familiaAsociada) return res.status(422).json({ success: false, mensaje: 'No se identificó la referencia (Style Name) del DXF.' });
 
-        // Colores: el front manda un array real dentro del JSON del body (Content-Type:
-        // application/json), así que express.json() ya lo deja como array — nunca llega
-        // como string para volver a JSON.parse (eso rompía con "[object Object]" y vaciaba
-        // la lista siempre, aunque el usuario sí hubiera cargado colores). Validación
-        // compartida con actualizarFichaConfeccion (CLAUDE.md DRY, ver arriba).
-        const { coloresLimpios, error: errorColores } = await validarColoresBody(
-            Array.isArray(req.body?.colores) ? req.body.colores : [], materialesDetalle
-        );
-        if (errorColores) return res.status(422).json({ success: false, mensaje: errorColores });
-        // La cantidad total de una ficha nueva sigue saliendo sola de la suma de los colores
-        // (acá no hay un valor previo que el operador haya puesto a mano todavía — eso
-        // arranca en el editor, actualizarFichaConfeccion, donde sí se vuelve un tope).
-        const cantidadTotal = coloresLimpios.reduce((suma, c) => suma + c.cantidad, 0);
+        // Sin colores ni cantidad: la ficha describe la prenda (el QUÉ). Cuántas y en qué
+        // colores lo dice la orden de producción (wiki "Proceso de confección").
+        const cantidadTotal = 0;
 
         const { insumosLimpios, error: errorInsumos } = await validarInsumosBody(
-            Array.isArray(req.body?.insumos) ? req.body.insumos : [], cantidadTotal
+            Array.isArray(req.body?.insumos) ? req.body.insumos : []
         );
         if (errorInsumos) return res.status(422).json({ success: false, mensaje: errorInsumos });
 
@@ -266,11 +220,6 @@ const finalizarFicha = async (req, res) => {
                 estado: 'activa'
             }, { transaction: t });
             idFicha = ficha.idFicha;
-
-            await FichaConfeccionColor.bulkCreate(
-                coloresLimpios.map((c, i) => ({ idFicha, idAtributoColor: c.idAtributoColor, idMaterial: c.idMaterial, cantidad: c.cantidad, orden: i + 1 })),
-                { transaction: t }
-            );
 
             if (insumosLimpios.length) {
                 await FichaConfeccionInsumo.bulkCreate(
@@ -428,7 +377,6 @@ const homeFichaConfeccionEditar = async (req, res) => {
         return res.render('./administrador/produccion/fichaConfeccionEditar', {
             pagina: 'Fichas de confección',
             subPagina: ficha.referencia,
-            csrfToken: req.csrfToken(),
             currentPath: '/procesos',
             ficha,
             coloresCatalogo,
@@ -471,36 +419,23 @@ const actualizarFichaConfeccion = async (req, res) => {
         if (precioConfeccion === null) {
             return res.status(422).json({ success: false, mensaje: 'El precio de confección debe ser mayor a $0.' });
         }
-        // Cantidad total: ahora la pone el operador (antes se calculaba sola sumando los
-        // colores) y funciona como TOPE — la suma de los colores no puede pasarla (pedido
-        // explícito del usuario). Un número entero positivo, igual que cualquier cantidad.
-        const cantidadTotal = parseInt(req.body?.cantidadTotal, 10);
-        if (!Number.isInteger(cantidadTotal) || cantidadTotal <= 0) {
-            return res.status(422).json({ success: false, mensaje: 'La cantidad total debe ser un número mayor a 0.' });
-        }
+        // Cantidad y colores ya no se editan acá: la ficha describe la prenda y sus insumos
+        // van por prenda (wiki "Proceso de confección"); cuántas y en qué colores lo dirá la
+        // orden de producción. Lo que la ficha ya tenía guardado se conserva tal cual.
+        const cantidadTotal = ficha.cantidadTotal;
         const complementos = String(req.body?.complementos ?? '').trim().slice(0, 2000) || null;
         const observaciones = String(req.body?.observaciones ?? '').trim().slice(0, 2000) || null;
 
-        const materialesDetalle = ficha.dxf?.materialesDetalle || [];
-        const { coloresLimpios, error: errorColores } = await validarColoresBody(
-            Array.isArray(req.body?.colores) ? req.body.colores : [], materialesDetalle
-        );
-        if (errorColores) return res.status(422).json({ success: false, mensaje: errorColores });
-
-        const sumaColores = coloresLimpios.reduce((suma, c) => suma + c.cantidad, 0);
-        if (sumaColores > cantidadTotal) {
-            return res.status(422).json({
-                success: false,
-                mensaje: `Los colores suman ${sumaColores.toLocaleString('es-CO')}, más que la cantidad total (${cantidadTotal.toLocaleString('es-CO')}).`
-            });
-        }
-
+        // Insumos por prenda: sin tope contra una cantidad total que la ficha ya no maneja.
         const { insumosLimpios, error: errorInsumos } = await validarInsumosBody(
-            Array.isArray(req.body?.insumos) ? req.body.insumos : [], cantidadTotal
+            Array.isArray(req.body?.insumos) ? req.body.insumos : []
         );
         if (errorInsumos) return res.status(422).json({ success: false, mensaje: errorInsumos });
 
-        const idsColoresFicha = coloresLimpios.map((c) => c.idAtributoColor);
+        // Los colores que se le marcan a un taller tienen que ser de la ficha: los que ya
+        // tenía guardados (hoy, ninguno en una ficha nueva).
+        const idsColoresFicha = (await FichaConfeccionColor.findAll({ where: { idFicha: ficha.idFicha }, attributes: ['idAtributoColor'] }))
+            .map((c) => c.idAtributoColor);
         const { talleresLimpios, error: errorTalleres } = await validarTalleresBody(
             Array.isArray(req.body?.talleres) ? req.body.talleres : [], idsColoresFicha
         );
@@ -532,12 +467,6 @@ const actualizarFichaConfeccion = async (req, res) => {
             await FichaConfeccion.update(
                 { referencia, complementos, observaciones, precioConfeccion, cantidadTotal },
                 { where: { idFicha: ficha.idFicha }, transaction: t }
-            );
-
-            await FichaConfeccionColor.destroy({ where: { idFicha: ficha.idFicha }, transaction: t });
-            await FichaConfeccionColor.bulkCreate(
-                coloresLimpios.map((c, i) => ({ idFicha: ficha.idFicha, idAtributoColor: c.idAtributoColor, idMaterial: c.idMaterial, cantidad: c.cantidad, orden: i + 1 })),
-                { transaction: t }
             );
 
             await FichaConfeccionInsumo.destroy({ where: { idFicha: ficha.idFicha }, transaction: t });

@@ -1,10 +1,13 @@
 import { FichaConfeccion, FichaConfeccionVideo } from '../models/index.js';
-import { crearSubidaDirecta, crearSubidaTus, obtenerEstadoVideoCloudflare } from '../helpers/cloudflareStream.js';
+import { crearSubidaDirecta, crearSubidaTus, obtenerEstadoVideoCloudflare, VIDEO_FICHA_MAX_SEGUNDOS } from '../helpers/cloudflareStream.js';
 
 // Cloudflare le pone un tope DURO de 200MB al POST simple (helpers/cloudflareStream.js) —
 // un video de celular grabando el proceso de confección lo pasa fácil, así que a partir de
 // acá (con margen) se usa TUS en vez de dejar que Cloudflare lo rechace con un 4xx.
 const LIMITE_SUBIDA_SIMPLE = 190 * 1024 * 1024;
+
+const mmss = (seg) => `${Math.floor(seg / 60)}:${String(Math.round(seg % 60)).padStart(2, '0')}`;
+const mensajeDuracion = (seg) => `Este video dura ${mmss(seg)}; el máximo es ${VIDEO_FICHA_MAX_SEGUNDOS} segundos (${mmss(VIDEO_FICHA_MAX_SEGUNDOS)}).`;
 
 const crearSesionSubida = async ({ pesoBytes, nombreOriginal }) => {
     if (pesoBytes && pesoBytes > LIMITE_SUBIDA_SIMPLE) {
@@ -38,6 +41,12 @@ const solicitarSubidaVideo = async (req, res) => {
         }
         if (!nombreOriginal) {
             return res.status(422).json({ success: false, mensaje: 'Falta el nombre del archivo.' });
+        }
+        // La duración la lee el navegador de los metadatos del archivo (src/js/duracionVideo.js).
+        // Si no la pudo leer llega vacía y el tope lo pone Cloudflare (maxDurationSeconds).
+        const duracion = Number(req.body?.duracionSegundos);
+        if (Number.isFinite(duracion) && duracion > VIDEO_FICHA_MAX_SEGUNDOS + 0.5) {
+            return res.status(422).json({ success: false, mensaje: mensajeDuracion(duracion) });
         }
 
         const { uid, uploadURL, modo } = await crearSesionSubida({ pesoBytes, nombreOriginal });

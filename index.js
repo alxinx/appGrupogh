@@ -1,7 +1,7 @@
 import express from "express";
 import { TIPOS_DOCUMENTO } from './helpers/tiposDocumento.js';
 import { RESPONSABILIDADES_FISCALES, ENTIDADES_FINANCIERAS, TIPOS_CUENTA_BANCARIA, TIPOS_LLAVE_BREB, FORMATOS_NUMERO_CUENTA } from './helpers/catalogos.js';
-import csrf from "csurf";
+import verificarOrigen, { limpiarCookieCsrfVieja } from "./middlewares/verificarOrigen.js";
 import dotenv from 'dotenv';
 import cookieParser from "cookie-parser";
 import loginRoutes from "./routes/loginRoutes.js";
@@ -103,30 +103,13 @@ app.set("views", "./views");
 // Cabeceras de seguridad en TODA respuesta, antes que cualquier ruta.
 app.use(cabecerasSeguridad);
 
-// 3. Middlewares de Seguridad (CSRF)
-const csrfMiddleware = csrf({ cookie: true });
-
-// Aplicación Global con Excepción para la ruta de imágenes
-app.use((req, res, next) => {
-    // Excluimos SOLO el POST de inventario, provedores y personal para que el middleware uploadImages/Mixed actué primero
-    if ((req.path === '/admin/inventario/ingreso' || req.path === '/admin/provedores/new' || req.path === '/admin/personal/new' || req.path.startsWith('/admin/personal/ver/') || req.path === '/admin/clientes/nuevo' || req.path.match(/^\/admin\/clientes\/editar\/.+$/) || req.path === '/admin/inventario/batch' || req.path.match(/^\/admin\/web\/(banners|secciones|popup)\/(crear|editar\/.+)$/) || req.path.match(/^\/admin\/web\/categorias\/\d+\/imagen$/)) && req.method === 'POST') {
-        return next();
-    }
-    // Excluimos endpoints de API JSON autenticados (usan JWT + verificación de permisos propia)
-    if (req.path.match(/^\/admin\/api\/clientes\/.+\/credito$/) && req.method === 'POST') {
-        return next();
-    }
-    if (req.path.match(/^\/admin\/api\/clientes\/archivos\/.+\/eliminar$/) && req.method === 'POST') {
-        return next();
-    }
-    if (req.path.match(/^\/admin\/api\/provedores\/factura\/.+\/abonar$/) && req.method === 'POST') {
-        return next();
-    }
-    // API pública de la tienda web — sin CSRF (solo GET, sin estado)
-    if (req.path.startsWith('/api/web')) return next();
-    // Para todos los demás (Login, Tiendas, GET de inventario), se aplica aquí
-    csrfMiddleware(req, res, next);
-});
+// 3. Protección CSRF por origen (middlewares/verificarOrigen.js), sin token en el navegador.
+// Va antes de TODAS las rutas y no necesita leer el body, así que ya no hay que exceptuar
+// las rutas multipart para que multer actúe primero: también quedan protegidas.
+// /api/web queda afuera: es la API pública que consume grupoghweb desde otro origen, sin
+// cookies de sesión (rate limit + Turnstile + firma del webhook de Wompi).
+app.use(limpiarCookieCsrfVieja);
+app.use((req, res, next) => req.path.startsWith('/api/web') ? next() : verificarOrigen(req, res, next));
 
 // 4. Rutas
 app.use("/pagina", webRouters)
@@ -140,7 +123,10 @@ app.use("/admin", rutaProtegida, verificarRol('ADMIN'), permisosAdmin, cargarCon
 // volver a verificarla la mediría contra un camino que no existe y rebotaría todo.
 app.use("/admin/web", rutaProtegida, verificarRol('ADMIN'), cargarContadoresAdmin, webAdminRoutes); // CMS E-COMMERCE
 app.use("/api/web", webApiRoutes); // API PÚBLICA TIENDA WEB
-app.use("/store", rutaProtegida, verificarRol('STORE'), storeRoutes); // TIENDAS
+// EMPLOYER es el empleado de bodega: tiene punto de venta asignado igual que un vendedor
+// y trabaja desde el área de tienda. Antes no estaba admitido acá ni en /admin, y el rebote
+// de verificarRol lo mandaba a /store/ en un bucle de redirecciones sin fin.
+app.use("/store", rutaProtegida, verificarRol('STORE', 'EMPLOYER'), storeRoutes); // TIENDAS
 
 // 5. Errores de subida de archivos (multer)
 // Sin esto, superar el límite terminaba en el manejador por defecto de Express, que
@@ -178,16 +164,6 @@ app.use((err, req, res, next) => {
     };
     console.error(`[body-parser] ${req.method} ${req.url} — ${err.type}: ${err.message}`);
     return res.status(err.status || 400).json({ success: false, mensaje: mensajes[err.type] || 'Solicitud inválida.' });
-});
-
-// 6. CSRF error handler
-app.use((err, req, res, next) => {
-    if (err.code !== 'EBADCSRFTOKEN') return next(err);
-    console.error(`[CSRF] ${req.method} ${req.url} — token inválido o ausente`);
-    const isJson = req.headers.accept?.includes('application/json') ||
-                   req.headers['content-type']?.includes('application/json');
-    if (isJson) return res.status(403).json({ success: false, mensaje: 'Sesión expirada. Recarga la página.' });
-    return res.status(403).send('<h2>Sesión expirada. <a href="javascript:location.reload()">Recargar</a></h2>');
 });
 
 app.listen(port, () => {

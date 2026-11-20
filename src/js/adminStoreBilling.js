@@ -17,7 +17,6 @@
     // ─── ESTADO LOCAL ─────────────────────────────────────────────────────────
     let pdvId        = null;
     let fechaActual  = hoy();
-    let paginaActual = 1;
 
     // ─── ROW HTML ─────────────────────────────────────────────────────────────
     const facturaRow = (f) => {
@@ -42,7 +41,6 @@
 
     // ─── CARGAR TABLA ─────────────────────────────────────────────────────────
     const cargarFacturas = async (pagina = 1) => {
-        paginaActual = pagina;
         const tbody = document.getElementById('billing-tbody');
         if (!tbody) return;
 
@@ -186,7 +184,6 @@
             return;
         }
 
-        const csrf = document.getElementById('billing-csrf-token')?.value || '';
 
         btnConfirmar.disabled = true;
         btnConfirmar.textContent = 'Autorizando...';
@@ -195,7 +192,7 @@
         try {
             const res  = await fetch(`/admin/api/tiendas/${pdvId}/autorizar-factura-extemporanea`, {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': csrf },
+                headers: { 'Content-Type': 'application/json'},
                 body:    JSON.stringify({ idCajaTienda, cantidadFacturas: parseInt(cantidadFacturas), codigoEmpleado })
             });
             const json = await res.json();

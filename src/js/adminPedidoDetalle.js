@@ -11,7 +11,6 @@ import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
         facturado: { cls: 'bg-emerald-100 text-emerald-700', label: 'Facturado / Despachado' },
         cancelado: { cls: 'bg-red-100 text-red-600', label: 'Cancelado' }
     };
-    const ETIQUETA_ENTREGA = { domicilio: 'Domicilio', tienda: 'Punto de venta' };
     // Lo que el cliente eligió en el checkout web (PEDIDOS_WEB.metodoPago).
     const ETIQUETA_METODO_PAGO = { contraentrega: 'Contraentrega', tarjeta: 'Tarjeta', pse: 'PSE', nequi: 'Nequi', qr: 'Transferencia por QR' };
     // Lo que Wompi reporta que realmente se usó (payment_method_type, en PAGOS_PEDIDO_WEB.metodoPago).
@@ -218,7 +217,7 @@ import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
                 const res = await fetch(`/admin/web/pedidos/${idPedidoActual()}/asignar-tienda`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ idTiendaFacturacion, _csrf: document.querySelector('[name=_csrf]').value })
+                    body: JSON.stringify({ idTiendaFacturacion})
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -566,7 +565,7 @@ import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
         const res = await fetch(`/admin/web/pedidos/${idPedidoActual()}/confirmar-pago`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...datos, _csrf: document.querySelector('[name=_csrf]').value })
+            body: JSON.stringify({ ...datos})
         });
         const data = await res.json();
         await manejarRespuestaSensible(data, async () => {
@@ -611,7 +610,7 @@ import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
         const res = await fetch(`/admin/web/pedidos/${idPedidoActual()}/cancelar`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ razonRechazo, codigoEmpleado, _csrf: document.querySelector('[name=_csrf]').value })
+            body: JSON.stringify({ razonRechazo, codigoEmpleado})
         });
         const data = await res.json();
         await manejarRespuestaSensible(data, async () => {

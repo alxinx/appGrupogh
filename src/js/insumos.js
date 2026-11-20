@@ -1,4 +1,5 @@
 import { activarFormularioInsumo } from './formularioInsumo.js';
+import { activarFiltrosCatalogo, activarVistaCatalogo } from './catalogoFiltrable.js';
 
 // Alta de insumos (admin/insumos). El formulario en sí (validación, código DXF único, carga
 // de foto) vive en formularioInsumo.js — lo comparte con la edición del perfil
@@ -37,53 +38,27 @@ activarFormularioInsumo({
     alGuardar: () => { window.location.href = '/admin/insumos'; }
 });
 
-// ── Catálogo: búsqueda + filtros ──────────────────────────────────────────────────
-// El catálogo llega completo del servidor (es chico, ver produccionController.js): acá
-// solo se muestran/ocultan las <tr> que ya están pintadas, nada de una consulta nueva.
+// ── Catálogo: búsqueda, filtros y vista lista/cuadrícula (src/js/catalogoFiltrable.js) ──
 // Los cuatro filtros (texto, tipo, unidad, estado) se combinan entre sí.
-(function () {
-    const filas = Array.from(document.querySelectorAll('#tabla-materiales tr[data-nombre]'));
-    if (!filas.length) return;
-
-    const busqueda      = document.getElementById('busqueda-material');
-    const filtroTipo    = document.getElementById('filtro-tipo-material');
-    const filtroUnidad  = document.getElementById('filtro-unidad-material');
-    const filtroEstado  = document.getElementById('filtro-estado-material');
-    const btnLimpiar    = document.getElementById('limpiar-filtros-material');
-    const sinResultados = document.getElementById('sin-resultados-material');
-    const conteo        = document.getElementById('conteo-materiales');
-
-    const aplicarFiltros = () => {
-        const texto  = busqueda.value.trim().toLowerCase();
-        const tipo   = filtroTipo.value;
-        const unidad = filtroUnidad.value;
-        const activoBuscado = filtroEstado.value && (filtroEstado.value === 'activo' ? '1' : '0');
-
-        let visibles = 0;
-        filas.forEach(fila => {
-            const coincide =
-                (!texto || fila.dataset.nombre.includes(texto) || fila.dataset.codigo.includes(texto)) &&
-                (!tipo || fila.dataset.tipo === tipo) &&
-                (!unidad || fila.dataset.unidad === unidad) &&
-                (!activoBuscado || fila.dataset.activo === activoBuscado);
-            fila.classList.toggle('hidden', !coincide);
-            if (coincide) visibles++;
-        });
-
-        sinResultados.classList.toggle('hidden', visibles > 0);
-        conteo.textContent = visibles === filas.length
-            ? (filas.length === 1 ? '1 material' : `${filas.length} materiales`)
-            : `${visibles} de ${filas.length} materiales`;
-        btnLimpiar.classList.toggle('hidden', !(texto || tipo || unidad || filtroEstado.value));
-    };
-
-    busqueda.addEventListener('input', aplicarFiltros);
-    [filtroTipo, filtroUnidad, filtroEstado].forEach(sel => sel.addEventListener('change', aplicarFiltros));
-    btnLimpiar.addEventListener('click', () => {
-        busqueda.value = '';
-        filtroTipo.value = '';
-        filtroUnidad.value = '';
-        filtroEstado.value = '';
-        aplicarFiltros();
-    });
-})();
+const $ = (id) => document.getElementById(id);
+activarFiltrosCatalogo({
+    selector: '[data-material]',
+    busqueda: $('busqueda-material'),
+    camposTexto: ['nombre', 'codigo'],
+    filtros: [
+        { el: $('filtro-tipo-material'),   coincide: (el, v) => el.dataset.tipo === v },
+        { el: $('filtro-unidad-material'), coincide: (el, v) => el.dataset.unidad === v },
+        { el: $('filtro-estado-material'), coincide: (el, v) => el.dataset.activo === (v === 'activo' ? '1' : '0') }
+    ],
+    limpiar: $('limpiar-filtros-material'),
+    sinResultados: $('sin-resultados-material'),
+    conteo: $('conteo-materiales'),
+    nombres: ['material', 'materiales']
+});
+activarVistaCatalogo({
+    lista: $('vista-lista-materiales'),
+    cuadricula: $('vista-cuadricula-materiales'),
+    botones: document.querySelectorAll('.vista-catalogo-btn'),
+    clave: 'insumos.vistaCatalogo',
+    vistaMovil: 'cuadricula'   // en el celular la tabla no cabe; las tarjetas sí
+});

@@ -1,4 +1,5 @@
 import { pintarCodigo } from './codigoCajitas.js';
+import { escaparHtml as esc } from './escaparHtml.js';
 // Ventana de confirmación del proyecto — la hoja de estilos vive en
 // views/components/modalConfirmacion.pug y hay que incluirla en la vista que la use.
 //
@@ -61,6 +62,14 @@ export const cabeceraConfirmacion = ({ icono, badge, monto = null, idMonto = nul
  * el llamador quiera (un monto, un conteo). Es la fila de los métodos de pago del abono,
  * que es lo que le da su aspecto a esta ventana.
  */
+// Aviso de un solo botón ("Entendido") con la misma cabecera que las confirmaciones.
+// `contexto` es texto plano: se escapa acá. Estaba copiado en formularioInsumo y ordenCompra.
+export const avisoConfirmacion = ({ variante, icono, badge, contexto = '' }) => Swal.fire({
+    ...opcionesConfirmacion({ variante, html: `<div class="gh-conf-html">${cabeceraConfirmacion({ icono, badge, contexto: esc(contexto) })}</div>` }),
+    showCancelButton: false,
+    confirmButtonText: 'Entendido'
+});
+
 export const filaConfirmacion = ({ icono, fondo, color, titulo, sub, derecha = '' }) => `
     <div class="gh-conf-item">
         <div class="gh-conf-item-icono" style="background:${fondo};color:${color};">

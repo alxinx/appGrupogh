@@ -1,4 +1,5 @@
 import { Empleados } from '../models/index.js';
+import { OPCIONES_COOKIE_SESION } from '../helpers/genToken.js';
 
 // Segundo factor operativo para acciones sensibles del panel admin (marcar un pedido web
 // como pagado, cancelarlo). Mismo patrón que verificarCodigoEmpleado.js del POS —contador
@@ -13,7 +14,7 @@ const MAX        = 5;
 const VENTANA_MS = 15 * 60 * 1000;
 
 const _logout = (res, mensaje) => {
-    res.clearCookie('_token');
+    res.clearCookie('_token', OPCIONES_COOKIE_SESION);
     return res.status(401).json({ success: false, mensaje, logout: true });
 };
 

@@ -3,7 +3,6 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
 (function () {
-    const csrfToken = document.getElementById('csrf-token')?.value || '';
 
     // ─── ESTADO ──────────────────────────────────────────────────────────────
     let trasladoActivo = null;
@@ -225,7 +224,6 @@ import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
     const lbFeedback  = document.getElementById('lb-feedback-empleado');
     const btnAceptar  = document.getElementById('lb-aceptar');
     const btnCancelar = document.getElementById('lb-cancelar');
-    const lbFooter    = document.getElementById('lb-footer');
 
     const abrirLightbox = async (idTraslado) => {
         if (!lightbox) return;
@@ -530,7 +528,7 @@ import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
         try {
             const r = await fetch('/store/traslados/aceptar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     idTraslado: trasladoActivo.idTraslado,
                     codigoEmpleado: lbCodEmp.value.trim().toUpperCase(),
@@ -582,7 +580,7 @@ import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
         try {
             const r = await fetch('/store/traslados/resolver', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     idTraslado:     trasladoActivo.idTraslado,
                     codigoEmpleado: lbCodEmp.value.trim().toUpperCase()
@@ -832,7 +830,7 @@ import { montarHistorialTraslado, fmtFechaHora } from './historialTraslado.js';
             try {
                 const r = await fetch('/store/traslados/crear', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         items:          validos.map(i => ({ idProducto: i.idProducto, sku: i.sku, cantidad: i.cantidad })),
                         idDestino,

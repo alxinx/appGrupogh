@@ -1,24 +1,6 @@
 import express from "express";
-import csrf from 'csurf';
 const routes = express.Router(); // 2. Definir router antes de usarlo
-const csrfProtection = csrf({ cookie: true });
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee,checkDocumentoPersonal,
-checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto, dashboardSettings, municipiosJson, categoriasJson, skuJson, eanJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, baseFrondend, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU,
-adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getEgresosDiaTienda, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea,
-jsonPermisosRecursos, jsonPermisosAcciones,
-verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
-getPagosHoyPorMetodo,
-destrabarCuadreTienda, listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, decidirTrasladoEfectivo, validarEmpleadoBancos, getTrasladoPDFAdmin, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
-getStatsVendedorMes,
-getCajasCerradasAdmin,
-getAdminCuadrePDF,
-getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente,
-getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente,
-getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
-storeCierresCaja, storeTrasladosTienda,
-getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON,
-getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda,
-trasladarProductoAdmin } from "../controller/adminControllers.js"
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto, dashboardSettings, municipiosJson, categoriasJson, skuJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU, adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getEgresosDiaTienda, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea, jsonPermisosRecursos, jsonPermisosAcciones, verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado, getPagosHoyPorMetodo, destrabarCuadreTienda, listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, decidirTrasladoEfectivo, validarEmpleadoBancos, getTrasladoPDFAdmin, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, verDetallesEntidad, editarEntidad, getTransaccionesEntidad, getStatsVendedorMes, getCajasCerradasAdmin, getAdminCuadrePDF, getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor, storeCierresCaja, storeTrasladosTienda, getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON, getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda, trasladarProductoAdmin } from "../controller/adminControllers.js";
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { subirQrEntidad, toggleQrEntidad, previewQrEntidad } from "../controller/qrPagoControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
@@ -30,7 +12,7 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR PRODUCCIÓN (Confeccionistas, Procesos, Insumos):
-import { homeConfeccionistas, homeProcesosNuevo, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, filterFichaConfeccionListJson, homeInsumos, crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo } from '../controller/produccionController.js'
+import { homeConfeccionistas, fotoConfeccionista, imagenFichaConfeccion, homeProcesosNuevo, homeCorteNuevo, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, filterFichaConfeccionListJson, homeInsumos, crearInsumo, verInsumo, editarInsumo, ajustarExistenciaInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo } from '../controller/produccionController.js'
 import { homeProcesosListado, verProceso, avanzarProceso, agregarBitacora } from '../controller/fichaConfeccionProcesoController.js'
 import { subirDxfFicha, estadoDxfFicha, crearFamiliaDxf } from '../controller/fichaConfeccionDxfController.js'
 import { recibirDxf } from '../middlewares/uploadDxf.js';
@@ -44,7 +26,7 @@ import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorr
 import { formularioImportaciones, procesarImportacionExcel, descargarPlantillaImportacion, formularioImportarClientes, procesarImportacionClientes, descargarPlantillaClientes } from '../controller/importacionesController.js'
 
 
-import { storeRegisterValidation, storeBasicTaxDataValidation, productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
+import { productBasicValidation, cajaBancoValidation, cajaBancoEditValidation } from '../middlewares/fieldValidations.js';
 import verificarCodigoEmpleadoAdmin from '../middlewares/verificarCodigoEmpleadoAdmin.js';
 import verificarPermisoEmpleado, { validarCodigoConPermiso } from '../middlewares/verificarPermisoEmpleado.js';
 import verificarPermisoSesion from '../middlewares/verificarPermisoSesion.js';
@@ -92,7 +74,6 @@ import uploadExcel from '../middlewares/uploadExcel.js';
 import { permitirMarcoPropio } from '../middlewares/cabecerasSeguridad.js';
 
 
-
 //*********************************[GETS ROUTES]**********************************/
 
 routes.get("/", dashboard);
@@ -102,26 +83,23 @@ routes.get('/tiendas', pTie('READ'), dashboardStores);
 routes.get('/tiendas/new', pTie('CREATE'), newStore);
 routes.get('/tiendas/ver/:idPuntoDeVenta', pTie('READ'), verTienda);
 
-// Suelta a mano una caja trabada en cuadre. Va con CSRF y con el mismo permiso que
+// Suelta a mano una caja trabada en cuadre. Va con el mismo permiso que
 // editar la tienda: quien puede administrarla puede destrabarle la caja.
 routes.post('/tiendas/:idPuntoDeVenta/destrabar-cuadre',
-    csrfProtection,
     verificarPermisoSesion('tiendas', 'administrativo', 'EDIT'),
     destrabarCuadreTienda);
-routes.get('/tiendas/partials/facturacionHoy/:idPuntoDeVenta', pTie('READ'), csrfProtection, billingToday)
+routes.get('/tiendas/partials/facturacionHoy/:idPuntoDeVenta', pTie('READ'), billingToday)
 routes.get('/tiendas/partials/inventario/:idPuntoDeVenta', pTie('READ'), storeInventory)
 routes.get('/tiendas/partials/empleados/:idPuntoDeVenta', pTie('READ'), storeEmployers)
 routes.get('/tiendas/partials/documentacion/:idPuntoDeVenta', pTie('READ'), storeDocuments)
 routes.get('/tiendas/partials/cierresCaja/:idPuntoDeVenta', pTie('READ'),   storeCierresCaja)
 routes.get('/tiendas/partials/traslados/:idPuntoDeVenta', pTie('READ'),     storeTrasladosTienda)
 
-//routes.get('/tiendas/nueva',newStore);
-//routes.get('/tiendas/verPunto/:idPuntoDeVenta',verTienda);
 routes.get('/tiendas/editar/:idPuntoDeVenta', pTie('EDIT'), editarTienda);
 
 
 //INVENTARIOS Y PRODUCTOS.
-routes.get('/inventario/ingreso', csrfProtection, pInv('CREATE'), dashboardInventorys);
+routes.get('/inventario/ingreso', pInv('CREATE'), dashboardInventorys);
 routes.get('/inventario/listado', pInv('READ'), listaProductos);
 routes.get('/inventario/exportar', pInv('READ'), exportarProductos);
 
@@ -132,7 +110,7 @@ routes.get('/inventario/exportar', pInv('READ'), exportarProductos);
 routes.get('/json/precios-masivos/familias', pInv('EDIT'), familiasPreciosMasivos);
 routes.get('/json/precios-masivos/productos', pInv('EDIT'), productosPreciosMasivos);
 routes.get('/api/inventario/empleado/validar/:codigo', pInv('EDIT'), apiRateLimit, validarEmpleadoInventario);
-routes.post('/inventario/precios-masivos', pInv('EDIT'), csrfProtection,
+routes.post('/inventario/precios-masivos', pInv('EDIT'),
     verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Inventario y Productos', 'administrativo', 'EDIT'),
     editarPreciosMasivos);
 routes.get('/inventario/ver/:idProducto', pInv('READ'), verProducto)
@@ -140,7 +118,6 @@ routes.get('/inventario/editar/:idProducto', pInv('EDIT'), editarProducto)
 routes.get('/inventario/batch/', pInv('CREATE'), batchBuyOrder)
 routes.post('/inventario/batch/', pInv('CREATE'),
     uploadMixed.fields([{ name: 'facturas', maxCount: 5 }]),
-    csrfProtection,
     saveBatchOrder
 )
 // Todos los códigos de una familia. Va ANTES de la ruta por producto: son dos segmentos
@@ -150,15 +127,15 @@ routes.get('/inventario/etiqueta-sku/:idProducto', pInv('READ'), imprimirEtiquet
 
 
 //ENTIDADES BANCARIAS
-routes.get('/bankentities/listado', pBan('READ'), csrfProtection, listarEntidades);
-routes.post('/bankentities/crear', pBan('CREATE'), csrfProtection, crearEntidad);
+routes.get('/bankentities/listado', pBan('READ'), listarEntidades);
+routes.post('/bankentities/crear', pBan('CREATE'), crearEntidad);
 
 // CAJAS Y BANCOS — la validación va antes del controlador: un cuerpo inválido no
 // llega a tocar la base.
-routes.post('/bankentities/cajas/crear', pBan('CREATE'), csrfProtection, cajaBancoValidation, crearCajaBanco);
+routes.post('/bankentities/cajas/crear', pBan('CREATE'), cajaBancoValidation, crearCajaBanco);
 
 // Perfil de una caja o banco con sus movimientos.
-routes.get('/bankentities/cajas/:idCajaBanco', pBan('READ'), csrfProtection, verPerfilCajaBanco);
+routes.get('/bankentities/cajas/:idCajaBanco', pBan('READ'), verPerfilCajaBanco);
 
 // Aceptar, rechazar o aceptar parcialmente un traslado de efectivo.
 //
@@ -173,7 +150,6 @@ routes.get('/bankentities/cajas/:idCajaBanco', pBan('READ'), csrfProtection, ver
 //     traslado mueve el saldo de una caja o un banco; es la misma autoridad que se
 //     necesita para registrar un movimiento a mano, y por eso pide el recurso Bancos.
 routes.post('/bankentities/traslados/:idTraslado/decidir',
-    csrfProtection,
     verificarCodigoEmpleadoAdmin,
     verificarPermisoEmpleado('Bancos', 'administrativo', 'EDIT'),
     decidirTrasladoEfectivo);
@@ -183,8 +159,8 @@ routes.get('/bankentities/traslados/:idTraslado/pdf', pBan('READ'), getTrasladoP
 // rechazar. Pasa por apiRateLimit: aunque solo llega un administrador, un código de
 // empleado son cinco dígitos y probarlos en bucle no debe salir gratis.
 routes.get('/bankentities/empleado/validar/:codigo', pBan('READ'), apiRateLimit, validarEmpleadoBancos);
-routes.get('/bankentities/cajas/:idCajaBanco/editar', pBan('EDIT'), csrfProtection, getCajaBancoEditar);
-routes.post('/bankentities/cajas/:idCajaBanco/editar', pBan('EDIT'), csrfProtection, cajaBancoEditValidation, editarCajaBanco);
+routes.get('/bankentities/cajas/:idCajaBanco/editar', pBan('EDIT'), getCajaBancoEditar);
+routes.post('/bankentities/cajas/:idCajaBanco/editar', pBan('EDIT'), cajaBancoEditValidation, editarCajaBanco);
 routes.get('/bankentities/cajas/:idCajaBanco/movimientos', pBan('READ'), getMovimientosCuentaJSON);
 routes.get('/bankentities/cajas/:idCajaBanco/movimientos/export', pBan('READ'), exportarMovimientosCuenta);
 // Los comprobantes van en memoria antes de subirse a R2, por eso el límite de multer.
@@ -192,30 +168,29 @@ routes.get('/bankentities/cajas/:idCajaBanco/movimientos/export', pBan('READ'), 
 // movimiento queda a nombre de una persona, y el código tiene que ser el del usuario con la
 // sesión abierta (verificarCodigoEmpleadoAdmin). Va DESPUÉS de multer porque el código
 // viaja en el mismo multipart que los comprobantes y antes de eso req.body está vacío.
-routes.post('/bankentities/cajas/:idCajaBanco/movimientos', pBan('CREATE'), csrfProtection, subirComprobantesMovimiento, verificarCodigoEmpleadoAdmin, crearMovimientoCuenta);
+routes.post('/bankentities/cajas/:idCajaBanco/movimientos', pBan('CREATE'), subirComprobantesMovimiento, verificarCodigoEmpleadoAdmin, crearMovimientoCuenta);
 // Comprobante en PDF de un movimiento: sirve tanto para el que se registra a mano acá
 // como para el ingreso que genera un abono a crédito.
 // `permitirMarcoPropio`: estos tres PDF se imprimen desde un iframe invisible sin abrir
 // pestaña (src/js/imprimirPdf.js), y el X-Frame-Options: DENY general lo bloquearía.
 routes.get('/bankentities/movimientos/:idMovimiento/tirilla', pBan('READ'), permitirMarcoPropio, getTirillaMovimientoCuenta);
-routes.post('/bankentities/toggle/:id', pBan('EDIT'), csrfProtection, toggleEntidad);
-routes.get('/bankentities/detallesEntidad/:idEntidad', pBan('READ'), csrfProtection, verDetallesEntidad);
-routes.post('/bankentities/editar/:idEntidad', pBan('EDIT'), csrfProtection, editarEntidad);
+routes.get('/bankentities/detallesEntidad/:idEntidad', pBan('READ'), verDetallesEntidad);
+routes.post('/bankentities/editar/:idEntidad', pBan('EDIT'), editarEntidad);
 
 // QR de pago web — solo admin autenticado (la app monta este router detrás de
 // rutaProtegida + verificarRol('ADMIN')). El rate limit va antes de multer para
 // no gastar ancho de banda ni memoria en subidas que ya están por encima del tope.
-routes.get('/bankentities/:idEntidad/qr', pBan('READ'), csrfProtection, previewQrEntidad);
+routes.get('/bankentities/:idEntidad/qr', pBan('READ'), previewQrEntidad);
 routes.post('/bankentities/:idEntidad/qr', pBan('EDIT'), qrUploadRateLimit, recibirQr, subirQrEntidad);
-routes.post('/bankentities/:idEntidad/qr/toggle', pBan('EDIT'), csrfProtection, toggleQrEntidad);
+routes.post('/bankentities/:idEntidad/qr/toggle', pBan('EDIT'), toggleQrEntidad);
 routes.get('/api/bankentities/:idEntidad/transacciones', pBan('READ'), getTransaccionesEntidad);
 
 //PROVEDORES
 routes.get('/provedores/', pPro('READ'), dashboardSupplier);
 routes.get('/provedores/new/', pPro('CREATE'), newSupplier);
-routes.get('/provedores/ver/:idProveedor', pPro('READ'), csrfProtection, verProveedor);
-routes.post('/provedores/editar/:idProveedor', pPro('EDIT'), csrfProtection, actualizarProveedor);
-routes.post('/provedores/:idProveedor/cuentas/:idCuentaBancaria/verificar', pPro('EDIT'), csrfProtection, verificarCuentaProveedor);
+routes.get('/provedores/ver/:idProveedor', pPro('READ'), verProveedor);
+routes.post('/provedores/editar/:idProveedor', pPro('EDIT'), actualizarProveedor);
+routes.post('/provedores/:idProveedor/cuentas/:idCuentaBancaria/verificar', pPro('EDIT'), verificarCuentaProveedor);
 routes.get('/provedores/documentos/:idDocumento', pPro('READ'), verDocumentoProveedor);
 routes.get('/api/provedores/facturas-pendientes', pPro('READ'), getFacturasPendientesProveedores);
 routes.get('/api/provedores/factura/:idFacturaPro/detalle', pPro('READ'), getDetalleFacturaPendiente);
@@ -236,9 +211,8 @@ routes.post('/personal/ver/:idEmpleado', pPer('EDIT'), uploadMixed.fields([
     { name: 'fotoEmpleado', maxCount: 1 },
     { name: 'documentos', maxCount: 10 }
 ]), actualizarEmpleado);
-routes.post('/personal/documentos/eliminar/:idDocumento', pPer('DELETE'), csrfProtection, eliminarDocumentoEmpleado);
-routes.post('/personal/estado/:idEmpleado', pPer('EDIT'), csrfProtection, cambiarEstadoEmpleado);
-
+routes.post('/personal/documentos/eliminar/:idDocumento', pPer('DELETE'), eliminarDocumentoEmpleado);
+routes.post('/personal/estado/:idEmpleado', pPer('EDIT'), cambiarEstadoEmpleado);
 
 
 routes.get('/clientes', pCli('READ'), dashboardCustomers);
@@ -286,80 +260,81 @@ routes.get('/pedidos', (req, res) => res.redirect('/admin/traslados'));
 // Traslados de mercancía. Recibir una devolución de producción pide las dos cosas que pide
 // aceptar un traslado de efectivo (ver /bankentities/traslados/:idTraslado/decidir): QUIÉN
 // recibe, con su código, y que esa persona tenga permiso sobre Traslados.
-routes.get('/traslados', pTra('READ'), csrfProtection, paginaTraslados);
+routes.get('/traslados', pTra('READ'), paginaTraslados);
 routes.get('/api/traslados/controversias', pTra('READ'), listarControversiasJSON);
 routes.get('/api/traslados/historial', pTra('READ'), listarHistorialJSON);
 routes.get('/api/traslados/empleado/validar/:codigo', pTra('READ'), apiRateLimit, validarEmpleadoTraslados);
 routes.get('/api/traslados/:idTraslado', pTra('READ'), detalleTrasladoAdminJSON);
 routes.post('/traslados/:idTraslado/recibir-devolucion',
-    csrfProtection,
     verificarCodigoEmpleadoAdmin,
     verificarPermisoEmpleado('Traslados', 'administrativo', 'EDIT'),
     recibirDevolucionAdmin);
 
 // Pestaña "Producción": base de los tres módulos, sin recurso propio todavía más allá de
 // la carpeta (ver seed/migracionPermisosProduccion.js).
-routes.get('/confeccionistas', pCon('READ'), csrfProtection, homeConfeccionistas);
+routes.get('/confeccionistas', pCon('READ'), homeConfeccionistas);
+routes.get('/confeccionistas/fotos/:idDocumento', pCon('READ'), fotoConfeccionista);
 // Procesos es un submenú (ver leftMenu.pug): nuevo antes de la carpeta genérica, igual que
 // /insumos/compra va antes del catch-all /insumos/:idMaterial.
-routes.get('/procesos/nuevo',                            pPrc('CREATE'), csrfProtection, homeProcesosNuevo);
-routes.get('/procesos/fichas-confeccion/nueva',           pPrc('CREATE'), csrfProtection, homeFichaConfeccionNueva);
-// Subida + análisis del DXF (controller/fichaConfeccionDxfController.js): csrfProtection
-// antes de `recibirDxf` (multer) porque el token viaja en el header, no en el body
-// multipart — mismo orden que /bankentities/:idEntidad/qr.
-routes.post('/procesos/fichas-confeccion/dxf',            pPrc('CREATE'), csrfProtection, recibirDxf, subirDxfFicha);
+routes.get('/procesos/nuevo',                            pPrc('CREATE'), homeProcesosNuevo);
+// Corte (submenú Procesos → Corte). Antes del catch-all /procesos/:idProceso, si no
+// "cortes" se tomaría como un idProceso.
+routes.get('/procesos/cortes/nuevo',                     pPrc('CREATE'), homeCorteNuevo);
+routes.get('/procesos/fichas-confeccion/nueva',           pPrc('CREATE'), homeFichaConfeccionNueva);
+// Subida + análisis del DXF (controller/fichaConfeccionDxfController.js).
+routes.post('/procesos/fichas-confeccion/dxf',            pPrc('CREATE'), recibirDxf, subirDxfFicha);
 routes.get('/procesos/fichas-confeccion/dxf/:idArchivoDxf', pPrc('READ'), estadoDxfFicha);
 // Crear/asociar la familia ahí mismo cuando el Style Name del DXF no matcheó ninguna
 // (controller/fichaConfeccionDxfController.js crearFamiliaDxf) — mismo permiso de
 // escritura del asistente, no el de Inventario y Productos (CREATE de Familia normalmente
 // vive del lado del alta de producto, pero acá la dispara el asistente de fichas).
-routes.post('/procesos/fichas-confeccion/dxf/:idArchivoDxf/familia', pPrc('CREATE'), csrfProtection, crearFamiliaDxf);
+routes.post('/procesos/fichas-confeccion/dxf/:idArchivoDxf/familia', pPrc('CREATE'), crearFamiliaDxf);
 // Molde (JPG/PDF) + generación de imagen con IA (controller/fichaConfeccionMoldeController.js).
 // El resultado se estira por GET/POST, igual que el DXF — la notificación en vivo cuando
 // termina la IA viaja por el SSE que ya existe (/admin/sse, helpers/sseManager.js), no por
 // un canal nuevo.
-routes.post('/procesos/fichas-confeccion/molde',                       pPrc('CREATE'), csrfProtection, recibirMolde, subirMolde);
-routes.post('/procesos/fichas-confeccion/molde/:idMolde/generar',      pPrc('CREATE'), csrfProtection, iniciarGeneracionMolde);
+routes.post('/procesos/fichas-confeccion/molde',                       pPrc('CREATE'), recibirMolde, subirMolde);
+routes.post('/procesos/fichas-confeccion/molde/:idMolde/generar',      pPrc('CREATE'), iniciarGeneracionMolde);
 routes.get('/procesos/fichas-confeccion/molde/intento/:idIntento',     pPrc('READ'),   estadoIntentoMolde);
-routes.post('/procesos/fichas-confeccion/molde/intento/:idIntento/aprobar', pPrc('CREATE'), csrfProtection, aprobarMoldeIa);
+routes.post('/procesos/fichas-confeccion/molde/intento/:idIntento/aprobar', pPrc('CREATE'), aprobarMoldeIa);
 // Video del proceso (controller/fichaConfeccionVideoController.js) — Direct Creator Upload
 // de Cloudflare Stream: el navegador nunca sube el archivo por acá, solo pide la URL de
-// subida y después confirma/consulta/reintenta por idVideo. Sin multer, por eso no hace
-// falta ningún orden especial con csrfProtection (no hay multipart que leer).
-routes.post('/procesos/fichas-confeccion/video/solicitar-subida',  pPrc('CREATE'), csrfProtection, solicitarSubidaVideo);
-routes.post('/procesos/fichas-confeccion/video/:idVideo/confirmar', pPrc('CREATE'), csrfProtection, confirmarSubidaVideo);
+// subida y después confirma/consulta/reintenta por idVideo. Sin multer.
+routes.post('/procesos/fichas-confeccion/video/solicitar-subida',  pPrc('CREATE'), solicitarSubidaVideo);
+routes.post('/procesos/fichas-confeccion/video/:idVideo/confirmar', pPrc('CREATE'), confirmarSubidaVideo);
 routes.get('/procesos/fichas-confeccion/video/:idVideo',           pPrc('READ'),   estadoVideo);
-routes.post('/procesos/fichas-confeccion/video/:idVideo/reintentar', pPrc('CREATE'), csrfProtection, reintentarVideo);
-routes.post('/procesos/fichas-confeccion/video/:idVideo/marcar-error', pPrc('CREATE'), csrfProtection, marcarErrorVideo);
+routes.post('/procesos/fichas-confeccion/video/:idVideo/reintentar', pPrc('CREATE'), reintentarVideo);
+routes.post('/procesos/fichas-confeccion/video/:idVideo/marcar-error', pPrc('CREATE'), marcarErrorVideo);
 // Último paso: junta DXF + molde + colores + videos en un registro y genera el PDF
 // (controller/fichaConfeccionController.js).
-routes.post('/procesos/fichas-confeccion/finalizar',      pPrc('CREATE'), csrfProtection, finalizarFicha);
+routes.post('/procesos/fichas-confeccion/finalizar',      pPrc('CREATE'), finalizarFicha);
 routes.get('/procesos/fichas-confeccion/:idFicha/pdf',    pPrc('READ'),   verFichaPdf);
-routes.get('/procesos/fichas-confeccion/biblioteca',      pPrc('READ'),   csrfProtection, homeFichaConfeccionBiblioteca);
+routes.get('/procesos/fichas-confeccion/:idFicha/imagen', pPrc('READ'),   imagenFichaConfeccion);
+routes.get('/procesos/fichas-confeccion/biblioteca',      pPrc('READ'),   homeFichaConfeccionBiblioteca);
 // El listado de la Biblioteca en sí (src/js/fichaConfeccionBiblioteca.js, filtra + pagina
 // por fetch) — mismo contrato que /json/productos/ (CLAUDE.md DRY).
 routes.get('/json/fichas-confeccion',                     pPrc('READ'),   filterFichaConfeccionListJson);
 // "Abrir" desde la Biblioteca — base del editor (controller/fichaConfeccionController.js
 // homeFichaConfeccionEditar/actualizarFichaConfeccion). Va DESPUÉS de /biblioteca y antes
 // del bare /procesos/fichas-confeccion para que ninguno de los dos caiga en :idFicha.
-routes.get('/procesos/fichas-confeccion/:idFicha',        pPrc('READ'),   csrfProtection, homeFichaConfeccionEditar);
-routes.post('/procesos/fichas-confeccion/:idFicha/actualizar', pPrc('EDIT'), csrfProtection, actualizarFichaConfeccion);
+routes.get('/procesos/fichas-confeccion/:idFicha',        pPrc('READ'),   homeFichaConfeccionEditar);
+routes.post('/procesos/fichas-confeccion/:idFicha/actualizar', pPrc('EDIT'), actualizarFichaConfeccion);
 routes.get('/procesos/fichas-confeccion/:idFicha/dxf',    pPrc('READ'),   verFichaDxf);
 // "Agregar más videos" desde el editor — mismo pipeline de Cloudflare Stream que el
 // asistente (controller/fichaConfeccionVideoController.js), solo que asocia a una ficha
 // que ya existe en vez de esperar a finalizarFicha.
-routes.post('/procesos/fichas-confeccion/:idFicha/videos/:idVideo/asociar', pPrc('EDIT'), csrfProtection, asociarVideoFicha);
-routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   csrfProtection, homeFichasConfeccion);
-routes.get('/procesos',                                   pPrc('READ'),   csrfProtection, homeProcesosListado);
+routes.post('/procesos/fichas-confeccion/:idFicha/videos/:idVideo/asociar', pPrc('EDIT'), asociarVideoFicha);
+routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   homeFichasConfeccion);
+routes.get('/procesos',                                   pPrc('READ'),   homeProcesosListado);
 // Seguimiento de producción por taller (controller/fichaConfeccionProcesoController.js) —
 // nace solo cuando se asigna un confeccionista a una ficha. Va DESPUÉS de las rutas
 // literales de /procesos/* de arriba (nuevo, fichas-confeccion/...) para que :idProceso no
 // se las coma.
-routes.get('/procesos/:idProceso',                        pPrc('READ'),   csrfProtection, verProceso);
-routes.post('/procesos/:idProceso/avanzar',                pPrc('EDIT'),   csrfProtection, avanzarProceso);
-routes.post('/procesos/:idProceso/bitacora',                pPrc('EDIT'),   csrfProtection, agregarBitacora);
-routes.get('/insumos',         pIns('READ'), csrfProtection, homeInsumos);
-routes.post('/insumos',        pIns('CREATE'), uploadImages.single('imagen'), csrfProtection, crearInsumo);
+routes.get('/procesos/:idProceso',                        pPrc('READ'),   verProceso);
+routes.post('/procesos/:idProceso/avanzar',                pPrc('EDIT'),   avanzarProceso);
+routes.post('/procesos/:idProceso/bitacora',                pPrc('EDIT'),   agregarBitacora);
+routes.get('/insumos',         pIns('READ'), homeInsumos);
+routes.post('/insumos',        pIns('CREATE'), uploadImages.single('imagen'), crearInsumo);
 // READ, no CREATE: el catálogo (abajo) ya muestra todos los códigos a cualquiera con lectura,
 // así que esta consulta no revela nada nuevo — y la necesita también quien solo tiene EDIT.
 routes.get('/insumos/grupos',         pIns('READ'), apiRateLimit, gruposInsumo);
@@ -368,23 +343,22 @@ routes.get('/insumos/empleado/validar/:codigo', pIns('EDIT'), apiRateLimit, vali
 
 // Compra de insumos (orden de compra a un proveedor registrado). Todo antes del catch-all
 // /insumos/:idMaterial: si no, Express tomaría "compra" como un id.
-routes.get('/insumos/compra', pIns('CREATE'), csrfProtection, homeOrdenCompra);
+routes.get('/insumos/compra', pIns('CREATE'), homeOrdenCompra);
 routes.get('/insumos/compra/proveedores', pIns('CREATE'), apiRateLimit, buscarProveedoresOrden);
 routes.get('/insumos/compra/proveedores/:idProveedor', pIns('CREATE'), apiRateLimit, verProveedorOrden);
 routes.get('/insumos/compra/empleado/validar/:codigo', pIns('CREATE'), apiRateLimit, validarEmpleadoCompraInsumo);
 // Alta de un color simple nuevo desde la caja de colores de "Agregar insumo", cuando el
 // que hace falta no está en el catálogo (ATRIBUTOS).
-routes.post('/insumos/compra/colores', pIns('CREATE'), csrfProtection, crearColorSimple);
+routes.post('/insumos/compra/colores', pIns('CREATE'), crearColorSimple);
 // "Guardar borrador": solo el permiso de sesión, igual que el alta de un insumo — no pide
 // código de empleado porque todavía no compromete nada con el proveedor.
-routes.post('/insumos/compra/borrador', pIns('CREATE'), csrfProtection, guardarBorradorOrden);
+routes.post('/insumos/compra/borrador', pIns('CREATE'), guardarBorradorOrden);
 // "Crear orden de compra": mismo triple candado que editar/suspender un insumo — acá sí es
 // imperativo el código de un empleado con permiso de CREATE sobre Insumos.
-routes.post('/insumos/compra', pIns('CREATE'), csrfProtection,
-    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'CREATE'), crearOrdenCompra);
+routes.post('/insumos/compra', pIns('CREATE'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'CREATE'), crearOrdenCompra);
 
 // Historial de compras: solo consulta, READ alcanza (ver una orden no es crearla).
-routes.get('/insumos/compra/historial', pIns('READ'), csrfProtection, homeHistorialCompras);
+routes.get('/insumos/compra/historial', pIns('READ'), homeHistorialCompras);
 routes.get('/insumos/compra/historial/json', pIns('READ'), apiRateLimit, historialComprasJson);
 
 // Detalle/edición de UNA orden ya creada — registradas al final del bloque de "compra"
@@ -395,30 +369,27 @@ routes.get('/insumos/compra/historial/json', pIns('READ'), apiRateLimit, histori
 // empleado de esa sesión (validarEmpleadoInsumos) y que ESE empleado tenga EDIT sobre
 // Insumos (verificarPermisoEmpleado) — ver CLAUDE.md §5.1 y el patrón ya usado abajo para
 // editarInsumo/cambiarEstadoInsumo.
-routes.get('/insumos/compra/:idOrdenCompra', pIns('READ'), csrfProtection, verOrdenCompra);
+routes.get('/insumos/compra/:idOrdenCompra', pIns('READ'), verOrdenCompra);
 routes.get('/insumos/compra/:idOrdenCompra/pdf', pIns('READ'), pdfOrdenCompra);
 routes.get('/insumos/compra/:idOrdenCompra/empleado/validar/:codigo', pIns('EDIT'), apiRateLimit, validarEmpleadoInsumos);
-routes.post('/insumos/compra/:idOrdenCompra', pIns('EDIT'), csrfProtection,
-    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), guardarEdicionOrden);
+routes.post('/insumos/compra/:idOrdenCompra', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), guardarEdicionOrden);
 // "Convertir a orden de compra": acción propia con su propio candado — no es un campo más
 // de guardarEdicionOrden (ver el comentario en el controlador).
-routes.post('/insumos/compra/:idOrdenCompra/convertir', pIns('EDIT'), csrfProtection,
-    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), convertirACompra);
+routes.post('/insumos/compra/:idOrdenCompra/convertir', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), convertirACompra);
 // "Recibir orden": mismo candado — confirmar qué y cuánto llegó compromete el inventario
 // igual que crear la orden.
-routes.post('/insumos/compra/:idOrdenCompra/recibir', pIns('EDIT'), csrfProtection,
-    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), recibirOrden);
+routes.post('/insumos/compra/:idOrdenCompra/recibir', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), recibirOrden);
 
-routes.get('/insumos/:idMaterial', pIns('READ'), csrfProtection, verInsumo);
+routes.get('/insumos/:idMaterial', pIns('READ'), verInsumo);
 
 // Editar datos básicos y suspender/reactivar: mismo triple candado que "Editar precios
 // masivamente" (CLAUDE.md §6) — permiso de EDIT de la sesión (acá), código de un empleado de
 // esa sesión y que ESE empleado tenga EDIT sobre Insumos. "Eliminar" nunca es un DELETE
 // (CLAUDE.md §6): /estado solo cambia MATERIAL.activo.
-routes.put('/insumos/:idMaterial', pIns('EDIT'), uploadImages.single('imagen'), csrfProtection,
-    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), editarInsumo);
-routes.post('/insumos/:idMaterial/estado', pIns('EDIT'), csrfProtection,
-    verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), cambiarEstadoInsumo);
+routes.put('/insumos/:idMaterial', pIns('EDIT'), uploadImages.single('imagen'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), editarInsumo);
+// Ajuste de inventario por conteo físico (entrada o salida), mismos candados que editar.
+routes.post('/insumos/:idMaterial/ajuste', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), ajustarExistenciaInsumo);
+routes.post('/insumos/:idMaterial/estado', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), cambiarEstadoInsumo);
 
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);
 routes.get('/configuracion/importaciones', pCfg('READ'), formularioImportaciones);
@@ -426,32 +397,25 @@ routes.get('/configuracion/importaciones/plantilla', pCfg('READ'), descargarPlan
 routes.post('/configuracion/importaciones',
     pCfg('CREATE'),
     uploadExcel.single('archivo'),
-    csrfProtection,
     procesarImportacionExcel);
 
-// Importación de clientes desde el export de EFFI. Mismo orden de middlewares que la de
-// productos: multer antes de csrfProtection porque en multipart el body —y con él el token—
-// solo existe después de que multer lo parsea.
+// Importación de clientes desde el export de EFFI. Mismo orden de middlewares que la de productos.
 routes.get('/configuracion/clientes', pCfg('READ'), formularioImportarClientes);
 routes.get('/configuracion/clientes/plantilla', pCfg('READ'), descargarPlantillaClientes);
 routes.post('/configuracion/clientes',
     pCfg('CREATE'),
     uploadExcel.single('archivo'),
-    csrfProtection,
     procesarImportacionClientes);
 
 
-routes.get('/frontend', baseFrondend);
 
 
 //****************[POST]**********************/
-//routes.post('/tiendas/nueva',csrfProtection, storeRegisterValidation, storeBasicTaxDataValidation, postNuevaTienda)
 routes.post('/tiendas/new/', pTie('CREATE'), saveStoreBasic)
 
 
 routes.post('/inventario/ingreso',
     uploadImages.array('imagenes', MAX_IMAGENES),
-    csrfProtection,
     pInv('CREATE'),
     productBasicValidation,
     saveProduct
@@ -460,7 +424,6 @@ routes.post('/inventario/ingreso',
 // RUTA PARA GUARDAR PROVEDOR
 routes.post('/provedores/new', pPro('CREATE'),
     uploadMixed.array('documentos', 10), // Usamos el nuevo middleware
-    csrfProtection,
     saveSupplier
 );
 
@@ -470,19 +433,12 @@ routes.get('/dosificaciones/', pDos('READ'), homeDose); //DASHBOARD
 routes.get('/dosificaciones/new/', pDos('CREATE'), newDose);//Load paginna guardar
 routes.post('/dosificaciones/guardar', pDos('CREATE'), guardarDosificacion)
 routes.get('/dosificaciones/ver/:idDosificacion', pDos('READ'), verDosificacion)
-routes.post('/dosificaciones/trasladar', pDos('EDIT'), csrfProtection, verificarCodigoEmpleadoAdmin, trasladarPacks);
+routes.post('/dosificaciones/trasladar', pDos('EDIT'), verificarCodigoEmpleadoAdmin, trasladarPacks);
 routes.get('/api/dosificaciones/empleado/validar/:codigo', pDos('READ'), apiRateLimit, validarEmpleadoDosificacion);
-
-
-
-
-
-
 
 
 routes.post('/inventario/editar/:idProducto',
     uploadImages.array('imagenes', MAX_IMAGENES),
-    csrfProtection,
     pInv('EDIT'),
     productBasicValidation,
     saveProduct);
@@ -501,7 +457,6 @@ routes.use('/api', apiRateLimit);
 routes.get('/json/municipios/:departamentoId', municipiosJson)
 routes.get('/json/categorias/:idCategoria', categoriasJson);
 routes.get('/json/sku/:checkSku', skuJson);
-routes.get('/json/ean/:checkEan', eanJson);
 // Sugerencia de familia mientras se escribe el nombre del producto (querystring, no params:
 // el nombre lleva espacios y acentos).
 routes.get('/json/familia/sugerencias', pInv('READ'), familiaSugerenciasJson);
@@ -532,7 +487,7 @@ routes.get('/api/tiendas/:idPuntoDeVenta/egresos-dia', pTie('READ'), getEgresosD
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas', pTie('READ'), getFacturasJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/facturas/export', pTie('READ'), exportarFacturasTienda);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-abiertas', pTie('READ'), getCajasAbiertasPorFecha);
-routes.post('/api/tiendas/:idPuntoDeVenta/autorizar-factura-extemporanea', pTie('EDIT'), csrfProtection, verificarCodigoEmpleadoAdmin, autorizarFacturaExtemporanea);
+routes.post('/api/tiendas/:idPuntoDeVenta/autorizar-factura-extemporanea', pTie('EDIT'), verificarCodigoEmpleadoAdmin, autorizarFacturaExtemporanea);
 routes.get('/api/tiendas/:idPuntoDeVenta/cajas-cerradas', pTie('READ'), getCajasCerradasAdmin);
 routes.get('/api/tiendas/:idPuntoDeVenta/cierres-lista', pTie('READ'),  getCierresCajaListaJSON);
 routes.get('/api/tiendas/:idPuntoDeVenta/cierre/:idCajaTienda', pTie('READ'),           getCierreCajaDatosJSON);
@@ -555,7 +510,7 @@ routes.get('/api/inventario/:idProducto/stock-por-tienda', pInv('READ'), stockPo
 routes.get('/api/inventario/:idProducto/historial-precios', pInv('READ'), historialPreciosProducto);
 routes.get('/api/inventario/:idProducto/ventas-historico', pInv('READ'), ventasHistoricoProducto);
 routes.get('/api/inventario/:idProducto/ventas-por-tienda', pInv('READ'), ventasPorTiendaProducto);
-routes.post('/api/inventario/:idProducto/traslado', pInv('EDIT'), csrfProtection, trasladarProductoAdmin);
+routes.post('/api/inventario/:idProducto/traslado', pInv('EDIT'), trasladarProductoAdmin);
 
 
 // DASHBOARD PRINCIPAL
@@ -577,12 +532,6 @@ routes.get('/dosificaciones/etiquetas/:idDosificacion/:numLote', pDos('READ'), i
 // Sin :numLote, el mismo handler saca las etiquetas de todos los lotes de la dosificación.
 routes.get('/dosificaciones/etiquetas/:idDosificacion', pDos('READ'), imprimirEtiquetasLote);
 routes.get('/api/dosificaciones/:query', pDos('READ'), obtenerDosificacionesPaginadas)
-
-
-
-
-
-
 
 
 export default routes

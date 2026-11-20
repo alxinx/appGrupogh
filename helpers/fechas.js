@@ -26,13 +26,3 @@ export function inicioDelDiaBogota(referencia = new Date()) {
     return new Date(medianoche + OFFSET_BOGOTA_MS);
 }
 
-/**
- * Instante en que empezó el mes actual en Bogotá.
- * @param {Date} [referencia]
- * @returns {Date}
- */
-export function inicioDelMesBogota(referencia = new Date()) {
-    const enBogota = new Date(referencia.getTime() - OFFSET_BOGOTA_MS);
-    const primero = Date.UTC(enBogota.getUTCFullYear(), enBogota.getUTCMonth(), 1);
-    return new Date(primero + OFFSET_BOGOTA_MS);
-}

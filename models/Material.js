@@ -38,8 +38,26 @@ const Material = db.define('MATERIAL', {
         type: DataTypes.ENUM('materia_prima', 'insumo'),
         allowNull: false
     },
+    // Presentación en que se COMPRA por lo general (la orden de compra la sugiere y se puede
+    // cambiar por línea). bolsa/caja se agregaron con el inventario de insumos.
     unidadCompra: {
-        type: DataTypes.ENUM('kg', 'metro', 'rollo', 'unidad'),
+        type: DataTypes.ENUM('kg', 'metro', 'rollo', 'unidad', 'bolsa', 'caja'),
+        allowNull: true
+    },
+    // En qué se GASTA y se mide en la ficha, el inventario y el costo ($/cm, $/g, $/unidad).
+    // No se cambia si el material ya tiene inventario (las cantidades quedarían en otra unidad).
+    unidadConsumo: {
+        type: DataTypes.ENUM('cm', 'g', 'unidad'),
+        allowNull: false,
+        defaultValue: 'unidad'
+    },
+    // Solo telas: para estimar el consumo desde el DXF (ancho) y pasar metros↔kg (gramaje).
+    anchoUtilCm: {
+        type: DataTypes.DECIMAL(8, 2),
+        allowNull: true
+    },
+    gramajeGm2: {
+        type: DataTypes.DECIMAL(8, 2),
         allowNull: true
     },
     activo: {

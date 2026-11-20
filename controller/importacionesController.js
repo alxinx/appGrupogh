@@ -94,7 +94,6 @@ const formularioImportaciones = async (req, res) => {
     return res.status(200).render('./administrador/configuracion/importaciones', {
         pagina: 'Configuración',
         subPagina: 'Importaciones',
-        csrfToken: req.csrfToken(),
         currentPath: '/configuracion'
     });
 };
@@ -110,7 +109,6 @@ const formularioImportarClientes = async (req, res) => {
         // El menú lateral marca la sección por la carpeta del recurso, no por la URL
         // exacta: con '/configuracion' queda activa como en las demás pantallas de acá.
         currentPath: '/configuracion',
-        csrfToken: req.csrfToken()
     });
 };
 

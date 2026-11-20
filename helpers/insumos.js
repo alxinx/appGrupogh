@@ -1,6 +1,10 @@
 import { Op } from 'sequelize';
 import { toPascal } from './clientes.js';
+import { UNIDADES_CONSUMO, unidadConsumoSugerida, cantidadValida } from './unidadesInsumo.js';
+import { QueryTypes } from 'sequelize';
+import db from '../config/bd.js';
 import { DetallesOrdenCompra, OrdenesCompra, Provedores } from '../models/index.js';
+import { inicialesProveedor, resolverUbicacionesProveedores } from './proveedores.js';
 
 // Catálogo de Insumos y Materias Primas (admin/insumos). Una sola fuente para las opciones
 // del formulario, los límites y la validación del alta: la vista recibe estas listas por
@@ -19,7 +23,9 @@ export const UNIDADES_COMPRA = [
     { valor: 'kg',     etiqueta: 'Kilogramo (kg)' },
     { valor: 'metro',  etiqueta: 'Metro' },
     { valor: 'rollo',  etiqueta: 'Rollo' },
-    { valor: 'unidad', etiqueta: 'Unidad' }
+    { valor: 'unidad', etiqueta: 'Unidad' },
+    { valor: 'bolsa',  etiqueta: 'Bolsa' },
+    { valor: 'caja',   etiqueta: 'Caja' }
 ];
 
 // codigoMaterial es VARCHAR(20): acepta un número simple ("1") o un código compuesto
@@ -55,7 +61,6 @@ const hashIdMaterial = (idMaterial) => {
     return hash;
 };
 
-const cantidadFicticia = (idMaterial) => (hashIdMaterial(idMaterial) % 500) + 1;
 
 // Lo que la vista necesita de una fila: nada del modelo que no se pinte.
 // `padreNombre` es opcional: se pasa desde el controlador cuando se tiene la lista completa
@@ -68,28 +73,24 @@ export const presentarMaterial = (m, padreNombre = null) => ({
     tipoEtiqueta:   ETIQUETA_TIPO[m.tipo] ?? m.tipo,
     unidadCompra:   m.unidadCompra,
     unidadEtiqueta: ETIQUETA_UNIDAD[m.unidadCompra] ?? '—',
+    unidadConsumo:  m.unidadConsumo,
+    anchoUtilCm:    m.anchoUtilCm ?? null,
+    gramajeGm2:     m.gramajeGm2 ?? null,
     activo:         Boolean(m.activo),
     icono:          ICONO_TIPO[m.tipo] ?? ICONO_TIPO.insumo,
     imagenUrl:      urlImagenMaterial(m.imagen),
-    cantidadFicticia: cantidadFicticia(m.idMaterial),
     esVariante:     m.codigoMaterial.includes('.'),
     padreNombre
 });
 
-// ── Perfil de un material (admin/insumos/:id) — datos de relleno ─────────────────────
-// PENDIENTE: no hay todavía tablas de stock, costos de compra ni proveedores por insumo
-// (llegan con el módulo de Producción que consume el catálogo). Mientras tanto el perfil
-// arma esta data de relleno, determinística por idMaterial con el mismo `hashIdMaterial` de
-// `cantidadFicticia` — nunca azar real, para que la pantalla no "cambie sola" al recargar.
-// Reemplazar el resto de `datosFicticiosInsumo` por consultas reales en cuanto existan esas
-// tablas: la vista (insumoPerfil.pug) ya consume estos mismos nombres de campo, así que el
-// día que haya datos reales el cambio es acá y no en el pug.
-//
-// La tarjeta "Historial de compras" YA es real — ver `historialComprasInsumo` más abajo.
-// `datosFicticiosInsumo` sigue generando un `historialCompras` de relleno puertas adentro
-// (lo sigue necesitando `resumenCompras`, la dona, que todavía no se pidió hacer real), pero
-// produccionController.js pisa ese campo con el real antes de llegar a la vista.
-const UNIDAD_CORTA = { kg: 'kg', metro: 'm', rollo: 'rollos', unidad: 'uds' };
+// ── Perfil de un material (admin/insumos/:id) — lo que TODAVÍA es relleno ────────────────
+// Existencias, costo, historial de compras, proveedores y resumen de compras ya son reales
+// (helpers/inventarioInsumos.js y las funciones de abajo). Solo quedan de relleno la
+// descripción, la composición, los procesos involucrados, el tiempo de entrega y el dato
+// útil: MATERIAL no tiene esos campos. Determinístico por idMaterial (`hashIdMaterial`),
+// nunca azar, para que la pantalla no "cambie sola" al recargar.
+// Forma corta de cada presentación para un texto en línea ("950 kg", "3 bolsas").
+export const UNIDAD_COMPRA_CORTA = { kg: 'kg', metro: 'm', rollo: 'rollos', unidad: 'uds', bolsa: 'bolsas', caja: 'cajas' };
 
 const DESCRIPCIONES_FICTICIAS = {
     materia_prima: 'Material base que se transforma en la prenda. Confirma composición y cuidados exactos en la ficha técnica del proveedor.',
@@ -112,14 +113,6 @@ const PROCESOS_POOL = [
     { nombre: 'Empaque',    icono: 'fi-rr-box' }
 ];
 
-const PROVEEDORES_POOL = [
-    { nombre: 'Textiles Caldas',      ciudad: 'Medellín, Antioquia' },
-    { nombre: 'Maquilas del Sur',     ciudad: 'Itagüí, Antioquia' },
-    { nombre: 'Textilera Éxito',      ciudad: 'Bogotá, Cundinamarca' },
-    { nombre: 'Insumos del Valle',    ciudad: 'Cali, Valle del Cauca' },
-    { nombre: 'Distribuidora Andina', ciudad: 'Pereira, Risaralda' }
-];
-
 // Elige `n` elementos de `pool` sin repetir, en un orden que varía con `hash` — mismo
 // mecanismo que el resto de este módulo: determinístico, nunca Math.random().
 const elegirSinRepetir = (pool, hash, n) => {
@@ -133,84 +126,18 @@ const elegirSinRepetir = (pool, hash, n) => {
     return elegidos;
 };
 
-const inicialesProveedor = (nombre) =>
-    nombre.split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('');
-
 // "02 oct 2026", sin el "de" que mete Intl por defecto en es-CO — mismo formato corto que
 // ya usan las tirillas y el resto del panel.
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const fechaCorta = (f) => `${String(f.getDate()).padStart(2, '0')} ${MESES_CORTOS[f.getMonth()]} ${f.getFullYear()}`;
 
-const diaFicticioAtras = (hash, minDias, maxDias) => {
-    const f = new Date();
-    f.setDate(f.getDate() - (minDias + (hash % (maxDias - minDias + 1))));
-    return f;
-};
-
 export const datosFicticiosInsumo = (material) => {
     const hash = hashIdMaterial(material.idMaterial);
-    const unidadCorta = UNIDAD_CORTA[material.unidadCompra] ?? 'uds';
-
-    // Misma cantidad que ya se ve en el catálogo (presentarMaterial): un solo número de
-    // relleno para la existencia de un material, no dos que puedan desentonar entre sí.
-    const existencia = material.cantidadFicticia ?? cantidadFicticia(material.idMaterial);
-    const stockMinimo = Math.max(10, Math.round(existencia * 0.18));
-
-    const costoPromedio = Math.round((8000 + (hash % 25) * 700) / 100) * 100;
-    const ultimaCompraCosto = Math.round((costoPromedio * (0.92 + (hash % 10) / 100)) / 100) * 100;
-    const tiempoEntregaDias = 2 + (hash % 8);
-
-    const composicion = elegirSinRepetir(COMPOSICION_POOL, hash, 2 + (hash % 2));
-    const procesos = elegirSinRepetir(PROCESOS_POOL, hash >>> 3, 2 + (hash % 3));
-
-    const proveedoresCrudos = elegirSinRepetir(PROVEEDORES_POOL, hash >>> 5, 3).map((p, i) => {
-        const hp = (hash + i * 97) >>> 0;
-        return {
-            ...p,
-            iniciales:      inicialesProveedor(p.nombre),
-            precioPromedio: Math.round((costoPromedio * (0.95 + (hp % 15) / 100)) / 100) * 100,
-            calificacion:   (4.3 + (hp % 7) / 10).toFixed(1),
-            ultimaCompraFecha: diaFicticioAtras(hp, 5 + i * 25, 20 + i * 30)
-        };
-    });
-
-    // 4 compras repartidas entre los 3 proveedores (el primero se repite, como en una
-    // relación real donde no se compra la misma cantidad a cada uno), más recientes primero.
-    const historialCrudo = [0, 1, 2, 0].map((idxProveedor, i) => {
-        const p = proveedoresCrudos[idxProveedor];
-        const hp = (hash + i * 53) >>> 0;
-        const cantidad = 150 + (hp % 400);
-        const precioUnit = Math.round((p.precioPromedio * (0.97 + (hp % 6) / 100)) / 100) * 100;
-        const fecha = i === 0 ? p.ultimaCompraFecha : diaFicticioAtras(hp, 30 + i * 35, 60 + i * 35);
-        return { fecha, proveedor: p.nombre, iniciales: p.iniciales, cantidad, precioUnit, total: cantidad * precioUnit };
-    }).sort((a, b) => b.fecha - a.fecha);
-
-    const totalComprado = historialCrudo.reduce((acc, h) => acc + h.total, 0);
-    const resumenCompras = proveedoresCrudos
-        .map(p => {
-            const total = historialCrudo.filter(h => h.proveedor === p.nombre).reduce((acc, h) => acc + h.total, 0);
-            return { nombre: p.nombre, iniciales: p.iniciales, total, pct: totalComprado ? Math.round((total / totalComprado) * 100) : 0 };
-        })
-        .sort((a, b) => b.total - a.total)
-        .map((p, i) => ({ ...p, color: PALETTE_RESUMEN_COMPRAS[i % PALETTE_RESUMEN_COMPRAS.length] }));
-
-    const mejorProveedor = [...proveedoresCrudos].sort((a, b) => a.precioPromedio - b.precioPromedio)[0];
-
     return {
-        unidadCorta,
-        existencia,
-        stockMinimo,
-        costoPromedio,
-        ultimaCompraCosto,
-        tiempoEntregaDias,
+        tiempoEntregaDias: 2 + (hash % 8),
         descripcion:  DESCRIPCIONES_FICTICIAS[material.tipo] ?? DESCRIPCIONES_FICTICIAS.insumo,
-        composicion,
-        procesos,
-        proveedores: proveedoresCrudos.map(({ ultimaCompraFecha, ...p }) => ({ ...p, ultimaCompra: fechaCorta(ultimaCompraFecha) })),
-        historialCompras: historialCrudo.map(({ fecha, ...h }) => ({ ...h, fecha: fechaCorta(fecha) })),
-        resumenCompras,
-        totalComprado,
-        mejorProveedor: { nombre: mejorProveedor.nombre, precioPromedio: mejorProveedor.precioPromedio },
+        composicion:  elegirSinRepetir(COMPOSICION_POOL, hash, 2 + (hash % 2)),
+        procesos:     elegirSinRepetir(PROCESOS_POOL, hash >>> 3, 2 + (hash % 3)),
         datoUtil: material.tipo === 'materia_prima'
             ? 'Verifica el lote antes de cortar: dos rollos del mismo color pueden variar levemente de tono.'
             : 'Guarda este insumo en un lugar seco — la humedad puede afectar el empaque o el adhesivo.'
@@ -259,6 +186,7 @@ export const historialComprasInsumo = async (idMaterial) => {
             proveedor:     l.orden.proveedor?.razonSocial || '—',
             fecha:         fechaCorta(new Date(`${l.orden.fechaOrden}T00:00:00`)),
             cantidad:      Number(l.cantidad),
+            unidad:        UNIDAD_COMPRA_CORTA[l.unidadCompra] || 'uds',
             precioUnit:    Number(l.valorUnitario),
             total:         Number(l.valorTotal),
             estadoEtiqueta,
@@ -266,6 +194,99 @@ export const historialComprasInsumo = async (idMaterial) => {
         };
     });
 };
+
+// ── Proveedores a los que se les ha comprado un material (admin/insumos/:id) ───────────
+// Real, a partir de las órdenes de compra: mismo criterio que historialComprasInsumo (solo
+// cuenta una orden confirmada, en tránsito o recibida) y además solo ÓRDENES DE COMPRA — una
+// cotización confirmada no es una compra. Una sola consulta agregada para todos (CLAUDE.md §7).
+//
+// Precio promedio = Σ valor / Σ cantidad (ponderado por cantidad), en la presentación de la
+// ÚLTIMA compra a ese proveedor: promediar "por bolsa" con "por kg" no significa nada. Las
+// compras en otra presentación se cuentan en `otrasPresentaciones`.
+//
+// `calificacion` queda en null a propósito: es el punto donde se conectará la calificación
+// de proveedores cuando exista. La vista ya muestra "Sin calificar" cuando es null.
+export const proveedoresDelInsumo = async (idMaterial) => {
+    const filas = await db.query(`
+        SELECT o.idProveedor, d.unidadCompra,
+               SUM(d.valorTotal) valor, SUM(d.cantidad) cantidad,
+               COUNT(DISTINCT o.idOrdenCompra) compras, MAX(o.fechaOrden) ultimaFecha
+        FROM DETALLES_ORDEN_COMPRA d
+        JOIN ORDENES_COMPRA o ON o.idOrdenCompra = d.idOrdenCompra
+        WHERE d.idMaterial = :idMaterial AND o.tipo = 'orden_compra' AND o.estado IN (:estados)
+        GROUP BY o.idProveedor, d.unidadCompra`,
+        { replacements: { idMaterial, estados: ESTADOS_COMPRA_CONFIRMADA }, type: QueryTypes.SELECT });
+    if (!filas.length) return [];
+
+    const porProveedor = new Map();
+    for (const f of filas) (porProveedor.get(f.idProveedor) || porProveedor.set(f.idProveedor, []).get(f.idProveedor)).push(f);
+
+    const proveedores = await Provedores.findAll({
+        where: { idProveedor: [...porProveedor.keys()] },
+        attributes: ['idProveedor', 'razonSocial', 'ciudad', 'departamento'], paranoid: false, raw: true
+    });
+    const { mapaMunicipios, mapaDepartamentos } = await resolverUbicacionesProveedores(proveedores);
+    const fechaTxt = (f) => (f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10));
+
+    return proveedores.map(p => {
+        const grupos = porProveedor.get(p.idProveedor);
+        // La presentación de la compra más reciente manda el precio que se muestra.
+        const principal = grupos.reduce((a, b) => (fechaTxt(b.ultimaFecha) > fechaTxt(a.ultimaFecha) ? b : a));
+        const ultimaFecha = grupos.reduce((max, g) => (fechaTxt(g.ultimaFecha) > max ? fechaTxt(g.ultimaFecha) : max), '');
+        return {
+            idProveedor:  p.idProveedor,
+            nombre:       p.razonSocial,
+            iniciales:    inicialesProveedor(p.razonSocial),
+            ciudad:       [mapaMunicipios.get(p.ciudad), mapaDepartamentos.get(p.departamento)].filter(Boolean).join(', ') || 'Sin ciudad registrada',
+            ultimaFechaOrden: ultimaFecha,
+            ultimaCompra: fechaCorta(new Date(`${ultimaFecha}T00:00:00`)),
+            compras:      grupos.reduce((n, g) => n + Number(g.compras), 0),
+            // En pesos, todas las presentaciones juntas (antes de IVA, como el valor de la línea).
+            totalComprado: Math.round(grupos.reduce((t, g) => t + Number(g.valor), 0)),
+            precioPromedio: Number(principal.cantidad) > 0 ? Math.round(Number(principal.valor) / Number(principal.cantidad)) : null,
+            unidadPrecio: UNIDAD_COMPRA_SINGULAR[principal.unidadCompra] || 'ud',
+            otrasPresentaciones: grupos.length - 1,
+            calificacion: null
+        };
+    }).sort((a, b) => b.ultimaFechaOrden.localeCompare(a.ultimaFechaOrden));
+};
+
+/**
+ * Resumen de compras de un material (la dona del perfil) a partir de proveedoresDelInsumo:
+ * cuánto se le ha comprado a cada uno y qué parte del total es.
+ *
+ * "Mejor precio promedio" solo compara proveedores en la MISMA presentación (no se compara
+ * $/bolsa con $/kg); se toma la presentación con más proveedores, y si en ninguna hay al menos
+ * dos, no hay a quién comparar y queda en null (la vista no muestra la línea).
+ */
+export const resumenComprasInsumo = (proveedores) => {
+    const totalComprado = proveedores.reduce((t, p) => t + p.totalComprado, 0);
+    const resumenCompras = [...proveedores]
+        .sort((a, b) => b.totalComprado - a.totalComprado)
+        .map((p, i) => ({
+            nombre: p.nombre,
+            total: p.totalComprado,
+            pct: totalComprado ? Math.round((p.totalComprado / totalComprado) * 100) : 0,
+            color: PALETTE_RESUMEN_COMPRAS[i % PALETTE_RESUMEN_COMPRAS.length]
+        }));
+
+    const porPresentacion = new Map();
+    for (const p of proveedores) {
+        if (p.precioPromedio === null) continue;
+        (porPresentacion.get(p.unidadPrecio) || porPresentacion.set(p.unidadPrecio, []).get(p.unidadPrecio)).push(p);
+    }
+    const comparables = [...porPresentacion.values()].sort((a, b) => b.length - a.length)[0] || [];
+    const mejor = comparables.length >= 2 ? comparables.reduce((a, b) => (b.precioPromedio < a.precioPromedio ? b : a)) : null;
+
+    return {
+        resumenCompras,
+        totalComprado,
+        mejorProveedor: mejor ? { nombre: mejor.nombre, precioPromedio: mejor.precioPromedio, unidad: mejor.unidadPrecio } : null
+    };
+};
+
+// "por kg", "por bolsa": el precio promedio es de UNA presentación.
+const UNIDAD_COMPRA_SINGULAR = { kg: 'kg', metro: 'm', rollo: 'rollo', unidad: 'ud', bolsa: 'bolsa', caja: 'caja' };
 
 // Devuelve el código normalizado (punto como separador canónico) o null si el formato no
 // es válido. Acepta un número simple ("1") o un código compuesto ("1.23" / "1-23" — el
@@ -305,8 +326,25 @@ export const validarInsumo = (body = {}) => {
         errores.unidadCompra = 'Elige una unidad de compra de la lista.';
     }
 
+    // En qué se gasta (cm, g, unidad): lo que mide la ficha, el inventario y el costo. Si no
+    // llega se deduce de cómo se compra (metro → cm, kg → g).
+    const consumoTxt = String(body.unidadConsumo ?? '').trim();
+    const unidadConsumo = consumoTxt || unidadConsumoSugerida(unidadCompra);
+    if (!UNIDADES_CONSUMO.some(u => u.valor === unidadConsumo)) errores.unidadConsumo = 'Elige en qué se gasta este material.';
+
+    // Ancho útil y gramaje: solo para telas (materia prima), opcionales.
+    const medidaTela = (campo, etiqueta) => {
+        const txt = String(body[campo] ?? '').trim();
+        if (tipo !== 'materia_prima' || !txt) return null;
+        const v = cantidadValida(txt);
+        if (!v || v.gt(999999)) { errores[campo] = `${etiqueta} debe ser un número mayor a 0.`; return null; }
+        return v.toDecimalPlaces(2).toFixed(2);
+    };
+    const anchoUtilCm = medidaTela('anchoUtilCm', 'El ancho útil');
+    const gramajeGm2 = medidaTela('gramajeGm2', 'El gramaje');
+
     if (Object.keys(errores).length) return { errores };
     // El nombre se guarda en formato de título (POLILICRA -> Polilicra) con el mismo helper que
     // usan clientes y proveedores, para que el catálogo no mezcle mayúsculas.
-    return { datos: { codigoMaterial, nombre: toPascal(nombre), tipo, unidadCompra } };
+    return { datos: { codigoMaterial, nombre: toPascal(nombre), tipo, unidadCompra, unidadConsumo, anchoUtilCm, gramajeGm2 } };
 };

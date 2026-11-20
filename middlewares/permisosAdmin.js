@@ -1,4 +1,3 @@
-import { Op } from 'sequelize';
 import { UserPermisos, PermisosRecursos, PermisosAcciones } from '../models/index.js';
 
 // ─────────────────────────────────────────────────────────────────────────────

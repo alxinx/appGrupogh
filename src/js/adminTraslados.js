@@ -4,7 +4,6 @@ import { montarHistorialTraslado, fmtFechaHora, chipCodigo } from './historialTr
 import { pillEstadoTraslado } from './estadoTraslado.js';
 
 (function () {
-    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const tc = window.tc || ((t) => t);
 
     // ── PESTAÑAS ─────────────────────────────────────────────────────────────
@@ -360,7 +359,7 @@ import { pillEstadoTraslado } from './estadoTraslado.js';
         try {
             const r = await fetch(`/admin/traslados/${encodeURIComponent(idTraslado)}/recibir-devolucion`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({ codigoEmpleado: mCodigo.value.trim() })
             });
             const d = await r.json();

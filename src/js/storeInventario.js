@@ -4,7 +4,6 @@ import { crearSeleccionMultiple } from './seleccionMultiple.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion, activarVerificacionCodigo } from './modalConfirmacion.js';
 (function () {
-    const csrfToken = document.getElementById('csrf-token')?.value || '';
     const R2 = 'https://pub-f89c3f57ac314e868860b81774b10373.r2.dev/productos/';
 
     // ─── ESTADO ──────────────────────────────────────────────────────────────
@@ -306,7 +305,7 @@ import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion, activarVe
         try {
             const r = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify(body)
             });
             const data = await r.json();
@@ -443,7 +442,6 @@ import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion, activarVe
 
 // ─── FORMULARIO TRASLADO EN PERFIL DE PRODUCTO ───────────────────────────────
 (function () {
-    const csrfToken   = document.getElementById('csrf-token')?.value || '';
     const btnSubmit   = document.getElementById('ptp-submit');
     const inputEmp    = document.getElementById('ptp-empleado');
     const feedbackEmp = document.getElementById('ptp-feedback-emp');
@@ -522,7 +520,7 @@ import { opcionesConfirmacion, cabeceraConfirmacion, filaConfirmacion, activarVe
         try {
             const r = await fetch('/store/inventario/traslado-producto', {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                headers: { 'Content-Type': 'application/json'},
                 body:    JSON.stringify({ idProducto, cantidad, idDestino, codigoEmpleado, notas })
             });
             const data = await r.json();

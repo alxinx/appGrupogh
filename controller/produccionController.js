@@ -1,18 +1,24 @@
 import { UniqueConstraintError, Op } from 'sequelize';
 import { Upload } from '@aws-sdk/lib-storage';
 import s3Client from '../config/r2.js';
-import { Material, FichaConfeccion, Familia } from '../models/index.js';
-import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, validarInsumo, codigoDxfValido, datosFicticiosInsumo, historialComprasInsumo } from '../helpers/insumos.js';
+import { Material, FichaConfeccion, Familia, Categorias, Provedores, CategoriasDeProvedores, Atributos } from '../models/index.js';
+import db from '../config/bd.js';
+import { TALLAS_CORTE, PIEZAS_CORTE_SUGERIDAS } from '../helpers/catalogos.js';
+import { tieneInventario, existenciasDeMateriales, inventarioDelMaterial, registrarEntrada, registrarSalidaAjuste, actorDelPanel } from '../helpers/inventarioInsumos.js';
+import { UNIDADES_CONSUMO, UNIDAD_CONSUMO_CORTA, cantidadValida } from '../helpers/unidadesInsumo.js';
+import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, proveedoresDelInsumo, resumenComprasInsumo, validarInsumo, codigoDxfValido, datosFicticiosInsumo, historialComprasInsumo } from '../helpers/insumos.js';
 import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
-import { borrarObjetos } from '../helpers/almacenamientoDocumentos.js';
+import { borrarObjetos, urlDocumento } from '../helpers/almacenamientoDocumentos.js';
+import { listarConfeccionistas, resumenConfeccionistas, keyFotoConfeccionista, ETAPAS_EN_CURSO } from '../helpers/confeccionistas.js';
 import { coloresSimplesDisponibles } from '../helpers/ordenesCompra.js';
+import { INCLUDES_IMAGEN_FICHA, INCLUDE_CREADOR_FICHA, keyImagenFicha, detalleBibliotecaFichas, presentarFichaBiblioteca } from '../helpers/bibliotecaFichas.js';
 
 // Caja de recorte de la foto de un material: igual a la de una foto de producto
 // (FOTO_PRODUCTO en adminControllers.js) — cuadrada, sin recortar ('inside'), porque acá
 // también importa ver la pieza completa, no solo un recorte centrado.
 const FOTO_INSUMO = { ancho: 1000, alto: 1000, ajuste: 'inside' };
 
-// Base de los módulos de Producción (Confeccionistas, Procesos): hoy son la misma pantalla
+// Base de los módulos de Producción que todavía no tienen pantalla propia: hoy son la misma pantalla
 // vacía, lista para que cada módulo agregue su propio listado más adelante sin repetir el
 // render. Cuando uno de ellos gane su propia lógica, se le saca su función de acá y se deja
 // de pasar por `paginaBase`. Insumos ya tiene la suya (homeInsumos, abajo).
@@ -21,7 +27,6 @@ const paginaBase = ({ folder, titulo, subtitulo, icono }) => (req, res) => {
         return res.render('./administrador/produccion/base', {
             pagina: titulo,
             subPagina: titulo,
-            csrfToken: req.csrfToken(),
             currentPath: folder,
             titulo,
             subtitulo,
@@ -33,12 +38,43 @@ const paginaBase = ({ folder, titulo, subtitulo, icono }) => (req, res) => {
     }
 };
 
-const homeConfeccionistas = paginaBase({
-    folder:    '/confeccionistas',
-    titulo:    'Confeccionistas',
-    subtitulo: 'Talleres y maquilas que confeccionan para Grupo GH',
-    icono:     'fi-rr-tshirt'
-});
+// GET /admin/confeccionistas — los talleres (proveedores de categoría Confeccionista) con
+// lo que tienen encima ahora. Todo sale de helpers/confeccionistas.js; la lista se trae
+// completa (son decenas, no miles) y se filtra en el navegador, como el catálogo de insumos.
+const homeConfeccionistas = async (req, res) => {
+    try {
+        const confeccionistas = await listarConfeccionistas();
+        const ciudades = [...new Map(confeccionistas.filter(c => c.ciudad).map(c => [c.idCiudad, c.ciudad])).entries()]
+            .map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+        return res.render('./administrador/produccion/confeccionistas', {
+            pagina: 'Confeccionistas',
+            subPagina: 'Confeccionistas',
+            currentPath: '/confeccionistas',
+            subtitulo: 'Talleres que confeccionan para Grupo GH y lo que tiene cada uno en la mesa',
+            confeccionistas,
+            resumen: resumenConfeccionistas(confeccionistas),
+            ciudades,
+            etapas: ETAPAS_EN_CURSO
+        });
+    } catch (e) {
+        console.error('produccionController(confeccionistas):', e);
+        return res.status(500).send('No se pudo cargar la página.');
+    }
+};
+
+// GET /admin/confeccionistas/fotos/:idDocumento — una foto del lugar de trabajo, firmada en
+// el momento (bucket privado, CLAUDE.md §5.7). Solo fotos de un taller: ver keyFotoConfeccionista.
+const fotoConfeccionista = async (req, res) => {
+    try {
+        const key = await keyFotoConfeccionista(req.params.idDocumento);
+        if (!key) return res.status(404).send('Foto no encontrada.');
+        res.set('Cache-Control', 'no-store');
+        return res.redirect(302, await urlDocumento(key));
+    } catch (e) {
+        console.error('produccionController(fotoConfeccionista):', e);
+        return res.status(500).send('No se pudo abrir la foto.');
+    }
+};
 
 // Procesos se abre en submenú (views/partials/leftMenu.pug): Nuevo proceso, Listado de
 // procesos y Fichas de confección son tres pantallas, no una — pero las tres cuelgan del
@@ -51,6 +87,62 @@ const homeProcesosNuevo = paginaBase({
     subtitulo: 'Da de alta una nueva etapa de producción',
     icono:     'fi-rr-plus'
 });
+
+// GET /admin/procesos/cortes/nuevo — orden de corte + guía para el cortador (submenú
+// Procesos → Corte). La guía se arma en el navegador (src/js/corteNuevo.js +
+// src/js/corteCalculos.js); acá solo se cargan los catálogos de los selects. Todavía no se
+// guarda nada: la persistencia y "Lista de cortes" esperan el esquema aprobado.
+const CATEGORIA_PROVEEDOR_TELAS = 'Textiles y Telas';
+
+const homeCorteNuevo = async (req, res) => {
+    try {
+        // Cuatro consultas fijas en paralelo, ninguna dentro de un loop (CLAUDE.md §7).
+        const [telas, proveedores, familias, categorias] = await Promise.all([
+            Material.findAll({
+                where: { tipo: 'materia_prima', activo: true },
+                attributes: ['idMaterial', 'nombre'],
+                order: [['nombre', 'ASC']]
+            }),
+            Provedores.findAll({
+                where: { estado: true },
+                attributes: ['idProveedor', 'razonSocial'],
+                include: [{
+                    model: CategoriasDeProvedores, as: 'categorias',
+                    where: { nombre: CATEGORIA_PROVEEDOR_TELAS },
+                    attributes: [], through: { attributes: [] }
+                }],
+                order: [['razonSocial', 'ASC']]
+            }),
+            Familia.findAll({ attributes: ['idFamilia', 'nombreFamilia'], order: [['nombreFamilia', 'ASC']] }),
+            Categorias.findAll({ attributes: ['idCategoria', 'nombreCategoria', 'tipo', 'idPadre'], order: [['nombreCategoria', 'ASC']] })
+        ]);
+
+        // Tipos de prenda = subcategorías (Body, Blusa, Top…), agrupadas bajo su categoría
+        // padre (Superior, Inferior…). El nombre del padre se resuelve en memoria con la
+        // misma consulta: no hay asociación padre/hijo declarada en Categorias.
+        const nombrePadre = new Map(categorias.map(c => [c.idCategoria, c.nombreCategoria]));
+        const tiposPrenda = categorias
+            .filter(c => c.tipo === 'SUBCATEGORIA')
+            .map(c => ({ id: c.idCategoria, nombre: c.nombreCategoria, grupo: nombrePadre.get(c.idPadre) || 'Otras' }));
+
+        return res.render('./administrador/produccion/corteNuevo', {
+            pagina: 'Nuevo corte',
+            subPagina: 'Nuevo corte',
+            currentPath: '/procesos',
+            catalogosCorte: {
+                telas: telas.map(t => ({ id: t.idMaterial, nombre: t.nombre })),
+                proveedores: proveedores.map(p => ({ id: p.idProveedor, nombre: p.razonSocial })),
+                familias: familias.map(f => ({ id: f.idFamilia, nombre: f.nombreFamilia })),
+                tiposPrenda,
+                tallas: TALLAS_CORTE,
+                piezasSugeridas: PIEZAS_CORTE_SUGERIDAS
+            }
+        });
+    } catch (e) {
+        console.error('produccionController(corteNuevo):', e);
+        return res.status(500).send('No se pudo cargar la página.');
+    }
+};
 
 // `homeProcesosListado` ya tiene su propia lógica — ganó un listado real de seguimiento por
 // taller apenas una ficha tiene confeccionistas asignados, así que salió de `paginaBase`
@@ -66,7 +158,6 @@ const homeFichasConfeccion = (req, res) => {
         return res.render('./administrador/produccion/fichasConfeccion', {
             pagina: 'Fichas de confección',
             subPagina: 'Fichas de confección',
-            csrfToken: req.csrfToken(),
             currentPath: '/procesos'
         });
     } catch (e) {
@@ -102,7 +193,6 @@ const homeFichaConfeccionNueva = async (req, res) => {
         return res.render('./administrador/produccion/fichaConfeccionNueva', {
             pagina: 'Fichas de confección',
             subPagina: 'Nueva ficha de confección',
-            csrfToken: req.csrfToken(),
             currentPath: '/procesos',
             colores,
             familias,
@@ -127,7 +217,6 @@ const homeFichaConfeccionBiblioteca = async (req, res) => {
         return res.render('./administrador/produccion/fichaConfeccionBiblioteca', {
             pagina: 'Fichas de confección',
             subPagina: 'Biblioteca de fichas de confección',
-            csrfToken: req.csrfToken(),
             currentPath: '/procesos',
             familias,
             telas
@@ -180,17 +269,21 @@ const filterFichaConfeccionListJson = async (req, res) => {
         const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
         const offset = (numPagina - 1) * limite;
 
+        // Los includes son belongsTo (uno por ficha): no multiplican filas ni el conteo.
         const { count, rows } = await FichaConfeccion.findAndCountAll({
             where: condicionesListadoFichas(req.query),
             attributes: ['idFicha', 'referencia', 'materialNombre', 'cantidadTotal', 'precioConfeccion', 'createdAt'],
+            include: [INCLUDE_CREADOR_FICHA, ...INCLUDES_IMAGEN_FICHA],
             order: [['createdAt', 'DESC'], ['idFicha', 'ASC']],
             limit: limite,
             offset
         });
+        // Colores y talleres de toda la página en dos consultas (CLAUDE.md §7).
+        const detalle = await detalleBibliotecaFichas(rows.map(f => f.idFicha));
 
         return res.json({
             success: true,
-            fichas: rows,
+            fichas: rows.map(f => presentarFichaBiblioteca(f, detalle)),
             totalPaginas: Math.ceil(count / limite),
             paginaActual: numPagina,
             totalRegistros: count
@@ -201,18 +294,38 @@ const filterFichaConfeccionListJson = async (req, res) => {
     }
 };
 
+// GET /admin/procesos/fichas-confeccion/:idFicha/imagen — miniatura de la prenda en la
+// Biblioteca. Las imágenes viven en el bucket privado: se firma en el momento y se
+// redirige, como las fotos de los confeccionistas; la ruta del objeto nunca llega a la vista.
+const imagenFichaConfeccion = async (req, res) => {
+    try {
+        const ficha = await FichaConfeccion.findByPk(req.params.idFicha, {
+            attributes: ['idFicha'],
+            include: INCLUDES_IMAGEN_FICHA
+        });
+        const key = ficha ? keyImagenFicha(ficha) : null;
+        if (!key) return res.status(404).send('Imagen no encontrada.');
+        res.set('Cache-Control', 'no-store');
+        return res.redirect(302, await urlDocumento(key));
+    } catch (e) {
+        console.error('produccionController(imagenFichaConfeccion):', e);
+        return res.status(500).send('No se pudo abrir la imagen.');
+    }
+};
+
 // GET /admin/insumos — listado del catálogo (columna izquierda) y formulario de alta (derecha).
 // El catálogo es chico (un registro por material del DXF), así que se trae completo y ordenado
 // por el código, que es único: el orden es total.
 const homeInsumos = async (req, res) => {
     try {
         const materiales = await Material.findAll({ order: [['codigoMaterial', 'ASC']] });
+        // Disponible real de todo el catálogo en una sola consulta (CLAUDE.md §7).
+        const existencias = await existenciasDeMateriales(materiales.map(m => m.idMaterial));
         // Mapa base→nombre para resolver el padre de cada variante sin query adicional.
         const nombrePorCodigo = new Map(materiales.map(m => [m.codigoMaterial, m.nombre]));
         return res.render('./administrador/produccion/insumos', {
             pagina:    'Insumos',
             subPagina: 'Insumos',
-            csrfToken: req.csrfToken(),
             currentPath: '/insumos',
             titulo:    'Insumos',
             subtitulo: 'Materias primas e insumos del catálogo de producción',
@@ -221,10 +334,20 @@ const homeInsumos = async (req, res) => {
                 const padre = m.codigoMaterial.includes('.')
                     ? (nombrePorCodigo.get(m.codigoMaterial.split('.')[0]) ?? null)
                     : null;
-                return presentarMaterial(m, padre);
+                const e = existencias.get(m.idMaterial);
+                const fmt = (v) => Number(v).toLocaleString('es-CO', { maximumFractionDigits: 4 });
+                const enTalleres = e ? Number(e.reservada) + Number(e.enProceso) : 0;   // solo para mostrar
+                return {
+                    ...presentarMaterial(m, padre),
+                    existencia: fmt(e?.disponible ?? 0),
+                    unidadConsumoCorta: UNIDAD_CONSUMO_CORTA[m.unidadConsumo] || '',
+                    sinExistencia: !(Number(e?.disponible ?? 0) > 0),
+                    enTalleres: enTalleres > 0 ? fmt(enTalleres) : null
+                };
             }),
             tiposInsumo: TIPOS_INSUMO,
             unidadesCompra: UNIDADES_COMPRA,
+            unidadesConsumo: UNIDADES_CONSUMO,
             limites: LIMITES_INSUMO
         });
     } catch (e) {
@@ -346,11 +469,19 @@ const verInsumo = async (req, res) => {
         const fila = presentarMaterial(material);
         // El resto de `datos` sigue siendo relleno (ver helpers/insumos.js) — solo el
         // historial de compras es real, así que se pisa acá antes de llegar a la vista.
-        const datos = { ...datosFicticiosInsumo(fila), historialCompras: await historialComprasInsumo(material.idMaterial) };
+        // Historial, proveedores y resumen de compras son reales; lo demás de `datos` es relleno
+        // (descripción, composición, procesos, tiempo de entrega, dato útil).
+        const [historialCompras, proveedores] = await Promise.all([
+            historialComprasInsumo(material.idMaterial),
+            proveedoresDelInsumo(material.idMaterial)
+        ]);
+        const datos = { ...datosFicticiosInsumo(fila), historialCompras, proveedores, ...resumenComprasInsumo(proveedores) };
+        // Inventario REAL (helpers/inventarioInsumos.js): existencias, costo ponderado, capas
+        // vivas y movimientos. Reemplaza los indicadores de relleno.
+        const inventario = await inventarioDelMaterial(material, UNIDAD_CONSUMO_CORTA[material.unidadConsumo] || '');
         return res.render('./administrador/produccion/insumoPerfil', {
             pagina:    'Insumos',
             subPagina: fila.nombre,
-            csrfToken: req.csrfToken(),
             currentPath: '/insumos',
             titulo:    fila.nombre,
             subtitulo: fila.tipoEtiqueta,
@@ -363,15 +494,63 @@ const verInsumo = async (req, res) => {
             // aparte de `material` para que sea obvio en la vista qué es real y qué hay que
             // reemplazar el día que exista la tabla.
             datos,
+            inventario,
+            tieneInventario: inventario.tiene,
             // Para el modal "Editar insumo" — mismas listas que ya usa el alta (homeInsumos),
             // así el formulario de edición no vuelve a escribirlas.
             tiposInsumo: TIPOS_INSUMO,
             unidadesCompra: UNIDADES_COMPRA,
+            unidadesConsumo: UNIDADES_CONSUMO,
             limites: LIMITES_INSUMO
         });
     } catch (e) {
         console.error('produccionController(insumo perfil):', e);
         return res.status(500).send('No se pudo cargar la página.');
+    }
+};
+
+// POST /admin/insumos/:idMaterial/ajuste — ajuste de inventario por conteo físico: lo que
+// hay en bodega no coincide con el sistema (pérdida, daño, error de carga, o insumo que ya
+// estaba antes de usar el sistema). Mismos tres candados que editar el insumo (ruta): EDIT de
+// la sesión, código de empleado y el permiso de ESE empleado. Motivo obligatorio: queda en el
+// libro de movimientos, que es append-only.
+//   entrada → capa nueva con el costo que se indique (origen 'ajuste').
+//   salida  → sale de lo disponible, de la capa más vieja a la más nueva (FIFO).
+const ajustarExistenciaInsumo = async (req, res) => {
+    const material = await Material.findByPk(req.params.idMaterial);
+    if (!material) return res.status(404).json({ success: false, mensaje: 'El material ya no existe.' });
+
+    const b = req.body || {};
+    const errores = {};
+    const tipo = b.tipo === 'entrada' || b.tipo === 'salida' ? b.tipo : null;
+    if (!tipo) errores.tipo = 'Elige si entra o sale.';
+    const cantidad = cantidadValida(b.cantidad);
+    if (!cantidad) errores.cantidad = 'Escribe una cantidad mayor a 0.';
+    const costoUnitario = tipo === 'entrada' ? cantidadValida(b.costoUnitario) : null;
+    if (tipo === 'entrada' && !costoUnitario) errores.costoUnitario = 'Escribe el costo por unidad (mayor a 0).';
+    const motivo = String(b.motivo ?? '').trim();
+    if (motivo.length < 5 || motivo.length > 300) errores.motivo = 'Explica el motivo (entre 5 y 300 caracteres).';
+
+    // '' = sin color; un número = ese color, que tiene que ser un color simple del catálogo.
+    let idAtributoColor = null;
+    const colorTxt = String(b.idAtributoColor ?? '').trim();
+    if (colorTxt) {
+        const color = await Atributos.findOne({ where: { idAtributo: colorTxt, tipo: 'COLOR' } });
+        if (!color) errores.idAtributoColor = 'Ese color no existe.';
+        else idAtributoColor = color.idAtributo;
+    }
+    if (Object.keys(errores).length) return res.status(400).json({ success: false, errores, mensaje: Object.values(errores)[0] });
+
+    const actor = actorDelPanel(req);
+    try {
+        await db.transaction((transaction) => tipo === 'entrada'
+            ? registrarEntrada({ idMaterial: material.idMaterial, idAtributoColor, cantidad, costoUnitario, origen: 'ajuste', motivo, actor, transaction })
+            : registrarSalidaAjuste({ idMaterial: material.idMaterial, idAtributoColor, cantidad, motivo, actor, transaction }));
+        return res.json({ success: true, mensaje: tipo === 'entrada' ? 'Entrada registrada.' : 'Salida registrada.' });
+    } catch (e) {
+        if (e.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message });
+        console.error('[insumos] ajuste de existencia:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo registrar el ajuste. Intenta de nuevo.' });
     }
 };
 
@@ -398,6 +577,12 @@ const editarInsumo = async (req, res) => {
     const { errores, datos } = validarInsumo(req.body);
     if (errores) {
         return res.status(400).json({ success: false, errores, mensaje: 'Revisa los campos marcados.' });
+    }
+    // Con inventario, cambiar la unidad de consumo dejaría las cantidades guardadas en otra
+    // unidad (18.400 cm leídos como 18.400 g).
+    if (datos.unidadConsumo !== material.unidadConsumo && await tieneInventario(material.idMaterial)) {
+        const mensaje = 'Este material ya tiene inventario: su unidad de consumo no se puede cambiar.';
+        return res.status(409).json({ success: false, errores: { unidadConsumo: mensaje }, mensaje });
     }
 
     let nombreImagenNueva = null;
@@ -476,7 +661,7 @@ const cambiarEstadoInsumo = async (req, res) => {
 };
 
 export {
-    homeConfeccionistas, homeProcesosNuevo, homeFichasConfeccion,
+    homeConfeccionistas, fotoConfeccionista, imagenFichaConfeccion, homeProcesosNuevo, homeCorteNuevo, homeFichasConfeccion,
     homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, filterFichaConfeccionListJson, homeInsumos,
-    crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo
+    crearInsumo, verInsumo, editarInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo, ajustarExistenciaInsumo
 };

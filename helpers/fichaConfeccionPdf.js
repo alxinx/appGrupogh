@@ -97,9 +97,12 @@ export async function generarPdfFichaConfeccion(ficha) {
     // del margen inferior de la página: PDFKit pagina solo cuando un `.text()` cae más allá
     // del borde, aunque se le pase x/y explícitos, y eso desarma el layout de dos columnas
     // (cada página reinicia las coordenadas). 250 dejó margen de sobra con topY ≈ 204.
-    const imgW = leftW, imgH = 250;
+    const imgH = 250;
 
-    const cajaImagen = async (x, yBase, etiqueta, buffer) => {
+    // `ancho`: la caja ocupa la columna entera salvo que se pida otra (IA y referencia juntas
+    // van lado a lado, cada una a media columna — tres a lo alto no caben en la página).
+    const cajaImagen = async (x, yBase, etiqueta, buffer, ancho = leftW) => {
+        const imgW = ancho;
         doc.roundedRect(x, yBase, imgW, imgH, 8).strokeColor(BORDE).lineWidth(1).stroke();
         if (buffer) {
             try {
@@ -136,20 +139,24 @@ export async function generarPdfFichaConfeccion(ficha) {
         try { bufferReferencia = await descargarObjeto(ficha.moldeReferencia.objectKey); } catch { /* se omite si falla */ }
     }
 
-    // El molde técnico siempre va — es lo que necesita la confeccionista.
-    // La imagen adicional (IA o foto de referencia) va debajo si existe.
+    // El molde técnico siempre va — es lo que necesita la confeccionista. Debajo, las
+    // imágenes adicionales que haya: una sola a todo el ancho; IA y foto de referencia
+    // juntas, lado a lado.
     yL = await cajaImagen(leftX, yL, 'Molde técnico', bufferMolde);
-    if (bufferIa) {
-        yL = await cajaImagen(leftX, yL, 'Generado con IA', bufferIa);
+    if (bufferIa && bufferReferencia) {
+        const media = (leftW - 12) / 2;
+        await cajaImagen(leftX, yL, 'Generado con IA', bufferIa, media);
+        await cajaImagen(leftX + media + 12, yL, 'Foto de referencia', bufferReferencia, media);
+    } else if (bufferIa) {
+        await cajaImagen(leftX, yL, 'Generado con IA', bufferIa);
     } else if (bufferReferencia) {
-        yL = await cajaImagen(leftX, yL, 'Foto de referencia', bufferReferencia);
+        await cajaImagen(leftX, yL, 'Foto de referencia', bufferReferencia);
     }
 
-    // ── Columna derecha: información general, colores, información adicional ──
+    // ── Columna derecha: información general, insumos, información adicional ──
     let yR = seccionHeader('Información general', rightX, topY, rightW);
     const filasInfo = [
         ['Referencia', ficha.referencia],
-        ['Cantidad', `${ficha.cantidadTotal.toLocaleString('es-CO')} prendas`],
         ['Tela', ficha.materialNombre],
         ['Complementos', ficha.complementos || '—']
     ];
@@ -165,32 +172,8 @@ export async function generarPdfFichaConfeccion(ficha) {
     });
     yR += 4;
 
-    // Colores y cantidades — reemplaza "detalle de materiales": una fila por color, con su
-    // pastilla de color real (ATRIBUTOS.codigo1) y la cantidad. Con más de una tela en la
-    // ficha, "verde" puede repartirse entre dos materiales distintos (FichaConfeccionColor.
-    // idMaterial) — ahí sí hace falta decir cuál, o las dos líneas se verían idénticas.
-    yR = seccionHeader('Colores', rightX, yR, rightW);
-    const colores = ficha.colores || [];
-    const variasTelas = new Set(colores.map((l) => l.idMaterial).filter(Boolean)).size > 1;
-    if (!colores.length) {
-        doc.fillColor(SLATE_400).font('Helvetica-Oblique').fontSize(8.5).text('Sin colores registrados.', rightX, yR);
-        doc.fillColor('#000');
-        yR += 18;
-    } else {
-        colores.forEach((linea) => {
-            doc.circle(rightX + 6, yR + 7, 5).fill(linea.color?.codigo1 || '#cccccc');
-            doc.circle(rightX + 6, yR + 7, 5).lineWidth(0.5).stroke('#D4D4D8');
-            const textoColor = variasTelas && linea.material?.nombre
-                ? `${linea.color?.valor || '—'} · ${linea.material.nombre}`
-                : (linea.color?.valor || '—');
-            doc.fillColor(SLATE_900).font('Helvetica').fontSize(9).text(textoColor, rightX + 18, yR + 2, { width: rightW * 0.55 });
-            doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(9)
-               .text(`${linea.cantidad.toLocaleString('es-CO')}`, rightX, yR + 2, { width: rightW, align: 'right' });
-            doc.fillColor('#000');
-            yR += 16;
-        });
-    }
-    yR += 6;
+    // Sin colores ni cantidades: la ficha describe la prenda; cuántas y en qué colores van
+    // en la orden de producción (wiki "Proceso de confección").
 
     // Insumos adicionales — EN TABLA (pedido explícito), con encabezado y bordes como la
     // tabla de "Información adicional" de más abajo. Solo si la ficha de verdad agregó
@@ -206,7 +189,7 @@ export async function generarPdfFichaConfeccion(ficha) {
         doc.rect(rightX, yR, rightW, filaEncabezadoH).strokeColor(BORDE).lineWidth(1).stroke();
         doc.moveTo(rightX + colInsumoW, yR).lineTo(rightX + colInsumoW, yR + filaEncabezadoH).strokeColor(BORDE).lineWidth(1).stroke();
         doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(7.5).text('INSUMO', rightX + 8, yR + 5, { width: colInsumoW - 16 });
-        doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(7.5).text('CANTIDAD', rightX + colInsumoW, yR + 5, { width: colCantidadW - 8, align: 'right' });
+        doc.fillColor(SLATE_600).font('Helvetica-Bold').fontSize(7.5).text('POR PRENDA', rightX + colInsumoW, yR + 5, { width: colCantidadW - 8, align: 'right' });
         doc.fillColor('#000');
         yR += filaEncabezadoH;
 

@@ -1,7 +1,6 @@
-import { opcionesConfirmacion, cabeceraConfirmacion } from './modalConfirmacion.js';
+import { opcionesConfirmacion, cabeceraConfirmacion, activarVerificacionCodigo, avisoConfirmacion } from './modalConfirmacion.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
-import { activarVerificacionCodigo } from './modalConfirmacion.js';
 
 // Formulario de insumo: campos, validación, código DXF único y carga de foto. Antes vivía
 // solo en src/js/insumos.js para el alta ("Nuevo insumo"); se separó acá al agregar la
@@ -15,7 +14,8 @@ import { activarVerificacionCodigo } from './modalConfirmacion.js';
 //     #codigoResultante (span preview)
 // #error-codigoMaterial, #error-grupoMaterial, #error-subCodigoMaterial
 // #helper-codigo (párrafo de ayuda contextual)
-// #nombre, #label-nombre, input[name=tipo], #unidadCompra
+// #nombre, #label-nombre, input[name=tipo], #unidadCompra, #unidadConsumo,
+// #campos-tela → #anchoUtilCm, #gramajeGm2 (views/components/camposInsumo.pug)
 // #imagen, #preview-imagen, #icono-imagen, #nombre-archivo-imagen
 // #btn-guardar-insumo, #btn-limpiar-insumo
 //
@@ -40,7 +40,6 @@ export function activarFormularioInsumo(opts) {
     const form = document.getElementById(formId);
     if (!form) return;
 
-    const CSRF = form.dataset.csrf;
     const LIM  = { nombreMax: Number(form.dataset.nombreMax) };
 
     // ── MODO DE CÓDIGO (base vs variante) ───────────────────────────────────────
@@ -66,10 +65,13 @@ export function activarFormularioInsumo(opts) {
         subCodigoMaterial: document.getElementById('subCodigoMaterial'),
         nombre:            document.getElementById('nombre'),
         unidadCompra:      document.getElementById('unidadCompra'),
+        unidadConsumo:     document.getElementById('unidadConsumo'),
+        anchoUtilCm:       document.getElementById('anchoUtilCm'),
+        gramajeGm2:        document.getElementById('gramajeGm2'),
         imagen:            document.getElementById('imagen')
     };
     // imagen no entra a validar(): el único error posible lo manda el servidor.
-    const CAMPOS = ['codigoMaterial', 'grupoMaterial', 'subCodigoMaterial', 'nombre', 'tipo', 'unidadCompra', 'imagen'];
+    const CAMPOS = ['codigoMaterial', 'grupoMaterial', 'subCodigoMaterial', 'nombre', 'tipo', 'unidadCompra', 'unidadConsumo', 'anchoUtilCm', 'gramajeGm2', 'imagen'];
 
     // ── FOTO ────────────────────────────────────────────────────────────────────
     const previewImagen  = document.getElementById('preview-imagen');
@@ -96,6 +98,23 @@ export function activarFormularioInsumo(opts) {
 
     // ── LABEL DEL NOMBRE ────────────────────────────────────────────────────────
     const tipoElegido = () => form.querySelector('input[name="tipo"]:checked');
+    const esTela = () => tipoElegido()?.value === 'materia_prima';
+
+    // Ancho útil y gramaje: solo para una tela (materia prima).
+    const camposTela = document.getElementById('campos-tela');
+    const pintarCamposTela = () => camposTela?.classList.toggle('hidden', !esTela());
+    pintarCamposTela();
+
+    // En qué se gasta: se sugiere según cómo se compra (metro/rollo → cm, kg → g, lo demás →
+    // unidad) mientras la persona no lo elija a mano. Mismo criterio que unidadConsumoSugerida
+    // de helpers/unidadesInsumo.js. Con inventario el campo llega bloqueado y no se toca.
+    const CONSUMO_SUGERIDO = { metro: 'cm', rollo: 'cm', kg: 'g' };
+    let consumoElegidoAMano = Boolean(campos.unidadConsumo?.dataset.bloqueada) || Boolean(form.dataset.idMaterial);
+    campos.unidadConsumo?.addEventListener('change', () => { consumoElegidoAMano = true; });
+    campos.unidadCompra?.addEventListener('change', () => {
+        if (consumoElegidoAMano || !campos.unidadConsumo) return;
+        campos.unidadConsumo.value = CONSUMO_SUGERIDO[campos.unidadCompra.value] || 'unidad';
+    });
 
     const etiquetaNombre     = document.getElementById('label-nombre');
     const ETIQUETA_NOMBRE_BASE = etiquetaNombre.textContent;
@@ -226,6 +245,13 @@ export function activarFormularioInsumo(opts) {
         else if (nombre.length > LIM.nombreMax) e.nombre = `El nombre no puede pasar de ${LIM.nombreMax} caracteres.`;
 
         if (!tipoElegido()) e.tipo = 'Elige si es materia prima o insumo.';
+        if (!campos.unidadConsumo?.value) e.unidadConsumo = 'Elige en qué se gasta este material.';
+        if (esTela()) {
+            for (const [campo, etiqueta] of [['anchoUtilCm', 'El ancho útil'], ['gramajeGm2', 'El gramaje']]) {
+                const txt = campos[campo]?.value.trim();
+                if (txt && !(Number(window.leerDecimal(txt)) > 0)) e[campo] = `${etiqueta} debe ser un número mayor a 0.`;
+            }
+        }
         return e;
     };
 
@@ -233,11 +259,18 @@ export function activarFormularioInsumo(opts) {
         codigoMaterial: leerCodigo(),
         nombre:         campos.nombre?.value.trim(),
         tipo:           tipoElegido()?.value,
-        unidadCompra:   campos.unidadCompra?.value || null
+        unidadCompra:   campos.unidadCompra?.value || null,
+        unidadConsumo:  campos.unidadConsumo?.value || null,
+        // Ancho y gramaje solo cuentan para una tela; el servidor los ignora en un insumo.
+        anchoUtilCm:    esTela() ? (window.leerDecimal(campos.anchoUtilCm?.value) ?? '') : '',
+        gramajeGm2:     esTela() ? (window.leerDecimal(campos.gramajeGm2?.value) ?? '') : ''
     });
 
     // ── PINTADO DE ERRORES ───────────────────────────────────────────────────────
-    const pintarError = (nombre, mensaje) => {
+    // Declaraciones de función (no const): cambiarModo() las llama al inicializar, más arriba,
+    // y con const eso lanzaba "Cannot access 'pintarTodos' before initialization" y cortaba
+    // la activación del formulario de edición (perfil del insumo).
+    function pintarError(nombre, mensaje) {
         const texto = document.getElementById(`error-${nombre}`);
         if (texto) {
             texto.textContent = mensaje || '';
@@ -245,9 +278,9 @@ export function activarFormularioInsumo(opts) {
         }
         campos[nombre]?.classList.toggle('field-text-error', Boolean(mensaje));
         campos[nombre]?.setAttribute('aria-invalid', mensaje ? 'true' : 'false');
-    };
+    }
 
-    const pintarTodos = (errores = {}) => CAMPOS.forEach(n => pintarError(n, errores[n]));
+    function pintarTodos(errores = {}) { CAMPOS.forEach(n => pintarError(n, errores[n])); }
 
     const enfocar = (nombre) => {
         if (nombre === 'tipo') form.querySelector('input[name="tipo"]')?.focus();
@@ -255,14 +288,7 @@ export function activarFormularioInsumo(opts) {
     };
 
     // ── VENTANAS ─────────────────────────────────────────────────────────────────
-    const aviso = ({ variante, icono, badge, contexto = '' }) => Swal.fire({
-        ...opcionesConfirmacion({
-            variante,
-            html: `<div class="gh-conf-html">${cabeceraConfirmacion({ icono, badge, contexto: esc(contexto) })}</div>`
-        }),
-        showCancelButton: false,
-        confirmButtonText: 'Entendido'
-    });
+    const aviso = avisoConfirmacion;
 
     const CODIGO_EMP_INPUT  = 'formInsumo-codigo-empleado';
     const CODIGO_EMP_ESTADO = 'formInsumo-codigo-estado';
@@ -284,7 +310,8 @@ export function activarFormularioInsumo(opts) {
                         ${fila('Código DXF', datos.codigoMaterial)}
                         ${fila('Nombre', datos.nombre)}
                         ${fila('Tipo', tipo)}
-                        ${fila('Unidad', unidad)}
+                        ${fila('Se compra en', unidad)}
+                        ${fila('Se gasta en', campos.unidadConsumo?.selectedOptions[0]?.textContent || '—')}
                     </dl>
                     ${requiereCodigoEmpleado ? `
                         <p class="gh-conf-campo-label">Código de empleado que autoriza</p>
@@ -328,7 +355,7 @@ export function activarFormularioInsumo(opts) {
 
             const r = await fetch(urlGuardar, {
                 method: metodoGuardar,
-                headers: { 'CSRF-Token': CSRF },
+                
                 body
             });
             const data = await r.json().catch(() => ({}));
@@ -463,7 +490,9 @@ export function activarFormularioInsumo(opts) {
         r.addEventListener('change', () => {
             revalidar('tipo');
             pintarEtiquetaNombre();
+            pintarCamposTela();
         }));
+    ['anchoUtilCm', 'gramajeGm2'].forEach(n => campos[n]?.addEventListener('blur', () => pintarError(n, validar()[n])));
 
     document.getElementById('btn-limpiar-insumo')?.addEventListener('click', () => {
         form.reset();
@@ -477,6 +506,8 @@ export function activarFormularioInsumo(opts) {
         if (helperCodigo) helperCodigo.textContent = HELPERS.base;
         pintarTodos();
         pintarEtiquetaNombre();
+        pintarCamposTela();
+        consumoElegidoAMano = Boolean(campos.unidadConsumo?.dataset.bloqueada) || Boolean(form.dataset.idMaterial);
         limpiarPreviewImagen();
     });
 }

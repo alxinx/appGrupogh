@@ -5,7 +5,6 @@ import { escaparHtml as esc } from './escaparHtml.js';
 // src/js/paginador.js) — nada se trae completo de una.
 (function () {
     const tabla       = document.getElementById('tabla-historial');
-    const paginacion  = document.getElementById('paginacion-historial');
     const contador     = document.getElementById('contador-historial');
     const inputBuscar = document.getElementById('busqueda-historial');
     const selectTipo  = document.getElementById('filtro-tipo-historial');
@@ -101,6 +100,11 @@ import { escaparHtml as esc } from './escaparHtml.js';
     inputBuscar?.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(filtrar, 300); });
     selectTipo?.addEventListener('change', filtrar);
     selectEstado?.addEventListener('change', filtrar);
+
+    // Se puede llegar ya filtrado: "Ver historial" de un proveedor en el perfil de un insumo
+    // abre /admin/insumos/compra/historial?busqueda=<razón social>.
+    const busquedaInicial = new URLSearchParams(location.search).get('busqueda');
+    if (busquedaInicial && inputBuscar) inputBuscar.value = busquedaInicial;
 
     cargar();
 })();

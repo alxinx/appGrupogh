@@ -1,3 +1,5 @@
+import { duracionVideo } from './duracionVideo.js';
+
 // Editor de una ficha de confección ya creada (admin/procesos/fichas-confeccion/:idFicha,
 // "Abrir" desde la Biblioteca). Colores e insumos reusan el mismo mecanismo de
 // src/js/fichaConfeccionNueva.js (modal con buscador + grilla, una fila por elegido) ya
@@ -6,10 +8,8 @@
     const raiz = document.getElementById('asistente-ficha-editar');
     if (!raiz) return;
 
-    const CSRF = raiz.dataset.csrf;
     const idFicha = raiz.dataset.idFicha;
     const materiales = JSON.parse(raiz.dataset.materiales || '[]');
-    const coloresIniciales = JSON.parse(raiz.dataset.coloresIniciales || '[]');
     const insumosIniciales = JSON.parse(raiz.dataset.insumosIniciales || '[]');
     const talleresIniciales = JSON.parse(raiz.dataset.talleresIniciales || '[]');
 
@@ -23,164 +23,9 @@
         actualizarColoresEnTalleres: () => {}
     };
 
-    // "Cantidad total" ahora la pone el operador (antes se calculaba sola) y funciona como
-    // TOPE: la suma de los colores no puede pasarla. El contador de la tarjeta "Colores" la
-    // lee en vivo para avisar antes de guardar, no solo cuando el servidor la rechace.
-    const elCantidadTotal = document.getElementById('ficha-editar-cantidad-total');
-    const elContadorColores = document.getElementById('contador-colores-editar');
-    const leerCantidadTotal = () => parseInt(elCantidadTotal?.value, 10) || 0;
-
-    // ── Colores ──────────────────────────────────────────────────────────────────────────
-    (function () {
-        const lista = document.querySelector('[data-lista-colores-editar]');
-        const plantilla = document.getElementById('plantilla-fila-color-editar');
-        const btnAgregar = document.getElementById('btn-agregar-color-editar');
-        const errorColores = document.querySelector('[data-error-colores-editar]');
-        const modal = document.getElementById('modal-elegir-color-editar');
-        const buscador = document.getElementById('buscador-color-ficha-editar');
-        const grid = document.getElementById('grid-colores-ficha-editar');
-        const btnCerrarModal = document.getElementById('cerrar-modal-color-editar');
-        if (!lista || !plantilla || !btnAgregar) return;
-
-        let filaActual = null;
-
-        const cerrarModal = () => {
-            modal?.classList.add('hidden'); modal?.classList.remove('flex');
-            filaActual = null;
-            if (buscador) buscador.value = '';
-            grid?.querySelectorAll('[data-opcion-color]').forEach((b) => { b.style.display = ''; });
-        };
-        const abrirModal = (fila) => {
-            filaActual = fila;
-            modal?.classList.remove('hidden'); modal?.classList.add('flex');
-            buscador?.focus();
-        };
-        btnCerrarModal?.addEventListener('click', cerrarModal);
-        modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
-        buscador?.addEventListener('input', (e) => {
-            const termino = e.target.value.toLowerCase().trim();
-            grid?.querySelectorAll('[data-opcion-color]').forEach((b) => {
-                b.style.display = (b.dataset.nombre || '').toLowerCase().includes(termino) ? '' : 'none';
-            });
-        });
-        grid?.addEventListener('click', (e) => {
-            const opcion = e.target.closest('[data-opcion-color]');
-            if (!opcion || !filaActual) return;
-            pintarColorEnFila(filaActual, { idAtributoColor: opcion.dataset.id, nombre: opcion.dataset.nombre, codigo1: opcion.querySelector('span')?.style.backgroundColor });
-            errorColores?.classList.add('hidden');
-            cerrarModal();
-            recalcularCantidadTotal();
-            // El color recién elegido tiene que aparecer como opción en las tarjetas de
-            // taller que ya existan (estado.actualizarColoresEnTalleres, bloque de abajo).
-            estado.actualizarColoresEnTalleres();
-        });
-
-        function pintarColorEnFila(fila, color) {
-            const swatch = fila.querySelector('[data-color-swatch]');
-            const nombreEl = fila.querySelector('[data-color-nombre]');
-            const inputId = fila.querySelector('[data-color-id]');
-            if (inputId) inputId.value = color.idAtributoColor;
-            if (nombreEl) { nombreEl.textContent = color.nombre; nombreEl.classList.remove('text-slate-400'); nombreEl.classList.add('text-slate-800', 'font-semibold'); }
-            if (swatch) { swatch.style.backgroundColor = color.codigo1 || '#ccc'; swatch.classList.remove('hidden'); }
-        }
-
-        const actualizarSelectMaterial = (fila) => {
-            const select = fila.querySelector('[data-color-material]');
-            if (!select) return;
-            if (materiales.length <= 1) { select.classList.add('hidden'); select.innerHTML = ''; select.required = false; return; }
-            const valorActual = select.value;
-            select.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.value = ''; placeholder.disabled = true; placeholder.textContent = 'Tela…';
-            select.appendChild(placeholder);
-            materiales.forEach((m) => {
-                const opt = document.createElement('option');
-                opt.value = m.idMaterial; opt.textContent = m.nombre;
-                select.appendChild(opt);
-            });
-            select.value = materiales.some((m) => m.idMaterial === valorActual) ? valorActual : '';
-            select.classList.remove('hidden'); select.required = true;
-        };
-
-        const recalcularCantidadTotal = () => {
-            const suma = estado.obtenerColores().reduce((s, c) => s + c.cantidad, 0);
-            const tope = leerCantidadTotal();
-            if (elContadorColores) {
-                elContadorColores.textContent = `${suma.toLocaleString('es-CO')} / ${tope.toLocaleString('es-CO')}`;
-                elContadorColores.classList.toggle('text-rose-600', suma > tope);
-                elContadorColores.classList.toggle('text-slate-400', suma <= tope);
-            }
-            // El mensaje de "los colores suman más que..." se limpia solo apenas deja de
-            // aplicar — no hay que esperar a tocar "Guardar cambios" de nuevo para enterarse
-            // de que ya se corrigió.
-            if (suma <= tope) errorColores?.classList.add('hidden');
-        };
-        elCantidadTotal?.addEventListener('input', recalcularCantidadTotal);
-
-        const agregarFila = (datosIniciales) => {
-            const nodo = plantilla.content.firstElementChild.cloneNode(true);
-            lista.appendChild(nodo);
-            nodo.querySelector('[data-abrir-color]')?.addEventListener('click', () => abrirModal(nodo));
-            nodo.querySelector('[data-quitar-color]')?.addEventListener('click', () => {
-                nodo.remove();
-                recalcularCantidadTotal();
-                estado.actualizarColoresEnTalleres();
-            });
-            nodo.querySelector('[data-color-material]')?.addEventListener('change', () => errorColores?.classList.add('hidden'));
-            nodo.querySelector('[data-color-cantidad]')?.addEventListener('input', recalcularCantidadTotal);
-            actualizarSelectMaterial(nodo);
-
-            if (datosIniciales) {
-                pintarColorEnFila(nodo, { idAtributoColor: datosIniciales.idAtributoColor, nombre: datosIniciales.nombre, codigo1: datosIniciales.codigo1 });
-                const inputCantidad = nodo.querySelector('[data-color-cantidad]');
-                if (inputCantidad) inputCantidad.value = datosIniciales.cantidad;
-                const selectMaterial = nodo.querySelector('[data-color-material]');
-                if (selectMaterial && datosIniciales.idMaterial) selectMaterial.value = datosIniciales.idMaterial;
-            }
-            errorColores?.classList.add('hidden');
-        };
-
-        btnAgregar.addEventListener('click', () => { agregarFila(); });
-
-        // `estado.obtenerColores` tiene que existir ANTES de la primera
-        // recalcularCantidadTotal() de abajo — recalcularCantidadTotal la llama, y si
-        // todavía fuera el no-op inicial de `estado` (() => []), "Cantidad total" arrancaba
-        // siempre en 0 aunque la ficha ya trajera colores con cantidad.
-        estado.obtenerColores = () => [...lista.querySelectorAll('[data-fila-color]')]
-            .map((fila) => {
-                const selectMaterial = fila.querySelector('[data-color-material]');
-                const idMaterial = materiales.length === 1 ? materiales[0].idMaterial : (selectMaterial?.value || null);
-                return {
-                    idAtributoColor: parseInt(fila.querySelector('[data-color-id]')?.value, 10),
-                    nombre: fila.querySelector('[data-color-nombre]')?.textContent,
-                    cantidad: parseInt(fila.querySelector('[data-color-cantidad]')?.value, 10),
-                    idMaterial
-                };
-            })
-            .filter((f) => Number.isInteger(f.idAtributoColor) && f.idAtributoColor > 0 && Number.isInteger(f.cantidad) && f.cantidad > 0);
-
-        coloresIniciales.forEach((c) => agregarFila(c));
-        if (!coloresIniciales.length) agregarFila();
-        recalcularCantidadTotal();
-
-        estado.validarColores = () => {
-            const validas = estado.obtenerColores();
-            let ok = validas.length > 0;
-            let mensaje = 'Agrega al menos un color con su cantidad.';
-            if (ok && materiales.length > 1 && validas.some((f) => !f.idMaterial)) {
-                ok = false; mensaje = 'Elige a qué tela corresponde cada color.';
-            }
-            if (ok) {
-                const suma = validas.reduce((s, c) => s + c.cantidad, 0);
-                const tope = leerCantidadTotal();
-                if (tope <= 0) { ok = false; mensaje = 'La cantidad total debe ser mayor a 0.'; }
-                else if (suma > tope) { ok = false; mensaje = `Los colores suman ${suma.toLocaleString('es-CO')}, más que la cantidad total (${tope.toLocaleString('es-CO')}).`; }
-            }
-            errorColores?.classList.toggle('hidden', ok);
-            if (errorColores) errorColores.textContent = mensaje;
-            return ok;
-        };
-    })();
+    // Colores y cantidades ya no son de la ficha: la ficha describe la prenda y los insumos
+    // van por prenda; cuántas y en qué colores lo dice la orden de producción (wiki
+    // "Proceso de confección"). Los talleres siguen acá mientras esa orden no exista.
 
     // ── Insumos ──────────────────────────────────────────────────────────────────────────
     (function () {
@@ -257,18 +102,6 @@
             }))
             .filter((f) => f.idMaterial && Number.isInteger(f.cantidad) && f.cantidad > 0);
 
-        // Si hay insumos, ninguno puede pedir menos que la cantidad total (pedido explícito
-        // del usuario) — mismo chequeo que hace el servidor, acá solo para avisar antes de
-        // mandar el POST.
-        estado.validarInsumos = () => {
-            const insumos = estado.obtenerInsumos();
-            const tope = leerCantidadTotal();
-            const corto = insumos.find((i) => i.cantidad < tope);
-            const ok = !corto;
-            errorInsumos?.classList.toggle('hidden', ok);
-            if (errorInsumos && corto) errorInsumos.textContent = `${corto.nombre}: necesita al menos ${tope.toLocaleString('es-CO')} (la cantidad total de la ficha).`;
-            return ok;
-        };
     })();
 
     // ── Talleres de confección ───────────────────────────────────────────────────────────
@@ -441,8 +274,8 @@
             try {
                 const rSolicitar = await fetch(`${urlBase}/solicitar-subida`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
-                    body: JSON.stringify({ orden: total + 1, nombreOriginal: archivo.name, pesoBytes: archivo.size })
+                    headers: { 'Content-Type': 'application/json'},
+                    body: JSON.stringify({ orden: total + 1, nombreOriginal: archivo.name, pesoBytes: archivo.size, duracionSegundos: await duracionVideo(archivo) })
                 });
                 const dSolicitar = await rSolicitar.json();
                 if (!rSolicitar.ok || !dSolicitar.success) throw new Error(dSolicitar.mensaje || 'No se pudo iniciar la subida.');
@@ -450,14 +283,13 @@
                 if (dSolicitar.uploadURL) await subirArchivo(archivo, dSolicitar.uploadURL);
 
                 if (textoProgreso) textoProgreso.textContent = 'Procesando…';
-                const rConfirmar = await fetch(`${urlBase}/${dSolicitar.idVideo}/confirmar`, { method: 'POST', headers: { 'CSRF-Token': CSRF } });
+                const rConfirmar = await fetch(`${urlBase}/${dSolicitar.idVideo}/confirmar`, { method: 'POST', });
                 const dConfirmar = await rConfirmar.json();
                 if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
                 if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'Cloudflare no pudo procesar el video.');
 
                 const rAsociar = await fetch(`/admin/procesos/fichas-confeccion/${idFicha}/videos/${dSolicitar.idVideo}/asociar`, {
-                    method: 'POST', headers: { 'CSRF-Token': CSRF }
-                });
+                    method: 'POST', });
                 const dAsociar = await rAsociar.json();
                 if (!rAsociar.ok || !dAsociar.success) throw new Error(dAsociar.mensaje || 'No se pudo asociar el video a la ficha.');
 
@@ -499,7 +331,6 @@
                 if (errorEl) { errorEl.textContent = 'Escribe una referencia.'; errorEl.classList.remove('hidden'); }
                 return;
             }
-            if (!estado.validarColores()) return;
             if (estado.validarInsumos && !estado.validarInsumos()) return;
             if (estado.validarTalleres && !estado.validarTalleres()) return;
 
@@ -516,14 +347,12 @@
             try {
                 const r = await fetch(`/admin/procesos/fichas-confeccion/${idFicha}/actualizar`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         referencia,
-                        cantidadTotal: leerCantidadTotal(),
                         complementos: inputComplementos?.value || '',
                         observaciones: inputObservaciones?.value || '',
                         precioConfeccion,
-                        colores: estado.obtenerColores(),
                         insumos: estado.obtenerInsumos(),
                         talleres: estado.obtenerTalleres()
                     })

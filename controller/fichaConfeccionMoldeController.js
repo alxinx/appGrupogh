@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import sharp from 'sharp';
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 import { FichaConfeccionMolde, FichaConfeccionMoldeIaIntento, FichaConfeccionDxf, FichaConfeccionDxfMaterial, Material } from '../models/index.js';
@@ -6,7 +7,7 @@ import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { keyDocumento, urlDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { validarImagen, detectarTipoReal, aWebp } from '../helpers/imagenSegura.js';
 import { esPdfSeguro } from '../helpers/comprobantesMovimiento.js';
-import { construirPromptMolde } from '../helpers/moldeIa.js';
+import { construirPromptMolde, marcarIntentosInterrumpidos, MINUTOS_MAXIMO_GENERACION } from '../helpers/moldeIa.js';
 import { encolarGeneracionMoldeIa } from '../helpers/colaMoldeIa.js';
 
 // Molde (JPG/PDF) de una ficha de confección y sus intentos de generación de imagen con IA
@@ -26,16 +27,20 @@ const subirMolde = async (req, res) => {
             return res.status(422).json({ success: false, mensaje: 'No se recibió ningún archivo.' });
         }
 
-        const buffer = req.file.buffer;
-        const esImagen = detectarTipoReal(buffer) === 'image/jpeg';
+        let buffer = req.file.buffer;
+        const tipoReal = detectarTipoReal(buffer);
+        const esImagen = tipoReal === 'image/jpeg' || tipoReal === 'image/webp';
         const esPdf = !esImagen && esPdfSeguro(buffer);
 
         if (!esImagen && !esPdf) {
-            return res.status(422).json({ success: false, mensaje: 'Sube un JPG o un PDF del molde.' });
+            return res.status(422).json({ success: false, mensaje: 'Sube un JPG, un WebP o un PDF del molde.' });
         }
         if (esImagen) {
             const validacion = await validarImagen(buffer, { maxBytes: 10 * 1024 * 1024 });
             if (!validacion.ok) return res.status(422).json({ success: false, mensaje: validacion.mensaje });
+            // Un WebP se guarda convertido a JPG: el PDF de la ficha (pdfkit) no dibuja WebP y
+            // el resto del flujo (columna tipoArchivo, IA) ya trabaja con JPG.
+            if (tipoReal === 'image/webp') buffer = await sharp(buffer).rotate().jpeg({ quality: 92 }).toBuffer();
         }
 
         const tipoArchivo = esImagen ? 'jpg' : 'pdf';
@@ -137,9 +142,15 @@ const iniciarGeneracionMolde = async (req, res) => {
 const estadoIntentoMolde = async (req, res) => {
     try {
         const intento = await FichaConfeccionMoldeIaIntento.findByPk(req.params.idIntento, {
-            attributes: ['idIntento', 'idMolde', 'numeroIntento', 'pattern', 'colors', 'fabricUsado', 'estado', 'errorMensaje', 'objectKeyBorrador', 'aprobado', 'objectKeyFinal']
+            attributes: ['idIntento', 'idMolde', 'numeroIntento', 'pattern', 'colors', 'fabricUsado', 'estado', 'errorMensaje', 'objectKeyBorrador', 'aprobado', 'objectKeyFinal', 'createdAt']
         });
         if (!intento) return res.status(404).json({ success: false, mensaje: 'Ese intento no existe.' });
+
+        // Colgado: lleva más del máximo en 'procesando' → el proceso que lo generaba murió.
+        const limite = new Date(Date.now() - MINUTOS_MAXIMO_GENERACION * 60 * 1000);
+        if (intento.estado === 'procesando' && intento.createdAt < limite) {
+            if (await marcarIntentosInterrumpidos({ antesDe: limite, idIntento: intento.idIntento })) await intento.reload();
+        }
 
         let previewUrl = null;
         const key = intento.objectKeyFinal || intento.objectKeyBorrador;

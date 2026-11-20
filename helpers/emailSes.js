@@ -1,8 +1,8 @@
 import { SendEmailCommand } from "@aws-sdk/client-ses";
 import dotenv from "dotenv";
 import sesClient from "../config/ses.js";
-import { COLORES_CORREO as C, LOGO_URL, SOPORTE_WHATSAPP } from "../config/marca.js";
-import { plantillaSimple } from "./plantillaCorreo.js";
+import { COLORES_CORREO as C, SOPORTE_WHATSAPP } from "../config/marca.js";
+import { plantillaMarca, ICONO_CORREO, filaCorreo, parrafoCorreo, botonCorreo, tablaProductosCorreo } from "./plantillaCorreo.js";
 import { money } from "./formatMoney.js";
 dotenv.config();
 
@@ -56,10 +56,11 @@ export async function enviarCorreoSes({ remitente, destinatario, asunto, html, t
 // Devuelve true/false — nunca lanza.
 export async function sendEmployeeNotification({ to, nombreEmpleado, asunto, mensajeHtml }) {
     const asuntoFinal = asunto || `Aviso para ${nombreEmpleado}`;
-    const html = plantillaSimple({
+    const html = plantillaMarca({
+        icono: { simbolo: '&#128276;', ...ICONO_CORREO.marca },
         titulo: asuntoFinal,
-        saludo: `Hola, ${nombreEmpleado},`,
-        cuerpoHtml: mensajeHtml
+        saludo: `Hola ${nombreEmpleado} &#128075;`,
+        filasHtml: filaCorreo(parrafoCorreo(mensajeHtml))
     });
     return enviarCorreoSes({ remitente: REMITENTE_EMPLEADOS, destinatario: to, asunto: asuntoFinal, html, contexto: 'empleado' });
 }
@@ -69,10 +70,12 @@ export async function sendEmployeeNotification({ to, nombreEmpleado, asunto, men
 // ni el cambio de estado del pedido que lo dispara.
 export async function sendPurchaseStatusUpdate({ to, nombreCliente, numeroPedido, estado, mensajeHtml }) {
     const asunto = `Tu pedido ${numeroPedido}: ${estado}`;
-    const html = plantillaSimple({
-        titulo: asunto,
-        saludo: `Hola, ${nombreCliente},`,
-        cuerpoHtml: mensajeHtml || `<p>El estado de tu pedido <strong>${numeroPedido}</strong> cambió a <strong>${estado}</strong>.</p>`
+    const html = plantillaMarca({
+        icono: { simbolo: '&#128717;', ...ICONO_CORREO.marca },
+        titulo: `Pedido #${numeroPedido}: ${estado}`,
+        saludo: `Hola ${nombreCliente} &#128075;`,
+        filasHtml: filaCorreo(parrafoCorreo(mensajeHtml || `<p style="margin:0;">El estado de tu pedido <strong>${numeroPedido}</strong> cambió a <strong>${estado}</strong>.</p>`)),
+        despedida: 'Gracias por confiar en nosotros &#128156;'
     });
     return enviarCorreoSes({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto, html, contexto: 'pedido' });
 }
@@ -83,19 +86,16 @@ export async function sendPurchaseStatusUpdate({ to, nombreCliente, numeroPedido
 // mismos envíos respetando el rate limit de SES.
 //
 // urlBaja es opcional pero se espera siempre que este correo salga por una lista (varios
-// destinatarios): es la única de las tres notificaciones que no es 1-a-1 transaccional,
-// así que es la que necesita forma de bajarse.
+// destinatarios): es la única de las notificaciones que no es 1-a-1 transaccional, así
+// que es la que necesita forma de bajarse.
 export async function sendProductAvailableNotification({ to, nombreProducto, urlProducto, urlBaja }) {
     const asunto = `¡${nombreProducto} ya está disponible!`;
-    const html = plantillaSimple({
-        titulo: asunto,
-        saludo: '¡Buenas noticias!',
-        cuerpoHtml: `
-            <p><strong>${nombreProducto}</strong> volvió a tener stock.</p>
-            ${urlProducto ? `<p style="text-align:center; margin-top:24px;">
-                <a href="${urlProducto}" style="background-color:#FF5EAA; color:#ffffff; padding:12px 24px; text-decoration:none; border-radius:8px; font-weight:bold; display:inline-block;">Verlo ahora</a>
-            </p>` : ''}
-        `,
+    const html = plantillaMarca({
+        icono: { simbolo: '&#10024;', ...ICONO_CORREO.ok },
+        titulo: '¡Buenas noticias!',
+        intro: `<strong style="color:#241f38;">${nombreProducto}</strong> volvió a tener stock.`,
+        filasHtml: urlProducto ? filaCorreo(botonCorreo(urlProducto, 'Verlo ahora'), { arriba: 24 }) : '',
+        despedida: 'Gracias por confiar en nosotros &#128156;',
         pieBaja: urlBaja
     });
     return enviarCorreoSes({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto, html, contexto: 'producto-disponible' });
@@ -103,8 +103,7 @@ export async function sendProductAvailableNotification({ to, nombreProducto, url
 
 // ─── Confirmación de pedido web ─────────────────────────────────────────────
 //
-// A diferencia de plantillaSimple() (la que usan las otras tres notificaciones), esta va con
-// tabla + estilos inline de punta a punta: es la que de verdad tiene que abrirse bien en
+// Como todos los correos (plantillaMarca), va con tabla + estilos inline de punta a punta: es la que de verdad tiene que abrirse bien en
 // Outlook/Gmail/Apple Mail, no solo en un navegador. flex/grid y <style> no sobreviven a
 // Outlook de escritorio.
 
@@ -114,51 +113,6 @@ const NOMBRE_METODO_PAGO = {
     pse: 'PSE — Pagos Seguros en Línea',
     nequi: 'Nequi'
 };
-
-const PALETA_SWATCH = [
-    { bg: '#f6c9de', fg: '#ad3d76' },
-    { bg: '#d8d3f0', fg: '#5b4fa3' },
-    { bg: '#c9e8dc', fg: '#1f7a58' }
-];
-
-function inicialesProducto(nombre) {
-    return (nombre || '')
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map(p => p[0].toUpperCase())
-        .join('') || '·';
-}
-
-function filaProducto(item, idx) {
-    const { bg, fg } = PALETA_SWATCH[idx % PALETA_SWATCH.length];
-    const meta = [item.talla ? `Talla ${item.talla}` : null, item.color ? `Color: ${item.color}` : null].filter(Boolean).join(' · ');
-
-    // La foto real del producto cuando la hay; si no, el cuadro con las iniciales. Un
-    // producto puede no tener imagen cargada todavía, y una etiqueta <img> rota se ve
-    // mucho peor que el cuadro de color. El mismo criterio que en el correo de
-    // cancelación (helpers/mailPedidoCancelado.js). El color de fondo se queda debajo de
-    // la foto: es lo que ve el cliente mientras la imagen carga, o si bloquea imágenes.
-    const miniatura = item.imagen
-        ? `<td style="width:44px;"><img src="${item.imagen}" width="44" height="44" alt="${item.nombreProducto}" style="display:block;width:44px;height:44px;border-radius:10px;object-fit:cover;background:${bg};"></td>`
-        : `<td style="width:44px;height:44px;border-radius:10px;background:${bg};color:${fg};text-align:center;vertical-align:middle;font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;">${inicialesProducto(item.nombreProducto)}</td>`;
-
-    return `
-    <tr>
-        <td style="padding:14px 0;border-bottom:1px solid #ece8f3;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                ${miniatura}
-                <td style="padding-left:12px;font-family:Helvetica,Arial,sans-serif;">
-                    <div style="font-weight:600;color:#241f38;font-size:13.5px;">${item.nombreProducto}</div>
-                    ${meta ? `<div style="font-size:12px;color:#8a84a0;margin-top:2px;">${meta}</div>` : ''}
-                </td>
-            </tr></table>
-        </td>
-        <td style="padding:14px 0;border-bottom:1px solid #ece8f3;text-align:right;font-family:Helvetica,Arial,sans-serif;font-size:13.5px;">${item.cantidad}</td>
-        <td style="padding:14px 0;border-bottom:1px solid #ece8f3;text-align:right;font-family:Helvetica,Arial,sans-serif;font-size:13.5px;">$${money(item.valorUnidad)}</td>
-        <td style="padding:14px 0;border-bottom:1px solid #ece8f3;text-align:right;font-family:Helvetica,Arial,sans-serif;font-size:13.5px;font-weight:700;">$${money(item.subTotal)}</td>
-    </tr>`;
-}
 
 function pasoTracker({ metodoPago }) {
     // Único caso que espera algo antes de arrancar: QR, porque nadie confirmó todavía
@@ -233,25 +187,7 @@ export async function sendOrderConfirmation({
         </table>
     </td></tr>` : '';
 
-    const html = `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#eef0f4;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef0f4;padding:24px 12px;">
-<tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;">
-
-    <tr><td style="background:#fbf4f9;padding:32px 32px 26px;text-align:center;">
-        <img src="${LOGO_URL}" width="60" height="60" alt="Grupo GH" style="border-radius:50%;display:inline-block;">
-    </td></tr>
-
-    <tr><td style="padding:28px 40px 4px;text-align:center;font-family:Helvetica,Arial,sans-serif;">
-        <div style="width:44px;height:44px;line-height:44px;border-radius:50%;background:#e7f8f1;color:${C.ok};margin:0 auto 14px;font-size:20px;">&#10003;</div>
-        <h1 style="margin:0 0 6px;font-size:21px;color:#241f38;">¡Pedido confirmado!</h1>
-        <p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#4b4560;">Hola ${nombreCliente} &#128075;</p>
-        <p style="margin:0 auto;max-width:38ch;font-size:13.5px;color:#8a84a0;line-height:1.6;">Gracias por tu compra. Recibimos tu pedido correctamente y está siendo procesado.</p>
-    </td></tr>
-
+    const filasHtml = `
     <tr><td style="padding:22px 32px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #ece8f3;border-radius:12px;">
             <tr>
@@ -297,17 +233,7 @@ export async function sendOrderConfirmation({
         </table>
     </td></tr>
 
-    <tr><td style="padding:22px 32px 0;font-family:Helvetica,Arial,sans-serif;">
-        <p style="margin:0 0 10px;font-size:13.5px;font-weight:700;color:#241f38;">Productos pedidos</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-                <th align="left" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8a84a0;padding-bottom:8px;border-bottom:1px solid #ece8f3;">Producto</th>
-                <th align="right" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8a84a0;padding-bottom:8px;border-bottom:1px solid #ece8f3;">Cant.</th>
-                <th align="right" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8a84a0;padding-bottom:8px;border-bottom:1px solid #ece8f3;">Precio</th>
-                <th align="right" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8a84a0;padding-bottom:8px;border-bottom:1px solid #ece8f3;">Subtotal</th>
-            </tr>
-            ${items.map(filaProducto).join('')}
-        </table>
+    <tr><td style="padding:22px 32px 0;font-family:Helvetica,Arial,sans-serif;">${tablaProductosCorreo('Productos pedidos', items)}
     </td></tr>
 
     <tr><td style="padding:22px 32px 0;">
@@ -337,20 +263,16 @@ export async function sendOrderConfirmation({
         </tr></table>
     </td></tr>
 
-    ${avisoQr}
+    ${avisoQr}`;
 
-    <tr><td style="padding:26px 32px 30px;text-align:center;font-family:Helvetica,Arial,sans-serif;">
-        <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#241f38;">Gracias por confiar en nosotros &#128156;</p>
-        <p style="margin:0;font-size:12px;color:#8a84a0;">Grupo GH · Medellín, Colombia</p>
-        <p style="margin:8px 0 0;font-size:12px;color:#8a84a0;">Este es un mensaje automático — no respondas directamente a este correo.</p>
-        ${process.env.FOOTER_CODEDREAM ? `<p style="margin:14px 0 0;font-size:9.5px;color:#8a84a0;opacity:.75;">${process.env.FOOTER_CODEDREAM}</p>` : ''}
-    </td></tr>
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+    const html = plantillaMarca({
+        icono: { simbolo: '&#10003;', ...ICONO_CORREO.ok },
+        titulo: '¡Pedido confirmado!',
+        saludo: `Hola ${nombreCliente} &#128075;`,
+        intro: 'Gracias por tu compra. Recibimos tu pedido correctamente y está siendo procesado.',
+        filasHtml,
+        despedida: 'Gracias por confiar en nosotros &#128156;'
+    });
 
     return enviarCorreoSes({ remitente: REMITENTE_COMPRAS, destinatario: to, asunto: `Pedido confirmado #${numeroPedido}`, html, contexto: 'confirmacion-pedido' });
 }

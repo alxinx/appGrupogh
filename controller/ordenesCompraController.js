@@ -6,10 +6,17 @@ import PDFDocument from 'pdfkit';
 import db from '../config/bd.js';
 import {
     OrdenesCompra, DetallesOrdenCompra, OrdenesCompraHistorial, Provedores, CategoriasDeProvedores,
-    Departamentos, Municipios, Atributos
+    Departamentos, Atributos, Material
 } from '../models/index.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
+import { empleadoTienePermiso } from '../middlewares/verificarPermisoEmpleado.js';
+import { resolverUbicacionesProveedores, inicialesProveedor } from '../helpers/proveedores.js';
 import { money } from '../helpers/formatMoney.js';
+import { TIPOS_DOCUMENTO_PROVEEDOR } from '../helpers/tiposDocumento.js';
+import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO } from '../helpers/insumos.js';
+import { errorPublico } from '../helpers/helpers.js';
+import { dec, a4, convertirRecepcion, factorFijo, UNIDAD_CONSUMO_CORTA, UNIDADES_CONSUMO, CONVERSIONES_FIJAS } from '../helpers/unidadesInsumo.js';
+import { registrarEntrada, recordarPresentacion, presentacionesRecordadas, actorDelPanel } from '../helpers/inventarioInsumos.js';
 import {
     TIPOS_ORDEN, ESTADOS_ORDEN, IVA_PORCENTAJE_DEFECTO, UNIDAD_ETIQUETA_CORTA, coloresSimplesDisponibles, materialesDisponibles,
     validarLineaOrden, calcularTotalesOrden, validarCabeceraOrden, validarColorNuevo,
@@ -20,21 +27,6 @@ const SECUENCIA_ORDEN = 'orden_compra_insumo';
 const PREFIJO_ORDEN = 'OC-';
 const __dirname_ordenes = path.dirname(fileURLToPath(import.meta.url));
 const LOGO_PATH_ORDENES = path.resolve(__dirname_ordenes, '../public/img/logo.png');
-
-// Resuelve ciudad/departamento (códigos DIVIPOLA en PROVEDORES, CLAUDE.md §6) de VARIAS
-// filas de una sola vez — dos consultas con Op.in, nunca un findOne por proveedor dentro
-// de un map/forEach (CLAUDE.md §7, prevención de N+1).
-const resolverUbicacionesProveedores = async (proveedores) => {
-    const idsCiudad = [...new Set(proveedores.map(p => p.ciudad).filter(Boolean))];
-    const idsDepto   = [...new Set(proveedores.map(p => p.departamento).filter(Boolean))];
-    const [municipios, departamentos] = await Promise.all([
-        idsCiudad.length ? Municipios.findAll({ where: { id: { [Op.in]: idsCiudad } }, attributes: ['id', 'nombre'], raw: true }) : [],
-        idsDepto.length  ? Departamentos.findAll({ where: { id: { [Op.in]: idsDepto } }, attributes: ['id', 'nombre'], raw: true }) : []
-    ]);
-    const mapaMunicipios   = new Map(municipios.map(m => [m.id, m.nombre]));
-    const mapaDepartamentos = new Map(departamentos.map(d => [d.id, d.nombre]));
-    return { mapaMunicipios, mapaDepartamentos };
-};
 
 // Una sola función para "Enviada" en vez de repetir ESTADOS_ORDEN.find(...) en el PDF, el
 // resumen de edición y el historial de movimientos.
@@ -48,9 +40,6 @@ const ICONO_ACCION_HISTORIAL = {
     conversion: 'fi-rr-exchange',
     recepcion:  'fi-rr-box-check'
 };
-
-const inicialesProveedor = (nombre) =>
-    String(nombre || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('') || '—';
 
 // Años/meses desde createdAt — lo único "real" que se puede mostrar hoy del historial de
 // un proveedor (no hay calificación ni % de cumplimiento en ningún lado de la base de
@@ -85,16 +74,28 @@ const presentarProveedorPicker = (p, mapaMunicipios, mapaDepartamentos) => ({
 // precargado (se busca en vivo, ver buscarProveedoresOrden); colores y materiales sí,
 // porque son catálogos chicos que ya se traen completos en el resto del módulo
 // (helpers/insumos.js, mismo criterio que homeInsumos).
+// Lo que necesita el modal "Nuevo insumo" (components/modalNuevoInsumo.pug), solo para quien
+// puede crear insumos: a los demás el buscador no les ofrece crearlo. La garantía es la ruta
+// del alta, POST /admin/insumos (pIns('CREATE')).
+const altaInsumoSiPuede = (res) => res.locals.puedeAdmin?.('Insumos', 'CREATE') === true
+    ? { tiposInsumo: TIPOS_INSUMO, unidadesCompra: UNIDADES_COMPRA, unidadesConsumo: UNIDADES_CONSUMO, limites: LIMITES_INSUMO }
+    : null;
+
 const homeOrdenCompra = async (req, res) => {
     try {
-        const [colores, materiales] = await Promise.all([
+        // El modal "Crear proveedor" solo se dibuja para quien puede crearlos (la ruta del
+        // alta, POST /admin/provedores/new, es la que lo garantiza): a los demás no se les
+        // consultan ni sus catálogos.
+        const puedeCrearProveedor = res.locals.puedeAdmin?.('Provedores', 'CREATE') === true;
+        const [colores, materiales, departamentos, categoriasProvedores] = await Promise.all([
             coloresSimplesDisponibles(),
-            materialesDisponibles()
+            materialesDisponibles(),
+            puedeCrearProveedor ? Departamentos.findAll({ attributes: ['id', 'nombre'], order: [['nombre', 'ASC']], raw: true }) : [],
+            puedeCrearProveedor ? CategoriasDeProvedores.findAll({ attributes: ['idCategoria', 'nombre'], raw: true }) : []
         ]);
         return res.render('./administrador/produccion/ordenCompra', {
             pagina: 'Insumos',
             subPagina: 'Compra de insumos',
-            csrfToken: req.csrfToken(),
             currentPath: '/insumos',
             titulo: 'Compra de insumos',
             subtitulo: 'Gestiona las compras de insumos y materias primas a tus proveedores.',
@@ -102,7 +103,16 @@ const homeOrdenCompra = async (req, res) => {
             tiposOrden: TIPOS_ORDEN,
             ivaPorcentaje: IVA_PORCENTAJE_DEFECTO,
             colores,
-            materiales
+            materiales,
+            altaInsumo: altaInsumoSiPuede(res),
+            // Para "La mercancía ya llegó": la tabla de conversiones fijas y el contenido que se
+            // confirmó la última vez por material y presentación (la ventana los precarga).
+            datosRecepcion: { factores: CONVERSIONES_FIJAS, recordadas: await presentacionesRecordadas(materiales.map(m => m.idMaterial)) },
+            presentaciones: UNIDADES_COMPRA,
+            puedeCrearProveedor,
+            departamentos,
+            categoriasProvedores,
+            tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR
         });
     } catch (e) {
         console.error('ordenesCompraController(home):', e);
@@ -308,25 +318,53 @@ const guardarBorradorOrden = async (req, res) => {
 // verificarCodigoEmpleadoAdmin + verificarPermisoEmpleado (routes/adminRoutes.js, mismo
 // candado que editar/suspender un insumo): el código de empleado es imperativo para pasar
 // de borrador a una orden formal.
+//
+// Con `recibirAhora` (la factura llegó con la mercancía): la orden se crea Y se recibe en la
+// misma transacción, con el mismo núcleo que "Recibir orden" (recibirEnTransaccion). Si la
+// recepción falla, tampoco se crea la orden. Recibir exige además que el empleado tenga
+// permiso de EDIT sobre Insumos, igual que la ruta de recepción.
+// `recepcion[i]` = { cantidadLlega, contenido } de la línea i de `lineas`, en el mismo orden.
 const crearOrdenCompra = async (req, res) => {
     const { errores, cabecera, lineas } = await validarOrdenCompleta(req.body);
     if (errores) return res.status(400).json({ success: false, errores, mensaje: 'Revisa los campos marcados.' });
 
+    const recibirAhora = req.body?.recibirAhora === true;
+    if (recibirAhora) {
+        if (cabecera.tipo !== 'orden_compra') return res.status(400).json({ success: false, mensaje: 'Una cotización no se recibe: solo una orden de compra.' });
+        const puede = await empleadoTienePermiso(req.empleadoVerificado?.idUsuario, 'Insumos', 'administrativo', 'EDIT');
+        if (!puede) return res.status(403).json({ success: false, mensaje: 'El empleado no tiene permiso para recibir mercancía (Insumos: editar).' });
+    }
+
     try {
-        const ordenes = await db.transaction(async (transaction) =>
-            insertarOrden({
+        const ordenes = await db.transaction(async (transaction) => {
+            const creadas = await insertarOrden({
                 cabecera, lineas, estado: 'enviada',
                 usuario: req.usuario,
                 empleadoAutoriza: req.empleadoVerificado,
                 transaction
-            })
-        );
+            });
+            if (recibirAhora) {
+                const [orden] = creadas;
+                // bulkCreate inserta en el orden del arreglo: el id autoincremental sigue ese orden.
+                const ids = (await DetallesOrdenCompra.findAll({
+                    where: { idOrdenCompra: orden.idOrdenCompra }, attributes: ['idDetalleOrdenCompra'],
+                    order: [['idDetalleOrdenCompra', 'ASC']], transaction
+                })).map(d => d.idDetalleOrdenCompra);
+                const recepcion = Array.isArray(req.body.recepcion) ? req.body.recepcion : [];
+                const lineasBody = ids.map((idDetalleOrdenCompra, i) => ({ idDetalleOrdenCompra, ...(recepcion[i] || {}) }));
+                await recibirEnTransaccion({ orden, lineasBody, req, transaction });
+            }
+            return creadas;
+        });
         return res.json({
             success: true,
-            mensaje: ordenes.length > 1 ? `${ordenes.length} cotizaciones creadas.` : 'Orden de compra creada.',
+            mensaje: ordenes.length > 1 ? `${ordenes.length} cotizaciones creadas.`
+                : recibirAhora ? 'Orden de compra creada y recibida: entró al inventario.' : 'Orden de compra creada.',
+            recibida: recibirAhora,
             ordenes: ordenes.map(o => ({ idOrdenCompra: o.idOrdenCompra, numeroOrden: o.numeroOrden }))
         });
     } catch (e) {
+        if (e.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message, errores: e.errores });
         console.error('ordenesCompraController(crear):', e);
         return res.status(500).json({ success: false, mensaje: 'No se pudo crear la orden. Intenta de nuevo.' });
     }
@@ -360,7 +398,6 @@ const homeHistorialCompras = async (req, res) => {
         return res.render('./administrador/produccion/historialCompras', {
             pagina: 'Insumos',
             subPagina: 'Historial de compras',
-            csrfToken: req.csrfToken(),
             currentPath: '/insumos',
             titulo: 'Historial de compras',
             subtitulo: 'Órdenes de compra y cotizaciones a proveedores.',
@@ -455,7 +492,10 @@ const cargarOrdenParaDetalle = (idOrdenCompra) => OrdenesCompra.findOne({
         { model: Provedores, as: 'proveedor', include: [{ model: CategoriasDeProvedores, as: 'categorias', attributes: ['nombre'], through: { attributes: [] } }] },
         {
             model: DetallesOrdenCompra, as: 'detalles',
-            include: [{ model: Atributos, as: 'color', attributes: ['idAtributo', 'valor', 'codigo1'] }]
+            include: [
+                { model: Atributos, as: 'color', attributes: ['idAtributo', 'valor', 'codigo1'] },
+                { model: Material, as: 'material', attributes: ['idMaterial', 'unidadConsumo'] }
+            ]
         }
     ],
     order: [[{ model: DetallesOrdenCompra, as: 'detalles' }, 'idDetalleOrdenCompra', 'ASC']]
@@ -479,6 +519,7 @@ const verOrdenCompra = async (req, res) => {
         // que necesita el modal de edición (src/js/ordenCompraDetalle.js) para reseleccionar
         // el insumo y el color exactos al editar una línea existente. cantidadRecibida es
         // null hasta que se confirma la recepción de esa línea (ver "Recibir orden").
+        const recordadas = await presentacionesRecordadas([...new Set(orden.detalles.map(d => d.idMaterial))]);
         const lineas = orden.detalles.map(d => ({
             idDetalleOrdenCompra: d.idDetalleOrdenCompra,
             idMaterial: d.idMaterial,
@@ -492,7 +533,14 @@ const verOrdenCompra = async (req, res) => {
             colorNombre: d.color?.valor || null,
             colorHex: d.color?.codigo1 || null,
             caracteristicas: d.caracteristicas || {},
-            cantidadRecibida: d.cantidadRecibida === null ? null : Number(d.cantidadRecibida)
+            cantidadRecibida: d.cantidadRecibida === null ? null : Number(d.cantidadRecibida),
+            // Para "Recibir orden": en qué se gasta, si la conversión es fija y el contenido
+            // que se sugiere (el último de esta línea o el último confirmado de ese material).
+            unidadConsumo: d.material?.unidadConsumo || 'unidad',
+            factorFijo: factorFijo(d.unidadCompra || 'unidad', d.material?.unidadConsumo || 'unidad'),
+            contenidoSugerido: d.contenidoPorPresentacion !== null
+                ? Number(d.contenidoPorPresentacion)
+                : (recordadas[d.idMaterial]?.[d.unidadCompra] !== undefined ? Number(recordadas[d.idMaterial][d.unidadCompra]) : null)
         }));
 
         // Las demás órdenes de la misma cotización, si la hubo (idGrupoCotizacion) — para
@@ -534,9 +582,10 @@ const verOrdenCompra = async (req, res) => {
         }));
 
         return res.render('./administrador/produccion/ordenCompraDetalle', {
+            altaInsumo: permiteLineas ? altaInsumoSiPuede(res) : null,
+            presentaciones: UNIDADES_COMPRA,
             pagina: 'Insumos',
             subPagina: 'Compra de insumos',
-            csrfToken: req.csrfToken(),
             currentPath: '/insumos',
             titulo: orden.numeroOrden,
             subtitulo: TIPOS_ORDEN.find(t => t.valor === orden.tipo)?.etiqueta || orden.tipo,
@@ -586,7 +635,7 @@ const guardarEdicionOrden = async (req, res) => {
     try {
         const ordenActual = await OrdenesCompra.findOne({
             where: { idOrdenCompra: req.params.idOrdenCompra },
-            include: [{ model: DetallesOrdenCompra, as: 'detalles', attributes: ['idDetalleOrdenCompra'] }]
+            include: [{ model: DetallesOrdenCompra, as: 'detalles', attributes: ['idDetalleOrdenCompra', 'cantidadConsumoRecibida'] }]
         });
         if (!ordenActual) return res.status(404).json({ success: false, mensaje: 'Esa orden no existe.' });
 
@@ -594,6 +643,7 @@ const guardarEdicionOrden = async (req, res) => {
         const { errores, datos } = await validarEdicionOrden(req.body, {
             tipo: ordenActual.tipo,
             estado: ordenActual.estado,
+            entroAlInventario: ordenActual.detalles.some(d => Number(d.cantidadConsumoRecibida) > 0),
             fechaOrden: ordenActual.fechaOrden,
             idsLineasActuales
         });
@@ -744,80 +794,99 @@ const convertirACompra = async (req, res) => {
     }
 };
 
-// POST /admin/insumos/compra/:idOrdenCompra/recibir — "Recibir orden": el operador confirma
-// qué y cuánto llegó de cada insumo, línea por línea — puede ser menos, igual o más que lo
-// pedido (entrega parcial, completa o con excedente), nunca se asume que llegó completo.
-// Deja estado='recibida' y una fila en el historial con el detalle de cada línea. Mismo
-// candado que el resto de la edición (verificarCodigoEmpleadoAdmin + verificarPermisoEmpleado,
-// routes/adminRoutes.js): confirmar una recepción compromete el inventario tanto como
-// crear la orden.
+// POST /admin/insumos/compra/:idOrdenCompra/recibir — "Recibir orden": lo que llega de cada
+// insumo ENTRA AL INVENTARIO (PLAN_COSTEO_PRODUCCION.md §2). Acumulativa: se puede recibir
+// varias veces (entregas parciales), cada llegada suma a lo recibido y es su propia capa de
+// inventario con su costo. Corregir hacia abajo lo ya recibido es un ajuste en el perfil del
+// insumo, no una recepción (ya es inventario y pudo gastarse).
 //
-// Disponible para cualquier estado salvo 'cancelada' (helpers/ordenesCompra.js,
-// permiteRecibirOrden) — incluso para una orden YA 'recibida', para poder corregir una
-// cantidad mal anotada sin anular y rehacer toda la orden.
+// Por línea: cuánto llega en su presentación y, si la presentación no tiene conversión fija
+// a la unidad de consumo (bolsa→unidades, kg→cm de resorte), cuánto trae cada una. El costo
+// de la capa es el valor unitario de la línea ÷ ese contenido.
+//
+// Mismo candado que el resto de la edición (código de empleado + su permiso, routes/
+// adminRoutes.js). La orden se bloquea (FOR UPDATE) mientras se recibe: dos recepciones a la
+// vez no pueden sumar dos veces lo mismo.
+// El núcleo de una recepción, dentro de la transacción del llamador: valida lo que llega
+// contra las líneas reales, suma a lo recibido, crea una capa de inventario por línea, deja
+// la orden en 'recibida' y escribe la bitácora. Lo usan "Recibir orden" y la creación de una
+// orden con "La mercancía ya llegó" — una sola implementación de la entrada al inventario.
+// `orden` tiene que venir bloqueada (FOR UPDATE) o recién creada en esta transacción.
+const recibirEnTransaccion = async ({ orden, lineasBody, req, transaction }) => {
+    if (!permiteRecibirOrden(orden)) {
+        throw errorPublico(orden.tipo !== 'orden_compra'
+            ? 'Una cotización no se recibe: conviértela primero en orden de compra.'
+            : 'No se puede recibir una orden cancelada.');
+    }
+    const detalles = await DetallesOrdenCompra.findAll({
+        where: { idOrdenCompra: orden.idOrdenCompra },
+        include: [{ model: Material, as: 'material', attributes: ['idMaterial', 'unidadConsumo'] }],
+        transaction
+    });
+    const { errores, datos } = validarRecepcionOrden({ lineas: lineasBody }, detalles);
+    if (errores) throw Object.assign(errorPublico(errores[0]?.mensaje || 'Revisa las cantidades recibidas.'), { errores });
+
+    const actor = actorDelPanel(req);
+    const pctIva = dec(orden.porcentajeIva).div(100);
+    const partes = [];
+    for (const { detalle: d, llega, contenido, fijo } of datos.lineas) {
+        const { cantidadConsumo, costoUnitario } = convertirRecepcion({ cantidad: llega, contenido, valorUnitario: d.valorUnitario });
+        await DetallesOrdenCompra.update({
+            cantidadRecibida: a4(dec(d.cantidadRecibida).plus(llega)),
+            cantidadConsumoRecibida: a4(dec(d.cantidadConsumoRecibida).plus(cantidadConsumo)),
+            contenidoPorPresentacion: a4(contenido)
+        }, { where: { idDetalleOrdenCompra: d.idDetalleOrdenCompra }, transaction });
+
+        await registrarEntrada({
+            idMaterial: d.idMaterial,
+            idAtributoColor: d.idAtributoColor,
+            cantidad: cantidadConsumo,
+            costoUnitario,
+            ivaUnitario: costoUnitario.times(pctIva),
+            origen: 'compra',
+            idDetalleOrdenCompra: d.idDetalleOrdenCompra,
+            actor,
+            transaction
+        });
+        // El contenido confirmado queda como sugerencia para la próxima recepción.
+        if (!fijo) await recordarPresentacion({ idMaterial: d.idMaterial, presentacion: d.unidadCompra || 'unidad', contenido, transaction });
+
+        const uCompra = UNIDAD_ETIQUETA_CORTA[d.unidadCompra] || '';
+        const uConsumo = UNIDAD_CONSUMO_CORTA[d.material?.unidadConsumo] || '';
+        partes.push(`${d.nombreMaterial}: llegaron ${fmtCantidad(llega)} ${uCompra}`.trim()
+            + (fijo && d.unidadCompra === 'unidad' ? '' : ` (${fmtCantidad(cantidadConsumo)} ${uConsumo})`));
+    }
+
+    if (orden.estado !== 'recibida') await orden.update({ estado: 'recibida' }, { transaction });
+    await registrarMovimientoOrden({
+        idOrdenCompra: orden.idOrdenCompra,
+        accion: 'recepcion',
+        resumen: `Recibió — ${partes.join('; ')}. Entró al inventario de insumos.`,
+        usuario: req.usuario,
+        empleado: req.empleadoVerificado,
+        transaction
+    });
+};
+
 const recibirOrden = async (req, res) => {
     try {
-        const ordenActual = await OrdenesCompra.findOne({
-            where: { idOrdenCompra: req.params.idOrdenCompra },
-            include: [{ model: DetallesOrdenCompra, as: 'detalles' }]
-        });
-        if (!ordenActual) return res.status(404).json({ success: false, mensaje: 'Esa orden no existe.' });
-        if (!permiteRecibirOrden(ordenActual)) {
-            return res.status(400).json({ success: false, mensaje: 'No se puede recibir una orden cancelada.' });
-        }
-
-        const idsLineasActuales = ordenActual.detalles.map(d => d.idDetalleOrdenCompra);
-        const { errores, datos } = validarRecepcionOrden(req.body, idsLineasActuales);
-        if (errores) return res.status(400).json({ success: false, errores, mensaje: 'Revisa las cantidades recibidas.' });
-
-        const estadoAnterior = ordenActual.estado;
-        try {
-            await db.transaction(async (transaction) => {
-                const partes = [];
-                for (const l of datos.lineas) {
-                    await DetallesOrdenCompra.update(
-                        { cantidadRecibida: l.cantidadRecibida },
-                        { where: { idDetalleOrdenCompra: l.idDetalleOrdenCompra, idOrdenCompra: ordenActual.idOrdenCompra }, transaction }
-                    );
-
-                    const linea = ordenActual.detalles.find(d => d.idDetalleOrdenCompra === l.idDetalleOrdenCompra);
-                    const unidad = UNIDAD_ETIQUETA_CORTA[linea.unidadCompra] || '';
-                    const pedida = Number(linea.cantidad);
-                    const diff = l.cantidadRecibida - pedida;
-                    const sufijo = diff === 0 ? 'completo' : diff > 0 ? `+${diff} ${unidad}` : `faltan ${Math.abs(diff)} ${unidad}`;
-                    partes.push(`${linea.nombreMaterial}: ${l.cantidadRecibida}/${pedida} ${unidad} (${sufijo})`);
-                }
-
-                // Condicional al estado leído al abrir la pantalla (CLAUDE.md §9): si otra
-                // pestaña ya la cambió mientras tanto, esta escritura no la pisa en silencio.
-                const [filas] = await OrdenesCompra.update(
-                    { estado: 'recibida' },
-                    { where: { idOrdenCompra: ordenActual.idOrdenCompra, estado: estadoAnterior }, transaction }
-                );
-                if (!filas) throw new Error('CONFLICTO_CONCURRENCIA');
-
-                await registrarMovimientoOrden({
-                    idOrdenCompra: ordenActual.idOrdenCompra,
-                    accion: 'recepcion',
-                    resumen: `Recibió el pedido — ${partes.join('; ')}.`,
-                    usuario: req.usuario,
-                    empleado: req.empleadoVerificado,
-                    transaction
-                });
+        await db.transaction(async (transaction) => {
+            const orden = await OrdenesCompra.findOne({
+                where: { idOrdenCompra: req.params.idOrdenCompra }, lock: transaction.LOCK.UPDATE, transaction
             });
-        } catch (e) {
-            if (e.message === 'CONFLICTO_CONCURRENCIA') {
-                return res.status(409).json({ success: false, mensaje: 'La orden cambió mientras tanto en otra pestaña — recarga antes de confirmar la recepción.' });
-            }
-            throw e;
-        }
-
-        return res.json({ success: true, mensaje: 'Recepción registrada.', estado: 'recibida' });
+            if (!orden) throw errorPublico('Esa orden no existe.', 404);
+            await recibirEnTransaccion({ orden, lineasBody: req.body?.lineas, req, transaction });
+        });
+        return res.json({ success: true, mensaje: 'Recepción registrada: entró al inventario.', estado: 'recibida' });
     } catch (e) {
+        if (e.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message, errores: e.errores });
         console.error('ordenesCompraController(recibir):', e);
         return res.status(500).json({ success: false, mensaje: 'No se pudo registrar la recepción. Intenta de nuevo.' });
     }
 };
+
+// Cantidad para un texto ("2,5", "18.400"): hasta 4 decimales, sin ceros de relleno.
+const fmtCantidad = (d) => Number(a4(d)).toLocaleString('es-CO', { maximumFractionDigits: 4 });
 
 // GET /admin/insumos/compra/:idOrdenCompra/pdf — comprobante en PDF de la orden/cotización.
 // Mismo patrón A4 que generarInformeCreditoPDF (adminControllers.js): streaming directo con

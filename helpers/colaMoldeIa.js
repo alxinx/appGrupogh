@@ -1,6 +1,6 @@
 import { Queue, Worker } from 'bullmq';
 import dotenv from 'dotenv';
-import { procesarIntentoMoldeIa } from './moldeIa.js';
+import { procesarIntentoMoldeIa, marcarIntentosInterrumpidos } from './moldeIa.js';
 
 dotenv.config();
 
@@ -42,6 +42,12 @@ if (REDIS_CONFIGURADO) {
         console.error(`[cola-molde-ia] job ${job?.id} (intento ${job?.data?.idIntento}) falló: ${err.message}`);
     });
 } else {
+    // Sin cola, la generación vive en este proceso: si el proceso se reinició (un deploy,
+    // nodemon, una caída), ningún intento que quedó en 'procesando' va a terminar nunca.
+    // Se cierran al arrancar para que la pantalla ofrezca reintentar en vez de esperar.
+    marcarIntentosInterrumpidos({ antesDe: new Date() })
+        .then((n) => { if (n) console.warn(`[cola-molde-ia] ${n} intento(s) interrumpidos por el reinicio, marcados como error.`); })
+        .catch((e) => console.error('[cola-molde-ia] no se pudieron cerrar los intentos interrumpidos:', e.message));
     console.warn(
         '[cola-molde-ia] REDIS_HOST no configurado — la generación de imagen con IA corre ' +
         'directo en el proceso de Express, sin cola real. Definí REDIS_HOST/REDIS_PORT en ' +

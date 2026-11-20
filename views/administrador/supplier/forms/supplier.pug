@@ -1,13 +1,12 @@
 include ../../../components/selectBuscable.pug
 include ../../../components/modalConfirmacion.pug
-include ../../../components/documentoProveedor.pug
+include ../../../components/camposProveedor.pug
 include ../../../components/cuentasBancariasProveedor.pug
 
 form(action="", method="post" id="formularioProvedor" enctype="multipart/form-data" class="col-span-12 grid grid-cols-12 gap-6 items-start")
 
 
     //- COLUMNA IZQUIERDA
-    input(type="hidden", name="_csrf" value = csrfToken)
     input(type="hidden", name="idProveedor" value=provedor ? provedor.idProveedor : '')
     
 
@@ -22,84 +21,16 @@ form(action="", method="post" id="formularioProvedor" enctype="multipart/form-da
                 | Datos Básicos
 
 
-        div(class="col-span-12 md:col-span-6")
-            label.label Razón social (nombre del provedor)
-                input(class="field-text" type="text" name="razonSocial" id="razonSocial" placeholder="Cómo se llama el provedor?" value = (producto && producto.nombreProducto) ? producto.nombreProducto : "")
-                #divError
-
-        +documentoProveedor({ tipos: tiposDocumento, nombre: 'nit' })
-        //-Departamento
-        div(class="col-span-12 md:col-span-3")
-            label.label Departamento
-                select(name="departamentoSelect" id="departamentoSelect" class = (errores && errores.departamento) ? "field-text field-text-error" : "field-text")
-                            option(value="") Selecciona El Departamento 
-                                each departamento in departamentos
-                                    option(value= departamento.id 
-                                        selected=(dato && dato.departamento == departamento.id) ? true : false 
-                                    )=departamento.nombre
-                span.select-icon
-                    i.fi-rr-chevron-double-down
-                if errores && errores.departamento
-                    p(class="label-error pl-2.5")=errores.departamento
-                        i.fi-rr-light-emergency-on
-
-
-
-
-
-
-
-
-
-        //- Ciudad: la llena ubicacionProveedor.js con las del departamento elegido.
-        div(class="col-span-12 md:col-span-3")
-            label.label Ciudad
-                div(class="select-wrapper")
-                    select(name="ciudadSelect" id="ciudadSelect" class="field-text" disabled)
-                        option(value="") Elige primero el departamento
-                    span.select-icon
-                        i.fi-rr-chevron-double-down
-
-        //- Dirección Principal
-        div(class="col-span-12 md:col-span-3")
-            label.label Direccion Provedor
-                input(class="field-text" type="text" id="direccionProvedor" name="direccionProvedor" placeholder="Calle 10 # 20 - 30" value = (producto && producto.direccionProvedor) ? producto.direccionProvedor : "")
-
-        //- EMAIL PROVEDOR
-        div(class="col-span-12 md:col-span-3")
-            label.label Email
-                input(class="field-text" type="email" id="emailProvedor" name="emailProvedor" placeholder="ventas@provedor.com" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
-        
-        //- Categoría Provedor
-        div(class="col-span-12")
-            label.label Cuáles categorias nos vende este provedor?
-                div(class="flex flex-wrap gap-2 mt-2")
-                    each categoria in categoriasProvedores
-                        label(class="subItems")
-                            input(type="checkbox" name="categorias" value=categoria.idCategoria  
-                            class="categoria-checkbox checkbox")
-                            span(class="text-xs font-bold text-gray-700 uppercase")= categoria.nombre
-          
-
-
-
-
+        +datosBasicosProveedor({ tiposDocumento, departamentos, categorias: categoriasProvedores })
 
         //- SEPARADOR 100% DATOS DE CONTACTO S
         div(class="col-span-12 -mx-6 mt-4")
             div(class="border-b border-gray-200 w-full")
                 h1.h1(class="text-left pl-11 flex items-center text-gray-700")
                     i.fi-rr-customer-service.mr-2
-                    | DATOS DE CONTACTO     
+                    | DATOS DE CONTACTO
 
-
-        div(class="col-span-12 md:col-span-6")
-            label.label Nombre del Contacto
-                input(class="field-text" type="text" id="nombreContacto" name="nombreContacto" placeholder="JUAN PEREZ" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
-
-        div(class="col-span-12 md:col-span-6")
-            label.label Teléfono
-                input(class="field-text" type="text" id="telefonoContacto" name="telefonoContacto" placeholder="444-44-44" value = (producto && producto.precioVentaPublicoFinal) ? producto.precioVentaPublicoFinal : "" )
+        +contactoProveedor()
 
         //- SEPARADOR 100% CUENTAS BANCARIAS
         div(class="col-span-12 -mx-6 mt-4")

@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 const categoriaProvedores = [
             { idCategoria: uuidv4(), nombre: 'Textiles y Telas' },
             { idCategoria: uuidv4(), nombre: 'Hilaturas y Fibras' },

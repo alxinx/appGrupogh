@@ -85,7 +85,6 @@ block contenedor
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
-            const csrfToken = '!{csrfToken}';
 
             document.querySelectorAll('.btn-eliminar').forEach(btn => {
                 btn.addEventListener('click', async () => {
@@ -103,7 +102,7 @@ block contenedor
                     try {
                         const resp = await fetch(`/admin/web/paginas/${btn.dataset.id}/eliminar`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                            headers: { 'Content-Type': 'application/json'},
                             body: JSON.stringify({})
                         });
                         const data = await resp.json();

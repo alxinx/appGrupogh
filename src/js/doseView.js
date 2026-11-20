@@ -44,11 +44,9 @@ import { escaparHtml as esc } from './escaparHtml.js';
 
             let filteredPacks = window.initialPacks || [];
             const seleccion = crearSeleccionMultiple({ selectorCheckbox: '.checkbox-pack', selectAll, boton: btnTrasladar });
-            let currentPage = 1;
             const itemsPerPage = 10;
 
             const renderTable = (page) => {
-                currentPage = page;
                 const start = (page - 1) * itemsPerPage;
                 const end = start + itemsPerPage;
                 const paginatedPacks = filteredPacks.slice(start, end);
@@ -56,29 +54,23 @@ import { escaparHtml as esc } from './escaparHtml.js';
                 tbody.innerHTML = paginatedPacks.map(pack => {
                     let tipoClass = pack.tipo === 'RESIDUO' ? 'bg-[#ffebf0] text-[#ff4d7d]' : 'status-active';
                     let estadoClass = 'bg-slate-100 text-slate-500';
-                    let displayStyle;
-                    let ocultarElemento;
                     switch (pack.estado) {
                         case 'EMPACADO': 
                             estadoClass = 'status-active'; // Verde esmeralda
                             break;
                         case 'SEPARADO': 
                             estadoClass = 'status-pending'; // Ámbar/Naranja
-                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
 
                             break;
                         case 'TRASLADADO': 
                             estadoClass = 'bg-gh-primarySoft text-gh-primaryHover border-gh-primary'; // Fucsia/Morado
-                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
 
                             break;
                         case 'DESPACHADO': 
                             estadoClass = 'bg-blue-50 text-blue-700 border-blue-200'; 
-                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
                             break;
                         case 'ANULADO': 
                             estadoClass = 'status-low'; // Rojo/Pink
-                            ocultarElemento = 'display: none;'; // Ocultamos acciones si ya se despachó
 
                             break;
                         default:
@@ -292,8 +284,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
                     const res = await fetch('/admin/dosificaciones/trasladar', {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
+                            'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({ packs: selectedPacks, idDestino, codigoEmpleado: codigoDespacha, notas })
                     });

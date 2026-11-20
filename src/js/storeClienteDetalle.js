@@ -5,9 +5,6 @@ import { imprimirPdf } from './imprimirPdf.js';
 // fetch (data.logout === true) ya los trae helpers.js, cargado antes que este archivo.
 document.addEventListener('DOMContentLoaded', () => {
     const datos = window.__clienteDetalleStore || {};
-    const csrfToken = () => document.querySelector('[name="_csrf"]')?.value
-        || document.querySelector('meta[name="csrf-token"]')?.content
-        || '';
 
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const pesos = (n) => `$${Math.round(n).toLocaleString('es-CO')}`;
@@ -289,7 +286,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 // Chips + filas por grupo con entidad (transferencia/tarjeta/credito)
-                const colorPorGrupo = Object.fromEntries(GRUPOS.map(g => [g.id, g]));
                 GRUPOS.forEach(g => {
                     const chipsEl = document.getElementById(`gh-chips-${g.id}-st`);
                     const lista = entidades[g.id] || [];
@@ -406,8 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     pagos: value.lineas.map(l => ({ metodoPago: l.metodoPago, idEntidad: l.idEntidad, nroReferencia: l.nroReferencia, valor: l.valor })),
-                    codigoEmpleado: value.codigoEmpleado,
-                    _csrf: csrfToken()
+                    codigoEmpleado: value.codigoEmpleado
                 })
             });
             const data = await r.json();

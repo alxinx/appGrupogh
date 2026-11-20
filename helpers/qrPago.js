@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import sharp from 'sharp';
 import jsQR from 'jsqr';
-import { validarImagen, aWebp, detectarTipoReal, LADO_MAXIMO_PX } from './imagenSegura.js';
+import { validarImagen, aWebp, LADO_MAXIMO_PX } from './imagenSegura.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilidades para el QR de pago de las entidades bancarias / billeteras.
@@ -16,7 +16,6 @@ export const TAM_MAXIMO_BYTES = 2 * 1024 * 1024; // 2 MB
 const LADO_MINIMO_PX          = 200;
 const LADO_DETECCION_PX       = 1400;            // techo al que se reduce solo para leer el QR
 
-export { detectarTipoReal };
 
 /**
  * Paso 1 — Pre-filtro de calidad (magic bytes, peso, resolución). No decodifica el QR todavía.

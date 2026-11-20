@@ -49,7 +49,7 @@ const DetallesOrdenCompra = db.define('DETALLES_ORDEN_COMPRA', {
     },
     // Congelada, no la del catálogo hoy: el material pudo cambiar de unidad después.
     unidadCompra: {
-        type: DataTypes.ENUM('kg', 'metro', 'rollo', 'unidad'),
+        type: DataTypes.ENUM('kg', 'metro', 'rollo', 'unidad', 'bolsa', 'caja'),
         allowNull: true
     },
     valorUnitario: {
@@ -85,6 +85,18 @@ const DetallesOrdenCompra = db.define('DETALLES_ORDEN_COMPRA', {
     // mientras nadie confirmó recepción de esta línea; puede ser menor, igual o mayor que
     // `cantidad` (entrega parcial, completa o con excedente son las tres reales).
     cantidadRecibida: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true
+    },
+    // Inventario de insumos (helpers/inventarioInsumos.js). Cada recepción SUMA: lo recibido
+    // se acumula y cada llegada es su propia capa de inventario. `contenidoPorPresentacion` es
+    // el último confirmado (cuánto trae UNA presentación, en unidad de consumo) y
+    // `cantidadConsumoRecibida` el total que entró al inventario por esta línea.
+    contenidoPorPresentacion: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true
+    },
+    cantidadConsumoRecibida: {
         type: DataTypes.DECIMAL(15, 4),
         allowNull: true
     }

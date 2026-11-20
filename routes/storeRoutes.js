@@ -1,5 +1,4 @@
 import express from "express";
-import csrf from "csurf";
 import {
     dashboardStores,
     getTraslados,
@@ -74,22 +73,21 @@ import uploadMixed from '../middlewares/uploadMixed.js';
 import { permitirMarcoPropio } from '../middlewares/cabecerasSeguridad.js';
 
 const routes = express.Router();
-const csrfProtection = csrf({ cookie: true });
 
 // Middleware global: carga idPuntoDeVenta en req + res.locals
 routes.use(cargarPuntoDeVenta);
 
 // Páginas
-routes.get('/', csrfProtection, dashboardStores);
-routes.get('/traslados/get', csrfProtection, getTraslados);
-routes.get('/inventario/lista', csrfProtection, getInventarioLista);
-routes.get('/pedidos-web', csrfProtection, pedidosWebStorePage);
+routes.get('/', dashboardStores);
+routes.get('/traslados/get', getTraslados);
+routes.get('/inventario/lista', getInventarioLista);
+routes.get('/pedidos-web', pedidosWebStorePage);
 // "Mis Clientes" — clientes con facturas pendientes en crédito de esta tienda. Sin
 // "/json/" ni similares en la ruta: así queda cubierta por el chequeo de permiso fino de
 // storeMiddleware.cargarPuntoDeVenta (folder '/clientes', ver
 // seed/migracionPermisoMisClientes.js) igual que esta misma página de Pedidos Web.
-routes.get('/clientes', csrfProtection, misClientesPage);
-routes.get('/clientes/:idCliente', csrfProtection, misClienteDetallePage);
+routes.get('/clientes', misClientesPage);
+routes.get('/clientes/:idCliente', misClienteDetallePage);
 // Abono global de crédito — mutación real de plata, mismo patrón de seguridad que
 // caja/egresos: código de empleado (verificarCodigoEmpleado) + permiso fino sobre "Caja y
 // ventas". "Mis Clientes" solo gobierna VER a qué clientes/facturas tiene acceso este
@@ -97,12 +95,11 @@ routes.get('/clientes/:idCliente', csrfProtection, misClienteDetallePage);
 // storeMiddleware.cargarPuntoDeVenta) — un abono no edita al cliente, es un ingreso de
 // dinero como abrir caja o crear un egreso, así que pide el mismo recurso que esos.
 routes.post('/clientes/:idCliente/abono-global',
-    csrfProtection,
     verificarCodigoEmpleado,
     verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
     abonoGlobalClienteStore);
 routes.get('/clientes/:idCliente/abono/:loteAbonoGlobal/voucher', permitirMarcoPropio, getVoucherAbonoPDF);
-routes.get('/inventario/perfilProducto/:idProducto', csrfProtection, getPerfilProducto);
+routes.get('/inventario/perfilProducto/:idProducto', getPerfilProducto);
 
 // SSE (sin CSRF — es GET long-lived)
 routes.get('/sse', sseConnect);
@@ -149,45 +146,45 @@ routes.get('/inventario/json', getInventarioJSON);
 const pTraslEdit   = verificarPermisoEmpleado('Traslados', 'vendedor', 'EDIT');
 const pTraslCreate = verificarPermisoEmpleado('Traslados', 'vendedor', 'CREATE');
 
-routes.post('/traslados/aceptar', csrfProtection, verificarCodigoEmpleado, pTraslEdit,   aceptarTrasladoAPI);
-routes.post('/traslados/resolver', csrfProtection, verificarCodigoEmpleado, pTraslEdit,   resolverControversiaAPI);
-routes.post('/traslados/crear',   csrfProtection, verificarCodigoEmpleado, pTraslCreate, crearTrasladoSueltos);
+routes.post('/traslados/aceptar', verificarCodigoEmpleado, pTraslEdit,   aceptarTrasladoAPI);
+routes.post('/traslados/resolver', verificarCodigoEmpleado, pTraslEdit,   resolverControversiaAPI);
+routes.post('/traslados/crear',   verificarCodigoEmpleado, pTraslCreate, crearTrasladoSueltos);
 
 // Acciones — inventario
-routes.post('/inventario/desempacar', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Inventario y Productos', 'vendedor', 'EDIT'), desempacarPackAPI);
-routes.post('/inventario/trasladar',  csrfProtection, verificarCodigoEmpleado, pTraslCreate, trasladarDesdeStoreAPI);
+routes.post('/inventario/desempacar', verificarCodigoEmpleado, verificarPermisoEmpleado('Inventario y Productos', 'vendedor', 'EDIT'), desempacarPackAPI);
+routes.post('/inventario/trasladar',  verificarCodigoEmpleado, pTraslCreate, trasladarDesdeStoreAPI);
 
 // Clientes
-routes.post('/clientes/guardar', csrfProtection, uploadMixed.single('rut'), guardarCliente);
+routes.post('/clientes/guardar', uploadMixed.single('rut'), guardarCliente);
 
 // Caja
-routes.post('/caja/abrir', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), abrirCajaAPI);
+routes.post('/caja/abrir', verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), abrirCajaAPI);
 
 // Facturas
-routes.post('/facturas/procesar', csrfProtection, verificarPermisoSesion('Pos de venta', 'vendedor', 'CREATE'), procesarFactura);
+routes.post('/facturas/procesar', verificarPermisoSesion('Pos de venta', 'vendedor', 'CREATE'), procesarFactura);
 // `permitirMarcoPropio` (SAMEORIGIN) en los PDF que se imprimen desde un iframe
 // invisible sin abrir pestaña (src/js/imprimirPdf.js): esta tirilla y, más abajo, el
 // voucher de abono, el comprobante de egreso y el de transferencia.
 routes.get('/facturas/:id/tirilla', permitirMarcoPropio, getTirillaPDF);
 
 // Storebehivors — cuadre de caja
-routes.get('/storebehivors/', csrfProtection, cuadrarCajaPage);
+routes.get('/storebehivors/', cuadrarCajaPage);
 routes.get('/storebehivors/caja/datos', getCuadreCajaDatos);
-routes.post('/storebehivors/caja/cerrar', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'EDIT'), cerrarCajaAPI);
+routes.post('/storebehivors/caja/cerrar', verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'EDIT'), cerrarCajaAPI);
 routes.get('/storebehivors/caja/:idCajaTienda/pdf', getCuadrePDF);
 
 // Entrar y salir del cuadre. Mientras la caja está en 'auditoria' el POS no factura.
 // No piden código de empleado: no mueven plata, solo abren y cierran la ventana de
 // conteo, y exigir el código para volver a vender frenaría a la tienda sin motivo.
-routes.post('/storebehivors/caja/cuadre/iniciar', csrfProtection, iniciarCuadreCaja);
-routes.post('/storebehivors/caja/cuadre/liberar', csrfProtection, liberarCuadreCaja);
+routes.post('/storebehivors/caja/cuadre/iniciar', iniciarCuadreCaja);
+routes.post('/storebehivors/caja/cuadre/liberar', liberarCuadreCaja);
 routes.get('/storebehivors/caja/cuadre/estado', getEstadoCuadreCaja);
-routes.get('/storebehivors/expenses', csrfProtection, getExpensesPage);
+routes.get('/storebehivors/expenses', getExpensesPage);
 routes.get('/storebehivors/expenses/total-hoy', getTotalEgresosHoy);
 routes.get('/storebehivors/expenses/efectivo-disponible', getEfectivoDisponible);
 routes.get('/storebehivors/expenses/json', getEgresosJSON);
 routes.get('/storebehivors/expenses/:idEgreso/pdf', permitirMarcoPropio, getEgresoComprobantePDF);
-routes.post('/storebehivors/expenses/crear', csrfProtection, verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), crearEgreso);
+routes.post('/storebehivors/expenses/crear', verificarCodigoEmpleado, verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'), crearEgreso);
 
 // Traslado de efectivo a una caja o cuenta del negocio. Ruta aparte del egreso normal
 // porque llega como multipart: el traslado a un banco trae el comprobante adjunto.
@@ -195,10 +192,8 @@ routes.post('/storebehivors/expenses/crear', csrfProtection, verificarCodigoEmpl
 // `uploadMixed` va ANTES de verificarCodigoEmpleado a propósito: ese middleware lee el
 // código de `req.body`, y en una petición multipart `req.body` no existe hasta que
 // multer la parsea. Con el orden al revés, todo traslado con archivo respondería
-// "código de empleado requerido". El CSRF sí puede ir primero porque el token viaja en
-// la cabecera X-CSRF-Token, no en el cuerpo.
+// "código de empleado requerido".
 routes.post('/storebehivors/expenses/traslado',
-    csrfProtection,
     uploadMixed.single('voucher'),
     verificarCodigoEmpleado,
     verificarPermisoEmpleado('Caja y ventas', 'vendedor', 'CREATE'),
@@ -209,14 +204,14 @@ routes.get('/storebehivors/expenses/traslado/:idTraslado/pdf', permitirMarcoProp
 // pantalla de la tienda: el evento SSE solo llega si el navegador estaba abierto, y esto
 // es lo que hace que el aviso no se pierda.
 routes.get('/traslados/avisos', getAvisosTraslado);
-routes.post('/traslados/avisos/visto', csrfProtection, marcarAvisoTrasladoVisto);
+routes.post('/traslados/avisos/visto', marcarAvisoTrasladoVisto);
 
 // Inventario — traslado desde perfil de producto
 routes.get('/inventario/json/empleado-traslado', validarEmpleadoTraslado);
-routes.post('/inventario/traslado-producto', csrfProtection, verificarCodigoEmpleado, pTraslCreate, trasladarDesdePerfil);
+routes.post('/inventario/traslado-producto', verificarCodigoEmpleado, pTraslCreate, trasladarDesdePerfil);
 
 // Storebehivors — ventas del mes
-routes.get('/storebehivors/sales', csrfProtection, getSalesPage);
+routes.get('/storebehivors/sales', getSalesPage);
 routes.get('/storebehivors/sales/mes', getVentasMes);
 routes.get('/storebehivors/sales/dia', getDetalleDia);
 

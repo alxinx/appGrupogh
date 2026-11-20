@@ -93,12 +93,10 @@ import { tituloLista as tc } from '../../helpers/textoLista.js';
             </tr>`;
     }
 
-    let paginaActualGlobal = 1;
 
     const cargarPedidos = async (pagina = 1) => {
         const tbody = document.getElementById('pedidos-tbody');
         if (!tbody) return;
-        paginaActualGlobal = pagina;
 
         tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-10 text-center text-slate-400 text-sm">
             <i class="fi fi-rr-spinner animate-spin mr-2"></i>Cargando pedidos...</td></tr>`;

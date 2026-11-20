@@ -215,8 +215,31 @@ aside(
             a(href="/admin/procesos/nuevo" class="submenu-item") Nuevo proceso
           if puede('Procesos', 'READ')
             a(href="/admin/procesos" class="submenu-item") Listado de procesos
-          if puede('Procesos', 'READ')
-            a(href="/admin/procesos/fichas-confeccion" class="submenu-item") Fichas de confección
+          //- Fichas de confección: sub-submenú, mismo patrón que Corte. Alta con CREATE,
+          //- biblioteca con READ — un enlace que lleva a un 403 no se muestra.
+          if puede('Procesos', 'CREATE') || puede('Procesos', 'READ')
+            details(class="group/fichas")
+              summary(class="submenu-item cursor-pointer flex justify-between items-center list-none [&::-webkit-details-marker]:hidden")
+                span Fichas de confección
+                i(class="fi fi-rr-angle-small-right transition-transform group-open/fichas:rotate-90")
+              div(class="ml-4 mt-1 space-y-1")
+                if puede('Procesos', 'CREATE')
+                  a(href="/admin/procesos/fichas-confeccion/nueva" class="submenu-item") Nueva ficha
+                if puede('Procesos', 'READ')
+                  a(href="/admin/procesos/fichas-confeccion/biblioteca" class="submenu-item") Biblioteca de fichas
+
+          //- Corte: sub-submenú dentro de Procesos. Mismo recurso de permisos ('Procesos')
+          //- y mismo criterio por acción que el resto: alta con CREATE, listado con READ.
+          if puede('Procesos', 'CREATE') || puede('Procesos', 'READ')
+            details(class="group/corte")
+              summary(class="submenu-item cursor-pointer flex justify-between items-center list-none [&::-webkit-details-marker]:hidden")
+                span Corte
+                i(class="fi fi-rr-angle-small-right transition-transform group-open/corte:rotate-90")
+              div(class="ml-4 mt-1 space-y-1")
+                if puede('Procesos', 'CREATE')
+                  a(href="/admin/procesos/cortes/nuevo" class="submenu-item") Nuevo corte
+                if puede('Procesos', 'READ')
+                  a(href="/admin/procesos/cortes" class="submenu-item") Lista de cortes
 
     if ver('/insumos')
       // Insumos y materias primas (submenu)
@@ -252,8 +275,10 @@ aside(
 
    // Logout
    div(class="p-4 border-t border-gray-300")
+     a(href="/cuenta/contrasena" class="w-full flex items-center justify-center gap-2 mb-2 px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100 hover:text-gh-primaryHover")
+         i(class="fi fi-rr-key")
+         span Cambiar contraseña
      form(action="/logout" method="POST")
-         input(type="hidden" name="_csrf" value=csrfToken)
          button(
          class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium shadow-neutral-500 shadow-2xl cursor-pointer"    )
              i(class="fi fi-rr-sign-out-alt")

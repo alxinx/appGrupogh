@@ -38,7 +38,16 @@ import {
 // ESTE backend, es el destino al que el navegador tendría que subir.
 const UID_SIMULADO_PREFIJO = 'simulado-';
 
-export async function crearSubidaDirecta({ maxDurationSeconds = 3600 } = {}) {
+// Duración máxima de un video de la ficha, en segundos. Se cambia en el entorno
+// (VIDEO_FICHA_MAX_SEGUNDOS) sin tocar código; sin la variable, o con un valor inválido, 120.
+// La aplican tres capas: el navegador antes de subir, solicitarSubidaVideo y Cloudflare
+// (maxDurationSeconds, en la subida simple y en la TUS).
+export const VIDEO_FICHA_MAX_SEGUNDOS = (() => {
+    const n = parseInt(process.env.VIDEO_FICHA_MAX_SEGUNDOS, 10);
+    return Number.isInteger(n) && n > 0 ? n : 120;
+})();
+
+export async function crearSubidaDirecta({ maxDurationSeconds = VIDEO_FICHA_MAX_SEGUNDOS } = {}) {
     if (!CLOUDFLARE_STREAM_CONFIGURADO) {
         return { uid: `${UID_SIMULADO_PREFIJO}${crypto.randomUUID()}`, uploadURL: null };
     }
@@ -63,10 +72,12 @@ export async function crearSubidaTus({ uploadLength, nombreArchivo }) {
         return { uid: `${UID_SIMULADO_PREFIJO}${crypto.randomUUID()}`, uploadURL: null };
     }
 
-    // Upload-Metadata: pares "clave valorBase64" separados por coma — acá solo mandamos
-    // `name`, que es lo único que Cloudflare documenta como relevante para esta sesión (el
-    // resto, como maxDurationSeconds, no aplica a TUS de la misma forma que al POST simple).
-    const metadata = `name ${Buffer.from(nombreArchivo || 'video').toString('base64')}`;
+    // Upload-Metadata: pares "clave valorBase64" separados por coma. `maxDurationSeconds` es
+    // la clave documentada por Cloudflare para TUS de creador directo (verificado el
+    // 2026-11-20 en developers.cloudflare.com/stream/uploading-videos/direct-creator-uploads):
+    // un video más largo que el tope no se procesa. Solo cuenta en este primer request.
+    const b64 = (v) => Buffer.from(String(v)).toString('base64');
+    const metadata = `name ${b64(nombreArchivo || 'video')},maxDurationSeconds ${b64(VIDEO_FICHA_MAX_SEGUNDOS)}`;
 
     const r = await fetch(`${CLOUDFLARE_STREAM_BASE_URL}?direct_user=true`, {
         method: 'POST',

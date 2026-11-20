@@ -259,7 +259,6 @@ import { escaparHtml as esc } from './escaparHtml.js';
     const spanMax     = $('trl-max');
     const inpNotas    = $('trl-notas');
     const btnSubmit   = $('trl-submit');
-    const csrfToken   = $('csrf-token-admin')?.value;
 
     if (!modal || !btnAbrir) return;
 
@@ -339,7 +338,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
         try {
             const r = await fetch(`/admin/api/inventario/${idProducto}/traslado`, {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': csrfToken },
+                headers: { 'Content-Type': 'application/json'},
                 body:    JSON.stringify(body)
             });
             const data = await r.json();

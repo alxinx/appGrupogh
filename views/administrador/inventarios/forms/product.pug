@@ -2,7 +2,6 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
 
 
     //- COLUMNA IZQUIERDA
-    input(type="hidden", name="_csrf" value = csrfToken)
     input(type="hidden", name="idProducto" value=producto ? producto.idProducto : '')
     input(type="hidden", name="imagenes_color_nuevas" id="imagenes_color_nuevas" value="{}")
     input(type="hidden", name="imagenes_color_existentes" id="imagenes_color_existentes" value="{}")

@@ -105,7 +105,6 @@ block contenedor
                                     p(class="text-sm text-slate-400 mb-4") Configura el bloque visual de la tienda
 
                                     form#form-seccion(class="flex flex-col gap-4 px-4 pb-4" enctype="multipart/form-data")
-                                        input(type="hidden" name="_csrf" value=csrfToken)
                                         input#seccion-id(type="hidden" value="")
 
                                         //- Preview de imagen seleccionada
@@ -175,7 +174,6 @@ block contenedor
 
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
-            const csrfToken = '!{csrfToken}';
             let editandoId  = null;
 
             // ── Preview imagen local ──────────────────────────────────────────
@@ -268,13 +266,10 @@ block contenedor
                     });
                     if (!isConfirmed) return;
 
-                    // El token va en la cabecera 'csrf-token', no en un FormData: la ruta de
-                    // eliminar no lleva multer (no sube archivos), así que nada parsearía un
-                    // cuerpo multipart y csurf no encontraría el token. Mismo patrón que cenefas.
                     try {
                         const resp = await fetch(`/admin/web/secciones/eliminar/${btn.dataset.id}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'csrf-token': csrfToken },
+                            headers: { 'Content-Type': 'application/json'},
                             body: JSON.stringify({})
                         });
                         // Solo se lanza si la respuesta no es JSON (p. ej. el 403 en HTML de csurf).

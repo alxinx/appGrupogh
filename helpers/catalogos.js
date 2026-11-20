@@ -9,6 +9,8 @@ import contratosLaborales from '../src/json/contratosLaborales.json' with { type
 import tipoFacturas from '../src/json/tipoFacturas.json' with { type: 'json' };
 import tipoPersonaJuridica from '../src/json/tipoPersonaJuridica.json' with { type: 'json' };
 import entidadesFinancieras from '../src/json/entidadesFinancieras.json' with { type: 'json' };
+import tallasCorte from '../src/json/tallasCorte.json' with { type: 'json' };
+import piezasCorte from '../src/json/piezasCorte.json' with { type: 'json' };
 
 /** Responsabilidades fiscales DIAN ({ codigo, descripcion }): tienda, clientes y POS. */
 export const RESPONSABILIDADES_FISCALES = responsabilidadFiscal;
@@ -21,6 +23,12 @@ export const TIPOS_FACTURA = tipoFacturas;
 
 /** Persona jurídica / natural ({ codigo, descripcion }): configuración de la tienda. */
 export const TIPOS_PERSONA_JURIDICA = tipoPersonaJuridica;
+
+/** Tallas de una orden de corte ({ codigo, etiqueta, exclusiva? }). ÚNICA excluye a las demás. */
+export const TALLAS_CORTE = tallasCorte;
+
+/** Piezas que se sugieren al cargar los materiales de una orden de corte (texto libre igual). */
+export const PIEZAS_CORTE_SUGERIDAS = piezasCorte;
 
 // ── Bancos y billeteras ──────────────────────────────────────────────────────
 // src/json/entidadesFinancieras.json: de dónde se elige el banco al crear una entidad de

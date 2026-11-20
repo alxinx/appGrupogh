@@ -25,40 +25,68 @@ block contenedor
                                     subtitulo: 'Fichas ya creadas',
                                     iconoSub:  'fi-rr-document'
                                 })
-                                a(href="/admin/procesos/fichas-confeccion" class="btn btn-secondary btn-sm text-xs whitespace-nowrap flex-shrink-0")
-                                    i(class="fi fi-rr-arrow-left text-xs")
-                                    | Volver
+                                //- Orden del panel (CLAUDE.md §4.1.1): Volver → acción principal al final, en btn-danger.
+                                div(class="flex flex-wrap items-center gap-2 flex-shrink-0")
+                                    a(href="/admin/procesos/fichas-confeccion" class="btn btn-secondary flex items-center gap-2")
+                                        i(class="fi fi-rr-arrow-left")
+                                        | Volver
+                                    if puedeAdmin('Procesos', 'CREATE')
+                                        a(href="/admin/procesos/fichas-confeccion/nueva" class="btn btn-danger flex items-center gap-2")
+                                            i(class="fi fi-rr-add-document")
+                                            | Nueva ficha de confección
 
                             //- Filtros — búsqueda libre (referencia o tela) + familia exacta +
                             //- tela (LIKE, una ficha puede tener más de una — helpers/dxf.js).
-                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-5 grid grid-cols-1 sm:grid-cols-3 gap-3")
-                                div(class="relative")
-                                    i(class="fi fi-rr-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
-                                    input#busquedaFichas(type="text" autocomplete="off" placeholder="Busca por referencia o tela…" class="field-text pl-9")
-                                select#familiaFichas(class="field-select")
-                                    option(value="") Familia
-                                    each f in (familias || [])
-                                        option(value=f.nombreFamilia)= f.nombreFamilia
-                                select#telaFichas(class="field-select")
-                                    option(value="") Tela
-                                    each m in (telas || [])
-                                        option(value=m.nombre)= m.nombre
-
                             div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
-                                div(class="overflow-x-auto")
-                                    table(class="w-full text-sm")
+                                div(class="p-5 flex flex-col gap-4 border-b border-slate-100")
+                                    div(class="flex items-center justify-between gap-4")
+                                        h2(class="text-lg font-bold text-slate-800") Fichas
+                                        p#conteo-fichas(class="text-sm text-slate-500" aria-live="polite")
+                                    div(class="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-3")
+                                        div(class="relative")
+                                            i(class="fi fi-rr-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
+                                            input#busquedaFichas(type="text" autocomplete="off" placeholder="Busca por referencia o tela…" class="field-text pl-9")
+                                        select#familiaFichas(class="field-select" aria-label="Familia")
+                                            option(value="") Todas las familias
+                                            each f in (familias || [])
+                                                option(value=f.nombreFamilia)= f.nombreFamilia
+                                        select#telaFichas(class="field-select" aria-label="Tela")
+                                            option(value="") Todas las telas
+                                            each m in (telas || [])
+                                                option(value=m.nombre)= m.nombre
+
+                                //- `relative`: el contenedor que recorta es la referencia de lo posicionado
+                                //- adentro; sin eso un `sr-only` de la tabla ensancha la página en el celular.
+                                div(class="relative overflow-x-auto")
+                                    table(class="w-full text-sm min-w-[980px]")
                                         thead
                                             tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
-                                                th(class="py-3 px-5 font-semibold") Referencia
-                                                th(class="py-3 px-5 font-semibold") Tela
-                                                th(class="py-3 px-5 font-semibold text-right") Cantidad
-                                                th(class="py-3 px-5 font-semibold text-right") Precio confección
-                                                th(class="py-3 px-5 font-semibold text-right") Creada
-                                                th(class="py-3 px-5 font-semibold text-right") Acciones
+                                                th(class="py-3 px-5 font-semibold") Prenda
+                                                th(class="py-3 px-5 font-semibold") Telas
+                                                th(class="py-3 px-5 font-semibold text-right") Confección
+                                                th(class="py-3 px-5 font-semibold w-[18rem]") Talleres
+                                                th(class="py-3 px-5 font-semibold text-right")
+                                                    span.sr-only Acciones
+                                        //- Mientras llega la primera página, filas fantasma con la forma real.
                                         tbody#contenedor-fichas
+                                            - for (var i = 0; i < 4; i++)
+                                                tr(class="border-b border-slate-100 animate-pulse")
+                                                    td(class="py-4 px-5")
+                                                        div(class="flex items-center gap-3")
+                                                            div(class="w-14 h-14 rounded-xl bg-slate-100")
+                                                            div(class="flex flex-col gap-2")
+                                                                div(class="h-3 w-32 rounded bg-slate-100")
+                                                                div(class="h-2.5 w-24 rounded bg-slate-100")
+                                                    td(class="py-4 px-5")
+                                                        div(class="h-3 w-28 rounded bg-slate-100")
+                                                    td(class="py-4 px-5")
+                                                        div(class="h-3 w-20 rounded bg-slate-100 ml-auto")
+                                                    td(class="py-4 px-5")
+                                                        div(class="h-3 w-36 rounded bg-slate-100")
+                                                    td(class="py-4 px-5")
 
-                            div(class="col-span-12")
-                                #paginacionFichas
+                                div(class="px-5 pb-4")
+                                    #paginacionFichas
 
-        script(src="/js/fichaConfeccionBiblioteca.js")
         script(src="/js/paginador.js")
+        script(src="/js/fichaConfeccionBiblioteca.js")

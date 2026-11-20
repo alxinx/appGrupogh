@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import OpenAI, { toFile } from 'openai';
+import { toFile } from 'openai';
+import { Op } from 'sequelize';
 import openaiClient, { OPENAI_CONFIGURADO } from '../config/openai.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { FichaConfeccionMoldeIaIntento, FichaConfeccionMolde } from '../models/index.js';
@@ -125,4 +126,22 @@ export async function procesarIntentoMoldeIa(idIntento) {
         await intento.update({ estado: 'error', errorMensaje: e.message || 'No se pudo generar la imagen.' }).catch(() => {});
         broadcast(intento.idUsuarioSolicita, 'molde_ia_listo', { idIntento, estado: 'error', errorMensaje: e.message });
     }
+}
+
+
+// Un intento que pasa este tiempo en 'procesando' ya no va a terminar: OpenAI tarda 20-60s,
+// así que esto solo pasa si el proceso que lo generaba murió (sin Redis, la generación corre
+// dentro de Express — helpers/colaMoldeIa.js). Se cierra como error para que la pantalla
+// ofrezca reintentar en vez de esperar para siempre.
+export const MINUTOS_MAXIMO_GENERACION = 3;
+export const MENSAJE_INTERRUMPIDO = 'Se interrumpió la generación; vuelve a intentarlo.';
+
+/** Pasa a 'error' los intentos en 'procesando' creados antes de `antesDe`. Devuelve cuántos. */
+export async function marcarIntentosInterrumpidos({ antesDe, idIntento } = {}) {
+    const [n] = await FichaConfeccionMoldeIaIntento.update(
+        { estado: 'error', errorMensaje: MENSAJE_INTERRUMPIDO },
+        // Condicionado al estado (CLAUDE.md §9): si justo terminó, no se pisa el resultado.
+        { where: { estado: 'procesando', createdAt: { [Op.lt]: antesDe }, ...(idIntento ? { idIntento } : {}) } }
+    );
+    return n;
 }

@@ -15,39 +15,34 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../config/r2.js";
 import dotenv from 'dotenv';
 import db from "../config/bd.js";
-import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Provedores, Stock, Pack, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos, ProductosCambiosPrecio } from "../models/index.js";
+import { Departamentos, Municipios, PuntosDeVenta, RegimenFacturacion, Atributos, Categorias, Productos, VariacionesProducto, Imagenes, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Provedores, Stock, Empleados, Usuarios, Egresos, FacturaClientes, DetallesFactura, DetallesPagosFactura, Clientes, ClientesTributario, ClientesUbicacion, CajaTienda, PermisosRecursos, PermisosAcciones, UserPermisos, Entidades, FacturaProveedores, DetallesFacturaProvedores, CuentasPorPagar, Traslados, DetalleTraslados, Familia, CajasYBancos, MovimientosCajasBancos, TrasladoEfectivo, TrasladoEfectivoHistorial, ClientesCreditoHistorial, CreditoDisponibleCliente, CreditoDisponibleClienteHistorial, AbonoClienteCreditos, ProductosCambiosPrecio } from "../models/index.js";
 import { crearClienteCompleto, toPascal, TIPOS_DOC_CLIENTE_NATURAL, resolverUbicacionDane } from '../helpers/clientes.js';
-import { TIPOS_DOCUMENTO_PROVEEDOR, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR, CATALOGO_TIPOS_DOCUMENTO, validarDocumento, normalizarNumeroDocumento } from '../helpers/tiposDocumento.js';
+import { TIPOS_DOCUMENTO_PROVEEDOR, CATALOGO_TIPOS_DOCUMENTO, normalizarNumeroDocumento } from '../helpers/tiposDocumento.js';
 import { validarCuentasBancarias } from '../helpers/cuentasBancariasProveedor.js';
 import {
     buscarProveedorPorDocumento, validarDocumentoProveedor, crearProveedorCompleto,
     cuentasDelPanel, conservarVerificacion
 } from '../helpers/proveedores.js';
-import { addClient, removeClient, sendEvent, broadcast } from '../helpers/sseManager.js';
+import { addClient, removeClient, broadcast } from '../helpers/sseManager.js';
 import { avisarCambioDePermisos } from '../helpers/permisosEnVivo.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
 import { invalidarContadoresAdmin } from '../middlewares/adminMenuMiddleware.js';
 import { generarPDFTraslado, buscarTrasladoParaPDF } from '../helpers/pdfTraslado.js';
 // Catálogos fijos (src/json/) por su único punto de acceso. Se conservan los nombres locales
 // de siempre —incluida la errata de responsabiliidadFiscal— porque así los leen las vistas.
-import {
-    RESPONSABILIDADES_FISCALES as responsabiliidadFiscal,
-    TIPOS_PERSONA_JURIDICA as tipoPersonaJuridica,
-    TIPOS_FACTURA as tipoFacturas,
-    CONTRATOS_LABORALES as contratosLaborales,
-    buscarEntidadFinanciera, entidadFinancieraPorNombre, TIPO_CUENTA_POR_TIPO_ENTIDAD, TIPOS_CUENTA_BANCARIA
-} from '../helpers/catalogos.js';
+import { RESPONSABILIDADES_FISCALES as responsabiliidadFiscal, TIPOS_PERSONA_JURIDICA as tipoPersonaJuridica, TIPOS_FACTURA as tipoFacturas, CONTRATOS_LABORALES as contratosLaborales, buscarEntidadFinanciera, entidadFinancieraPorNombre, TIPO_CUENTA_POR_TIPO_ENTIDAD } from '../helpers/catalogos.js';
 import { montoPositivo, montoNoNegativo, sanitizarHTML, getAvailability, normalizarFamilia, familiaDesdeNombre, prefijoFamilia } from '../helpers/helpers.js'
 import { generarSlugDe, slugUnico, resolverIdFamilia, obtenerAtributosOrdenadosPorUso, siguienteSkuInterno } from '../helpers/productos.js'
 import {mailWelcomeEmployer} from '../helpers/mailNewEmployer.js'
-import { Sequelize, Op, where, fn, col, literal } from "sequelize";
+import { CODIGOS_TIPO_DOCUMENTO_EMPLEADO, validarDatosEmpleado, buscarConflictosEmpleado, responderErroresEmpleado, leerPermisosJSON, verificarPermisosAsignables, rolDeCargo } from '../helpers/empleados.js';
+import { sincronizarContrasenaInicial } from '../helpers/contrasena.js';
+import { Sequelize, Op, fn, col, literal } from "sequelize";
 import { _generarPDFCuadre, _calcularTransaccionesCaja, _efectivoDisponibleParaTraslado } from './storeControllers.js';
 import { resolverIds, validarCodigoConPermiso } from '../middlewares/verificarPermisoEmpleado.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
-import { validarImagen, aWebp } from '../helpers/imagenSegura.js';
 import ExcelJS from 'exceljs';
 import { tituloLista } from '../helpers/textoLista.js';
-import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, bucketPagosVacio, acumularEnBucketPagos, facturasCreditoCliente, creditoClienteResumen, METODOS_ABONO, METODOS_PAGO, METODO_POR_TIPO_CUENTA } from '../helpers/abonosCredito.js';
+import { buscarAbonosPeriodo, sumarAbonosPorMetodo, aplicarAbonoFIFO, bloquearFacturasCreditoCliente, ventasYPagosPeriodo, bucketPagosVacio, acumularEnBucketPagos, facturasCreditoCliente, METODOS_PAGO, METODO_POR_TIPO_CUENTA } from '../helpers/abonosCredito.js';
 import { round2 } from '../helpers/formatMoney.js';
 import { PORTAL_URL } from '../config/marca.js';
 import { subirComprobantes, borrarComprobantes, urlComprobante } from '../helpers/comprobantesMovimiento.js';
@@ -114,15 +109,22 @@ const _getRangoCaja = async (idCajaTienda, idPuntoDeVenta) => {
 //PRINCIPAL ADMINISTRADOR
 
 
-const baseFrondend = async (req, res) => {
-    return res.status(201).render('./administrador/baseFrontends', {
-        pagina: "Dashboard",
-        csrfToken: req.csrfToken(),
-        currentPath: req.path
+// Departamentos y, si ya hay uno elegido, sus municipios: lo que necesitan los selectores
+// de ubicación de los formularios de tienda, proveedor y empleado. Estaba copiada adentro
+// de cada controlador que pinta uno de esos formularios.
+const obtenerDatosSelectores = async (idDepartamento) => {
+    const [departamentos, ciudades] = await Promise.all([
+        Departamentos.findAll({ raw: true }),
+        idDepartamento
+            ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
+            : Promise.resolve([])
+    ]);
+    return { departamentos, ciudades };
+};
 
-    })
-}
-const dashboard = async (req, res) => {
+// Puntos de venta con el estado de su caja de hoy (abierta / cuadrada / cerrada). Lo pintan
+// el tablero principal y el de tiendas; estaba copiado entero en los dos.
+const tiendasConEstadoCaja = async () => {
     const listaPuntosDeVenta = await PuntosDeVenta.findAll({
         raw: true,
         attributes: ['idPuntoDeVenta', 'nombreComercial', 'taxId']
@@ -139,7 +141,7 @@ const dashboard = async (req, res) => {
     const cajasMap = {};
     for (const c of cajasHoy) cajasMap[c.idPuntoDeVenta] = c;
 
-    const tiendas = listaPuntosDeVenta.map(t => {
+    return listaPuntosDeVenta.map(t => {
         const caja = cajasMap[t.idPuntoDeVenta];
         let estadoCaja = 'cerrada';
         // 'auditoria' es la caja que se está cuadrando: sigue abierta hasta que se cierre.
@@ -149,54 +151,27 @@ const dashboard = async (req, res) => {
         else if (caja && caja.fechaCierre) estadoCaja = 'cuadrada';
         return { ...t, estadoCaja };
     });
+};
+
+const dashboard = async (req, res) => {
+    const tiendas = await tiendasConEstadoCaja();
 
     return res.status(201).render('./administrador/layout', {
         pagina: "Dashboard",
-        csrfToken: req.csrfToken(),
         currentPath: req.path,
         listaPuntosDeVenta: tiendas
     });
 }
 
 
-
-
 //PRINCIPAL TIENDAS
 const dashboardStores = async (req, res) => {
 
-    const listaPuntosDeVenta = await PuntosDeVenta.findAll({
-        raw: true,
-        attributes: ['idPuntoDeVenta', 'nombreComercial', 'taxId']
-    });
-
-    const { inicio: hoyInicio, fin: hoyFin } = _hoyRango();
-
-    const cajasHoy = await CajaTienda.findAll({
-        raw: true,
-        attributes: ['idPuntoDeVenta', 'estado', 'fechaApertura', 'fechaCierre'],
-        where: { fechaApertura: { [Op.between]: [hoyInicio, hoyFin] } }
-    });
-
-    const cajasMap = {};
-    for (const c of cajasHoy) {
-        cajasMap[c.idPuntoDeVenta] = c;
-    }
-
-    const tiendas = listaPuntosDeVenta.map(t => {
-        const caja = cajasMap[t.idPuntoDeVenta];
-        let estadoCaja = 'cerrada';
-        // 'auditoria' es la caja que se está cuadrando: sigue abierta hasta que se cierre.
-        // Con solo 'abierto', el tablero mostraba como cerrada una tienda que estaba
-        // contando su cajón.
-        if (caja && ['abierto', 'auditoria'].includes(caja.estado) && !caja.fechaCierre) estadoCaja = 'abierta';
-        else if (caja && caja.fechaCierre) estadoCaja = 'cuadrada';
-        return { ...t, estadoCaja };
-    });
+    const tiendas = await tiendasConEstadoCaja();
 
     return res.status(201).render('./administrador/stores/homeStores', {
         pagina: "Tiendas",
         subPagina: "Gestión Tiendas",
-        csrfToken: req.csrfToken(),
         currentPath: req.path,
         listaPuntosDeVenta: tiendas
     });
@@ -215,7 +190,6 @@ const newStore = async (req, res) => {
 
         pagina: "Tiendas",
         subPagina: "Nueva Tienda",
-        csrfToken: req.csrfToken(),
         currentPath: '/tiendas',
         responsabiliidadFiscal: responsabiliidadFiscal,
         tipoPersonaJuridica: tipoPersonaJuridica,
@@ -224,7 +198,6 @@ const newStore = async (req, res) => {
         btn: "Crear Nuevo Punto De Venta"
     })
 }
-
 
 
 //GUARDO DATOS BÁSICOS DE LA TIENDA.
@@ -338,10 +311,6 @@ const saveStoreBasic = async (req, res) => {
 };
 
 
-
-
-
-
 //***********************[INVENTARIOS]***********************//
 //PRINCIPAL INVENTARIOS
 const dashboardInventorys = async (req, res) => {
@@ -357,7 +326,6 @@ const dashboardInventorys = async (req, res) => {
     return res.status(201).render('./administrador/inventarios/new', {
         pagina: "Inventarios y Productos",
         subPagina: "Nuevo Producto",
-        csrfToken: req.csrfToken(),
         currentPath: '/inventario',
         producto: {},
         categoriasSeleccionadas: [],
@@ -374,7 +342,7 @@ const dashboardInventorys = async (req, res) => {
 //
 const billingToday = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
-    return res.render('./administrador/stores/views/listaFacturasDia', { idPuntoDeVenta, csrfToken: req.csrfToken() });
+    return res.render('./administrador/stores/views/listaFacturasDia', { idPuntoDeVenta });
 };
 
 const getFacturasJSON = async (req, res) => {
@@ -462,7 +430,6 @@ const storeInventory = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
     return res.render('./administrador/stores/partials/inventoryList', {
         idPuntoDeVenta,
-        csrfToken: req.csrfToken()
     });
 }
 
@@ -559,7 +526,6 @@ const storeDocuments = async (req, res) => {
     const { idPuntoDeVenta } = req.params;
     return res.render('./administrador/stores/views/documentacionTienda', {
         idPuntoDeVenta,
-        csrfToken: req.csrfToken()
     });
 };
 
@@ -810,7 +776,6 @@ const listaProductos = async (req, res) => {
         camposExportar: CAMPOS_EXPORTAR_PRODUCTOS,
         pagina: "Inventarios y Productos",
         subPagina: "Listado De Productos",
-        csrfToken: req.csrfToken(),
         currentPath: '/inventario',
         subPath: 'listado',
 
@@ -819,7 +784,6 @@ const listaProductos = async (req, res) => {
 
     })
 }
-
 
 
 const verProducto = async (req, res) => {
@@ -839,7 +803,6 @@ const verProducto = async (req, res) => {
         return res.status(201).render('./administrador/inventarios/productView', {
             pagina: "Ver Producto",
             subPagina: "Producto",
-            csrfToken: req.csrfToken(),
             currentPath: '/inventario',
             subPath: process.env.R2_PUBLIC_URL,
             atributos,
@@ -998,6 +961,7 @@ const trasladarProductoAdmin = async (req, res) => {
     }
 
     const t = await db.transaction();
+    let traslado;
     try {
         const stockRows = await Stock.findAll({
             where: { idProducto, idPuntoVenta: idOrigen, cantidadExistente: { [Op.gt]: 0 } },
@@ -1024,7 +988,7 @@ const trasladarProductoAdmin = async (req, res) => {
             }
         }
 
-        const traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
+        traslado = await crearConCodigo(Traslados, 'codigoTraslado', 'TR-', 'traslado', {
             idOrigen,
             idDestino,
             idUsuarioDespacha: idAdmin,
@@ -1040,20 +1004,28 @@ const trasladarProductoAdmin = async (req, res) => {
         }, { transaction: t });
 
         await t.commit();
-
-        const pendientes = await Traslados.count({
-            where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
-        });
-        broadcast(idDestino, 'new_traslado', { codigo, pendientes });
-
-        return res.json({ success: true, idTraslado: traslado.idTraslado, codigo });
     } catch (e) {
-        // El try tiene trabajo después del commit: si algo falla ahí, la transacción ya está
-        // cerrada y un rollback lanzaría otro error, dejando la petición sin respuesta.
         if (!t.finished) await t.rollback().catch(() => {});
         console.error('trasladarProductoAdmin:', e);
         return res.status(500).json({ success: false, mensaje: 'Error interno.' });
     }
+
+    // ── Post-commit (CLAUDE.md §9) ────────────────────────────────────────────────
+    // El traslado YA está guardado y el stock descontado. Antes esto vivía dentro del try y
+    // usaba una variable `codigo` que no existía: el ReferenceError caía al catch, el
+    // navegador mostraba "Error interno" y rehabilitaba el botón, y cada reintento creaba
+    // OTRO traslado real descontando el stock de nuevo. Nada de acá puede cambiar la respuesta.
+    const codigo = traslado.codigoTraslado;
+    try {
+        const pendientes = await Traslados.count({
+            where: { idDestino, estado: { [Op.in]: ['EN_TRANSITO', 'PENDIENTE'] } }
+        });
+        broadcast(idDestino, 'new_traslado', { codigo, idTraslado: traslado.idTraslado, pendientes });
+    } catch (e) {
+        console.error('trasladarProductoAdmin [notificación post-commit]:', e);
+    }
+
+    return res.json({ success: true, idTraslado: traslado.idTraslado, codigo });
 };
 
 const ventasHistoricoProducto = async (req, res) => {
@@ -1115,7 +1087,6 @@ const ventasPorTiendaProducto = async (req, res) => {
 };
 
 
-
 const editarProducto = async (req, res) => {
 
     const { idProducto } = req.params;
@@ -1167,7 +1138,6 @@ const editarProducto = async (req, res) => {
         return res.status(201).render('./administrador/inventarios/edit', {
             pagina: "Editar Producto",
             subPagina: producto.nombreProducto,
-            csrfToken: req.csrfToken(),
             currentPath: '/inventario',
             subPath: 'Editar Producto',
             atributos,
@@ -1186,28 +1156,6 @@ const editarProducto = async (req, res) => {
 }
 
 
-
-//DASHBOARD DOSIDI
-const dosificar = async (req, res) => {
-    return res.status(201).render('./administrador/dose/new', {
-        pagina: "Dosificacion de productos",
-        subPagina: "Dosificar Productos",
-        csrfToken: req.csrfToken(),
-        currentPath: '/inventario',
-        subPath: 'dosificar',
-        btnName: "Pre-Calcular"
-    })
-}
-
-
-
-
-
-
-
-
-
-
 // -> Guardo las facturas/ ordenes de compra y las pongo en el inventario global. 
 const batchBuyOrder = async (req, res) => {
     const [categoriasProvedores, departamentos, puntosDeVenta] = await Promise.all([
@@ -1218,7 +1166,6 @@ const batchBuyOrder = async (req, res) => {
     return res.status(201).render('./administrador/inventarios/batch', {
         pagina: "Orden de Compra",
         subPagina: "Nueva Orden de Compra",
-        csrfToken: req.csrfToken(),
         currentPath: '/inventario',
         subPath: 'batch',
         btnName: 'Guardar Orden de Compra',
@@ -1363,7 +1310,6 @@ const saveBatchOrder = async (req, res) => {
 }
 
 
-
 //************[TIENDAS]*******************//
 const verTienda = async (req, res) => {
 
@@ -1382,7 +1328,6 @@ const verTienda = async (req, res) => {
     return res.status(201).render('./administrador/stores/viewStore', {
         pagina: req.path,
         subPagina: "Estado de la tienda ",
-        csrfToken: req.csrfToken(),
         currentPath: '/tiendas',
         subPath: process.env.R2_PUBLIC_URL,
 
@@ -1436,15 +1381,6 @@ const editarTienda = async (req, res) => {
     })
 
 
-    const obtenerDatosSelectores = async (idDepartamento) => {
-        const [departamentos, ciudades] = await Promise.all([
-            Departamentos.findAll({ raw: true }),
-            idDepartamento
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
-                : Promise.resolve([])
-        ]);
-        return { departamentos, ciudades };
-    };
     const { departamentos, ciudades } = await obtenerDatosSelectores(puntoVenta?.departamento);
 
 
@@ -1462,7 +1398,6 @@ const editarTienda = async (req, res) => {
     return res.status(201).render('./administrador/stores/new', {
         pagina: req.path,
         subPagina: "Editar Tienda",
-        csrfToken: req.csrfToken(),
         currentPath: '/tiendas',
         dato: puntoVenta,
         datosRegimenFacturacion: datosRegimenFacturacion,
@@ -1483,7 +1418,6 @@ const editarTienda = async (req, res) => {
 const dashboardCustomers = async (req, res) => {
     return res.status(201).render('./administrador/customers', {
         pagina: "Clientes",
-        csrfToken: req.csrfToken(),
         currentPath: req.path
     });
 };
@@ -1495,7 +1429,6 @@ const newCliente = async (req, res) => {
         return res.render('./administrador/customers/new', {
             pagina: 'Clientes',
             subPagina: 'Nuevo Cliente',
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             departamentos
         });
@@ -2460,7 +2393,6 @@ const dashboardClienteCredito = async (req, res) => {
             pagina: 'Clientes',
             subPagina: 'Estado de crédito',
             cuentasAbono,
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             cliente,
             ubicacion: ubicacionRows[0] || null,
@@ -3140,7 +3072,6 @@ const filterClientesListJson = async (req, res) => {
 };
 
 
-
 //***************************[EMPLEADOS]*************************************/
 
 //HOME
@@ -3200,7 +3131,6 @@ const dashboardEmployees = async (req, res) => {
             pagina: 'Empleados',
             subPagina: 'Dashboard Empleados',
             subPath: 'dashboard',
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             vendedores,
             topProductos,
@@ -3211,7 +3141,6 @@ const dashboardEmployees = async (req, res) => {
             pagina: 'Empleados',
             subPagina: 'Dashboard Empleados',
             subPath: 'dashboard',
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             vendedores: [],
             topProductos: [],
@@ -3222,15 +3151,6 @@ const dashboardEmployees = async (req, res) => {
 
 const newEmployer = async (req, res) => {
 
-    const obtenerDatosSelectores = async (idDepartamento) => {
-        const [departamentos, ciudades] = await Promise.all([
-            Departamentos.findAll({ raw: true }),
-            idDepartamento
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
-                : Promise.resolve([])
-        ]);
-        return { departamentos, ciudades };
-    };
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
 
     // Obtener puntos de venta y bodegas para el select condicional
@@ -3245,7 +3165,6 @@ const newEmployer = async (req, res) => {
         pagina: "Empleados",
         subPagina: 'Nuevo Empleado',
         subPath: 'newEmployer',
-        csrfToken: req.csrfToken(),
         currentPath: req.path,
         departamentos: departamentos,
         ciudades: ciudades,
@@ -3257,17 +3176,13 @@ const newEmployer = async (req, res) => {
 }
 
 
-
-
 const dashboardSettings = async (req, res) => {
     return res.status(201).render('./administrador/settings', {
         pagina: "Configuración",
         subPagina: "Configuración",
-        csrfToken: req.csrfToken(),
         currentPath: req.path
     })
 }
-
 
 
 //PROVEDORES
@@ -3315,7 +3230,6 @@ const dashboardSupplier = async (req, res) => {
     return res.status(201).render('./administrador/supplier/homeSupplier', {
         pagina: "Provedores",
         subPagina: "Gestión Provedores",
-        csrfToken: req.csrfToken(),
         currentPath: req.path,
         categorias,
         cuentasPorPagar: {
@@ -3333,24 +3247,13 @@ const newSupplier = async (req, res) => {
 
     //Importo las categorias de los provedores;
     const categoriasProvedores = await CategoriasDeProvedores.findAll()
-    const obtenerDatosSelectores = async (idDepartamento) => {
-        const [departamentos, ciudades] = await Promise.all([
-            Departamentos.findAll({ raw: true }),
-            idDepartamento
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
-                : Promise.resolve([])
-        ]);
-        return { departamentos, ciudades };
-    };
     const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-
 
 
     return res.status(201).render('./administrador/supplier/new', {
         pagina: "Provedores",
         subPagina: "Nuevo Provedor",
         subPath: "nuevo provedor",
-        csrfToken: req.csrfToken(),
         currentPath: req.path,
         btnName: 'Guardar',
 
@@ -3363,14 +3266,20 @@ const newSupplier = async (req, res) => {
 
 }
 
+// Verificaciones en vivo del formulario de empleado. Usan las mismas reglas que el
+// guardado (helpers/empleados.js `buscarConflictosEmpleado`): antes buscaban solo entre
+// los empleados activos y solo en EMPLEADOS, así que decían "libre" a un documento de un
+// empleado borrado o a un correo que ya era usuario de otra persona, y el guardado
+// reventaba después.
 const checkDocumentoPersonal = async (req, res) => {
-    const { tipo, numero } = req.params;
+    const { numero } = req.params;
     const { exclude } = req.query;
     try {
-        const where = { TipoDocumento: tipo, NumeroDocumento: numero };
-        if (exclude) where.idEmpleado = { [Op.ne]: exclude };
-        const empleado = await Empleados.findOne({ where });
-        return res.json({ exists: !!empleado });
+        // El índice único es por número, no por tipo + número.
+        const errores = await buscarConflictosEmpleado({
+            NumeroDocumento: normalizarNumeroDocumento(numero), conUsuario: false, idEmpleado: exclude || null
+        });
+        return res.json({ exists: !!errores.NumeroDocumento, mensaje: errores.NumeroDocumento || null });
     } catch (error) {
         console.error("Error en checkDocumentoPersonal:", error);
         return res.status(500).json({ success: false });
@@ -3378,13 +3287,21 @@ const checkDocumentoPersonal = async (req, res) => {
 }
 
 const checkEmailPersonal = async (req, res) => {
-    const { email } = req.params;
+    const email = String(req.params.email || '').trim().toLowerCase();
     const { exclude } = req.query;
     try {
-        const where = { emailEmpleado: email };
-        if (exclude) where.idEmpleado = { [Op.ne]: exclude };
-        const empleado = await Empleados.findOne({ where });
-        return res.json({ exists: !!empleado });
+        // Al editar, el correo del propio usuario del empleado no cuenta como ocupado.
+        const propio = exclude
+            ? await Empleados.findByPk(exclude, { attributes: ['idUsuario'] })
+            : null;
+        const [empleado, errores] = await Promise.all([
+            Empleados.findOne({
+                where: { emailEmpleado: email, ...(exclude && { idEmpleado: { [Op.ne]: exclude } }) },
+                attributes: ['idEmpleado']
+            }),
+            buscarConflictosEmpleado({ emailEmpleado: email, conUsuario: true, idUsuario: propio?.idUsuario || null })
+        ]);
+        return res.json({ exists: !!empleado || !!errores.emailEmpleado });
     } catch (error) {
         console.error("Error en checkEmailPersonal:", error);
         return res.status(500).json({ success: false });
@@ -3453,49 +3370,63 @@ const buscarEmpleadoPorCodigo = async (req, res) => {
 const saveEmployee = async (req, res) => {
     // Se llena si el alta crea permisos; el aviso sale recién después del commit.
     let avisarAlTerminar = null;
+    // Igual el correo de bienvenida: si se mandaba dentro de la transacción y después
+    // fallaba la foto o un documento, la persona recibía un usuario y un código que no existen.
+    let bienvenidaPendiente = null;
     const {
-        PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
-        TipoDocumento, NumeroDocumento, fechaNacimiento, direccionResidencia,
-        departamentoSelect, ciudadSelect, emailEmpleado, telefonoContacto,
+        fechaNacimiento, direccionResidencia,
+        departamentoSelect, ciudadSelect, telefonoContacto,
         contactoEmergencia, telefonoEmergencia, fechaIngreso, tipoContrato,
-        cargo, salarioBase, comisiones, idPuntoDeVenta
+        salarioBase, comisiones
     } = req.body;
+
+    // ── Validación en el servidor (helpers/empleados.js) ─────────────────────────
+    // Antes el alta confiaba en el formulario: un POST directo podía crear un empleado sin
+    // correo válido o con una sede inexistente.
+    const { errores, datos } = await validarDatosEmpleado(req.body);
+    if (errores) return responderErroresEmpleado(res, errores);
+    // El documento ya viene normalizado (sin espacios ni puntos): es la contraseña inicial.
+    const { NumeroDocumento, PrimerNombre, PrimerApellido, emailEmpleado, cargo } = datos;
+    const rol = rolDeCargo(cargo);
 
     // Un salario negativo se rechaza, no se guarda como 0: `limpiarPrecio` le borraba el
     // signo y lo convertía en positivo (ver helpers/helpers.js `montoNoNegativo`).
     const salarioBaseLimpio = montoNoNegativo(salarioBase);
-    if (salarioBaseLimpio === null) {
-        return res.status(400).json({ success: false, mensaje: 'El salario base no puede ser negativo.' });
+    if (salarioBaseLimpio === null) return responderErroresEmpleado(res, { salarioBase: 'El salario base no puede ser negativo.' });
+
+    const conflictos = await buscarConflictosEmpleado({ NumeroDocumento, emailEmpleado, conUsuario: !!rol });
+    if (Object.keys(conflictos).length) return responderErroresEmpleado(res, conflictos, 409);
+
+    // Permisos: se validan antes de abrir la transacción (solo lecturas).
+    let permisos = [];
+    try {
+        if (rol) {
+            permisos = await verificarPermisosAsignables({
+                permisos: leerPermisosJSON(req.body.permisosJSON),
+                cargo, quienAsigna: req.usuario
+            });
+        }
+    } catch (e) {
+        if (e.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message });
+        console.error('saveEmployee — permisos:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudieron verificar los permisos.' });
     }
 
     const t = await db.transaction();
     const uploadedFiles = [];
 
     try {
-        // 1. Generar código de empleado aleatorio de 5 dígitos
-        let codigoUnico = false;
+        // 1. Código de empleado aleatorio de 5 dígitos. Incluye a los borrados
+        // (`paranoid: false`): el índice único de la base también los cuenta.
         let codigoEmpleado;
-        while (!codigoUnico) {
+        do {
             codigoEmpleado = Math.floor(10000 + Math.random() * 90000).toString();
-            const exists = await Empleados.findOne({ where: { codigoEmpleado } });
-            if (!exists) codigoUnico = true;
-        }
+        } while (await Empleados.findOne({ where: { codigoEmpleado }, attributes: ['idEmpleado'], paranoid: false }));
 
-        // 2. Determinar idPuntoDeVenta final
-        const administrativeId = '00000000-0000-0000-0000-000000000000';
-        const finalIdPuntoDeVenta = (cargo === 'vendedor' || cargo === 'bodega') ? (idPuntoDeVenta || administrativeId) : administrativeId;
-
-        // 3. Crear registro de empleado
+        // 2. Crear registro de empleado (lista explícita de campos, CLAUDE.md §12)
         const empleado = await Empleados.create({
-            idPuntoDeVenta: finalIdPuntoDeVenta,
-            TipoDocumento,
-            NumeroDocumento,
-            PrimerNombre,
-            OtrosNombres,
-            PrimerApellido,
-            SegundoApellido,
+            ...datos,
             telefonoContacto,
-            emailEmpleado,
             fechaIngreso,
             fechaNacimiento,
             departamento: departamentoSelect,
@@ -3504,34 +3435,27 @@ const saveEmployee = async (req, res) => {
             contactoEmergencia,
             telefonoEmergencia,
             tipoContrato,
-            cargo,
             salarioBase: salarioBaseLimpio,
             comisiones: comisiones === 'on',
             codigoEmpleado,
             estado: 'activo'
         }, { transaction: t });
 
-        // 3. Crear Usuario si aplica
+        // 3. Crear Usuario si el cargo tiene acceso
         let usuarioCreado = null;
-        const rolesConUsuario = {
-            'vendedor': 'STORE',
-            'bodega': 'EMPLOYER',
-            'administrativo': 'ADMIN'
-        };
-
-        if (rolesConUsuario[cargo]) {
+        if (rol) {
             usuarioCreado = await Usuarios.create({
                 nombreUsuario: PrimerNombre,
                 apellidoUsuario: PrimerApellido,
                 emailUsuario: emailEmpleado,
                 password: NumeroDocumento,
-                permisos: rolesConUsuario[cargo]
+                permisos: rol
             }, { transaction: t });
 
             await empleado.update({ idUsuario: usuarioCreado.idUsuario }, { transaction: t });
-            
-            // 4. Enviar Email (Nodemailer)
-                mailWelcomeEmployer({ emailEmpleado, PrimerNombre, codigoEmpleado });
+
+            // 4. El correo sale después del commit (ver bienvenidaPendiente).
+            bienvenidaPendiente = { emailEmpleado, PrimerNombre, codigoEmpleado };
         }
 
         // 5. Procesar Foto (perfil/)
@@ -3560,20 +3484,15 @@ const saveEmployee = async (req, res) => {
             await empleado.update({ imagen: keyPhoto }, { transaction: t });
         }
 
-        // 6. Guardar permisos en USER_PERMISOS
-        if (usuarioCreado && req.body.permisosJSON) {
-            const parsed = JSON.parse(req.body.permisosJSON);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                const filas = parsed.map(({ idRecurso, idAccion }) => ({
-                    idUsuario: usuarioCreado.idUsuario,
-                    idRecurso,
-                    idAccion,
-                }));
-                await UserPermisos.bulkCreate(filas, { transaction: t });
-                // El aviso va después del commit, más abajo: acá todavía estamos dentro de
-                // la transacción y los permisos no existen para nadie más.
-                avisarAlTerminar = usuarioCreado.idUsuario;
-            }
+        // 6. Guardar permisos en USER_PERMISOS (ya verificados arriba)
+        if (usuarioCreado && permisos.length) {
+            await UserPermisos.bulkCreate(
+                permisos.map(({ idRecurso, idAccion }) => ({ idUsuario: usuarioCreado.idUsuario, idRecurso, idAccion })),
+                { transaction: t }
+            );
+            // El aviso va después del commit, más abajo: acá todavía estamos dentro de
+            // la transacción y los permisos no existen para nadie más.
+            avisarAlTerminar = usuarioCreado.idUsuario;
         }
 
         // 7. Procesar Documentos (empleados/)
@@ -3591,288 +3510,26 @@ const saveEmployee = async (req, res) => {
         // Después del commit y fuera del try de la transacción (CLAUDE.md §9): un aviso que
         // falle no puede dejar la petición colgada sobre una transacción ya cerrada.
         avisarCambioDePermisos(avisarAlTerminar);
+        // enviarCorreoSes nunca lanza (CLAUDE.md §2); el catch es por si eso cambia.
+        if (bienvenidaPendiente) mailWelcomeEmployer(bienvenidaPendiente).catch(() => {});
         res.json({ success: true, mensaje: 'Empleado registrado con éxito. Código: ' + codigoEmpleado });
 
     } catch (error) {
         if (!t.finished) await t.rollback().catch(() => {});
         await borrarComprobantes(uploadedFiles);
         if (error.publico) return res.status(400).json({ success: false, mensaje: error.message });
+        // Dos altas simultáneas con el mismo documento o correo: las dos pasan la consulta
+        // previa y la segunda choca con el índice único.
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(409).json({ success: false, mensaje: 'Ya existe un empleado o un usuario con ese documento o correo.' });
+        }
         console.error("ERROR SAVE_EMPLOYEE:", error);
-
-        res.status(500).json({ success: false, mensaje: 'Error al registrar el empleado: ' + error.message });
+        res.status(500).json({ success: false, mensaje: 'No se pudo registrar el empleado. Intenta de nuevo.' });
     }
 }
 
 
-
-
 //************************[POST CONTROLLERS] ************************ */
-
-
-const postNuevaTienda = async (req, res) => {
-    // 1. Captura de errores de express-validator
-    const erroresValidacion = validationResult(req);
-    const obtenerDatosSelectores = async (idDepartamento) => {
-        const [departamentos, ciudades] = await Promise.all([
-            Departamentos.findAll({ raw: true }),
-            idDepartamento
-                ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
-                : Promise.resolve([])
-        ]);
-        return { departamentos, ciudades };
-    };
-
-    if (!erroresValidacion.isEmpty()) {
-        const errsPorCampo = {};
-        erroresValidacion.array().forEach(err => {
-            if (!errsPorCampo[err.path]) errsPorCampo[err.path] = err.msg;
-        });
-
-        const obtenerDatosSelectores = async (idDepartamento) => {
-            const [departamentos, ciudades] = await Promise.all([
-                Departamentos.findAll({ raw: true }),
-                idDepartamento
-                    ? Municipios.findAll({ where: { departamento_id: idDepartamento }, raw: true })
-                    : Promise.resolve([])
-            ]);
-            return { departamentos, ciudades };
-        };
-
-        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        const activa = req.body.activa ? true : false
-
-        return res.status(201).render('./administrador/stores/new', {
-            pagina: "Tiendas",
-            subPagina: "Nueva Tienda",
-            csrfToken: req.csrfToken(),
-            currentPath: '/tiendas',
-            departamentos,
-            ciudades: ciudades,
-            activa: activa,
-            dato: req.body,
-            responsabiliidadFiscal: responsabiliidadFiscal,
-            tipoPersonaJuridica: tipoPersonaJuridica,
-            tipoFacturas: tipoFacturas,
-            errores: errsPorCampo,
-            pasoActivo: "1"
-        });
-    }
-
-
-
-    // 2. Limpieza de datos críticos
-    const { razonSocial, nombreComercial, tipo, direccionPrincipal, departamento, ciudad, telefono, activa, emailRut, footerBill, DV } = req.body;
-    const nitBusqueda = req.body.taxId?.trim();
-    const resFacturacion = req.body.resolucionFacturacion?.trim();
-
-    // 3. VALIDACIONES DE DUPLICADOS (Aduana)
-    if (nitBusqueda) {
-        const checkTaxId = await PuntosDeVenta.findOne({ where: { taxId: nitBusqueda } });
-        if (checkTaxId) {
-            const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(200).render('./administrador/stores/new', {
-                pagina: "Tiendas",
-                subPagina: "Nueva Tienda",
-                csrfToken: req.csrfToken(),
-                currentPath: '/tiendas',
-                departamentos: departamentos,
-                ciudades: ciudades,
-                activa: activa,
-                dato: req.body,
-                responsabiliidadFiscal: responsabiliidadFiscal,
-                tipoPersonaJuridica: tipoPersonaJuridica,
-                tipoFacturas: tipoFacturas,
-                errores: { msgTaxId: "El NIT ya está registrado" },
-                pasoActivo: "2"
-            });
-        }
-    }
-
-    if (resFacturacion) {
-        const checkRes = await RegimenFacturacion.findOne({
-            where: {
-                resolucionFacturacion: resFacturacion,
-                [Op.and]: [
-                    { resolucionFacturacion: { [Op.ne]: null } },
-                    { resolucionFacturacion: { [Op.ne]: "" } }
-                ]
-            }
-        });
-        if (checkRes) {
-            const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-            return res.status(409).render('./administrador/stores/new', {
-                pagina: "Tiendas",
-                subPagina: "Nueva Tienda",
-                csrfToken: req.csrfToken(),
-                currentPath: '/tiendas',
-                departamentos: departamentos,
-                ciudades: ciudades,
-                activa: activa,
-                dato: req.body,
-                responsabiliidadFiscal: responsabiliidadFiscal,
-                tipoPersonaJuridica: tipoPersonaJuridica,
-                tipoFacturas: tipoFacturas,
-                errores: { msgTaxId: "🚨 La resolución de facturación está repetida." },
-                pasoActivo: "2"
-            });
-        }
-    }
-
-    const nStart = Number(req.body.nroInicio) || 0;
-    const nEnd = Number(req.body.nroFin) || 0;
-
-    if ((nStart > 0 && nEnd === 0) || (nEnd > 0 && nStart === 0)) {
-        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/new', {
-            pagina: "Tiendas",
-            subPagina: "Nueva Tienda",
-            csrfToken: req.csrfToken(),
-            currentPath: '/tiendas',
-            departamentos: departamentos,
-            ciudades: ciudades,
-            activa: activa,
-            dato: req.body,
-            responsabiliidadFiscal: responsabiliidadFiscal,
-            tipoPersonaJuridica: tipoPersonaJuridica,
-            tipoFacturas: tipoFacturas,
-            errores: { msgTaxId: "🚨 Si ingresas un rango de facturación, debes completar tanto el número inicial como el final." },
-            pasoActivo: "2"
-        });
-    }
-
-
-    if (nEnd > 0 && nStart >= nEnd) {
-        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/new', {
-            pagina: "Tiendas",
-            subPagina: "Nueva Tienda",
-            csrfToken: req.csrfToken(),
-            currentPath: '/tiendas',
-            departamentos: departamentos,
-            ciudades: ciudades,
-            activa: activa,
-            dato: req.body,
-            responsabiliidadFiscal: responsabiliidadFiscal,
-            tipoPersonaJuridica: tipoPersonaJuridica,
-            tipoFacturas: tipoFacturas,
-            errores: { msgTaxId: `🚨 Error en rango: El inicio (${nStart}) no puede superar al final (${nEnd}).` },
-            pasoActivo: "2"
-        });
-    }
-
-    const dEmision = req.body.fechaEmision?.trim() ? new Date(req.body.fechaEmision) : null;
-    const dVencimiento = req.body.fechaVencimiento?.trim() ? new Date(req.body.fechaVencimiento) : null;
-
-    if ((dEmision && !dVencimiento) || (!dEmision && dVencimiento)) {
-        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/new', {
-            pagina: "Tiendas",
-            subPagina: "Nueva Tienda",
-            csrfToken: req.csrfToken(),
-            currentPath: '/tiendas',
-            departamentos: departamentos,
-            ciudades: ciudades,
-            activa: activa,
-            dato: req.body,
-            responsabiliidadFiscal: responsabiliidadFiscal,
-            tipoPersonaJuridica: tipoPersonaJuridica,
-            tipoFacturas: tipoFacturas,
-            errores: { msgTaxId: "🚨 Datos incompletos: Una resolución de facturación debe tener tanto fecha de emisión como de vencimiento." },
-            pasoActivo: "2"
-        });
-    }
-
-
-
-    if (dEmision && dVencimiento && dEmision > dVencimiento) {
-        const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-        return res.status(409).render('./administrador/stores/new', {
-            pagina: "Tiendas",
-            subPagina: "Nueva Tienda",
-            csrfToken: req.csrfToken(),
-            currentPath: '/tiendas',
-            departamentos: departamentos,
-            ciudades: ciudades,
-            activa: activa,
-            dato: req.body,
-            responsabiliidadFiscal: responsabiliidadFiscal,
-            tipoPersonaJuridica: tipoPersonaJuridica,
-            tipoFacturas: tipoFacturas,
-            errores: { msgTaxId: "🚨 La fecha de emisión no puede ser posterior a la de vencimiento." },
-            pasoActivo: "2"
-        });
-    }
-
-
-
-
-    // 4. CREACIÓN ÚNICA DE PUNTO DE VENTA
-    const nuevaTienda = await PuntosDeVenta.create({
-        razonSocial,
-        nombreComercial,
-        tipo,
-        direccionPrincipal,
-        departamento,
-        ciudad,
-        emailRut: emailRut?.trim() || '',
-        telefono,
-        footerBill: footerBill || '',
-        activa: activa === 'on'
-    });
-
-    const idPuntoDeVenta = nuevaTienda.idPuntoDeVenta;
-
-    // 5. INGRESO DE DATOS TRIBUTARIOS (Si aplica)
-    if (nitBusqueda) {
-        let { prefijo, responsabilidades, tipo_organizacion, tipoFactura, nroInicio, nroFin, nroActual } = req.body;
-
-        // Actualizamos la tienda usando el objeto que ya tenemos (Más eficiente)
-        nuevaTienda.taxId = nitBusqueda;
-        nuevaTienda.DV = DV ? Number(DV) : null;
-        nuevaTienda.prefijo = prefijo?.trim() || null;
-        nuevaTienda.resolucionFacturacion = resFacturacion || null;
-        await nuevaTienda.save(); // ¡CON AWAIT!
-
-        const startDate = req.body.fechaEmision?.trim() || null;
-        const finishDate = req.body.fechaVencimiento?.trim() || null;
-
-        await RegimenFacturacion.create({
-            idPuntoDeVenta,
-            resolucionFacturacion: resFacturacion || null,
-            responsabilidades: responsabilidades?.trim() || 'R-99-PN',
-            tipo_organizacion: tipo_organizacion?.trim() || null,
-            tipoFactura: tipoFactura?.trim() || null,
-            fechaEmision: startDate,
-            fechaVencimiento: finishDate,
-            nroInicio: nroInicio ? Number(nroInicio) : 0,
-            nroFin: nroFin ? Number(nroFin) : 0,
-            nroActual: nroActual ? Number(nroActual) : 0,
-            razonSocial,
-            taxId: nitBusqueda,
-            DV: DV ? Number(DV) : 0,
-            prefijo: prefijo?.trim() || null
-        });
-    }
-
-    // 6. RESPUESTA FINAL
-    const { departamentos, ciudades } = await obtenerDatosSelectores(req.body?.departamento);
-    return res.render('./administrador/stores/new', {
-        pagina: "Tiendas",
-        subPagina: "Nueva Tienda",
-        csrfToken: req.csrfToken(),
-        currentPath: '/tiendas',
-        departamentos: departamentos,
-        ciudades: ciudades,
-        activa: activa,
-        pasoActivo: "1",
-        responsabiliidadFiscal: responsabiliidadFiscal,
-        tipoPersonaJuridica: tipoPersonaJuridica,
-        tipoFacturas: tipoFacturas,
-        successful: { mensaje: '¡Punto de venta creado con éxito! 😌' }
-    });
-};
-
-
 
 
 const saveProduct = async (req, res, next) => {
@@ -3886,7 +3543,6 @@ const saveProduct = async (req, res, next) => {
 
     try {
         const { idProducto, categorias, variantes_finales, imagenes_borrar, imagenes_color_nuevas, imagenes_color_existentes } = req.body;
-        const csrfToken = req.csrfToken();
 
         // 1. Sanitización de Datos
         const idCategoriaParaDB = Array.isArray(categorias) ? categorias.join('|') : categorias;
@@ -4331,19 +3987,6 @@ const familiaSugerenciasJson = async (req, res) => {
     }
 };
 
-const eanJson = async (req, res) => {
-    const { checkEan } = req.params;
-    const ean = await Productos.findOne({
-        where: { ean: checkEan },
-        attributes: ['idProducto', 'nombreProducto', 'sku', 'ean',],
-        raw: true
-    })
-    return res.json(ean)
-}
-
-
-
-
 
 // Condiciones del listado de productos a partir de sus filtros (búsqueda, categoría,
 // familia, estado, web). La comparten el listado (filterProductListJson) y la exportación
@@ -4395,7 +4038,7 @@ const condicionesListadoProductos = ({ busqueda, categoria, familia, estado, web
 const filterProductListJson = async (req, res) => {
     try {
         // 1. Capturamos la página y aseguramos que sea un número
-        const { busqueda, categoria, familia, estado, web, pagina = 1 } = req.query;
+        const { pagina = 1 } = req.query;
         const numPagina = parseInt(pagina) || 1;
 
         const limite = parseInt(process.env.LIMIT_PER_PAGE) || 10;
@@ -4957,9 +4600,7 @@ const jsonUnicidad = async (req, res) => {
 };
 
 
-
 //************************[PROVEDORES API & ACTIONS]************************ */
-
 
 
 //Verifico nits de provedores. 
@@ -5043,7 +4684,6 @@ const verProveedor = async (req, res) => {
             facturas,
             documentos,
             tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR,
-            csrfToken: req.csrfToken(),
             currentPath: req.path
         });
     } catch (error) {
@@ -5127,7 +4767,6 @@ const actualizarProveedor = async (req, res) => {
 // Tipos de documento de un empleado: el catálogo del proyecto acotado a lo que acepta la
 // columna EMPLEADOS.TipoDocumento (su ENUM no tiene PEP). Se lee del modelo para que el
 // formulario nunca ofrezca un tipo que la base rechazaría al guardar.
-const CODIGOS_TIPO_DOCUMENTO_EMPLEADO = Empleados.getAttributes().TipoDocumento.values;
 const tipoIdentificacion = CATALOGO_TIPOS_DOCUMENTO.filter(t => CODIGOS_TIPO_DOCUMENTO_EMPLEADO.includes(t.codigo));
 
 // GET /admin/provedores/documentos/:idDocumento — abre un documento de un proveedor.
@@ -5194,6 +4833,13 @@ const checkNitSupplier = async (req, res) => {
         console.error('checkNitSupplier:', error);
         return res.status(500).json({ error: 'Error al verificar el documento' });
     }
+};
+
+// Nombre legible de cada columna de PROVEDORES, para decir qué dato falta o está mal.
+const CAMPOS_PROVEEDOR = {
+    razonSocial: 'razón social', taxIdSupplier: 'número de identificación', nombreContacto: 'nombre del contacto',
+    direccionProvedor: 'dirección', emailProvedor: 'email (válido)', telefonoContacto: 'teléfono (máx. 10 dígitos)',
+    ciudad: 'ciudad', departamento: 'departamento'
 };
 
 const saveSupplier = async (req, res) => {
@@ -5288,6 +4934,12 @@ const saveSupplier = async (req, res) => {
 
         if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(400).json({ success: false, mensaje: 'Ese número de identificación ya está registrado para otro proveedor.' });
+        }
+        // Un campo obligatorio vacío o un correo inválido lo detecta el modelo: antes salía
+        // como "error interno" (500) y el operador no sabía qué faltaba.
+        if (error.name === 'SequelizeValidationError') {
+            const faltan = [...new Set(error.errors.map(e => CAMPOS_PROVEEDOR[e.path] || e.path))];
+            return res.status(400).json({ success: false, mensaje: `Revisa estos datos del proveedor: ${faltan.join(', ')}.` });
         }
         res.status(500).json({ success: false, mensaje: 'Error interno del servidor al guardar proveedor' });
     }
@@ -6097,7 +5749,6 @@ const verEmpleado = async (req, res) => {
         return res.render('./administrador/employeers/ver', {
             pagina: 'Empleados',
             subPagina: `${empleado.PrimerNombre} ${empleado.PrimerApellido}`,
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             empleado,
             documentos,
@@ -6121,83 +5772,55 @@ const actualizarEmpleado = async (req, res) => {
 
     // ── 1. EXTRAER CAMPOS ────────────────────────────────────────────────────────
     const {
-        PrimerNombre, OtrosNombres, PrimerApellido, SegundoApellido,
-        TipoDocumento, NumeroDocumento, fechaNacimiento, direccionResidencia,
-        departamentoSelect, ciudadSelect, emailEmpleado, telefonoContacto,
+        fechaNacimiento, direccionResidencia,
+        departamentoSelect, ciudadSelect, telefonoContacto,
         contactoEmergencia, telefonoEmergencia, fechaIngreso, tipoContrato,
-        cargo, salarioBase, comisiones, idPuntoDeVenta
+        salarioBase, comisiones
     } = req.body;
 
-    // ── 2. VALIDACIÓN ────────────────────────────────────────────────────────────
-    const errores = {};
-    // Un salario negativo se rechaza, no se guarda como 0: `limpiarPrecio` le borraba el
-    // signo y lo convertía en positivo (ver helpers/helpers.js `montoNoNegativo`).
-    const salarioBaseLimpio = montoNoNegativo(salarioBase);
-    if (salarioBaseLimpio === null) errores.salarioBase = 'El salario base no puede ser negativo';
-    if (!PrimerNombre?.trim())  errores.PrimerNombre  = 'El primer nombre es requerido';
-    if (!PrimerApellido?.trim()) errores.PrimerApellido = 'El primer apellido es requerido';
-
-    const tiposDocValidos = CODIGOS_TIPO_DOCUMENTO_EMPLEADO;
-    if (!TipoDocumento || !tiposDocValidos.includes(TipoDocumento))
-        errores.TipoDocumento = 'Selecciona un tipo de documento válido';
-    if (!NumeroDocumento?.trim())
-        errores.NumeroDocumento = 'El número de documento es requerido';
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailEmpleado?.trim() || !emailRegex.test(emailEmpleado.trim()))
-        errores.emailEmpleado = 'Ingresa un email válido';
-
-    if (!fechaIngreso?.trim())
-        errores.fechaIngreso = 'La fecha de ingreso es requerida';
-
-    const contratosValidos = ['1', '2', '3', '4', '5', '6'];
-    if (!tipoContrato || !contratosValidos.includes(String(tipoContrato)))
-        errores.tipoContrato = 'Selecciona un tipo de contrato válido';
-
-    const cargosValidos = ['vendedor', 'bodega', 'administrativo', 'operario', 'otro'];
-    if (!cargo || !cargosValidos.includes(cargo))
-        errores.cargo = 'El área de desempeño es inválida';
-
-    if (!departamentoSelect || isNaN(parseInt(departamentoSelect)))
-        errores.departamento = 'El departamento es requerido';
-    if (!ciudadSelect || isNaN(parseInt(ciudadSelect)))
-        errores.ciudad = 'La ciudad es requerida';
-
-    if (Object.keys(errores).length)
-        return res.status(422).json({ success: false, mensaje: 'Revisa los campos marcados', errores });
-
-    // ── 3. CARGAR ESTADO ACTUAL DEL EMPLEADO ─────────────────────────────────────
+    // ── 2. ESTADO ACTUAL DEL EMPLEADO (la validación necesita su documento vigente) ─
     const empleadoActual = await Empleados.findByPk(idEmpleado, { raw: true });
     if (!empleadoActual) return res.status(404).json({ success: false, mensaje: 'Empleado no encontrado' });
 
-    const rolesConUsuario = { vendedor: 'STORE', bodega: 'EMPLOYER', administrativo: 'ADMIN' };
-    const teniRol  = !!rolesConUsuario[empleadoActual.cargo];   // tenía cuenta de acceso
-    const tieneRol = !!rolesConUsuario[cargo];                  // necesita cuenta de acceso
+    // ── 3. VALIDACIÓN (la misma del alta, helpers/empleados.js) ──────────────────
+    const { errores, datos } = await validarDatosEmpleado(req.body, { documentoVigente: empleadoActual });
+    // Un salario negativo se rechaza, no se guarda como 0: `limpiarPrecio` le borraba el
+    // signo y lo convertía en positivo (ver helpers/helpers.js `montoNoNegativo`).
+    const salarioBaseLimpio = montoNoNegativo(salarioBase);
+    if (errores || salarioBaseLimpio === null) {
+        return responderErroresEmpleado(res, {
+            ...errores,
+            ...(salarioBaseLimpio === null && { salarioBase: 'El salario base no puede ser negativo' })
+        });
+    }
+    const { NumeroDocumento, PrimerNombre, PrimerApellido, emailEmpleado, cargo } = datos;
 
-    // ── 4. PRE-TRANSACCIÓN: crear usuario si pasa de sin-rol → con-rol ───────────
-    // (fuera de la transacción para no bloquear el pool de conexiones MySQL)
-    let usuarioNuevo = null;
-    if (!teniRol && tieneRol) {
-        try {
-            const [u] = await Usuarios.findOrCreate({
-                where: { emailUsuario: emailEmpleado.trim() },
-                defaults: {
-                    nombreUsuario:   PrimerNombre.trim(),
-                    apellidoUsuario: PrimerApellido.trim(),
-                    password:        NumeroDocumento.trim(),
-                    permisos:        rolesConUsuario[cargo],
-                },
-            });
-            usuarioNuevo = u;
-        } catch (userErr) {
-            console.error('actualizarEmpleado — crear usuario:', userErr.message);
-            return res.status(500).json({ success: false, mensaje: 'No se pudo crear el acceso del usuario.' });
-        }
+
+    const teniRol  = !!rolDeCargo(empleadoActual.cargo);   // tenía cuenta de acceso
+    const tieneRol = !!rolDeCargo(cargo);                  // necesita cuenta de acceso
+
+    // Documento y correo libres, sin contar al propio empleado ni a su usuario.
+    const conflictos = await buscarConflictosEmpleado({
+        NumeroDocumento, emailEmpleado, conUsuario: tieneRol,
+        idEmpleado, idUsuario: empleadoActual.idUsuario
+    });
+    if (Object.keys(conflictos).length) return responderErroresEmpleado(res, conflictos, 409);
+
+    // ── 4. PERMISOS: leer y verificar antes de abrir la transacción ──────────────
+    // Al editar se verifica solo lo que se AGREGA (paso 5.4): los permisos que el empleado
+    // ya tenía no se le exigen a quien edita.
+    let permisosDeseados = null;   // null = el formulario no mandó permisos
+    try {
+        if (tieneRol && req.body.permisosJSON !== undefined) permisosDeseados = leerPermisosJSON(req.body.permisosJSON);
+    } catch (e) {
+        return res.status(e.status || 400).json({ success: false, mensaje: e.message });
     }
 
     // ── 5. TRANSACCIÓN PRINCIPAL ─────────────────────────────────────────────────
     const t = await db.transaction();
     const uploadedFiles = [];
+    let bienvenidaPendiente = null;
+    let usuarioNuevo = null;   // se llena en el CASO A (sin rol → con rol)
 
     try {
         const empleado = await Empleados.findByPk(idEmpleado, { transaction: t });
@@ -6208,7 +5831,7 @@ const actualizarEmpleado = async (req, res) => {
             const file = req.files.fotoEmpleado[0];
             // Tipo por contenido, peso y dimensiones (helpers/imagenSegura.js), recortada a 500×500.
             const foto = await imagenAWebpSegura(file.buffer, { caja: FOTO_PERFIL });
-            if (!foto.ok) throw new Error(`Foto: ${foto.mensaje}`);
+            if (!foto.ok) throw Object.assign(new Error(`Foto: ${foto.mensaje}`), { publico: true });
 
             const keyPhoto = `documentacion/empleados/perfil/perfil-${NumeroDocumento}-${Date.now()}.webp`;
             const buffer   = foto.buffer;
@@ -6229,22 +5852,15 @@ const actualizarEmpleado = async (req, res) => {
             docsData = docs;
         }
 
-        // 5.3 ACTUALIZAR TABLA EMPLEADOS
-        const administrativeId = '00000000-0000-0000-0000-000000000000';
-        const finalIdPuntoDeVenta = (cargo === 'vendedor' || cargo === 'bodega')
-            ? (idPuntoDeVenta || administrativeId)
-            : administrativeId;
-
+        // 5.3 ACTUALIZAR TABLA EMPLEADOS (sede, documento, nombres, correo y cargo ya
+        // vienen validados y normalizados en `datos`)
         const updatePayload = {
-            idPuntoDeVenta: finalIdPuntoDeVenta,
-            TipoDocumento, NumeroDocumento: NumeroDocumento.trim(),
-            PrimerNombre: PrimerNombre.trim(), OtrosNombres: OtrosNombres?.trim() || null,
-            PrimerApellido: PrimerApellido.trim(), SegundoApellido: SegundoApellido?.trim() || null,
-            telefonoContacto, emailEmpleado: emailEmpleado.trim(),
-            fechaIngreso, fechaNacimiento: fechaNacimiento || null,
+            ...datos,
+            telefonoContacto,
+            fechaIngreso, fechaNacimiento,
             departamento: departamentoSelect, ciudad: ciudadSelect,
             direccionResidencia, contactoEmergencia, telefonoEmergencia,
-            tipoContrato, cargo,
+            tipoContrato,
             salarioBase: salarioBaseLimpio,
             comisiones: comisiones === 'on',
         };
@@ -6254,22 +5870,33 @@ const actualizarEmpleado = async (req, res) => {
 
         // 5.4 LÓGICA DE CARGO / USUARIO ──────────────────────────────────────────
 
-        if (!teniRol && tieneRol && usuarioNuevo) {
-            // CASO A: sin rol → con rol  (usuario ya creado pre-transacción)
+        if (!teniRol && tieneRol) {
+            // CASO A: sin rol → con rol. El usuario se crea DENTRO de la transacción: antes
+            // salía de un findOrCreate previo, que dejaba un usuario huérfano si el resto
+            // fallaba y, si el correo ya tenía cuenta, ataba al empleado a la cuenta de otra
+            // persona (el correo libre ya se verificó en el paso 3).
+            usuarioNuevo = await Usuarios.create({
+                nombreUsuario:   PrimerNombre,
+                apellidoUsuario: PrimerApellido,
+                emailUsuario:    emailEmpleado,
+                password:        NumeroDocumento,
+                permisos:        rolDeCargo(cargo),
+            }, { transaction: t });
             await empleado.update({ idUsuario: usuarioNuevo.idUsuario }, { transaction: t });
 
-            if (req.body.permisosJSON) {
-                const parsed = JSON.parse(req.body.permisosJSON);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    await UserPermisos.bulkCreate(
-                        parsed.map(({ idRecurso, idAccion }) => ({ idUsuario: usuarioNuevo.idUsuario, idRecurso, idAccion })),
-                        { transaction: t }
-                    );
-                }
+            const permisos = await verificarPermisosAsignables({
+                permisos: permisosDeseados || [], cargo, quienAsigna: req.usuario, transaction: t
+            });
+            if (permisos.length) {
+                await UserPermisos.bulkCreate(
+                    permisos.map(({ idRecurso, idAccion }) => ({ idUsuario: usuarioNuevo.idUsuario, idRecurso, idAccion })),
+                    { transaction: t }
+                );
             }
 
-            // Email de bienvenida (fire-and-forget, no bloquea la transacción)
-            mailWelcomeEmployer({ emailEmpleado: emailEmpleado.trim(), PrimerNombre: PrimerNombre.trim(), codigoEmpleado: empleadoActual.codigoEmpleado }).catch(() => {});
+            // El correo de bienvenida sale después del commit: si la transacción se
+            // revierte, el acceso que anuncia no existiría.
+            bienvenidaPendiente = { emailEmpleado: emailEmpleado.trim(), PrimerNombre: PrimerNombre.trim(), codigoEmpleado: empleadoActual.codigoEmpleado };
 
         } else if (teniRol && !tieneRol) {
             // CASO B: con rol → sin rol  → eliminar permisos y usuario
@@ -6284,15 +5911,25 @@ const actualizarEmpleado = async (req, res) => {
             const usuario = await Usuarios.findByPk(empleadoActual.idUsuario, { transaction: t });
             if (usuario) {
                 await usuario.update({
-                    permisos:        rolesConUsuario[cargo],
-                    emailUsuario:    emailEmpleado.trim(),
-                    nombreUsuario:   PrimerNombre.trim(),
-                    apellidoUsuario: PrimerApellido.trim(),
+                    permisos:        rolDeCargo(cargo),
+                    emailUsuario:    emailEmpleado,
+                    nombreUsuario:   PrimerNombre,
+                    apellidoUsuario: PrimerApellido,
                 }, { transaction: t });
             }
 
-            if (req.body.permisosJSON !== undefined) {
-                const deseados = JSON.parse(req.body.permisosJSON);
+            // Si se corrigió el documento y la persona nunca cambió su contraseña inicial,
+            // la contraseña pasa al documento nuevo (helpers/contrasena.js). Antes quedaba
+            // esperando el documento mal escrito y la persona no podía entrar.
+            await sincronizarContrasenaInicial({
+                idUsuario: empleadoActual.idUsuario,
+                documentoAnterior: empleadoActual.NumeroDocumento,
+                documentoNuevo: NumeroDocumento,
+                transaction: t
+            });
+
+            if (permisosDeseados) {
+                const deseados = permisosDeseados;
                 const actuales = await UserPermisos.findAll({
                     where: { idUsuario: empleadoActual.idUsuario },
                     raw: true,
@@ -6301,7 +5938,12 @@ const actualizarEmpleado = async (req, res) => {
 
                 const actualSet   = new Set(actuales.map(p => `${p.idRecurso}:${p.idAccion}`));
                 const deseadoSet  = new Set(deseados.map(p => `${p.idRecurso}:${p.idAccion}`));
-                const porAgregar  = deseados.filter(p => !actualSet.has(`${p.idRecurso}:${p.idAccion}`));
+                // Solo lo que se agrega pasa por la verificación: tipo del cargo y, para el
+                // panel de administrador, que quien edita tenga ese permiso.
+                const porAgregar  = await verificarPermisosAsignables({
+                    permisos: deseados.filter(p => !actualSet.has(`${p.idRecurso}:${p.idAccion}`)),
+                    cargo, quienAsigna: req.usuario, transaction: t
+                });
                 const porEliminar = actuales.filter(p => !deseadoSet.has(`${p.idRecurso}:${p.idAccion}`));
 
                 if (porAgregar.length) {
@@ -6336,6 +5978,7 @@ const actualizarEmpleado = async (req, res) => {
         // avisaba a nadie: la persona seguía con la pantalla como estaba.
         const idUsuarioAvisar = idUsuarioCambiado || empleadoActual?.idUsuario || usuarioNuevo?.idUsuario;
         avisarCambioDePermisos(idUsuarioAvisar);
+        if (bienvenidaPendiente) mailWelcomeEmployer(bienvenidaPendiente).catch(() => {});
 
         // ── 8. BORRAR FOTO ANTERIOR DE R2 (post-commit, best-effort) ─────────────
         if (nuevaFotoKey && empleadoActual.imagen) {
@@ -6347,9 +5990,12 @@ const actualizarEmpleado = async (req, res) => {
     } catch (error) {
         if (!t.finished) await t.rollback().catch(() => {});
         await borrarComprobantes(uploadedFiles);
-        if (error.publico) return res.status(400).json({ success: false, mensaje: error.message });
+        if (error.publico) return res.status(error.status || 400).json({ success: false, mensaje: error.message });
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(409).json({ success: false, mensaje: 'Ya existe un empleado o un usuario con ese documento o correo.' });
+        }
         console.error('actualizarEmpleado:', error);
-        res.status(500).json({ success: false, mensaje: 'Error al actualizar: ' + error.message });
+        res.status(500).json({ success: false, mensaje: 'No se pudo actualizar el empleado. Intenta de nuevo.' });
     }
 };
 
@@ -6394,7 +6040,8 @@ const cambiarEstadoEmpleado = async (req, res) => {
                 } else {
                     // Bloquear acceso: poner password = '0' via query raw (bypass hooks)
                     await db.query(
-                        "UPDATE USUARIOS SET password = '0' WHERE idUsuario = :idUsuario",
+                        // passwordCambiadoEn cierra también las sesiones que tenía abiertas (authMiddleware). UTC como guarda Sequelize.
+                        "UPDATE USUARIOS SET password = '0', passwordCambiadoEn = UTC_TIMESTAMP() WHERE idUsuario = :idUsuario",
                         { replacements: { idUsuario: empleado.idUsuario }, transaction: t }
                     );
                 }
@@ -6474,7 +6121,6 @@ const listarEntidades = async (req, res) => {
 
         return res.render('./administrador/bankentities/listado', {
             pagina: 'Cajas, bancos y métodos de pago',
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             entidades,
             cajas,
@@ -7237,7 +6883,6 @@ const verPerfilCajaBanco = async (req, res) => {
 
         return res.render('./administrador/bankentities/perfilCajaBanco', {
             pagina: cuenta.nombreCajaBanco,
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             cuenta,
             resumen,
@@ -7407,6 +7052,31 @@ const XLS = {
     egresoFondo:  'FFFFE4E6',   // rose-100
     egresoTinta:  'FF9F1239',   // rose-800
     negativo:     'FFB91C1C'    // red-700
+};
+
+// Fila de títulos de una tabla de informe: fondo slate-700 y letra blanca. `derecha` son
+// las columnas (letra o key) que van alineadas a la derecha, las de montos. Estaba copiado
+// igual en el informe de movimientos de cajas y bancos y en el de facturas.
+const estiloCabeceraXls = (cabecera, derecha = []) => {
+    cabecera.height = 22;
+    cabecera.eachCell((celda) => {
+        celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.blanco } };
+        celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
+        celda.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    });
+    derecha.forEach(c => { cabecera.getCell(c).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }; });
+};
+
+// Fila de datos: texto slate-800, borde inferior y cebra en las impares (`indice` es cuántas
+// filas de datos van escritas antes de ésta). Copiado igual en tres informes.
+const estiloFilaXls = (fila, indice) => {
+    fila.height = 18;
+    fila.eachCell({ includeEmpty: true }, (celda) => {
+        celda.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
+        celda.alignment = { vertical: 'middle', indent: 1 };
+        celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
+        if (indice % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
+    });
 };
 
 // `#,##0` usa los separadores del Excel de quien abre el archivo, así que en un equipo
@@ -7623,13 +7293,6 @@ const construirHojaOF = async (wb, { donde, tienda, fechaListado, fFechaLarga, e
             const total = f.detalles.reduce((s, d) => s + parseFloat(d.total || 0), 0);
             if (total > mayor) mayor = total;
 
-            const nombre = f.idCliente === '0'
-                ? 'Consumidor Final'
-                : (cli?.razon_social
-                    || [cli?.primer_nombre, cli?.segundo_nombre, cli?.primer_apellido, cli?.segundo_apellido]
-                        .filter(Boolean).join(' ').trim()
-                    || 'N/A');
-
             // Nombre completo aparte de la razón social: una persona natural no tiene razón
             // social y una jurídica no tiene nombres, así que mezclarlos en una columna
             // obliga a adivinar cuál de los dos se está leyendo.
@@ -7678,13 +7341,7 @@ const construirHojaOF = async (wb, { donde, tienda, fechaListado, fFechaLarga, e
                 total
             ]);
 
-            fila.height = 18;
-            fila.eachCell({ includeEmpty: true }, (celda) => {
-                celda.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
-                celda.alignment = { vertical: 'middle', indent: 1 };
-                celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
-                if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
-            });
+            estiloFilaXls(fila, escritas);
 
             fila.getCell('A').font = { name: 'Consolas', size: 9, bold: true, underline: true, color: { argb: XLS.marca } };
             // Razón social y nombre en negrita: son lo que identifica al adquiriente.
@@ -7946,13 +7603,7 @@ const exportarMovimientosCuenta = async (req, res) => {
 
         // ── 4. Encabezado de la tabla ────────────────────────────────────────
         const cabecera = ws.addRow(['Fecha', 'Hora', 'Tipo', 'Descripción', 'Cuenta PUC', 'Referencia', 'Valor', 'Saldo', 'Registrado por']);
-        cabecera.height = 22;
-        cabecera.eachCell((celda) => {
-            celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.blanco } };
-            celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
-            celda.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-        });
-        ['valor', 'saldo'].forEach(k => { cabecera.getCell(k).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }; });
+        estiloCabeceraXls(cabecera, ['valor', 'saldo']);
         cabecera.commit();
 
         const filaPrimeraDeDatos = cabecera.number + 1;
@@ -7994,13 +7645,7 @@ const exportarMovimientosCuenta = async (req, res) => {
                     m.empleado ? tituloLista(`${m.empleado.PrimerNombre} ${m.empleado.PrimerApellido}`) : ''
                 ]);
 
-                fila.height = 18;
-                fila.eachCell({ includeEmpty: true }, (celda) => {
-                    celda.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
-                    celda.alignment = { vertical: 'middle', indent: 1 };
-                    celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
-                    if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
-                });
+                estiloFilaXls(fila, escritas);
 
                 fila.getCell('fecha').numFmt = 'dd/mm/yyyy';
                 fila.getCell('hora').numFmt  = 'hh:mm AM/PM';
@@ -8298,13 +7943,7 @@ const exportarFacturasTienda = async (req, res) => {
 
         // ── Tabla de facturas ────────────────────────────────────────────────
         const cabecera = ws.addRow(['Nro Factura', 'Cliente', 'Documento', 'Fecha', 'Hora', 'Valor', 'Método de pago', 'Ítems', 'Vendedor']);
-        cabecera.height = 22;
-        cabecera.eachCell((celda) => {
-            celda.font = { name: 'Calibri', size: 10, bold: true, color: { argb: XLS.blanco } };
-            celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.encabezado } };
-            celda.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-        });
-        ['F', 'H'].forEach(c => { cabecera.getCell(c).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 }; });
+        estiloCabeceraXls(cabecera, ['F', 'H']);
         cabecera.commit();
 
         const primeraDeDatos = cabecera.number + 1;
@@ -8356,13 +7995,7 @@ const exportarFacturasTienda = async (req, res) => {
                     f.vendedor ? tituloLista(`${f.vendedor.PrimerNombre} ${f.vendedor.PrimerApellido}`) : ''
                 ]);
 
-                fila.height = 18;
-                fila.eachCell({ includeEmpty: true }, (celda) => {
-                    celda.font = { name: 'Calibri', size: 10, color: { argb: XLS.tinta } };
-                    celda.alignment = { vertical: 'middle', indent: 1 };
-                    celda.border = { bottom: { style: 'thin', color: { argb: XLS.borde } } };
-                    if (escritas % 2 === 1) celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XLS.zebra } };
-                });
+                estiloFilaXls(fila, escritas);
 
                 // Subrayado y color de marca: sin eso Excel pinta el enlace de azul con su
                 // propio estilo y el informe deja de verse como los demás.
@@ -8708,21 +8341,6 @@ const crearEntidad = async (req, res) => {
     }
 };
 
-const toggleEntidad = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { recibirPagosPos } = req.body;
-        const [updated] = await Entidades.update(
-            { recibirPagosPos: recibirPagosPos === true || recibirPagosPos === 'true' },
-            { where: { idEntidad: id } }
-        );
-        if (!updated) return res.status(404).json({ success: false, mensaje: 'Entidad no encontrada.' });
-        return res.json({ success: true });
-    } catch (e) {
-        console.error('toggleEntidad:', e);
-        return res.status(500).json({ success: false, mensaje: 'Error al actualizar.' });
-    }
-};
 
 const verDetallesEntidad = async (req, res) => {
     try {
@@ -8732,7 +8350,6 @@ const verDetallesEntidad = async (req, res) => {
         const entidad = entidadInst.toJSON();
         return res.render('./administrador/bankentities/detallesEntidad', {
             pagina: entidad.nombreEntidad,
-            csrfToken: req.csrfToken(),
             currentPath: req.path,
             entidad,
         });
@@ -9654,7 +9271,6 @@ export {
     verTienda,
     destrabarCuadreTienda,
     editarTienda,
-    postNuevaTienda,
     dashboardInventorys,
     billingToday,
     storeInventory,
@@ -9662,7 +9278,6 @@ export {
     storeDocuments,
     saveProduct, editarProducto, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, trasladarProductoAdmin,
     batchBuyOrder, saveBatchOrder,
-    dosificar,
     dashboardSupplier,
     newSupplier,
     verProveedor, actualizarProveedor,
@@ -9674,12 +9289,10 @@ export {
     municipiosJson,
     categoriasJson,
     skuJson,
-    eanJson,
     familiaSugerenciasJson,
     filterProductListJson,
     jsonImageProduct,
     jsonUnicidad,
-    baseFrondend,
     filterSupplierListJson,
     filterStoreInventoryJson,
     imprimirEtiquetaSKU,
@@ -9694,7 +9307,7 @@ export {
     jsonPermisosAcciones,
     verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado,
     getPagosHoyPorMetodo,
-    listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, decidirTrasladoEfectivo, validarEmpleadoBancos, getTrasladoPDFAdmin, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, toggleEntidad, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
+    listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, decidirTrasladoEfectivo, validarEmpleadoBancos, getTrasladoPDFAdmin, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, verDetallesEntidad, editarEntidad, getTransaccionesEntidad,
     getStatsVendedorMes,
     getCajasCerradasAdmin,
     getAdminCuadrePDF,
@@ -9710,5 +9323,5 @@ export {
     getVentasPdv30d,
     getCarteraUrgente,
     getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor,
-    getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda,
+    getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda
 }

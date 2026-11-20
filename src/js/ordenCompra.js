@@ -1,7 +1,10 @@
-import { opcionesConfirmacion, cabeceraConfirmacion, activarVerificacionCodigo } from './modalConfirmacion.js';
+import { opcionesConfirmacion, cabeceraConfirmacion, activarVerificacionCodigo, avisoConfirmacion } from './modalConfirmacion.js';
 import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { initFechaInput } from './fechaInput.js';
+import { iniciarModalLineaInsumo, UNIDAD_ETIQUETA, aPayloadLinea } from './modalLineaInsumo.js';
+import { pedirRecepcion, factorFijoDe } from './recepcionOrden.js';
+import { confirmarProveedor } from './confirmarProveedor.js';
 
 // Orden de compra de insumos (admin/insumos/compra). El proveedor se busca en vivo contra
 // PROVEDORES (nunca texto libre) y el color de cada línea sale del catálogo real de
@@ -11,10 +14,8 @@ import { initFechaInput } from './fechaInput.js';
 
 const form = document.getElementById('form-orden-compra');
 if (form) {
-    const CSRF = form.dataset.csrf;
     const IVA_PCT = Number(form.dataset.iva) || 19;
 
-    const UNIDAD_ETIQUETA = { kg: 'kg', metro: 'm', rollo: 'rollos', unidad: 'uds' };
     const money = (n) => `$ ${Math.round(n).toLocaleString('es-CO')}`;
     // Mismo patrón que round2 de helpers/formatMoney.js: redondea en cada paso, nunca al
     // final sobre una suma que ya arrastra error de punto flotante.
@@ -105,9 +106,22 @@ if (form) {
             cancelada: ['Cancelada', 'bg-rose-100 text-rose-600']
         };
 
+        // "Crear proveedor": solo existe si la vista dibujó el modal (permiso Provedores
+        // CREATE, components/modalNuevoProveedor.pug). Sin el modal no se ofrece nada.
+        const modalProveedor = document.getElementById('modal-nuevo-proveedor');
+        const opcionCrear = (destacada) => modalProveedor ? `
+            <button type="button" data-crear-proveedor
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-left cursor-pointer transition-colors ${destacada ? 'hover:bg-gh-primarySoft' : 'border-t border-slate-100 mt-1 hover:bg-slate-50'}">
+                <span class="w-9 h-9 rounded-xl bg-gh-primary flex items-center justify-center flex-shrink-0 text-white"><i class="fi fi-rr-user-add text-xs"></i></span>
+                <span class="min-w-0 flex-1">
+                    <span class="block text-sm font-semibold text-gh-primaryHover truncate">Crear proveedor «${esc(inputBuscar.value.trim())}»</span>
+                    <span class="block text-xs text-slate-400">${destacada ? 'No está registrado: créalo sin salir de la orden.' : '¿No es ninguno de estos?'}</span>
+                </span>
+            </button>` : '';
+
         const pintarResultados = (proveedores) => {
             if (!proveedores.length) {
-                panel.innerHTML = `<p class="px-4 py-3 text-xs text-slate-400">Ningún proveedor coincide.</p>`;
+                panel.innerHTML = `<p class="px-4 py-3 text-xs text-slate-400">Ningún proveedor coincide.</p>${opcionCrear(true)}`;
                 panel.classList.remove('hidden');
                 return;
             }
@@ -120,7 +134,7 @@ if (form) {
                         <span class="block text-xs text-slate-400 truncate">${esc(p.documento)}${p.ciudad ? ` · ${esc(p.ciudad)}` : ''}</span>
                     </span>
                     <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${p.activo ? ESTADO_BADGE.si : ESTADO_BADGE.no}">${p.activo ? 'Activo' : 'Inactivo'}</span>
-                </button>`).join('');
+                </button>`).join('') + opcionCrear(false);
             panel.classList.remove('hidden');
             panel.querySelectorAll('[data-id-proveedor]').forEach(b =>
                 b.addEventListener('click', () => elegirProveedor(b.dataset.idProveedor)));
@@ -236,6 +250,82 @@ if (form) {
             }
         };
 
+        // ── Modal "Crear proveedor" ───────────────────────────────────────────────────
+        // Guarda por el mismo endpoint y con la misma confirmación que la página de alta
+        // (saveSupplier, confirmarProveedor.js). Al guardar, el proveedor queda elegido en
+        // la orden igual que si se hubiera buscado (elegirProveedor).
+        if (modalProveedor) {
+            const formProv = document.getElementById('form-nuevo-proveedor');
+            const btnGuardarProv = document.getElementById('btn-guardar-proveedor');
+            const textoBtnProv = btnGuardarProv.innerHTML;
+
+            const abrirModalProveedor = (texto) => {
+                formProv.reset();
+                // reset() no dispara change: el tipo vuelve a CC y la ciudad a "elige primero".
+                formProv.querySelector('[data-tipo-documento]')?.dispatchEvent(new Event('change'));
+                formProv.querySelector('#departamentoSelect')?.dispatchEvent(new Event('change'));
+                // Lo que se buscó se aprovecha: un número va al documento, un texto al nombre.
+                const limpio = texto.replace(/[\s.-]/g, '');
+                const campo = /^\d{4,}$/.test(limpio) ? formProv.querySelector('[data-numero-documento]') : formProv.querySelector('[name="razonSocial"]');
+                if (campo) {
+                    campo.value = campo.matches('[data-numero-documento]') ? limpio : texto;
+                    campo.dispatchEvent(new Event('input'));
+                }
+                ocultarPanel();
+                modalProveedor.classList.remove('hidden');
+                modalProveedor.classList.add('flex');
+                formProv.querySelector('[name="razonSocial"]')?.focus();
+            };
+            const cerrarModalProveedor = () => {
+                modalProveedor.classList.add('hidden');
+                modalProveedor.classList.remove('flex');
+            };
+
+            panel.addEventListener('click', (e) => {
+                if (e.target.closest('[data-crear-proveedor]')) abrirModalProveedor(inputBuscar.value.trim());
+            });
+            modalProveedor.querySelectorAll('[data-cerrar-modal-proveedor]').forEach(b => b.addEventListener('click', cerrarModalProveedor));
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !modalProveedor.classList.contains('hidden') && !Swal.isVisible()) cerrarModalProveedor();
+            });
+
+            formProv.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                // Los mismos obligatorios que exige el modelo (models/Provedores.js); el
+                // servidor los vuelve a revisar.
+                const v = (n) => formProv.elements[n]?.value.trim() || '';
+                const falta = !v('razonSocial') ? 'Escribe la razón social del proveedor.'
+                    : !v('nit') ? 'Escribe el número de identificación.'
+                    : !v('departamentoSelect') || !v('ciudadSelect') ? 'Elige el departamento y la ciudad.'
+                    : !v('direccionProvedor') ? 'Escribe la dirección del proveedor.'
+                    : !formProv.elements.emailProvedor.checkValidity() || !v('emailProvedor') ? 'Escribe un email válido.'
+                    : !formProv.querySelector('input[name="categorias"]:checked') ? 'Elige al menos una categoría de lo que vende.'
+                    : !v('nombreContacto') ? 'Escribe el nombre del contacto.'
+                    : '';
+                if (falta) {
+                    await avisoConfirmacion({ variante: 'neutro', icono: 'fi-rr-info', badge: 'Falta un dato', contexto: falta });
+                    return;
+                }
+                if (!(await confirmarProveedor(formProv, { modo: 'alta' }))) return;
+
+                btnGuardarProv.disabled = true;
+                btnGuardarProv.innerHTML = '<i class="fi fi-rr-spinner animate-spin"></i> Guardando...';
+                try {
+                    const r = await fetch('/admin/provedores/new', { method: 'POST', body: new FormData(formProv) });
+                    if (r.status === 403) throw new Error('Tu usuario no tiene permiso para crear proveedores.');
+                    const data = await r.json().catch(() => ({}));
+                    if (!r.ok || !data.success) throw new Error(data.mensaje || 'No se pudo guardar el proveedor.');
+                    cerrarModalProveedor();
+                    await elegirProveedor(data.idProveedor);
+                } catch (err) {
+                    await avisoConfirmacion({ variante: 'egreso', icono: 'fi-rr-exclamation', badge: 'No se guardó el proveedor', contexto: err.message });
+                } finally {
+                    btnGuardarProv.disabled = false;
+                    btnGuardarProv.innerHTML = textoBtnProv;
+                }
+            });
+        }
+
         inputBuscar.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(buscar, 350); });
         inputBuscar.addEventListener('focus', () => { if (inputBuscar.value.trim().length >= 2) buscar(); });
         document.addEventListener('click', (e) => { if (!panel.contains(e.target) && e.target !== inputBuscar) ocultarPanel(); });
@@ -258,6 +348,8 @@ if (form) {
             if (campoTipo.value === b.dataset.tipo) return;
             campoTipo.value = b.dataset.tipo;
             modoMultiple = b.dataset.tipo === 'cotizacion';
+            // "La mercancía ya llegó" solo existe para una orden de compra: una cotización no se recibe.
+            document.getElementById('caja-recibir-ahora')?.classList.toggle('hidden', modoMultiple);
 
             proveedoresElegidos = [];
             sincronizarInputOculto();
@@ -358,400 +450,19 @@ if (form) {
         recalcularResumen();
     });
 
-    // ── Modal "Agregar insumo" (también edita: mismo formulario, con los datos de la
-    // línea precargados — ver abrirParaEditar más abajo) ───────────────────────────────
-    (function () {
-        const modal = document.getElementById('modal-agregar-insumo');
-        const tituloModal    = document.getElementById('modal-agregar-insumo-titulo');
-        const subtituloModal = document.getElementById('modal-agregar-insumo-subtitulo');
-        const btnConfirmarLi = document.getElementById('btn-confirmar-li');
-        const abrir  = () => { modal.classList.remove('hidden'); modal.classList.add('flex'); };
-        const cerrar = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
-        document.getElementById('btn-agregar-insumo')?.addEventListener('click', abrir);
-        document.getElementById('modal-agregar-insumo-cerrar')?.addEventListener('click', cerrar);
-        modal.addEventListener('click', (e) => { if (e.target === modal) cerrar(); });
-
-        // uid de la línea que se está editando, o null cuando el modal agrega una nueva.
-        // limpiarModal() lo vuelve a null siempre (se llama tanto al abrir "Agregar
-        // insumo" como al dar "Limpiar"), así que abrirParaEditar lo pisa después de
-        // limpiar, no antes.
-        let editandoUid = null;
-
-        const selMaterial = document.getElementById('li-material');
-        // Buscable como departamento/municipio (window.enhanceSelectBuscable, helpers.js):
-        // el <select> real sigue mandando el idMaterial tal cual, esto solo agrega un
-        // input de texto + lista filtrable encima.
-        const materialBuscable = window.enhanceSelectBuscable?.(selMaterial, { placeholder: 'Escribe o elige un insumo' }) || { refresh() {} };
-
-        const inpCantidad = document.getElementById('li-cantidad');
-        const inpValor    = document.getElementById('li-valorUnitario');
-        const sufijoUnidad = document.getElementById('li-unidad-suffix');
-        const contCaracteristicas = document.getElementById('li-caracteristicas');
-        const seccionSimple   = document.getElementById('li-cantidad-valor-simple');
-        const seccionPorColor = document.getElementById('li-cantidad-valor-por-color');
-        const contFilasColor  = document.getElementById('li-filas-por-color');
-        const errorPorColor   = document.getElementById('error-li-por-color');
-        const contChips  = document.getElementById('li-colores-chips');
-        const chipVacio  = document.getElementById('li-colores-vacio');
-
-        // Formato de miles mientras se escribe (window.initMoneyInput, helpers.js) — igual
-        // que cualquier campo de precio del panel. Cantidad también, aunque no sea dinero:
-        // es lo que se pidió, y simplifica no tener dos comportamientos de input distintos
-        // en el mismo formulario.
-        window.initMoneyInput?.(inpCantidad);
-        window.initMoneyInput?.(inpValor);
-
-        selMaterial.addEventListener('change', () => {
-            const op = selMaterial.selectedOptions[0];
-            sufijoUnidad.textContent = UNIDAD_ETIQUETA[op?.dataset.unidad] || '';
-        });
-
-        // ── Colores elegidos para este insumo (0, 1 o varios) ───────────────────────────
-        let coloresElegidos = []; // [{ idAtributo, valor, codigo1 }]
-
-        const renderChipsColores = () => {
-            contChips.querySelectorAll('[data-chip-color]').forEach(c => c.remove());
-            chipVacio.classList.toggle('hidden', coloresElegidos.length > 0);
-            coloresElegidos.forEach(c => {
-                const chip = document.createElement('span');
-                chip.dataset.chipColor = c.idAtributo;
-                chip.className = 'inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-full bg-slate-100 text-xs font-semibold text-slate-700';
-                chip.innerHTML = `
-                    <span class="w-3 h-3 rounded-full border border-black/10 flex-shrink-0" style="background-color:${c.codigo1 || '#ccc'}"></span>
-                    ${esc(c.valor)}
-                    <button type="button" class="text-slate-400 hover:text-rose-500 ml-0.5 cursor-pointer" data-quitar-color="${c.idAtributo}">
-                        <i class="fi fi-rr-cross-small text-[10px]"></i>
-                    </button>`;
-                contChips.appendChild(chip);
-            });
-        };
-        contChips.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-quitar-color]');
-            if (!btn) return;
-            coloresElegidos = coloresElegidos.filter(c => String(c.idAtributo) !== btn.dataset.quitarColor);
-            renderChipsColores();
-            renderSeccionCantidadValor();
-        });
-
-        // Una fila de cantidad/valor por color — solo cuando hay 2 o más elegidos.
-        const construirFilaColor = (color) => {
-            const op = selMaterial.selectedOptions[0];
-            const unidad = UNIDAD_ETIQUETA[op?.dataset.unidad] || '';
-            const fila = document.createElement('div');
-            fila.className = 'flex items-center gap-3';
-            fila.dataset.filaColor = color.idAtributo;
-            fila.dataset.nombreColor = color.valor;
-            fila.innerHTML = `
-                <span class="w-4 h-4 rounded-full border border-black/10 flex-shrink-0" style="background-color:${color.codigo1 || '#ccc'}"></span>
-                <span class="text-xs font-semibold text-slate-700 w-20 flex-shrink-0 truncate">${esc(color.valor)}</span>
-                <div class="relative flex-1">
-                    <input type="text" inputmode="numeric" autocomplete="off" placeholder="Cantidad" class="field-text text-sm" data-cant>
-                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-400">${esc(unidad)}</span>
-                </div>
-                <div class="relative flex-1">
-                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-                    <input type="text" inputmode="numeric" autocomplete="off" placeholder="Valor unitario" class="field-text text-sm pl-6" data-val>
-                </div>`;
-            window.initMoneyInput?.(fila.querySelector('[data-cant]'));
-            window.initMoneyInput?.(fila.querySelector('[data-val]'));
-            return fila;
-        };
-
-        const renderSeccionCantidadValor = () => {
-            if (coloresElegidos.length >= 2) {
-                seccionSimple.classList.add('hidden');
-                seccionPorColor.classList.remove('hidden');
-                seccionPorColor.classList.add('flex');
-                contFilasColor.innerHTML = '';
-                coloresElegidos.forEach(c => contFilasColor.appendChild(construirFilaColor(c)));
-            } else {
-                seccionPorColor.classList.add('hidden');
-                seccionPorColor.classList.remove('flex');
-                seccionSimple.classList.remove('hidden');
-            }
-        };
-
-        // Lee cada fila de #li-filas-por-color; null si alguna cantidad/valor no es válido
-        // (y pinta el borde en rojo de la fila que falló, para que se vea cuál es).
-        const leerFilasPorColor = () => {
-            const filas = [];
-            let ok = true;
-            contFilasColor.querySelectorAll('[data-fila-color]').forEach(fila => {
-                const inpCant = fila.querySelector('[data-cant]');
-                const inpVal  = fila.querySelector('[data-val]');
-                const cantidad = parseInt(inpCant.value.replace(/[^0-9]/g, ''), 10);
-                const valorUnitario = parseInt(inpVal.value.replace(/[^0-9]/g, ''), 10);
-                const cantidadOk = Number.isFinite(cantidad) && cantidad > 0;
-                const valorOk = Number.isFinite(valorUnitario) && valorUnitario > 0;
-                inpCant.classList.toggle('field-text-error', !cantidadOk);
-                inpVal.classList.toggle('field-text-error', !valorOk);
-                if (!cantidadOk || !valorOk) ok = false;
-                filas.push({ idAtributoColor: fila.dataset.filaColor, colorNombre: fila.dataset.nombreColor, cantidad, valorUnitario });
-            });
-            return ok ? filas : null;
-        };
-
-        // ── Sub-modal "Elegir colores" ──────────────────────────────────────────────────
-        // Mismo patrón que "Colores para Talla" en admin/inventario/ingreso
-        // (views/administrador/inventarios/forms/product.pug): grilla de swatches +
-        // buscador, acá además con alta de un color simple nuevo.
-        const modalColores = document.getElementById('modal-colores-insumo');
-        const inputBuscadorColor = document.getElementById('buscador-color-insumo');
-        const gridColores = document.getElementById('grid-colores-insumo');
-        const formNuevoColor = document.getElementById('form-nuevo-color');
-
-        const abrirModalColores = () => { modalColores.classList.remove('hidden'); modalColores.classList.add('flex'); };
-        const cerrarModalColores = () => { modalColores.classList.add('hidden'); modalColores.classList.remove('flex'); };
-
-        const filtrarColoresInsumo = (texto) => {
-            const termino = texto.toLowerCase().trim();
-            gridColores.querySelectorAll('.color-insumo-item').forEach(label => {
-                const nombre = label.querySelector('span:last-child')?.textContent.toLowerCase() || '';
-                label.style.display = nombre.includes(termino) ? '' : 'none';
-            });
-        };
-        inputBuscadorColor?.addEventListener('input', (e) => filtrarColoresInsumo(e.target.value));
-
-        const ocultarFormNuevoColor = () => {
-            formNuevoColor.classList.add('hidden');
-            formNuevoColor.classList.remove('flex');
-            document.getElementById('error-nuevo-color')?.classList.add('hidden');
-        };
-
-        document.getElementById('li-btn-elegir-colores')?.addEventListener('click', () => {
-            gridColores.querySelectorAll('.color-insumo-checkbox').forEach(chk => {
-                chk.checked = coloresElegidos.some(c => String(c.idAtributo) === chk.value);
-            });
-            inputBuscadorColor.value = '';
-            filtrarColoresInsumo('');
-            ocultarFormNuevoColor();
-            abrirModalColores();
-        });
-        document.getElementById('modal-colores-insumo-cerrar')?.addEventListener('click', cerrarModalColores);
-        modalColores.addEventListener('click', (e) => { if (e.target === modalColores) cerrarModalColores(); });
-
-        document.getElementById('btn-usar-colores')?.addEventListener('click', () => {
-            coloresElegidos = Array.from(gridColores.querySelectorAll('.color-insumo-checkbox:checked')).map(chk => ({
-                idAtributo: chk.value, valor: chk.dataset.nombre, codigo1: chk.dataset.hex
-            }));
-            cerrarModalColores();
-            renderChipsColores();
-            renderSeccionCantidadValor();
-        });
-
-        // Dar de alta un color simple nuevo si no está en la grilla.
-        document.getElementById('btn-mostrar-nuevo-color')?.addEventListener('click', () => {
-            const visible = !formNuevoColor.classList.contains('hidden');
-            if (visible) { ocultarFormNuevoColor(); return; }
-            formNuevoColor.classList.remove('hidden');
-            formNuevoColor.classList.add('flex');
-            document.getElementById('nuevo-color-nombre')?.focus();
-        });
-
-        document.getElementById('btn-guardar-nuevo-color')?.addEventListener('click', async () => {
-            const inpNombre = document.getElementById('nuevo-color-nombre');
-            const inpHex    = document.getElementById('nuevo-color-hex');
-            const errEl     = document.getElementById('error-nuevo-color');
-            const btn       = document.getElementById('btn-guardar-nuevo-color');
-
-            const nombre = inpNombre.value.trim();
-            if (!nombre) {
-                errEl.textContent = 'Escribe el nombre del color.';
-                errEl.classList.remove('hidden');
-                inpNombre.focus();
-                return;
-            }
-
-            const textoOriginal = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = 'Agregando…';
-            try {
-                const r = await fetch('/admin/insumos/compra/colores', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
-                    body: JSON.stringify({ valor: nombre, codigo1: inpHex.value })
-                });
-                const data = await r.json().catch(() => ({}));
-                if (!r.ok || !data.success) {
-                    throw new Error(data.mensaje || data.errores?.valor || data.errores?.codigo1 || 'No se pudo agregar el color.');
-                }
-
-                const c = data.color;
-                const label = document.createElement('label');
-                label.className = 'color-insumo-item flex items-center gap-2.5 p-2.5 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-50';
-                label.innerHTML = `
-                    <input type="checkbox" value="${c.idAtributo}" data-nombre="${esc(c.valor)}" data-hex="${c.codigo1}" checked class="color-insumo-checkbox w-4 h-4 flex-shrink-0">
-                    <span class="w-4 h-4 rounded-full border border-black/10 flex-shrink-0" style="background-color:${c.codigo1}"></span>
-                    <span class="text-sm font-medium text-slate-700 truncate">${esc(c.valor)}</span>`;
-                gridColores.prepend(label);
-
-                inpNombre.value = '';
-                inpHex.value = '#E24C95';
-                ocultarFormNuevoColor();
-                inputBuscadorColor.value = '';
-                filtrarColoresInsumo('');
-            } catch (e) {
-                errEl.textContent = e.message;
-                errEl.classList.remove('hidden');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = textoOriginal;
-            }
-        });
-
-        // ── Otras características (libre, compartidas por todos los colores de este insumo) ──
-        const filaCaracteristica = (etiqueta = '', valor = '') => {
-            const fila = document.createElement('div');
-            fila.className = 'flex items-center gap-2';
-            fila.innerHTML = `
-                <input type="text" placeholder="Ej. Composición" value="${esc(etiqueta)}" class="field-text text-sm flex-1" data-carac-etiqueta>
-                <input type="text" placeholder="Ej. 92% poliéster, 8% elastano" value="${esc(valor)}" class="field-text text-sm flex-1" data-carac-valor>
-                <button type="button" class="text-slate-300 hover:text-rose-500 transition-colors cursor-pointer flex-shrink-0" data-quitar-carac>
-                    <i class="fi fi-rr-cross-small"></i>
-                </button>`;
-            fila.querySelector('[data-quitar-carac]').addEventListener('click', () => fila.remove());
-            contCaracteristicas.appendChild(fila);
-        };
-        document.getElementById('li-agregar-caracteristica')?.addEventListener('click', () => filaCaracteristica());
-
-        const leerCaracteristicas = () => {
-            const obj = {};
-            contCaracteristicas.querySelectorAll(':scope > div').forEach(fila => {
-                const k = fila.querySelector('[data-carac-etiqueta]').value.trim();
-                const v = fila.querySelector('[data-carac-valor]').value.trim();
-                if (k && v) obj[k] = v;
-            });
-            return obj;
-        };
-
-        const pintarErrorLi = (campo, mensaje) => {
-            const el = document.getElementById(`error-li-${campo}`);
-            if (el) { el.textContent = mensaje || ''; el.classList.toggle('hidden', !mensaje); }
-            document.getElementById(`li-${campo}`)?.classList.toggle('field-text-error', Boolean(mensaje));
-        };
-
-        const limpiarModal = () => {
-            editandoUid = null;
-            if (tituloModal) tituloModal.textContent = 'Agregar insumo';
-            if (subtituloModal) subtituloModal.textContent = 'Se agrega a la orden al confirmar.';
-            if (btnConfirmarLi) btnConfirmarLi.textContent = 'Agregar a la orden';
-            selMaterial.value = '';
-            materialBuscable.refresh();
-            inpCantidad.value = '';
-            inpValor.value = '';
-            sufijoUnidad.textContent = '';
-            contCaracteristicas.innerHTML = '';
-            coloresElegidos = [];
-            renderChipsColores();
-            renderSeccionCantidadValor();
-            ['material', 'cantidad', 'valorUnitario'].forEach(c => pintarErrorLi(c, ''));
-            errorPorColor.classList.add('hidden');
-            ocultarFormNuevoColor();
-        };
-        document.getElementById('btn-limpiar-li')?.addEventListener('click', limpiarModal);
-        document.getElementById('btn-agregar-insumo')?.addEventListener('click', limpiarModal);
-
-        // Icono de lápiz de cada fila (renderFilaLinea, data-editar-linea): mismo modal de
-        // "Agregar insumo", precargado con la línea — el color se busca en la grilla real
-        // (gridColores) para recuperar su hex, que la línea guardada no trae.
-        const abrirParaEditar = (l) => {
-            limpiarModal();
-            editandoUid = l.uid;
-            if (tituloModal) tituloModal.textContent = 'Editar insumo';
-            if (subtituloModal) subtituloModal.textContent = 'Los cambios reemplazan la línea actual.';
-            if (btnConfirmarLi) btnConfirmarLi.textContent = 'Guardar cambios';
-
-            selMaterial.value = l.idMaterial;
-            materialBuscable.refresh();
-            selMaterial.dispatchEvent(new Event('change'));
-
-            if (l.idAtributoColor) {
-                const chk = gridColores.querySelector(`.color-insumo-checkbox[value="${CSS.escape(l.idAtributoColor)}"]`);
-                coloresElegidos = [chk
-                    ? { idAtributo: l.idAtributoColor, valor: chk.dataset.nombre, codigo1: chk.dataset.hex }
-                    : { idAtributo: l.idAtributoColor, valor: l.colorNombre, codigo1: null }];
-                renderChipsColores();
-                renderSeccionCantidadValor();
-            }
-
-            inpCantidad.value = l.cantidad.toLocaleString('es-CO');
-            inpValor.value = l.valorUnitario.toLocaleString('es-CO');
-
-            const entradas = Object.entries(l.caracteristicas || {});
-            if (entradas.length) {
-                contCaracteristicas.innerHTML = '';
-                entradas.forEach(([k, v]) => filaCaracteristica(k, v));
-            }
-
-            abrir();
-        };
-        tabla.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-editar-linea]');
-            if (!btn) return;
-            const l = lineas.find(x => x.uid === Number(btn.dataset.editarLinea));
-            if (l) abrirParaEditar(l);
-        });
-
-        document.getElementById('btn-confirmar-li')?.addEventListener('click', () => {
-            const op = selMaterial.selectedOptions[0];
-            let huboError = false;
-            if (!selMaterial.value) { pintarErrorLi('material', 'Elige un insumo.'); huboError = true; } else pintarErrorLi('material', '');
-
-            // Una línea por color elegido (o una sola, sin color, si no se eligió ninguno) —
-            // todas comparten insumo y características, cada una con su propia cantidad/valor.
-            const nuevasLineas = [];
-
-            if (coloresElegidos.length >= 2) {
-                const filas = leerFilasPorColor();
-                if (!filas) {
-                    errorPorColor.textContent = 'Revisa la cantidad y el valor de cada color.';
-                    errorPorColor.classList.remove('hidden');
-                    huboError = true;
-                } else {
-                    errorPorColor.classList.add('hidden');
-                    nuevasLineas.push(...filas);
-                }
-            } else {
-                const cantidad = parseInt(inpCantidad.value.replace(/[^0-9]/g, ''), 10);
-                const valorUnitario = parseInt(inpValor.value.replace(/[^0-9]/g, ''), 10);
-                if (!Number.isFinite(cantidad) || cantidad <= 0) { pintarErrorLi('cantidad', 'Escribe una cantidad mayor a 0.'); huboError = true; } else pintarErrorLi('cantidad', '');
-                if (!Number.isFinite(valorUnitario) || valorUnitario <= 0) { pintarErrorLi('valorUnitario', 'Escribe un valor mayor a 0.'); huboError = true; } else pintarErrorLi('valorUnitario', '');
-                if (!huboError) {
-                    const unico = coloresElegidos[0] || null;
-                    nuevasLineas.push({ cantidad, valorUnitario, idAtributoColor: unico?.idAtributo || null, colorNombre: unico?.valor || null });
-                }
-            }
-
-            if (huboError || !selMaterial.value) return;
-
-            // Editar reemplaza la línea original por la(s) que salga del formulario — la
-            // misma lógica de "una línea por color" de un alta nueva, así que si una edición
-            // pasa de un color a dos, la línea se parte en dos sin un caso especial aparte.
+    // ── Modal "Agregar insumo" (también edita) — src/js/modalLineaInsumo.js ────────────
+    iniciarModalLineaInsumo({
+        tabla,
+        buscarLinea: (uid) => lineas.find(x => x.uid === uid),
+        alConfirmar: ({ filas, editandoUid }) => {
             if (editandoUid !== null) {
                 const i = lineas.findIndex(x => x.uid === editandoUid);
                 if (i !== -1) lineas.splice(i, 1);
-                tabla.querySelector(`tr[data-uid="${editandoUid}"]`)?.remove();
             }
-
-            const caracteristicas = leerCaracteristicas();
-            const unidadCompra = op.dataset.unidad || null;
-            nuevasLineas.forEach(l => agregarLinea({
-                uid: proximoUid++,
-                idMaterial: selMaterial.value,
-                nombreMaterial: op.dataset.nombre,
-                codigoMaterialDxf: op.dataset.codigo,
-                cantidad: l.cantidad,
-                unidadCompra,
-                valorUnitario: l.valorUnitario,
-                valorTotal: round2(l.cantidad * l.valorUnitario),
-                idAtributoColor: l.idAtributoColor,
-                colorNombre: l.colorNombre,
-                caracteristicas
-            }));
+            filas.forEach(f => agregarLinea({ uid: proximoUid++, ...f }));
             renumerar();
-            cerrar();
-        });
-    })();
+        }
+    });
 
     // ── Guardar borrador ────────────────────────────────────────────────────────────────
     const leerCabecera = () => ({
@@ -781,19 +492,9 @@ if (form) {
         return ok ? cab : null;
     };
 
-    const payloadLineas = () => lineas.map(l => ({
-        idMaterial: l.idMaterial,
-        cantidad: l.cantidad,
-        valorUnitario: l.valorUnitario,
-        idAtributoColor: l.idAtributoColor,
-        caracteristicas: l.caracteristicas
-    }));
+    const payloadLineas = () => lineas.map(aPayloadLinea);
 
-    const aviso = ({ variante, icono, badge, contexto = '' }) => Swal.fire({
-        ...opcionesConfirmacion({ variante, html: `<div class="gh-conf-html">${cabeceraConfirmacion({ icono, badge, contexto: esc(contexto) })}</div>` }),
-        showCancelButton: false,
-        confirmButtonText: 'Entendido'
-    });
+    const aviso = avisoConfirmacion;
 
     document.getElementById('btn-guardar-borrador')?.addEventListener('click', async () => {
         const cab = validarAntesDeEnviar();
@@ -805,7 +506,7 @@ if (form) {
         try {
             const r = await fetch('/admin/insumos/compra/borrador', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({ ...cab, lineas: payloadLineas() })
             });
             const data = await r.json().catch(() => ({}));
@@ -822,10 +523,43 @@ if (form) {
     });
 
     // ── Crear orden de compra (código de empleado imperativo) ──────────────────────────
+    // ── "La mercancía ya llegó": crear y recibir en un solo paso ───────────────────────
+    // Para cuando la factura llega con la mercancía: en vez de crear la orden, ir al
+    // historial y recibirla, se confirma acá cuánto llegó (misma ventana que "Recibir orden",
+    // src/js/recepcionOrden.js) y el servidor crea y recibe en una sola transacción.
+    const chkRecibirAhora = document.getElementById('recibir-ahora');
+    const campoTipoOrden = () => document.getElementById('tipoOrden');
+    const datosRecepcion = JSON.parse(document.getElementById('datos-recepcion')?.textContent || '{}');
+    const lineasParaRecibir = () => lineas.map((l, i) => {
+        const op = document.querySelector(`#li-material option[value="${CSS.escape(l.idMaterial)}"]`);
+        const unidadConsumo = op?.dataset.consumo || 'unidad';
+        const presentacion = l.unidadCompra || 'unidad';
+        return {
+            clave: i,
+            nombreMaterial: l.nombreMaterial,
+            colorNombre: l.colorNombre,
+            cantidad: l.cantidad,
+            unidadCompra: presentacion,
+            cantidadRecibida: 0,
+            unidadConsumo,
+            factorFijo: factorFijoDe(datosRecepcion.factores, presentacion, unidadConsumo),
+            contenidoSugerido: datosRecepcion.recordadas?.[l.idMaterial]?.[presentacion] ?? null,
+            valorUnitario: l.valorUnitario
+        };
+    });
+
     form.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         const cab = validarAntesDeEnviar();
         if (!cab) return;
+
+        const recibirAhora = Boolean(chkRecibirAhora?.checked) && campoTipoOrden()?.value === 'orden_compra';
+        let recepcion = null;
+        if (recibirAhora) {
+            const datos = await pedirRecepcion(lineasParaRecibir());
+            if (!datos) return;
+            recepcion = datos.map(d => ({ cantidadLlega: d.cantidadLlega, contenido: d.contenido }));
+        }
 
         const CODIGO_ID = 'oc-codigo-empleado';
         const ESTADO_ID = 'oc-codigo-estado';
@@ -833,17 +567,19 @@ if (form) {
             variante: 'neutro',
             html: `
                 <div class="gh-conf-html">
-                    ${cabeceraConfirmacion({ icono: 'fi-rr-file-signature', badge: 'Confirmar orden de compra', contexto: `${lineas.length} ítem${lineas.length === 1 ? '' : 's'} · ${document.getElementById('resumen-total').textContent}` })}
+                    ${cabeceraConfirmacion({ icono: recibirAhora ? 'fi-rr-box-check' : 'fi-rr-file-signature', badge: recibirAhora ? 'Crear y recibir orden de compra' : 'Confirmar orden de compra', contexto: `${lineas.length} ítem${lineas.length === 1 ? '' : 's'} · ${document.getElementById('resumen-total').textContent}` })}
                     <div class="px-7 pt-1 pb-5">
                         <div class="gh-conf-aviso"><i class="fi fi-rr-info"></i>
-                            <span>Queda registrada a nombre del empleado que la autoriza. No se puede deshacer, solo cancelar después.</span></div>
+                            <span>${recibirAhora
+                                ? 'Se crea la orden y lo que llegó entra al inventario de una vez. Queda a nombre del empleado que lo autoriza, que también necesita permiso para recibir.'
+                                : 'Queda registrada a nombre del empleado que la autoriza. No se puede deshacer, solo cancelar después.'}</span></div>
                     </div>
                     <p class="gh-conf-campo-label">Código de empleado que autoriza</p>
                     ${campoCodigoEmpleado(CODIGO_ID, '1.75rem')}
                     <p class="gh-conf-estado" id="${ESTADO_ID}"></p>
                 </div>`,
             showCancelButton: true,
-            confirmButtonText: 'Crear orden de compra',
+            confirmButtonText: recibirAhora ? 'Crear y recibir' : 'Crear orden de compra',
             cancelButtonText: 'Cancelar',
             focusCancel: false,
             reverseButtons: true,
@@ -864,8 +600,8 @@ if (form) {
                 try {
                     const r = await fetch('/admin/insumos/compra', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
-                        body: JSON.stringify({ ...cab, codigoEmpleado, lineas: payloadLineas() })
+                        headers: { 'Content-Type': 'application/json'},
+                        body: JSON.stringify({ ...cab, codigoEmpleado, lineas: payloadLineas(), ...(recibirAhora ? { recibirAhora: true, recepcion } : {}) })
                     });
                     const d = await r.json().catch(() => ({}));
                     if (d.logout) { window.location.href = '/'; return false; }
@@ -873,7 +609,7 @@ if (form) {
                     return d;
                 } catch (e) {
                     boton.disabled = false;
-                    boton.textContent = 'Crear orden de compra';
+                    boton.textContent = recibirAhora ? 'Crear y recibir' : 'Crear orden de compra';
                     Swal.showValidationMessage(e.message);
                     return false;
                 }
@@ -881,7 +617,7 @@ if (form) {
         }));
         if (!isConfirmed) return;
         const numerosOrden = value.ordenes.map(o => o.numeroOrden).join(', ');
-        await aviso({ variante: 'ingreso', icono: 'fi-rr-check', badge: value.ordenes.length > 1 ? 'Órdenes creadas' : 'Orden creada', contexto: numerosOrden });
+        await aviso({ variante: 'ingreso', icono: 'fi-rr-check', badge: value.ordenes.length > 1 ? 'Órdenes creadas' : value.recibida ? 'Orden creada y recibida' : 'Orden creada', contexto: value.recibida ? `${numerosOrden} · ya está en el inventario` : numerosOrden });
         window.location.href = '/admin/insumos';
     });
 }

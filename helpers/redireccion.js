@@ -6,9 +6,11 @@ const redireccion = (rol)=>{
         return '/store'
 
     }else if(rol === 'EMPLOYER'){
-        return '/admin'
+        // Bodega trabaja desde el área de tienda; /admin solo admite ADMIN (index.js).
+        return '/store'
 
     }
+    return null
 }
 
 export {

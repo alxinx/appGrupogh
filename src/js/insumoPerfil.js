@@ -67,7 +67,6 @@ import { escaparHtml as esc } from './escaparHtml.js';
     const form = document.getElementById('form-editar-insumo');
     if (!form) return;
     const idMaterial = form.dataset.idMaterial;
-    const CSRF = form.dataset.csrf;
 
     // ── Modal de edición: mismo abrir/cerrar que "Nuevo insumo" (src/js/insumos.js) ──
     const modal = document.getElementById('modal-editar-insumo');
@@ -148,7 +147,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
                 try {
                     const r = await fetch(`/admin/insumos/${idMaterial}/estado`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'CSRF-Token': CSRF },
+                        headers: { 'Content-Type': 'application/json'},
                         body: JSON.stringify({ activo, codigoEmpleado })
                     });
                     const d = await r.json().catch(() => ({}));
@@ -169,4 +168,104 @@ import { escaparHtml as esc } from './escaparHtml.js';
 
     document.getElementById('opcion-suspender-insumo')?.addEventListener('click', () => cambiarEstado(false));
     document.getElementById('opcion-reactivar-insumo')?.addEventListener('click', () => cambiarEstado(true));
+})();
+
+// ── Ajustar existencia (conteo físico) ───────────────────────────────────────────────────
+// Entrada (capa nueva con su costo) o salida (de lo disponible, de la más vieja a la más
+// nueva). Motivo y código de empleado obligatorios; el servidor valida todo otra vez
+// (produccionController.js ajustarExistenciaInsumo).
+(function () {
+    const btn = document.getElementById('btn-ajustar-existencia');
+    const elDatos = document.getElementById('datos-ajuste-existencia');
+    if (!btn || !elDatos) return;
+    const { idMaterial, unidad, colores } = JSON.parse(elDatos.textContent);
+    const INPUT_CODIGO = 'ajuste-codigo-empleado';
+    const ESTADO_CODIGO = 'ajuste-codigo-estado';
+
+    // Salida: solo de un color con disponible. Entrada: además "sin color".
+    const opcionesColor = (tipo) => {
+        const lista = tipo === 'salida' ? colores : [{ idAtributoColor: null, nombre: 'Sin color' }, ...colores.filter(c => c.idAtributoColor !== null)];
+        return lista.map(c => `<option value="${c.idAtributoColor ?? ''}">${esc(c.nombre)}${tipo === 'salida' ? ` · ${esc(c.disponible)} ${esc(unidad)} disponibles` : ''}</option>`).join('');
+    };
+
+    btn.addEventListener('click', async () => {
+        const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
+            variante: 'neutro',
+            html: `
+                <div class="gh-conf-html">
+                    ${cabeceraConfirmacion({ icono: 'fi-rr-scale', badge: 'Ajustar existencia', contexto: 'Para cuadrar el sistema con lo que hay en bodega' })}
+                    <div class="px-7 pt-1 pb-3 flex flex-col gap-3 text-left">
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="radio" name="ajuste-tipo" value="entrada" checked> Entra</label>
+                            <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 ${colores.length ? '' : 'opacity-40'}"><input type="radio" name="ajuste-tipo" value="salida" ${colores.length ? '' : 'disabled'}> Sale</label>
+                        </div>
+                        <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">Color
+                            <select id="ajuste-color" class="field-text text-sm">${opcionesColor('entrada')}</select></label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">Cantidad (${esc(unidad)})
+                                <input id="ajuste-cantidad" type="text" inputmode="decimal" autocomplete="off" class="field-text text-sm text-right"></label>
+                            <label id="ajuste-costo-caja" class="flex flex-col gap-1 text-xs font-semibold text-slate-500">Costo por ${esc(unidad)}
+                                <input id="ajuste-costo" type="text" inputmode="decimal" autocomplete="off" class="field-text text-sm text-right" placeholder="$"></label>
+                        </div>
+                        <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">Motivo
+                            <textarea id="ajuste-motivo" rows="2" maxlength="300" class="field-text text-sm" placeholder="Ej. Conteo físico del 20 de noviembre: faltaban 2 bolsas"></textarea></label>
+                    </div>
+                    <p class="gh-conf-campo-label">Código de empleado que autoriza</p>
+                    ${campoCodigoEmpleado(INPUT_CODIGO, '1.75rem')}
+                    <p class="gh-conf-estado" id="${ESTADO_CODIGO}"></p>
+                </div>`,
+            showCancelButton: true,
+            confirmButtonText: 'Registrar ajuste',
+            cancelButtonText: 'Cancelar',
+            reverseButtons: true,
+            didOpen: () => {
+                const popup = Swal.getPopup();
+                const color = popup.querySelector('#ajuste-color');
+                const cajaCosto = popup.querySelector('#ajuste-costo-caja');
+                popup.querySelectorAll('input[name="ajuste-tipo"]').forEach(r => r.addEventListener('change', () => {
+                    color.innerHTML = opcionesColor(r.value);
+                    cajaCosto.classList.toggle('invisible', r.value === 'salida');
+                }));
+                const boton = Swal.getConfirmButton();
+                boton.disabled = true;
+                activarVerificacionCodigo(INPUT_CODIGO, ESTADO_CODIGO, (emp) => { boton.disabled = !emp; }, {
+                    urlValidar: (codigo) => `/admin/insumos/empleado/validar/${encodeURIComponent(codigo)}`
+                });
+                popup.querySelector('#ajuste-cantidad')?.focus();
+            },
+            preConfirm: async () => {
+                const popup = Swal.getPopup();
+                const tipo = popup.querySelector('input[name="ajuste-tipo"]:checked').value;
+                const cantidad = window.leerDecimal(popup.querySelector('#ajuste-cantidad').value);
+                const costoUnitario = tipo === 'entrada' ? window.leerDecimal(popup.querySelector('#ajuste-costo').value.replace(/\$/g, '')) : null;
+                const motivo = popup.querySelector('#ajuste-motivo').value.trim();
+                if (!(Number(cantidad) > 0)) { Swal.showValidationMessage('Escribe una cantidad mayor a 0.'); return false; }
+                if (tipo === 'entrada' && !(Number(costoUnitario) > 0)) { Swal.showValidationMessage(`Escribe el costo por ${unidad}.`); return false; }
+                if (motivo.length < 5) { Swal.showValidationMessage('Explica el motivo del ajuste.'); return false; }
+                const codigoEmpleado = codigoRequerido(INPUT_CODIGO, ESTADO_CODIGO);
+                if (!codigoEmpleado) return false;
+
+                const boton = Swal.getConfirmButton();
+                boton.disabled = true;
+                boton.textContent = 'Registrando…';
+                try {
+                    const r = await fetch(`/admin/insumos/${encodeURIComponent(idMaterial)}/ajuste`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tipo, cantidad, costoUnitario, motivo, idAtributoColor: popup.querySelector('#ajuste-color').value, codigoEmpleado })
+                    });
+                    const d = await r.json().catch(() => ({}));
+                    if (d.logout) { window.location.href = '/'; return false; }
+                    if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo registrar el ajuste.');
+                    return d;
+                } catch (e) {
+                    boton.disabled = false;
+                    boton.textContent = 'Registrar ajuste';
+                    Swal.showValidationMessage(e.message);
+                    return false;
+                }
+            }
+        }));
+        if (isConfirmed) window.location.reload();
+    });
 })();

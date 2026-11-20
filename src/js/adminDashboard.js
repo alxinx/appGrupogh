@@ -13,7 +13,6 @@ import Chart from 'chart.js/auto';
     // ─── FLAGS de carga ───────────────────────────────────────────────────────
     let stockCargado   = false;
     let chartCargado   = false;
-    let carteraCargada = false;
 
     // ─── STOCK BAJO GLOBAL ────────────────────────────────────────────────────
     const renderStockBajoGlobal = (productos) => {
@@ -216,7 +215,7 @@ import Chart from 'chart.js/auto';
 
     const cargarCartera = () => {
         fetch('/admin/api/dashboard/cartera-urgente').then(r => r.json())
-            .then(d => { if (d.success) { renderCarteraUrgente(d); carteraCargada = true; } })
+            .then(d => { if (d.success) { renderCarteraUrgente(d); } })
             .catch(() => {});
     };
 
