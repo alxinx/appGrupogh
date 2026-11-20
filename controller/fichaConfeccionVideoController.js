@@ -1,5 +1,6 @@
 import { FichaConfeccion, FichaConfeccionVideo } from '../models/index.js';
-import { crearSubidaDirecta, crearSubidaTus, obtenerEstadoVideoCloudflare, VIDEO_FICHA_MAX_SEGUNDOS } from '../helpers/cloudflareStream.js';
+import { crearSubidaDirecta, crearSubidaTus, obtenerEstadoVideoCloudflare, eliminarVideoCloudflare, VIDEO_FICHA_MAX_SEGUNDOS } from '../helpers/cloudflareStream.js';
+import { generarYGuardarPdf } from './fichaConfeccionController.js';
 
 // Cloudflare le pone un tope DURO de 200MB al POST simple (helpers/cloudflareStream.js) —
 // un video de celular grabando el proceso de confección lo pasa fácil, así que a partir de
@@ -194,4 +195,35 @@ const asociarVideoFicha = async (req, res) => {
     }
 };
 
-export { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo, asociarVideoFicha };
+// POST /admin/procesos/fichas-confeccion/:idFicha/videos/:idVideo/eliminar — quita un video
+// de la ficha y lo borra DE CLOUDFLARE. Primero Cloudflare: si no se pudo borrar allá, la
+// fila se queda, para que el video no siga existiendo sin nada que lo referencie. Después
+// se regenera el PDF (su QR lista los videos).
+const eliminarVideoFicha = async (req, res) => {
+    try {
+        const video = await FichaConfeccionVideo.findOne({
+            where: { idVideo: req.params.idVideo, idFicha: req.params.idFicha },
+            attributes: ['idVideo', 'idFicha', 'cloudflareVideoUid']
+        });
+        if (!video) return res.status(404).json({ success: false, mensaje: 'Ese video no es de esta ficha.' });
+
+        try {
+            await eliminarVideoCloudflare(video.cloudflareVideoUid);
+        } catch (e) {
+            console.error('fichaConfeccionVideoController(eliminar) cloudflare:', e);
+            return res.status(502).json({ success: false, mensaje: 'No se pudo borrar el video. Intenta de nuevo en un momento.' });
+        }
+        await video.destroy();
+
+        try { await generarYGuardarPdf(video.idFicha); } catch (e) {
+            console.error('fichaConfeccionVideoController(eliminar) pdf:', e);
+            return res.json({ success: true, avisoPdf: 'El video se borró, pero el PDF no se pudo regenerar todavía.' });
+        }
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('fichaConfeccionVideoController(eliminar):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo borrar el video.' });
+    }
+};
+
+export { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo, asociarVideoFicha, eliminarVideoFicha };

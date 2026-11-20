@@ -1,61 +1,72 @@
 import { duracionVideo } from './duracionVideo.js';
+import { subirArchivoMolde, iniciarGeneracionIa, consultarIntentoIa, aprobarIntentoIa } from './moldeIaCliente.js';
+import { subirVideo, esperarVideoListo } from './subidaVideo.js';
+import { opcionesConfirmacion, cabeceraConfirmacion } from './modalConfirmacion.js';
+import { escaparHtml as esc } from './escaparHtml.js';
 
 // Editor de una ficha de confección ya creada (admin/procesos/fichas-confeccion/:idFicha,
-// "Abrir" desde la Biblioteca). Colores e insumos reusan el mismo mecanismo de
-// src/js/fichaConfeccionNueva.js (modal con buscador + grilla, una fila por elegido) ya
-// prepoblado con lo que la ficha trae; talleres y videos son nuevos acá.
+// "Abrir" desde la Biblioteca). La ficha describe la prenda: acá se ajustan los textos, el
+// precio, los insumos (reemplazar y cantidad POR PRENDA, sin agregar ni quitar), las
+// imágenes (foto de referencia e IA, una de cada) y los videos. Los talleres no se asignan
+// acá: se asignan al iniciar el proceso.
 (function () {
     const raiz = document.getElementById('asistente-ficha-editar');
     if (!raiz) return;
 
     const idFicha = raiz.dataset.idFicha;
-    const materiales = JSON.parse(raiz.dataset.materiales || '[]');
+    const idMolde = raiz.dataset.idMolde || null;   // solo si el molde es JPG (la IA parte de él)
+    const idDxf = raiz.dataset.idDxf || null;
     const insumosIniciales = JSON.parse(raiz.dataset.insumosIniciales || '[]');
-    const talleresIniciales = JSON.parse(raiz.dataset.talleresIniciales || '[]');
+    const URL_FICHA = `/admin/procesos/fichas-confeccion/${idFicha}`;
 
-    // Estado compartido entre los bloques de abajo — mismo criterio que estadoFicha en
-    // fichaConfeccionNueva.js: cada bloque resuelve lo suyo y expone una función para que
-    // el bloque de guardado al final junte todo en un solo POST.
-    const estado = {
-        obtenerColores: () => [],
-        obtenerInsumos: () => [],
-        obtenerTalleres: () => [],
-        actualizarColoresEnTalleres: () => {}
+    // Estado compartido: cada bloque expone lo suyo y el guardado del final lo junta.
+    const estado = { obtenerInsumos: () => [] };
+
+    const mostrarError = (el, mensaje) => { if (el) { el.textContent = mensaje; el.classList.remove('hidden'); } };
+
+    // ── Modales simples (imagen en grande, video) ─────────────────────────────────────────
+    // Se cierran con la X, con un clic en el fondo o con Escape.
+    const abrirModal = (modal) => { modal?.classList.remove('hidden'); modal?.classList.add('flex'); };
+    const cerrarModal = (modal) => {
+        modal?.classList.add('hidden'); modal?.classList.remove('flex');
+        modal?.dispatchEvent(new Event('cerrado'));
     };
-
-    // Colores y cantidades ya no son de la ficha: la ficha describe la prenda y los insumos
-    // van por prenda; cuántas y en qué colores lo dice la orden de producción (wiki
-    // "Proceso de confección"). Los talleres siguen acá mientras esa orden no exista.
+    document.querySelectorAll('#modal-ampliar-imagen, #modal-ver-video').forEach((modal) => {
+        modal.addEventListener('click', (e) => { if (e.target === modal || e.target.closest('[data-cerrar-modal]')) cerrarModal(modal); });
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        document.querySelectorAll('#modal-ampliar-imagen.flex, #modal-ver-video.flex').forEach(cerrarModal);
+    });
 
     // ── Insumos ──────────────────────────────────────────────────────────────────────────
+    // Una fila por insumo que la ficha ya tiene. "Reemplazar" abre el catálogo y cambia el
+    // insumo de ESA línea; la cantidad es por prenda. No hay agregar ni quitar: el servidor
+    // también lo rechaza (actualizarFichaConfeccion).
     (function () {
         const lista = document.querySelector('[data-lista-insumos-editar]');
         const plantilla = document.getElementById('plantilla-fila-insumo-editar');
-        const btnAgregar = document.getElementById('btn-agregar-insumo-editar');
-        const vacio = document.getElementById('insumos-editar-vacio');
-        const errorInsumos = document.querySelector('[data-error-insumos-editar]');
         const modal = document.getElementById('modal-elegir-insumo-editar');
         const buscador = document.getElementById('buscador-insumo-ficha-editar');
         const grid = document.getElementById('grid-insumos-ficha-editar');
         const btnCerrarModal = document.getElementById('cerrar-modal-insumo-editar');
-        if (!lista || !plantilla || !btnAgregar) return;
+        if (!lista || !plantilla) return;
 
         let filaActual = null;
-        const actualizarVacio = () => vacio?.classList.toggle('hidden', lista.children.length > 0);
 
-        const cerrarModal = () => {
+        const cerrarCatalogo = () => {
             modal?.classList.add('hidden'); modal?.classList.remove('flex');
             filaActual = null;
             if (buscador) buscador.value = '';
             grid?.querySelectorAll('[data-opcion-insumo]').forEach((b) => { b.style.display = ''; });
         };
-        const abrirModal = (fila) => {
+        const abrirCatalogo = (fila) => {
             filaActual = fila;
             modal?.classList.remove('hidden'); modal?.classList.add('flex');
             buscador?.focus();
         };
-        btnCerrarModal?.addEventListener('click', cerrarModal);
-        modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
+        btnCerrarModal?.addEventListener('click', cerrarCatalogo);
+        modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarCatalogo(); });
         buscador?.addEventListener('input', (e) => {
             const termino = e.target.value.toLowerCase().trim();
             grid?.querySelectorAll('[data-opcion-insumo]').forEach((b) => {
@@ -65,171 +76,189 @@ import { duracionVideo } from './duracionVideo.js';
         grid?.addEventListener('click', (e) => {
             const opcion = e.target.closest('[data-opcion-insumo]');
             if (!opcion || !filaActual) return;
-            pintarInsumoEnFila(filaActual, { idMaterial: opcion.dataset.id, nombre: opcion.dataset.nombre, imagen: opcion.dataset.imagen });
-            cerrarModal();
+            pintarInsumo(filaActual, { idMaterial: opcion.dataset.id, nombre: opcion.dataset.nombre, imagen: opcion.dataset.imagen });
+            cerrarCatalogo();
         });
 
-        function pintarInsumoEnFila(fila, insumo) {
+        function pintarInsumo(fila, insumo) {
+            fila.querySelector('[data-insumo-id]').value = insumo.idMaterial;
+            const nombre = fila.querySelector('[data-insumo-nombre]');
+            nombre.textContent = insumo.nombre;
+            nombre.title = insumo.nombre;   // en la columna angosta el nombre se corta
             const foto = fila.querySelector('[data-insumo-foto]');
-            const nombreEl = fila.querySelector('[data-insumo-nombre]');
-            const inputId = fila.querySelector('[data-insumo-id]');
-            if (inputId) inputId.value = insumo.idMaterial;
-            if (nombreEl) { nombreEl.textContent = insumo.nombre; nombreEl.classList.remove('text-slate-400'); nombreEl.classList.add('text-slate-800', 'font-semibold'); }
-            if (foto) foto.innerHTML = insumo.imagen ? `<img src="${insumo.imagen}" alt="${insumo.nombre}" class="w-full h-full object-cover">` : '<i class="fi fi-rr-box text-xs"></i>';
+            if (foto) {
+                foto.innerHTML = insumo.imagen
+                    ? `<img src="${esc(insumo.imagen)}" alt="" class="w-full h-full object-cover">`
+                    : '<i class="fi fi-rr-box text-xs"></i>';
+            }
         }
 
-        const agregarFila = (datosIniciales) => {
-            const nodo = plantilla.content.firstElementChild.cloneNode(true);
-            lista.appendChild(nodo);
-            nodo.querySelector('[data-abrir-insumo]')?.addEventListener('click', () => abrirModal(nodo));
-            nodo.querySelector('[data-quitar-insumo]')?.addEventListener('click', () => { nodo.remove(); actualizarVacio(); });
-            if (datosIniciales) {
-                pintarInsumoEnFila(nodo, { idMaterial: datosIniciales.idMaterial, nombre: datosIniciales.nombre });
-                const inputCantidad = nodo.querySelector('[data-insumo-cantidad]');
-                if (inputCantidad) inputCantidad.value = datosIniciales.cantidad;
-            }
-            actualizarVacio();
-        };
-
-        btnAgregar.addEventListener('click', () => agregarFila());
-        insumosIniciales.forEach((i) => agregarFila(i));
-
-        estado.obtenerInsumos = () => [...lista.querySelectorAll('[data-fila-insumo]')]
-            .map((fila) => ({
-                idMaterial: fila.querySelector('[data-insumo-id]')?.value || null,
-                nombre: fila.querySelector('[data-insumo-nombre]')?.textContent,
-                cantidad: parseInt(fila.querySelector('[data-insumo-cantidad]')?.value, 10)
-            }))
-            .filter((f) => f.idMaterial && Number.isInteger(f.cantidad) && f.cantidad > 0);
-
-    })();
-
-    // ── Talleres de confección ───────────────────────────────────────────────────────────
-    // Cada taller es un PROVEDORES de categoría 'Confeccionista' con su propio precio y los
-    // colores de la ficha que le tocan — las casillas de color se repintan cada vez que la
-    // lista de colores cambia (agregar/quitar arriba), así un color que se borró no se
-    // queda "fantasma" asignado a un taller. "Agregar taller" abre una grilla y se elige con
-    // un click, mismo lenguaje que colores/insumos (un <select> plano no se leía como botón).
-    (function () {
-        const lista = document.querySelector('[data-lista-talleres-editar]');
-        const plantilla = document.getElementById('plantilla-taller-editar');
-        const btnAgregar = document.getElementById('btn-agregar-taller-editar');
-        const vacio = document.getElementById('talleres-editar-vacio');
-        const errorTalleres = document.querySelector('[data-error-talleres-editar]');
-        const modal = document.getElementById('modal-elegir-taller-editar');
-        const buscador = document.getElementById('buscador-taller-ficha-editar');
-        const grid = document.getElementById('grid-talleres-ficha-editar');
-        const btnCerrarModal = document.getElementById('cerrar-modal-taller-editar');
-        const inputPrecioGeneral = document.getElementById('ficha-editar-precio');
-        if (!lista || !plantilla || !btnAgregar) return;
-
-        const actualizarVacio = () => vacio?.classList.toggle('hidden', lista.children.length > 0);
-
-        const cerrarModal = () => {
-            modal?.classList.add('hidden'); modal?.classList.remove('flex');
-            if (buscador) buscador.value = '';
-            grid?.querySelectorAll('[data-opcion-taller]').forEach((b) => { b.style.display = ''; });
-        };
-        const abrirModal = () => {
-            modal?.classList.remove('hidden'); modal?.classList.add('flex');
-            buscador?.focus();
-        };
-        btnCerrarModal?.addEventListener('click', cerrarModal);
-        modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
-        buscador?.addEventListener('input', (e) => {
-            const termino = e.target.value.toLowerCase().trim();
-            grid?.querySelectorAll('[data-opcion-taller]').forEach((b) => {
-                b.style.display = (b.dataset.nombre || '').toLowerCase().includes(termino) ? '' : 'none';
-            });
+        insumosIniciales.forEach((ins) => {
+            const fila = plantilla.content.firstElementChild.cloneNode(true);
+            lista.appendChild(fila);
+            fila.querySelector('[data-insumo-detalle]').value = ins.idDetalle;
+            fila.querySelector('[data-insumo-cantidad]').value = ins.cantidad;
+            fila.querySelector('[data-abrir-insumo]').addEventListener('click', () => abrirCatalogo(fila));
+            pintarInsumo(fila, { idMaterial: ins.idMaterial, nombre: ins.nombre });
         });
 
-        const repintarColoresDeFila = (fila) => {
-            const contenedor = fila.querySelector('[data-taller-colores]');
-            if (!contenedor) return;
-            const idsMarcados = new Set([...contenedor.querySelectorAll('input[type="checkbox"]:checked')].map((c) => c.value));
-            contenedor.innerHTML = '';
-            estado.obtenerColores().forEach((c) => {
-                const label = document.createElement('label');
-                label.className = 'inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border border-slate-200 cursor-pointer hover:border-gh-primary/40';
-                const check = document.createElement('input');
-                check.type = 'checkbox'; check.value = String(c.idAtributoColor);
-                check.className = 'accent-gh-primaryHover';
-                check.checked = idsMarcados.has(String(c.idAtributoColor));
-                const texto = document.createElement('span');
-                texto.textContent = c.nombre;
-                label.append(check, texto);
-                contenedor.appendChild(label);
-            });
+        // El campo "Insumos" de Información general despliega el panel con las líneas.
+        const btnInsumos = document.getElementById('btn-insumos-editar');
+        const panel = document.getElementById('panel-insumos-editar');
+        const chevron = btnInsumos?.querySelector('[data-chevron-insumos]');
+        const desplegar = (abierto) => {
+            panel?.classList.toggle('hidden', !abierto);
+            panel?.classList.toggle('flex', abierto);
+            chevron?.classList.toggle('rotate-180', abierto);
+            btnInsumos?.setAttribute('aria-expanded', String(abierto));
         };
+        btnInsumos?.addEventListener('click', () => desplegar(panel?.classList.contains('hidden')));
 
-        estado.actualizarColoresEnTalleres = () => {
-            lista.querySelectorAll('[data-fila-taller]').forEach(repintarColoresDeFila);
-        };
-
-        const agregarTaller = (idProveedor, nombre, datosIniciales) => {
-            const opcion = grid?.querySelector(`[data-opcion-taller][data-id="${idProveedor}"]`);
-            const nodo = plantilla.content.firstElementChild.cloneNode(true);
-            nodo.dataset.idProveedor = idProveedor;
-            nodo.querySelector('[data-taller-nombre]').textContent = nombre;
-            lista.appendChild(nodo);
-
-            const inputPrecio = nodo.querySelector('[data-taller-precio]');
-            window.initMoneyInput?.(inputPrecio);
-            // El precio sugerido es el "Precio general de confección" — todos arrancan ahí,
-            // se puede cambiar por taller (pedido explícito del usuario). Un taller que ya
-            // traía su propio precio guardado (datosIniciales) conserva el suyo.
-            const precioInicial = datosIniciales?.precioConfeccion
-                ?? (window.parseMoney ? window.parseMoney(inputPrecioGeneral?.value || '0') : 0);
-            if (precioInicial) inputPrecio.value = Math.round(precioInicial).toLocaleString('es-CO');
-
-            nodo.querySelector('[data-quitar-taller]')?.addEventListener('click', () => {
-                nodo.remove();
-                if (opcion) opcion.style.display = '';
-                actualizarVacio();
-            });
-
-            repintarColoresDeFila(nodo);
-            if (datosIniciales?.colores?.length) {
-                const idsIniciales = new Set(datosIniciales.colores.map(String));
-                nodo.querySelectorAll('[data-taller-colores] input[type="checkbox"]').forEach((c) => { c.checked = idsIniciales.has(c.value); });
+        const errorInsumos = document.querySelector('[data-error-insumos-editar]');
+        estado.obtenerInsumos = () => [...lista.querySelectorAll('[data-fila-insumo]')].map((fila) => ({
+            idDetalle: parseInt(fila.querySelector('[data-insumo-detalle]').value, 10),
+            idMaterial: fila.querySelector('[data-insumo-id]').value,
+            nombre: fila.querySelector('[data-insumo-nombre]').textContent,
+            cantidad: parseInt(fila.querySelector('[data-insumo-cantidad]').value, 10)
+        }));
+        estado.validarInsumos = () => {
+            const ok = estado.obtenerInsumos().every((i) => Number.isInteger(i.cantidad) && i.cantidad > 0);
+            errorInsumos?.classList.toggle('hidden', ok);
+            if (!ok) {
+                desplegar(true);   // el error vive dentro del panel: que se vea
+                mostrarError(errorInsumos, 'Cada insumo necesita una cantidad por prenda mayor a 0.');
             }
-
-            if (opcion) opcion.style.display = 'none';
-            actualizarVacio();
-        };
-
-        btnAgregar.addEventListener('click', abrirModal);
-        grid?.addEventListener('click', (e) => {
-            const opcion = e.target.closest('[data-opcion-taller]');
-            if (!opcion) return;
-            agregarTaller(opcion.dataset.id, opcion.dataset.nombre);
-            errorTalleres?.classList.add('hidden');
-            cerrarModal();
-        });
-
-        talleresIniciales.forEach((t) => agregarTaller(t.idProveedor, t.nombre, t));
-
-        estado.obtenerTalleres = () => [...lista.querySelectorAll('[data-fila-taller]')]
-            .map((fila) => ({
-                idProveedor: fila.dataset.idProveedor,
-                precioConfeccion: window.parseMoney ? window.parseMoney(fila.querySelector('[data-taller-precio]')?.value || '0') : 0,
-                colores: [...fila.querySelectorAll('[data-taller-colores] input[type="checkbox"]:checked')].map((c) => parseInt(c.value, 10))
-            }));
-
-        estado.validarTalleres = () => {
-            const talleres = estado.obtenerTalleres();
-            const ok = talleres.every((t) => t.precioConfeccion > 0);
-            errorTalleres?.classList.toggle('hidden', ok);
-            if (errorTalleres) errorTalleres.textContent = 'Cada taller necesita un precio de confección mayor a $0.';
             return ok;
         };
+    })();
+
+    // ── Referencias visuales ─────────────────────────────────────────────────────────────
+    // Clic en una imagen → en grande. "Foto de referencia" sube una imagen y la asigna;
+    // "Generar con IA" parte del molde JPG de la ficha y, al aprobarla, la asigna. En los
+    // dos casos la nueva reemplaza a la anterior y la página se recarga con el PDF ya
+    // regenerado (asignarImagenFicha).
+    (function () {
+        const errorEl = document.querySelector('[data-error-imagenes]');
+        const modalAmpliar = document.getElementById('modal-ampliar-imagen');
+        const imgAmpliada = document.getElementById('modal-ampliar-img');
+        const tituloAmpliado = document.getElementById('modal-ampliar-titulo');
+
+        document.querySelectorAll('[data-ampliar-imagen]').forEach((boton) => boton.addEventListener('click', () => {
+            imgAmpliada.src = boton.dataset.src;
+            imgAmpliada.alt = boton.dataset.titulo;
+            tituloAmpliado.textContent = boton.dataset.titulo;
+            abrirModal(modalAmpliar);
+        }));
+
+        const asignar = async (cuerpo) => {
+            const r = await fetch(`${URL_FICHA}/imagenes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo)
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo guardar la imagen.');
+            window.location.reload();
+        };
+
+        // Foto de referencia: se sube por el mismo endpoint del molde (JPG o WebP, valida el
+        // contenido real) y después se asigna a la ficha.
+        const inputReferencia = document.getElementById('input-referencia-editar');
+        const btnReferencia = document.getElementById('btn-referencia-editar');
+        btnReferencia?.addEventListener('click', () => inputReferencia?.click());
+        inputReferencia?.addEventListener('change', async () => {
+            const archivo = inputReferencia.files?.[0];
+            inputReferencia.value = '';
+            if (!archivo) return;
+            errorEl?.classList.add('hidden');
+            btnReferencia.disabled = true;
+            try {
+                const d = await subirArchivoMolde(archivo, 'No se pudo subir la foto.');
+                await asignar({ tipo: 'referencia', idMolde: d.idMolde });
+            } catch (e) {
+                mostrarError(errorEl, e.message);
+                btnReferencia.disabled = false;
+            }
+        });
+
+        // Generación con IA: mismo endpoint y mismo modal (patrón y colores) que el asistente.
+        const btnIa = document.getElementById('btn-ia-editar');
+        const modalIa = document.getElementById('modal-molde-ia');
+        const inputPattern = document.getElementById('molde-ia-pattern');
+        const inputColors = document.getElementById('molde-ia-colors');
+        const btnGenerar = document.getElementById('btn-molde-ia-generar');
+        const estadoIa = document.querySelector('[data-ia-estado]');
+        const resultadoIa = document.querySelector('[data-ia-resultado]');
+        const imagenIa = document.querySelector('[data-ia-imagen]');
+        const btnRepetir = document.querySelector('[data-ia-repetir]');
+        const btnAprobar = document.querySelector('[data-ia-aprobar]');
+        if (!btnIa || !idMolde || !modalIa) return;
+
+        let idIntento = null;
+        let consulta = null;
+        const verEstado = (generando) => {
+            estadoIa.classList.toggle('hidden', !generando);
+            estadoIa.classList.toggle('flex', generando);
+        };
+        const abrirIa = () => { modalIa.classList.remove('hidden'); modalIa.classList.add('flex'); };
+        const cerrarIa = () => { modalIa.classList.add('hidden'); modalIa.classList.remove('flex'); };
+        document.getElementById('modal-molde-ia-cerrar')?.addEventListener('click', cerrarIa);
+        document.getElementById('btn-molde-ia-cancelar')?.addEventListener('click', cerrarIa);
+        modalIa.addEventListener('click', (e) => { if (e.target === modalIa) cerrarIa(); });
+        btnIa.addEventListener('click', abrirIa);
+        btnRepetir?.addEventListener('click', abrirIa);
+
+        // El servidor cierra solo un intento que quedó colgado (helpers/moldeIa.js), así que
+        // esta consulta siempre termina en 'listo' o 'error'.
+        const consultar = async () => {
+            const intento = await consultarIntentoIa(idIntento);
+            if (!intento || intento.estado === 'procesando') return;
+            clearInterval(consulta);
+            verEstado(false);
+            if (intento.estado === 'error') {
+                mostrarError(errorEl, intento.errorMensaje || 'No se pudo generar la imagen.');
+                return;
+            }
+            imagenIa.src = intento.previewUrl;
+            resultadoIa.classList.remove('hidden');
+            resultadoIa.classList.add('flex');
+        };
+
+        btnGenerar?.addEventListener('click', async () => {
+            cerrarIa();
+            errorEl?.classList.add('hidden');
+            resultadoIa.classList.add('hidden');
+            resultadoIa.classList.remove('flex');
+            verEstado(true);
+            try {
+                const d = await iniciarGeneracionIa(idMolde, { pattern: inputPattern.value.trim(), colors: inputColors.value.trim(), idDxf });
+                idIntento = d.idIntento;
+                clearInterval(consulta);
+                consulta = setInterval(consultar, 4000);
+            } catch (e) {
+                verEstado(false);
+                mostrarError(errorEl, e.message);
+            }
+        });
+
+        btnAprobar?.addEventListener('click', async () => {
+            if (!idIntento) return;
+            btnAprobar.disabled = true;
+            try {
+                await aprobarIntentoIa(idIntento);
+                await asignar({ tipo: 'ia', idIntento });
+            } catch (e) {
+                mostrarError(errorEl, e.message);
+                btnAprobar.disabled = false;
+            }
+        });
     })();
 
     // ── Videos del proceso ───────────────────────────────────────────────────────────────
     // Mismo pipeline de Cloudflare Stream que el asistente (controller/
     // fichaConfeccionVideoController.js): pide una URL de subida directa, el navegador sube
-    // el archivo DIRECTO a Cloudflare, confirma, y recién ahí se asocia a ESTA ficha (acá es
-    // lo único distinto del asistente — ahí la asociación la hacía finalizarFicha al final).
+    // el archivo DIRECTO a Cloudflare, confirma, y recién ahí se asocia a ESTA ficha. "Ver"
+    // abre el reproductor en un modal; "Borrar" lo quita de la ficha y de Cloudflare.
     (function () {
         const urlBase = '/admin/procesos/fichas-confeccion/video';
         const input = document.getElementById('input-video-editar');
@@ -241,26 +270,76 @@ import { duracionVideo } from './duracionVideo.js';
         const contador = document.getElementById('contador-videos-editar');
         if (!input || !lista) return;
 
-        let total = lista.children.length;
+        const total = lista.querySelectorAll('[data-fila-video]').length;
+        if (contador) contador.textContent = total === 1 ? '1 archivo' : `${total} archivos`;
+        zona?.classList.toggle('hidden', total >= 3);
 
-        const actualizarContador = () => {
-            if (contador) contador.textContent = `${total}/3`;
-            if (zona) zona.classList.toggle('hidden', total >= 3);
-        };
-        actualizarContador();
-
-        const subirArchivo = (archivo, uploadURL) => new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', uploadURL);
-            xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable && textoProgreso) textoProgreso.textContent = `Subiendo… ${Math.round((e.loaded / e.total) * 100)}%`;
-            });
-            xhr.addEventListener('load', () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(`Cloudflare rechazó la subida (HTTP ${xhr.status}).`)));
-            xhr.addEventListener('error', () => reject(new Error('Se perdió la conexión subiendo el video.')));
-            const formData = new FormData();
-            formData.append('file', archivo);
-            xhr.send(formData);
+        // Plegar / desplegar la tarjeta.
+        const btnPlegar = document.getElementById('btn-plegar-videos');
+        const cuerpo = document.getElementById('cuerpo-videos-editar');
+        btnPlegar?.addEventListener('click', () => {
+            const abierto = cuerpo.classList.toggle('hidden') === false;
+            btnPlegar.setAttribute('aria-expanded', String(abierto));
+            btnPlegar.querySelector('[data-chevron-videos]')?.classList.toggle('rotate-180', !abierto);
         });
+
+        // Menú ⋮ de cada video: uno abierto a la vez; se cierra con un clic afuera o Escape.
+        const cerrarMenus = () => lista.querySelectorAll('[data-menu-video-opciones]').forEach((m) => {
+            m.classList.add('hidden');
+            m.previousElementSibling?.setAttribute('aria-expanded', 'false');
+        });
+        lista.querySelectorAll('[data-menu-video]').forEach((boton) => boton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const menu = boton.nextElementSibling;
+            const abrir = menu.classList.contains('hidden');
+            cerrarMenus();
+            menu.classList.toggle('hidden', !abrir);
+            boton.setAttribute('aria-expanded', String(abrir));
+        }));
+        document.addEventListener('click', cerrarMenus);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMenus(); });
+
+        // Ver: el iframe se carga al abrir y se vacía al cerrar, para que el video no siga
+        // sonando con el modal cerrado.
+        const modalVideo = document.getElementById('modal-ver-video');
+        const iframe = document.getElementById('modal-video-iframe');
+        const tituloVideo = document.getElementById('modal-video-titulo');
+        lista.querySelectorAll('[data-ver-video]').forEach((boton) => boton.addEventListener('click', () => {
+            iframe.src = boton.dataset.verVideo;
+            tituloVideo.textContent = boton.dataset.titulo;
+            abrirModal(modalVideo);
+        }));
+        modalVideo?.addEventListener('cerrado', () => { iframe.src = 'about:blank'; });
+
+        // Borrar: confirma (no se puede deshacer: también se borra de Cloudflare).
+        lista.querySelectorAll('[data-eliminar-video]').forEach((boton) => boton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
+                variante: 'egreso',
+                html: `<div class="gh-conf-html">${cabeceraConfirmacion({
+                    icono: 'fi-rr-trash',
+                    badge: 'Borrar video',
+                    contexto: `${esc(boton.dataset.nombre)} se borra de la ficha de forma definitiva. No se puede deshacer.`
+                })}</div>`,
+                showCancelButton: true,
+                confirmButtonText: 'Borrar video',
+                cancelButtonText: 'Cancelar'
+            }));
+            if (!isConfirmed) return;
+
+            cerrarMenus();
+            boton.disabled = true;
+            errorVideo?.classList.add('hidden');
+            try {
+                const r = await fetch(`${URL_FICHA}/videos/${boton.dataset.eliminarVideo}/eliminar`, { method: 'POST' });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo borrar el video.');
+                window.location.reload();
+            } catch (e) {
+                mostrarError(errorVideo, e.message);
+                boton.disabled = false;
+            }
+        }));
 
         input.addEventListener('change', async () => {
             const archivo = input.files?.[0];
@@ -274,35 +353,36 @@ import { duracionVideo } from './duracionVideo.js';
             try {
                 const rSolicitar = await fetch(`${urlBase}/solicitar-subida`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ orden: total + 1, nombreOriginal: archivo.name, pesoBytes: archivo.size, duracionSegundos: await duracionVideo(archivo) })
                 });
                 const dSolicitar = await rSolicitar.json();
                 if (!rSolicitar.ok || !dSolicitar.success) throw new Error(dSolicitar.mensaje || 'No se pudo iniciar la subida.');
 
-                if (dSolicitar.uploadURL) await subirArchivo(archivo, dSolicitar.uploadURL);
+                if (dSolicitar.uploadURL) {
+                    await subirVideo(archivo, {
+                        uploadURL: dSolicitar.uploadURL,
+                        modo: dSolicitar.modo,
+                        alProgreso: (p) => { if (textoProgreso) textoProgreso.textContent = `Subiendo… ${p}%`; }
+                    });
+                }
 
                 if (textoProgreso) textoProgreso.textContent = 'Procesando…';
-                const rConfirmar = await fetch(`${urlBase}/${dSolicitar.idVideo}/confirmar`, { method: 'POST', });
+                const rConfirmar = await fetch(`${urlBase}/${dSolicitar.idVideo}/confirmar`, { method: 'POST' });
                 const dConfirmar = await rConfirmar.json();
                 if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
-                if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'Cloudflare no pudo procesar el video.');
+                if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'No se pudo procesar el video.');
+                // Asociar exige el video listo: el procesamiento puede tardar más que la subida.
+                if (dConfirmar.estado !== 'ready') await esperarVideoListo(urlBase, dSolicitar.idVideo);
 
-                const rAsociar = await fetch(`/admin/procesos/fichas-confeccion/${idFicha}/videos/${dSolicitar.idVideo}/asociar`, {
-                    method: 'POST', });
+                const rAsociar = await fetch(`${URL_FICHA}/videos/${dSolicitar.idVideo}/asociar`, { method: 'POST' });
                 const dAsociar = await rAsociar.json();
                 if (!rAsociar.ok || !dAsociar.success) throw new Error(dAsociar.mensaje || 'No se pudo asociar el video a la ficha.');
 
-                const fila = document.createElement('div');
-                fila.className = 'flex items-center gap-2 text-sm text-slate-700 bg-slate-50 rounded-xl px-3 py-2';
-                fila.innerHTML = '<i class="fi fi-rr-video-camera text-slate-400 text-sm flex-shrink-0"></i><span class="flex-1 truncate"></span>';
-                fila.querySelector('span').textContent = archivo.name;
-                lista.appendChild(fila);
-                total += 1;
-                actualizarContador();
+                // Recargar trae la fila nueva con su reproductor y su botón de borrar.
+                window.location.reload();
             } catch (e) {
-                if (errorVideo) { errorVideo.textContent = e.message; errorVideo.classList.remove('hidden'); }
-            } finally {
+                mostrarError(errorVideo, e.message);
                 progreso?.classList.add('hidden'); progreso?.classList.remove('flex');
             }
         });
@@ -322,54 +402,185 @@ import { duracionVideo } from './duracionVideo.js';
 
         window.initMoneyInput?.(inputPrecio);
 
+        // Lo que la ficha tenía al abrirla (o al último guardado): contra esto se arma la
+        // lista de cambios que se confirma antes de guardar.
+        const leer = () => ({
+            referencia: inputReferencia?.value.trim() || '',
+            complementos: (inputComplementos?.value || '').trim(),
+            observaciones: (inputObservaciones?.value || '').trim(),
+            precio: window.parseMoney ? window.parseMoney(inputPrecio.value) : 0,
+            insumos: estado.obtenerInsumos()
+        });
+        let guardado = leer();
+
+        const pesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`;
+        // De un texto largo, el pedazo donde empieza el cambio (no su comienzo, que no cambió).
+        const tramoCambiado = (antes, ahora) => {
+            if (!ahora) return '(vacío)';
+            let i = 0;
+            while (i < antes.length && i < ahora.length && antes[i] === ahora[i]) i++;
+            const desde = Math.max(0, i - 20);
+            const tramo = ahora.slice(desde, desde + 80);
+            return `${desde > 0 ? '…' : ''}${tramo}${desde + 80 < ahora.length ? '…' : ''}`;
+        };
+        const describirCambios = (antes, ahora) => {
+            const cambios = [];
+            if (antes.referencia !== ahora.referencia) cambios.push(['Referencia', `${antes.referencia} → ${ahora.referencia}`]);
+            if (antes.precio !== ahora.precio) cambios.push(['Precio de confección', `${pesos(antes.precio)} → ${pesos(ahora.precio)} por prenda`]);
+            if (antes.complementos !== ahora.complementos) cambios.push(['Complementos', tramoCambiado(antes.complementos, ahora.complementos)]);
+            if (antes.observaciones !== ahora.observaciones) cambios.push(['Observaciones', tramoCambiado(antes.observaciones, ahora.observaciones)]);
+            const previos = new Map(antes.insumos.map((i) => [i.idDetalle, i]));
+            ahora.insumos.forEach((i) => {
+                const previo = previos.get(i.idDetalle);
+                if (!previo) return;
+                if (previo.idMaterial !== i.idMaterial) cambios.push(['Insumo reemplazado', `${previo.nombre} → ${i.nombre}`]);
+                if (previo.cantidad !== i.cantidad) cambios.push([i.nombre, `${previo.cantidad} → ${i.cantidad} por prenda`]);
+            });
+            return cambios;
+        };
+
+        // Muestra los cambios y espera la confirmación. Sin cambios, solo avisa.
+        const confirmarCambios = async (cambios) => {
+            if (!cambios.length) {
+                await Swal.fire(opcionesConfirmacion({
+                    variante: 'neutro',
+                    html: `<div class="gh-conf-html">${cabeceraConfirmacion({ icono: 'fi-rr-info', badge: 'Sin cambios', contexto: 'No hay nada nuevo para guardar en esta ficha.' })}</div>`,
+                    confirmButtonText: 'Entendido'
+                }));
+                return false;
+            }
+            const filas = cambios.map(([campo, detalle]) => `
+                <li style="display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid #f1f5f9;text-align:left">
+                    <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8">${esc(campo)}</span>
+                    <span style="font-size:13px;color:#1e293b">${esc(detalle)}</span>
+                </li>`).join('');
+            const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
+                variante: 'neutro',
+                html: `<div class="gh-conf-html">${cabeceraConfirmacion({
+                    icono: 'fi-rr-edit',
+                    badge: cambios.length === 1 ? '1 cambio' : `${cambios.length} cambios`,
+                    contexto: 'Revisa lo que vas a cambiar en la ficha antes de guardar.'
+                })}<ul style="list-style:none;margin:12px 0 0;padding:0 4px">${filas}</ul></div>`,
+                showCancelButton: true,
+                confirmButtonText: 'Guardar cambios',
+                cancelButtonText: 'Seguir editando'
+            }));
+            return isConfirmed;
+        };
+
         btnGuardar.addEventListener('click', async () => {
             errorEl?.classList.add('hidden');
             exitoEl?.classList.add('hidden');
 
             const referencia = inputReferencia?.value.trim();
-            if (!referencia) {
-                if (errorEl) { errorEl.textContent = 'Escribe una referencia.'; errorEl.classList.remove('hidden'); }
-                return;
-            }
+            if (!referencia) return mostrarError(errorEl, 'Escribe una referencia.');
             if (estado.validarInsumos && !estado.validarInsumos()) return;
-            if (estado.validarTalleres && !estado.validarTalleres()) return;
 
             const precioConfeccion = window.parseMoney ? window.parseMoney(inputPrecio.value) : 0;
-            if (precioConfeccion <= 0) {
-                if (errorEl) { errorEl.textContent = 'El precio de confección debe ser mayor a $0.'; errorEl.classList.remove('hidden'); }
-                return;
-            }
+            if (precioConfeccion <= 0) return mostrarError(errorEl, 'El precio de confección debe ser mayor a $0.');
+
+            const ahora = leer();
+            if (!(await confirmarCambios(describirCambios(guardado, ahora)))) return;
 
             const textoOriginal = btnGuardar.innerHTML;
             btnGuardar.disabled = true;
             btnGuardar.textContent = 'Guardando…';
 
             try {
-                const r = await fetch(`/admin/procesos/fichas-confeccion/${idFicha}/actualizar`, {
+                const r = await fetch(`${URL_FICHA}/actualizar`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         referencia,
                         complementos: inputComplementos?.value || '',
                         observaciones: inputObservaciones?.value || '',
                         precioConfeccion,
-                        insumos: estado.obtenerInsumos(),
-                        talleres: estado.obtenerTalleres()
+                        insumos: estado.obtenerInsumos()
                     })
                 });
                 const d = await r.json().catch(() => ({}));
                 if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo guardar los cambios.');
+                guardado = ahora;   // el próximo guardado compara contra esto
 
                 if (exitoEl) {
                     exitoEl.textContent = d.avisoPdf || 'Cambios guardados — el PDF ya quedó actualizado.';
                     exitoEl.classList.remove('hidden');
                 }
-                if (linkVerPdf) linkVerPdf.href = `/admin/procesos/fichas-confeccion/${idFicha}/pdf`;
+                if (linkVerPdf) linkVerPdf.href = `${URL_FICHA}/pdf`;
             } catch (e) {
-                if (errorEl) { errorEl.textContent = e.message; errorEl.classList.remove('hidden'); }
+                mostrarError(errorEl, e.message);
             } finally {
                 btnGuardar.disabled = false;
                 btnGuardar.innerHTML = textoOriginal;
+            }
+        });
+    })();
+
+    // ── Borrar, anular, reactivar ────────────────────────────────────────────────────────
+    // Borrar solo aparece si la ficha nunca se usó; anular, si ya tiene uso. El servidor lo
+    // vuelve a verificar (fichaTieneUso). Cada acción pide confirmación.
+    (function () {
+        const accion = async (ruta, cuerpo) => {
+            const r = await fetch(`${URL_FICHA}/${ruta}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo || {})
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo completar la acción.');
+        };
+        const avisarError = (mensaje) => Swal.fire(opcionesConfirmacion({
+            variante: 'egreso',
+            html: `<div class="gh-conf-html">${cabeceraConfirmacion({ icono: 'fi-rr-exclamation', badge: 'No se pudo', contexto: esc(mensaje) })}</div>`,
+            confirmButtonText: 'Entendido'
+        }));
+
+        document.getElementById('btn-borrar-ficha')?.addEventListener('click', async (e) => {
+            const referencia = e.currentTarget.dataset.referencia;
+            const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
+                variante: 'egreso',
+                html: `<div class="gh-conf-html">${cabeceraConfirmacion({
+                    icono: 'fi-rr-trash',
+                    badge: 'Borrar ficha',
+                    contexto: `Se borran la ficha ${esc(referencia)} y sus videos. No se puede deshacer.`
+                })}</div>`,
+                showCancelButton: true,
+                confirmButtonText: 'Borrar ficha',
+                cancelButtonText: 'Cancelar',
+                showLoaderOnConfirm: true,
+                preConfirm: () => accion('borrar').catch((err) => Swal.showValidationMessage(err.message))
+            }));
+            if (isConfirmed) window.location.href = '/admin/procesos/fichas-confeccion/biblioteca';
+        });
+
+        document.getElementById('btn-anular-ficha')?.addEventListener('click', async (e) => {
+            const referencia = e.currentTarget.dataset.referencia;
+            const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
+                variante: 'egreso',
+                html: `<div class="gh-conf-html">${cabeceraConfirmacion({
+                    icono: 'fi-rr-ban',
+                    badge: 'Anular ficha',
+                    contexto: `${esc(referencia)} sale de la biblioteca y no se puede usar para iniciar procesos. Se puede reactivar.`
+                })}</div>`,
+                input: 'textarea',
+                inputPlaceholder: 'Motivo (ej. referencia descontinuada)',
+                inputAttributes: { maxlength: '500' },
+                inputValidator: (v) => (String(v || '').trim().length < 3 ? 'Escribe el motivo.' : undefined),
+                showCancelButton: true,
+                confirmButtonText: 'Anular ficha',
+                cancelButtonText: 'Cancelar',
+                showLoaderOnConfirm: true,
+                preConfirm: (motivo) => accion('anular', { motivo }).catch((err) => Swal.showValidationMessage(err.message))
+            }));
+            if (isConfirmed) window.location.reload();
+        });
+
+        document.getElementById('btn-reactivar-ficha')?.addEventListener('click', async () => {
+            try {
+                await accion('reactivar');
+                window.location.reload();
+            } catch (err) {
+                avisarError(err.message);
             }
         });
     })();

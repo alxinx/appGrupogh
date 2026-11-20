@@ -8,12 +8,11 @@ block contenedor
     //- tokens gh-* en vez del rosa del sitio público (public/css/input.css .gh-paso-*,
     //- src/js/fichaConfeccionNueva.js).
     //-
-    //- Tres pasos: 1) archivos (DXF/molde/video, suben de verdad apenas se eligen — ver más
-    //- abajo), 2) tela + colores y cantidades (el material se auto-carga del DXF del paso 1,
-    //- nunca se vuelve a preguntar — mismo criterio que el Fabric del prompt de IA) y
-    //- 3) complementos/observaciones/precio. "Guardar ficha" en el paso 3 junta todo en POST
-    //- .../finalizar (controller/fichaConfeccionController.js): crea la fila de
-    //- FICHAS_CONFECCION + sus colores, genera el PDF y la deja visible en la Biblioteca.
+    //- Dos pasos: 1) archivos (DXF/molde/video, suben de verdad apenas se eligen — ver más
+    //- abajo) y 2) insumos por prenda, complementos, observaciones y precio, con la tela del
+    //- DXF a la vista. Sin colores ni cantidades: eso es de la orden de producción. "Guardar
+    //- ficha" junta todo en POST .../finalizar (controller/fichaConfeccionController.js): crea
+    //- la fila de FICHAS_CONFECCION, genera el PDF y la deja visible en la Biblioteca.
     include ../../components/headerAdmin
 
     body(class="bg-gray-100 min-h-screen")
@@ -409,29 +408,7 @@ block contenedor
                             //- igual o los cambia. El Fabric NO se pregunta acá: sale solo del
                             //- material ya resuelto en el DXF (controller/
                             //- fichaConfeccionMoldeController.js iniciarGeneracionMolde).
-                            div#modal-molde-ia(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
-                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden")
-                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100")
-                                        div(class="flex items-center gap-3")
-                                            div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30 flex-shrink-0")
-                                                i(class="fi fi-rr-sparkles text-white")
-                                            div
-                                                h2#modal-molde-ia-titulo(class="text-lg font-bold text-slate-800") Generar vista previa con IA
-                                                p(class="text-sm text-slate-500") El patrón y los colores de la prenda.
-                                        button#modal-molde-ia-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
-                                            i(class="fi fi-rr-cross-small text-xl")
-
-                                    div(class="px-7 py-6 flex flex-col gap-4")
-                                        div(class="flex flex-col gap-1")
-                                            label(class="label" for="molde-ia-pattern") Pattern (patrón)
-                                            input#molde-ia-pattern(type="text" autocomplete="off" placeholder="Ej. liso, floral, rayas finas" class="field-text")
-                                        div(class="flex flex-col gap-1")
-                                            label(class="label" for="molde-ia-colors") Colors (colores)
-                                            input#molde-ia-colors(type="text" autocomplete="off" placeholder="Ej. azul marino y blanco" class="field-text")
-
-                                    div(class="flex items-center justify-end gap-3 px-7 py-5 border-t border-slate-100")
-                                        button#btn-molde-ia-cancelar(type="button" class="btn btn-secondary") Cancelar
-                                        button#btn-molde-ia-generar(type="button" class="btn btn-danger") Generar
+                            include ../../components/modalMoldeIa
 
                             //- ── MODAL "FICHA GUARDADA" ───────────────────────────────────
                             //- Resultado de POST .../finalizar: la ficha ya quedó en la

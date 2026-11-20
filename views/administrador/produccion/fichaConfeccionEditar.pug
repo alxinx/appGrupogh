@@ -5,10 +5,11 @@ block contenedor
     //- actualizarFichaConfeccion, src/js/fichaConfeccionEditar.js). La tela y la referencia
     //- de catálogo (familia) siguen saliendo del DXF y NO se re-editan acá — eso dispararía
     //- de nuevo toda la resolución de materiales/familia del paso 1 del asistente, que es un
-    //- flujo aparte. Editable: nombre de referencia, colores (agregar/quitar/cantidad),
-    //- insumos (agregar/quitar), talleres de confección con precio propio y los colores que
-    //- le tocan a cada uno, y videos adicionales (mismo pipeline de Cloudflare Stream del
-    //- asistente, solo que asociando a una ficha que ya existe).
+    //- flujo aparte. Editable: referencia, complementos, observaciones, precio, insumos
+    //- (reemplazar y cantidad POR PRENDA, sin agregar ni quitar: eso cambiaría el diseño),
+    //- la foto de referencia y la imagen de IA (una de cada), y los videos (ver, agregar y
+    //- borrar, también en Cloudflare). Los talleres no se asignan acá: se asignan al iniciar
+    //- el proceso.
     include ../../components/headerAdmin
 
     body(class="bg-gray-100 min-h-screen")
@@ -39,140 +40,210 @@ block contenedor
                                     a(id="link-ver-pdf" href=`/admin/procesos/fichas-confeccion/${ficha.idFicha}/pdf` target="_blank" rel="noopener" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
                                         i(class="fi fi-rr-document-signed text-xs")
                                         | Ver PDF
+                                    //- Borrar solo si nunca se usó; si ya tiene uso, anular (se puede
+                                    //- reactivar). Una anulada se reactiva desde el aviso de abajo.
+                                    if puedeAdmin('Procesos', 'DELETE') && ficha.estado === 'activa'
+                                        if usada
+                                            button#btn-anular-ficha(type="button" data-referencia=ficha.referencia class="btn btn-secondary btn-sm text-xs whitespace-nowrap !text-rose-600")
+                                                i(class="fi fi-rr-ban text-xs")
+                                                | Anular ficha
+                                        else
+                                            button#btn-borrar-ficha(type="button" data-referencia=ficha.referencia class="btn btn-secondary btn-sm text-xs whitespace-nowrap !text-rose-600")
+                                                i(class="fi fi-rr-trash text-xs")
+                                                | Borrar ficha
 
-                            - var materialesFicha = ((ficha.dxf && ficha.dxf.materialesDetalle) || []).filter(function (m) { return m.material; }).map(function (m) { return { idMaterial: m.material.idMaterial, nombre: m.material.nombre }; })
-                            - var insumosIniciales = (ficha.insumos || []).map(function (l) { return { idMaterial: l.idMaterial, nombre: l.nombreMaterial, cantidad: l.cantidad }; })
-                            - var talleresIniciales = (ficha.talleres || []).map(function (t) { return { idProveedor: t.idProveedor, nombre: t.proveedor ? t.proveedor.razonSocial : '—', precioConfeccion: t.precioConfeccion, colores: (t.colores || []).map(function (c) { return c.idAtributoColor; }) }; })
+                            if ficha.estado === 'anulada'
+                                div(class="col-span-12 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4")
+                                    div(class="flex items-start gap-3 min-w-0")
+                                        span(class="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0")
+                                            i(class="fi fi-rr-ban text-xs leading-none")
+                                        div(class="min-w-0")
+                                            p(class="text-sm font-bold text-rose-700") Esta ficha está anulada
+                                            p(class="text-xs text-rose-700/80")= motivoAnulacion ? `Motivo: ${motivoAnulacion}` : 'No se puede editar ni usar para iniciar un proceso.'
+                                    if puedeAdmin('Procesos', 'DELETE')
+                                        button#btn-reactivar-ficha(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                            i(class="fi fi-rr-refresh text-xs")
+                                            | Reactivar ficha
 
+                            - var insumosIniciales = (ficha.insumos || []).map(function (l) { return { idDetalle: l.idDetalle, idMaterial: l.idMaterial, nombre: l.nombreMaterial, cantidad: l.cantidad }; })
                             div(
                                 id="asistente-ficha-editar"
                                 data-id-ficha=ficha.idFicha
-                                data-materiales=JSON.stringify(materialesFicha)
+                                inert=(ficha.estado === 'anulada')
                                 data-insumos-iniciales=JSON.stringify(insumosIniciales)
-                                data-talleres-iniciales=JSON.stringify(talleresIniciales)
-                                class="col-span-12 grid grid-cols-1 lg:grid-cols-5 gap-4"
+                                data-id-molde=(ficha.molde && ficha.molde.tipoArchivo === 'jpg' ? ficha.molde.idMolde : '')
+                                data-id-dxf=ficha.idDxf
+                                class=`col-span-12 grid grid-cols-1 lg:grid-cols-5 gap-4 ${ficha.estado === 'anulada' ? 'opacity-60' : ''}`
                             )
+
+                                //- Cabecera de tarjeta: ícono en círculo + título, y a la derecha lo que
+                                //- pase el bloque (un distintivo, un conteo, un botón).
+                                mixin cabeceraTarjeta(icono, titulo)
+                                    div(class="flex items-center justify-between gap-3 mb-4")
+                                        div(class="flex items-center gap-2.5 min-w-0")
+                                            span(class="w-8 h-8 rounded-full border-2 border-gh-primaryHover/70 text-gh-primaryHover flex items-center justify-center flex-shrink-0")
+                                                i(class=`fi ${icono} text-xs leading-none`)
+                                            h2(class="text-base font-bold text-slate-800 truncate")= titulo
+                                        if block
+                                            div(class="flex items-center gap-2 flex-shrink-0")
+                                                block
 
                                 //- ── Columna izquierda ──────────────────────────────────
                                 div(class="lg:col-span-2 flex flex-col gap-4")
 
-                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-4")
-                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Información general
-                                        div(class="grid grid-cols-2 gap-3")
-                                            div(class="col-span-2")
-                                                label(class="text-xs font-semibold text-slate-500 mb-1 block" for="ficha-editar-referencia") Referencia
+                                    //- Información general: referencia, insumos y tela en una sola tarjeta.
+                                    //- Los insumos se despliegan acá mismo (reemplazar y cantidad por
+                                    //- prenda); no se agregan ni se quitan: cambiaría el diseño.
+                                    -
+                                        var textoTela = ((ficha.dxf && ficha.dxf.materialesDetalle) || [])
+                                            .filter(function(m){ return m.material; })
+                                            .map(function(m){
+                                                return m.material.nombrePadre
+                                                    ? m.material.nombrePadre + ' · ' + m.material.nombre
+                                                    : m.material.nombre;
+                                            }).join(', ') || ficha.materialNombre;
+                                    - var nInsumos = (ficha.insumos || []).length
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        +cabeceraTarjeta('fi-rr-info', 'Información general')
+                                            span(class="rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-600") Datos básicos
+                                        div(class="grid grid-cols-1 sm:grid-cols-2 gap-3")
+                                            div
+                                                label(class="text-xs font-semibold text-slate-600 mb-1 block" for="ficha-editar-referencia")
+                                                    | Referencia
+                                                    span(class="text-gh-primaryHover")  *
                                                 input#ficha-editar-referencia(type="text" maxlength="150" value=ficha.referencia class="field-text")
-                                            div(class="col-span-2")
-                                                span(class="text-xs font-semibold text-slate-500 mb-1 block") Tela
-                                                -
-                                                    var textoTela = ((ficha.dxf && ficha.dxf.materialesDetalle) || [])
-                                                        .filter(function(m){ return m.material; })
-                                                        .map(function(m){
-                                                            return m.material.nombrePadre
-                                                                ? m.material.nombrePadre + ' · ' + m.material.nombre
-                                                                : m.material.nombre;
-                                                        }).join(', ') || ficha.materialNombre;
-                                                div(class="field-text bg-slate-50 text-slate-600 truncate" title=textoTela)= textoTela
-                                        p(class="text-[10px] text-slate-400 -mt-2") La tela sale del DXF y no se edita acá. Colores y cantidades van en la orden de producción.
+                                            div
+                                                span(class="text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1")
+                                                    | Insumos
+                                                    i(class="fi fi-rr-info text-[11px] text-slate-400 cursor-help" title="Lo que lleva UNA prenda: si tiene 2 hebillas iguales, pon 2. No se agregan ni se quitan; solo se reemplazan.")
+                                                button#btn-insumos-editar(type="button" disabled=!nInsumos aria-expanded="false" aria-controls="panel-insumos-editar"
+                                                    class="field-text flex items-center justify-between gap-2 text-left cursor-pointer disabled:cursor-default disabled:bg-slate-50")
+                                                    span(class=nInsumos ? 'text-slate-800' : 'text-slate-400')= nInsumos ? (nInsumos === 1 ? '1 insumo por prenda' : `${nInsumos} insumos por prenda`) : 'Sin insumos'
+                                                    if nInsumos
+                                                        i(data-chevron-insumos class="fi fi-rr-angle-small-down text-slate-400 transition-transform")
+                                            //- Panel de insumos: se despliega bajo los dos campos de arriba.
+                                            div#panel-insumos-editar(class="hidden sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 flex-col gap-2")
+                                                p(class="text-[11px] text-slate-500") Cantidad POR PRENDA: si la prenda tiene 2 hebillas iguales, pon 2.
+                                                div(data-lista-insumos-editar class="flex flex-col gap-2")
+                                                p(data-error-insumos-editar class="hidden text-xs font-semibold text-rose-600")
+                                            div(class="sm:col-span-2")
+                                                span(class="text-xs font-semibold text-slate-600 mb-1 block")
+                                                    | Tela
+                                                    span(class="text-gh-primaryHover")  *
+                                                div(class="field-text bg-slate-50 text-slate-700 flex items-center justify-between gap-2" title=textoTela)
+                                                    span(class="truncate")= textoTela
+                                                    i(class="fi fi-rr-lock text-xs text-slate-400 flex-shrink-0" aria-hidden="true")
+                                            p(class="sm:col-span-2 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-xs text-indigo-700")
+                                                span(class="w-4 h-4 rounded-full bg-indigo-500 text-white flex items-center justify-center flex-shrink-0")
+                                                    i(class="fi fi-rr-info text-[9px] leading-none")
+                                                | La tela sale del archivo DXF de la prenda y no se cambia acá.
 
-                                    if ficha.molde || (ficha.moldeIaIntento && ficha.moldeIaIntento.aprobado) || ficha.moldeReferencia
-                                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
-                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Referencias visuales
-                                            div(class="grid grid-cols-2 gap-3")
-                                                if ficha.molde
-                                                    div(class="flex flex-col gap-1.5")
-                                                        div(class="aspect-square rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center")
-                                                            if moldeImagenUrl
-                                                                img(src=moldeImagenUrl alt="Molde" class="w-full h-full object-cover")
-                                                            else if ficha.molde.tipoArchivo === 'jpg'
-                                                                i(class="fi fi-rr-picture text-2xl text-slate-300")
-                                                            else
-                                                                i(class="fi fi-rr-file-pdf text-2xl text-slate-300")
-                                                        span(class="text-[11px] font-semibold text-slate-500 text-center") Molde técnico
-                                                if ficha.moldeReferencia
-                                                    div(class="flex flex-col gap-1.5")
-                                                        div(class="aspect-square rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center")
-                                                            if moldeReferenciaImagenUrl
-                                                                img(src=moldeReferenciaImagenUrl alt="Foto de referencia" class="w-full h-full object-cover")
-                                                            else
-                                                                i(class="fi fi-rr-picture text-2xl text-slate-300")
-                                                        span(class="text-[11px] font-semibold text-slate-500 text-center") Foto de referencia
-                                                if ficha.moldeIaIntento && ficha.moldeIaIntento.aprobado
-                                                    div(class="flex flex-col gap-1.5")
-                                                        div(class="aspect-square rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center")
-                                                            if moldeIaImagenUrl
-                                                                img(src=moldeIaImagenUrl alt="Generado con IA" class="w-full h-full object-cover")
-                                                            else
-                                                                i(class="fi fi-rr-sparkles text-2xl text-slate-300")
-                                                        span(class="text-[11px] font-semibold text-slate-500 text-center") Generado con IA
-                                            if ficha.molde && ficha.molde.tipoArchivo !== 'jpg'
-                                                p(class="text-[10px] text-slate-400 mt-2") El molde es un PDF — la vista completa está en el PDF de la ficha.
+                                    //- Referencias visuales: molde, foto de referencia e imagen de IA. Clic en
+                                    //- una imagen = verla grande. La foto y la IA se agregan o se cambian acá
+                                    //- (una de cada: la nueva reemplaza a la anterior).
+                                    - var tieneIa = ficha.moldeIaIntento && ficha.moldeIaIntento.aprobado
+                                    - var moldeJpg = ficha.molde && ficha.molde.tipoArchivo === 'jpg'
+                                    mixin imagenFicha(url, titulo, iconoVacio)
+                                        div(class="flex flex-col gap-1.5")
+                                            if url
+                                                button(type="button" data-ampliar-imagen data-src=url data-titulo=titulo aria-label=`Ver ${titulo} en grande`
+                                                    class="group/img relative aspect-square rounded-xl border border-slate-200 bg-slate-50 overflow-hidden cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gh-primaryHover/40")
+                                                    img(src=url alt=titulo class="w-full h-full object-cover transition-transform group-hover/img:scale-105")
+                                                    span(class="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-lg bg-white/90 shadow-sm flex items-center justify-center text-slate-600 opacity-0 group-hover/img:opacity-100 transition-opacity")
+                                                        i(class="fi fi-rr-expand text-xs")
+                                            else
+                                                div(class="aspect-square rounded-xl border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center")
+                                                    i(class=`fi ${iconoVacio} text-2xl text-slate-300`)
+                                            span(class="text-[11px] font-semibold text-slate-500 text-center")= titulo
 
-                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-2.5")
-                                        div(class="flex items-center gap-2")
-                                            div(class="w-7 h-7 rounded-lg bg-white shadow-sm border border-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500")
-                                                i(class="fi fi-rr-tags text-xs")
-                                            label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-editar-complementos") Complementos
-                                        textarea#ficha-editar-complementos(rows="3" placeholder="Botones, cierres, elástico, marquilla…" class="field-text resize-none bg-white")= ficha.complementos || ''
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        +cabeceraTarjeta('fi-rr-picture', 'Referencias visuales')
+                                        div(class="grid grid-cols-3 gap-3")
+                                            +imagenFicha(moldeImagenUrl, 'Molde técnico', ficha.molde && !moldeJpg ? 'fi-rr-file-pdf' : 'fi-rr-vector')
+                                            +imagenFicha(moldeReferenciaImagenUrl, 'Foto de referencia', 'fi-rr-picture')
+                                            +imagenFicha(moldeIaImagenUrl, 'Generado con IA', 'fi-rr-sparkles')
+                                        if ficha.molde && !moldeJpg
+                                            p(class="text-[10px] text-slate-400 mt-2") El molde es un PDF — la vista completa está en el PDF de la ficha.
 
-                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-2.5")
-                                        div(class="flex items-center gap-2")
-                                            div(class="w-7 h-7 rounded-lg bg-white shadow-sm border border-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500")
-                                                i(class="fi fi-rr-comment-alt text-xs")
-                                            label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-editar-observaciones") Observaciones
-                                        textarea#ficha-editar-observaciones(rows="3" placeholder="Instrucciones o notas para confección…" class="field-text resize-none bg-white")= ficha.observaciones || ''
+                                        div(class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100")
+                                            input#input-referencia-editar(type="file" accept=".jpg,.jpeg,.webp" class="hidden" aria-hidden="true")
+                                            button#btn-referencia-editar(type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer")
+                                                i(class="fi fi-rr-picture text-xs")
+                                                = ficha.moldeReferencia ? 'Cambiar foto de referencia' : 'Agregar foto de referencia'
+                                            if moldeJpg
+                                                button#btn-ia-editar(type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer")
+                                                    i(class="fi fi-rr-sparkles text-xs")
+                                                    = tieneIa ? 'Generar otra con IA' : 'Generar con IA'
+                                        //- Generación con IA en curso / resultado para aprobar (src/js/fichaConfeccionEditar.js).
+                                        div(data-ia-estado class="hidden items-center gap-2 mt-3 text-xs font-semibold text-slate-500")
+                                            span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0")
+                                            span(data-ia-estado-texto) Generando la vista previa con IA (hasta un minuto)…
+                                        div(data-ia-resultado class="hidden flex-col gap-2 mt-3")
+                                            img(data-ia-imagen class="w-full rounded-xl border border-slate-200" alt="Vista previa generada con IA")
+                                            div(class="grid grid-cols-2 gap-2")
+                                                button(type="button" data-ia-repetir class="btn btn-secondary btn-sm justify-center text-xs px-2")
+                                                    i(class="fi fi-rr-refresh text-xs")
+                                                    | Repetir
+                                                button(type="button" data-ia-aprobar class="btn btn-danger btn-sm justify-center text-xs px-2")
+                                                    i(class="fi fi-rr-check text-xs")
+                                                    | Usar esta imagen
+                                        p(data-error-imagenes class="hidden mt-2 text-xs font-semibold text-rose-600")
 
                                 //- ── Columna derecha ────────────────────────────────────
                                 div(class="lg:col-span-3 flex flex-col gap-4")
 
-                                    //- Insumos — agregar/quitar, con foto.
+                                    //- Videos del proceso: miniatura, nombre y duración; "Ver" en un modal y
+                                    //- el menú ⋮ para borrar. Hasta 3 (src/js/fichaConfeccionEditar.js).
                                     div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
-                                        div(class="flex items-center justify-between mb-3")
-                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Insumos
-                                            button#btn-agregar-insumo-editar(type="button" class="btn btn-secondary btn-sm text-xs")
-                                                i(class="fi fi-rr-plus-small text-xs")
-                                                | Agregar insumo
-                                        div(data-lista-insumos-editar class="flex flex-col gap-2")
-                                        p#insumos-editar-vacio(class=(ficha.insumos || []).length ? 'hidden text-xs text-slate-400' : 'text-xs text-slate-400') No se agregó ningún insumo todavía.
-                                        p(class="text-[10px] text-slate-400 mt-2") La cantidad de cada insumo es lo que lleva una prenda.
-                                        p(data-error-insumos-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
+                                        +cabeceraTarjeta('fi-rr-play', 'Videos del proceso')
+                                            span#contador-videos-editar(class="text-xs text-slate-500")= videos.length === 1 ? '1 archivo' : `${videos.length} archivos`
+                                            button#btn-plegar-videos(type="button" aria-expanded="true" aria-controls="cuerpo-videos-editar" aria-label="Mostrar u ocultar los videos"
+                                                class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 cursor-pointer")
+                                                i(data-chevron-videos class="fi fi-rr-angle-small-up transition-transform")
+                                        div#cuerpo-videos-editar(class="flex flex-col gap-2.5")
+                                            div(data-lista-videos-editar class="flex flex-col gap-2.5")
+                                                each v in videos
+                                                    div(data-fila-video=v.idVideo class="relative flex items-center gap-3 rounded-2xl bg-slate-100/70 p-2 pr-3")
+                                                        button(type="button" data-ver-video=v.iframeUrl data-titulo=v.nombre disabled=!v.iframeUrl aria-label=`Ver ${v.nombre}`
+                                                            class="relative w-28 h-16 rounded-xl overflow-hidden bg-slate-300 flex-shrink-0 cursor-pointer disabled:cursor-default")
+                                                            if v.miniaturaUrl
+                                                                img(src=v.miniaturaUrl alt="" loading="lazy" class="w-full h-full object-cover")
+                                                            span(class="absolute left-1.5 bottom-1.5 w-6 h-6 rounded-md bg-slate-900/70 text-white flex items-center justify-center")
+                                                                i(class="fi fi-rr-play text-[9px] leading-none")
+                                                        div(class="flex-1 min-w-0")
+                                                            p(class="text-sm font-semibold text-slate-800 truncate" title=v.nombre)= v.nombre
+                                                            if v.duracion
+                                                                p(class="text-xs text-slate-500 tabular-nums mt-0.5")= v.duracion
+                                                        if v.iframeUrl
+                                                            button(type="button" data-ver-video=v.iframeUrl data-titulo=v.nombre class="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer") Ver
+                                                        div(class="relative")
+                                                            button(type="button" data-menu-video aria-haspopup="true" aria-expanded="false" aria-label=`Más opciones de ${v.nombre}`
+                                                                class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-white cursor-pointer")
+                                                                i(class="fi fi-rr-menu-dots-vertical text-sm leading-none")
+                                                            div(data-menu-video-opciones class="hidden absolute right-0 top-full mt-1 z-20 w-36 rounded-xl border border-slate-200 bg-white p-1 shadow-lg")
+                                                                button(type="button" data-eliminar-video=v.idVideo data-nombre=v.nombre class="w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer")
+                                                                    i(class="fi fi-rr-trash text-xs")
+                                                                    | Eliminar
+                                            //- Zona para soltar o elegir un archivo: el input la cubre entera, así
+                                            //- arrastrar y soltar funciona sin código extra.
+                                            div#zona-agregar-video-editar(class="relative rounded-2xl border-2 border-dashed border-gh-primary/50 bg-gh-primarySoft/20 hover:bg-gh-primarySoft/40 transition-colors")
+                                                input(type="file" accept=".mp4,.mov,.avi" id="input-video-editar" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" aria-label="Agregar video del proceso")
+                                                div(class="flex flex-col items-center gap-1 px-4 py-6 text-center")
+                                                    i(class="fi fi-rr-cloud-upload-alt text-2xl text-gh-primaryHover")
+                                                    p(class="text-sm font-semibold text-slate-800") Agregar video del proceso
+                                                    p(class="text-xs text-slate-500") Arrastra un archivo o selecciona desde tu equipo
+                                            div(data-progreso-video-editar class="hidden items-center gap-2 text-xs font-semibold text-slate-500")
+                                                span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0")
+                                                span(data-texto-progreso-video-editar) Subiendo…
+                                            p(data-error-video-editar class="hidden text-xs font-semibold text-rose-600")
 
-                                    //- Talleres de confección — cada uno con SU precio y los
-                                    //- colores que le tocan (de los que la ficha tiene a la
-                                    //- derecha, arriba). Solo proveedores categoría
-                                    //- 'Confeccionista' (controller/fichaConfeccionController.js).
                                     div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
-                                        div(class="flex items-center justify-between mb-3")
-                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Talleres de confección
-                                            button#btn-agregar-taller-editar(type="button" class="btn btn-secondary btn-sm text-xs")
-                                                i(class="fi fi-rr-plus-small text-xs")
-                                                | Agregar taller
-                                        div(data-lista-talleres-editar class="flex flex-col gap-3")
-                                        p#talleres-editar-vacio(class=(ficha.talleres || []).length ? 'hidden text-xs text-slate-400' : 'text-xs text-slate-400') Sin talleres asignados todavía.
-                                        p(data-error-talleres-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
+                                        +cabeceraTarjeta('fi-rr-tags', 'Complementos')
+                                        textarea#ficha-editar-complementos(rows="3" placeholder="Botones, cierres, elástico, marquilla…" aria-label="Complementos" class="field-text resize-none bg-white")= ficha.complementos || ''
 
-                                    //- Videos — los que ya están listos, más subir hasta 3
-                                    //- en total (mismo pipeline de Cloudflare Stream del
-                                    //- asistente: src/js/fichaConfeccionEditar.js).
                                     div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
-                                        div(class="flex items-center justify-between mb-3")
-                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Videos del proceso
-                                            span#contador-videos-editar(class="text-[11px] text-slate-400") #{(ficha.videos || []).filter(v => v.estado === 'ready').length}/3
-                                        div(data-lista-videos-editar class="flex flex-col gap-2 mb-2")
-                                            each v in (ficha.videos || [])
-                                                if v.estado === 'ready'
-                                                    div(class="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 rounded-xl px-3 py-2")
-                                                        i(class="fi fi-rr-video-camera text-slate-400 text-sm flex-shrink-0")
-                                                        span(class="flex-1 truncate")= v.nombreOriginal
-                                        div#zona-agregar-video-editar(class="relative")
-                                            input(type="file" accept=".mp4,.mov,.avi" id="input-video-editar" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
-                                            div(class="inputUpload !p-4 !mb-0 flex-row items-center gap-2 text-xs")
-                                                i(class="fi fi-rr-video-camera text-base text-gh-primaryHover")
-                                                span(class="font-semibold text-gray-600") Agregar video del proceso
-                                        div(data-progreso-video-editar class="hidden flex items-center gap-2 text-xs font-semibold text-slate-500 mt-2")
-                                            span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0")
-                                            span(data-texto-progreso-video-editar) Subiendo…
-                                        p(data-error-video-editar class="hidden text-xs font-semibold text-rose-600 mt-2")
+                                        +cabeceraTarjeta('fi-rr-comment-alt', 'Observaciones')
+                                        textarea#ficha-editar-observaciones(rows="4" placeholder="Instrucciones o notas para confección…" aria-label="Observaciones" class="field-text resize-none bg-white")= ficha.observaciones || ''
 
                                     //- Precio general + guardar.
                                     div(class="rounded-2xl border border-gh-primary/20 bg-gh-primarySoft/30 px-5 py-4 flex items-center justify-between gap-4 flex-wrap")
@@ -181,7 +252,7 @@ block contenedor
                                                 i(class="fi fi-rr-sack-dollar text-base")
                                             div
                                                 p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Precio general de confección
-                                                p(class="text-xs text-slate-500") Se usa cuando un taller no tiene uno propio
+                                                p(class="text-xs text-slate-500") Lo que se paga por prenda confeccionada
                                         div(class="relative")
                                             span(class="absolute left-4 top-1/2 -translate-y-1/2 text-gh-primaryHover font-bold") $
                                             input#ficha-editar-precio(type="text" inputmode="numeric" autocomplete="off" value=Math.round(ficha.precioConfeccion).toLocaleString('es-CO') class="w-40 pl-8 pr-4 py-2.5 rounded-xl border border-gh-primary/30 bg-white text-right text-lg font-bold text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-gh-primary/40" aria-label="Precio de confección")
@@ -220,62 +291,45 @@ block contenedor
                                                         i(class=`fi ${m.icono} text-sm`)
                                                 span(class="text-sm font-medium text-slate-700 truncate")= m.nombre
 
-                            //- ── MODAL "ELEGIR TALLER" ────────────────────────────────
-                            //- Mismo lenguaje visual que los dos de arriba — "+ Agregar
-                            //- taller…" como <select> plano no se leía como botón (aviso
-                            //- del usuario); acá es un botón real que abre esta grilla, uno
-                            //- por click, igual que color/insumo. Solo confeccionistas que
-                            //- la ficha TODAVÍA no tiene (se van ocultando en JS a medida
-                            //- que se agregan — src/js/fichaConfeccionEditar.js).
-                            div#modal-elegir-taller-editar(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
-                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
-                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
-                                        h2(class="text-lg font-bold text-slate-800") Elige un taller
-                                        button#cerrar-modal-taller-editar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
-                                            i(class="fi fi-rr-cross-small text-xl")
-                                    div(class="px-7 pt-5 flex-shrink-0")
-                                        input#buscador-taller-ficha-editar(type="text" autocomplete="off" placeholder="Buscar taller…" class="field-text")
-                                    div#grid-talleres-ficha-editar(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
-                                        each p in (confeccionistas || [])
-                                            button(
-                                                type="button"
-                                                data-opcion-taller
-                                                data-id=p.idProveedor
-                                                data-nombre=p.razonSocial
-                                                class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
-                                                span(class="w-8 h-8 rounded-lg bg-gh-primarySoft flex-shrink-0 flex items-center justify-center text-gh-primaryHover")
-                                                    i(class="fi fi-rr-scissors text-sm")
-                                                span(class="text-sm font-medium text-slate-700 truncate")= p.razonSocial
-                                    if !(confeccionistas || []).length
-                                        p(class="px-7 pb-6 text-sm text-slate-400") No hay proveedores de categoría "Confeccionista" todavía.
-
-                            //- Plantilla de una fila "insumo + cantidad" editable, con foto.
+                            //- Plantilla de una línea de insumo: el insumo (se cambia con "Reemplazar")
+                            //- y su cantidad por prenda. Sin quitar: ver la tarjeta de Insumos.
                             template#plantilla-fila-insumo-editar
-                                div(data-fila-insumo class="flex items-center gap-2.5")
-                                    button(type="button" data-abrir-insumo class="field-text flex-1 flex items-center gap-2.5 text-left cursor-pointer")
-                                        span(data-insumo-foto class="w-6 h-6 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
-                                            i(class="fi fi-rr-box text-xs")
-                                        span(data-insumo-nombre class="text-slate-400") Elige un insumo…
+                                div(data-fila-insumo class="flex items-center gap-2")
+                                    span(data-insumo-foto class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                                        i(class="fi fi-rr-box text-xs")
+                                    span(data-insumo-nombre class="flex-1 min-w-0 truncate text-sm font-semibold text-slate-800")
                                     input(type="hidden" data-insumo-id)
-                                    input(type="number" inputmode="numeric" min="1" data-insumo-cantidad placeholder="Cantidad" class="field-text w-24 text-right")
-                                    button(type="button" data-quitar-insumo aria-label="Quitar insumo" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
-                                        i(class="fi fi-rr-cross-small")
+                                    input(type="hidden" data-insumo-detalle)
+                                    div(class="relative flex-shrink-0")
+                                        input(type="number" inputmode="numeric" min="1" data-insumo-cantidad aria-label="Cantidad por prenda" class="field-text !py-1.5 w-24 pr-11 text-right")
+                                        span(class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none") /prenda
+                                    button(type="button" data-abrir-insumo title="Reemplazar por otro insumo" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer flex-shrink-0")
+                                        i(class="fi fi-rr-refresh text-[10px]")
+                                        | Reemplazar
 
-                            //- Plantilla de una tarjeta de taller: nombre, precio propio y
-                            //- los colores de la ficha que le tocan (checkboxes — se repintan
-                            //- en JS cada vez que la lista de colores cambia).
-                            template#plantilla-taller-editar
-                                div(data-fila-taller class="rounded-xl border border-slate-200 p-3.5 flex flex-col gap-2.5")
-                                    div(class="flex items-center justify-between gap-2")
-                                        span(data-taller-nombre class="text-sm font-bold text-slate-800 truncate")
-                                        button(type="button" data-quitar-taller aria-label="Quitar taller" class="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
-                                            i(class="fi fi-rr-cross-small text-xs")
-                                    div(class="flex items-center gap-2")
-                                        span(class="text-xs text-slate-500 flex-shrink-0") Precio de confección
-                                        div(class="relative flex-1 max-w-[140px]")
-                                            span(class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs") $
-                                            input(type="text" inputmode="numeric" data-taller-precio class="field-text pl-6 text-right text-sm")
-                                    div(data-taller-colores class="flex flex-wrap gap-1.5")
+                            include ../../components/modalMoldeIa
 
+                            //- Imagen en grande (molde, referencia o IA).
+                            div#modal-ampliar-imagen(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="modal-ampliar-titulo")
+                                div(class="relative w-full max-w-3xl flex flex-col gap-3")
+                                    div(class="flex items-center justify-between")
+                                        p#modal-ampliar-titulo(class="text-sm font-bold text-white")
+                                        button(type="button" data-cerrar-modal class="w-9 h-9 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer" aria-label="Cerrar")
+                                            i(class="fi fi-rr-cross-small text-xl")
+                                    img#modal-ampliar-img(class="w-full max-h-[80vh] object-contain rounded-2xl bg-white" alt="")
+
+                            //- Reproductor de un video del proceso (Cloudflare Stream en iframe).
+                            div#modal-ver-video(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="modal-video-titulo")
+                                div(class="relative w-full max-w-3xl flex flex-col gap-3")
+                                    div(class="flex items-center justify-between")
+                                        p#modal-video-titulo(class="text-sm font-bold text-white truncate")
+                                        button(type="button" data-cerrar-modal class="w-9 h-9 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer" aria-label="Cerrar")
+                                            i(class="fi fi-rr-cross-small text-xl")
+                                    div(class="relative w-full aspect-video rounded-2xl overflow-hidden bg-black")
+                                        iframe#modal-video-iframe(class="absolute inset-0 w-full h-full" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="Video del proceso")
+
+                            include ../../components/modalConfirmacion
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script(src="/js/helpers.js")
         script(src="/js/fichaConfeccionEditar.js")

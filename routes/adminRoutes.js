@@ -18,8 +18,8 @@ import { subirDxfFicha, estadoDxfFicha, crearFamiliaDxf } from '../controller/fi
 import { recibirDxf } from '../middlewares/uploadDxf.js';
 import { subirMolde, iniciarGeneracionMolde, estadoIntentoMolde, aprobarMoldeIa } from '../controller/fichaConfeccionMoldeController.js'
 import { recibirMolde } from '../middlewares/uploadMolde.js';
-import { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo, asociarVideoFicha } from '../controller/fichaConfeccionVideoController.js'
-import { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion } from '../controller/fichaConfeccionController.js'
+import { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo, asociarVideoFicha, eliminarVideoFicha } from '../controller/fichaConfeccionVideoController.js'
+import { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion, asignarImagenFicha, anularFicha, reactivarFicha, borrarFicha } from '../controller/fichaConfeccionController.js'
 import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
@@ -324,6 +324,11 @@ routes.get('/procesos/fichas-confeccion/:idFicha/dxf',    pPrc('READ'),   verFic
 // asistente (controller/fichaConfeccionVideoController.js), solo que asocia a una ficha
 // que ya existe en vez de esperar a finalizarFicha.
 routes.post('/procesos/fichas-confeccion/:idFicha/videos/:idVideo/asociar', pPrc('EDIT'), asociarVideoFicha);
+routes.post('/procesos/fichas-confeccion/:idFicha/videos/:idVideo/eliminar', pPrc('EDIT'), eliminarVideoFicha);
+routes.post('/procesos/fichas-confeccion/:idFicha/imagenes', pPrc('EDIT'), asignarImagenFicha);
+routes.post('/procesos/fichas-confeccion/:idFicha/anular',    pPrc('DELETE'), anularFicha);
+routes.post('/procesos/fichas-confeccion/:idFicha/reactivar', pPrc('DELETE'), reactivarFicha);
+routes.post('/procesos/fichas-confeccion/:idFicha/borrar',    pPrc('DELETE'), borrarFicha);
 routes.get('/procesos/fichas-confeccion',                 pPrc('READ'),   homeFichasConfeccion);
 routes.get('/procesos',                                   pPrc('READ'),   homeProcesosListado);
 // Seguimiento de producción por taller (controller/fichaConfeccionProcesoController.js) —

@@ -42,7 +42,7 @@ block contenedor
                                     div(class="flex items-center justify-between gap-4")
                                         h2(class="text-lg font-bold text-slate-800") Fichas
                                         p#conteo-fichas(class="text-sm text-slate-500" aria-live="polite")
-                                    div(class="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-3")
+                                    div(class="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_auto] gap-3")
                                         div(class="relative")
                                             i(class="fi fi-rr-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
                                             input#busquedaFichas(type="text" autocomplete="off" placeholder="Busca por referencia o tela…" class="field-text pl-9")
@@ -54,6 +54,9 @@ block contenedor
                                             option(value="") Todas las telas
                                             each m in (telas || [])
                                                 option(value=m.nombre)= m.nombre
+                                        select#estadoFichas(class="field-select" aria-label="Estado")
+                                            option(value="") Activas
+                                            option(value="anulada") Anuladas
 
                                 //- `relative`: el contenedor que recorta es la referencia de lo posicionado
                                 //- adentro; sin eso un `sr-only` de la tabla ensancha la página en el celular.

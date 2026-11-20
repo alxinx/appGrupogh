@@ -1,4 +1,6 @@
 import { duracionVideo } from './duracionVideo.js';
+import { subirArchivoMolde, iniciarGeneracionIa, consultarIntentoIa, aprobarIntentoIa } from './moldeIaCliente.js';
+import { subirVideo, esperarVideoListo } from './subidaVideo.js';
 
 // Asistente "Nueva ficha de confección" (admin/procesos/fichas-confeccion/nueva).
 //
@@ -40,12 +42,6 @@ const estadoFicha = {
     idMoldeIaIntentoAprobado: null,
     idMoldeReferencia: null,
     materialNombre: null,
-    // Materiales YA resueltos contra el catálogo (helpers/dxf.js), [{idMaterial, nombre}] —
-    // lo necesita el paso 2 para saber si hay que pedir "a qué tela" en cada color (más de
-    // uno) o asignarlo solo (uno). `actualizarSelectsMaterialColor` lo define el bloque de
-    // colores más abajo; el bloque del DXF lo llama cada vez que esta lista cambia.
-    materiales: [],
-    actualizarSelectsMaterialColor: () => {},
     obtenerVideosListos: () => []
 };
 
@@ -100,11 +96,6 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         errorCrearFamilia?.classList.add('hidden');
         if (inputCrearFamilia) inputCrearFamilia.value = '';
 
-        // Un DXF nuevo invalida los materiales ya resueltos del anterior — los selects de
-        // "tela" de las filas de color del paso 2 (si ya había alguna) se limpian solos.
-        estadoFicha.materiales = [];
-        document.getElementById('paso2-aviso-multi-tela')?.classList.add('hidden');
-        estadoFicha.actualizarSelectsMaterialColor();
     };
 
     // "Asignar familia" ahí mismo cuando asociarCamposDxf no encontró ninguna (controller/
@@ -291,15 +282,6 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
                         elFotoPaso2.innerHTML = `<img src="${primerConFoto.material.imagenUrl}" alt="${estadoFicha.materialNombre || ''}" class="w-full h-full object-cover">`;
                     }
 
-                    // Con más de una tela, cada línea de color del paso 2 tiene que decir a
-                    // cuál pertenece — con una sola se asigna sola (actualizarSelectsMaterialColor,
-                    // bloque de colores más abajo). Solo entran los YA resueltos: uno sin
-                    // insumo en el catálogo no se puede elegir como tela de un color.
-                    estadoFicha.materiales = materialesDetalle
-                        .filter((d) => d.material)
-                        .map((d) => ({ idMaterial: d.material.idMaterial, nombre: d.material.nombre }));
-                    document.getElementById('paso2-aviso-multi-tela')?.classList.toggle('hidden', estadoFicha.materiales.length <= 1);
-                    estadoFicha.actualizarSelectsMaterialColor();
 
                     resultadoAnalisis?.classList.remove('hidden');
                     resultadoAnalisis?.classList.add('flex-col');
@@ -365,7 +347,6 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     const slotMolde = document.querySelector('[data-slot-archivo="molde"][data-usa-eleccion="1"]');
     if (!slotMolde) return;
 
-    const URL_MOLDE = slotMolde.dataset.subidaUrl;
     // El input no lleva data-input-archivo — el handler genérico lo salta (line 62), el IIFE
     // lo gestiona todo. El input vive en zona-vacia igual que el DXF, así que el drag-and-
     // drop sobre la caja también funciona sin JS extra.
@@ -482,11 +463,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         estadoFicha.idMoldeReferencia = null;
         errorGeneracion?.classList.add('hidden');
         try {
-            const formData = new FormData();
-            formData.append('molde', archivo);
-            const r = await fetch(URL_MOLDE, { method: 'POST', body: formData });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo subir la foto de referencia.');
+            const d = await subirArchivoMolde(archivo, 'No se pudo subir la foto de referencia.');
             estadoFicha.idMoldeReferencia = d.idMolde;
             if (imagenReferencia) imagenReferencia.src = URL.createObjectURL(archivo);
             if (nombreReferencia) nombreReferencia.textContent = archivo.name;
@@ -530,11 +507,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         zonaLlena.classList.add('flex-col');
         errorGeneracion?.classList.add('hidden');
         try {
-            const formData = new FormData();
-            formData.append('molde', archivo);
-            const r = await fetch(URL_MOLDE, { method: 'POST', body: formData });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo subir el molde.');
+            const d = await subirArchivoMolde(archivo, 'No se pudo subir el molde.');
             idMoldeActual = d.idMolde;
             idIntentoActual = null;
             estadoFicha.idMolde = d.idMolde;
@@ -574,13 +547,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         errorGeneracion?.classList.add('hidden');
 
         try {
-            const r = await fetch(`${URL_MOLDE}/${idMoldeActual}/generar`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json'},
-                body: JSON.stringify({ pattern, colors, idDxf: estadoFicha.idArchivoDxf })
-            });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo iniciar la generación.');
+            const d = await iniciarGeneracionIa(idMoldeActual, { pattern, colors, idDxf: estadoFicha.idArchivoDxf });
 
             idIntentoActual = d.idIntento;
             ultimoPattern = pattern;
@@ -607,11 +574,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         btnAprobar.disabled = true;
         btnAprobar.textContent = 'Aprobando…';
         try {
-            const r = await fetch(`${URL_MOLDE}/intento/${idIntentoActual}/aprobar`, {
-                method: 'POST',
-                });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo aprobar la imagen.');
+            await aprobarIntentoIa(idIntentoActual);
 
             estadoFicha.idMoldeIaIntentoAprobado = idIntentoActual;
             accionesGeneracion?.classList.add('hidden');
@@ -628,21 +591,19 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     async function consultarIntento(idIntento) {
         if (idIntento !== idIntentoActual) return;
         try {
-            const r = await fetch(`${URL_MOLDE}/intento/${idIntento}`);
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || !d.success) return;
-            if (d.intento.estado === 'procesando') return;
+            const intento = await consultarIntentoIa(idIntento);
+            if (!intento || intento.estado === 'procesando') return;
 
             detenerPollGeneracion();
             estadoGeneracion?.classList.add('hidden');
             estadoGeneracion?.classList.remove('flex');
 
-            if (d.intento.estado === 'error') {
-                if (errorGeneracion) { errorGeneracion.textContent = d.intento.errorMensaje || 'No se pudo generar la imagen.'; errorGeneracion.classList.remove('hidden'); }
+            if (intento.estado === 'error') {
+                if (errorGeneracion) { errorGeneracion.textContent = intento.errorMensaje || 'No se pudo generar la imagen.'; errorGeneracion.classList.remove('hidden'); }
                 return;
             }
 
-            if (imagenGenerada) imagenGenerada.src = d.intento.previewUrl;
+            if (imagenGenerada) imagenGenerada.src = intento.previewUrl;
             resultadoGeneracion?.classList.remove('hidden');
             resultadoGeneracion?.classList.add('flex-col');
         } catch (_) { /* fallo de red en polling de respaldo — se reintenta en la próxima vuelta */ }
@@ -773,108 +734,14 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         }, 180);
     });
 
-    // POST simple de un solo request — Cloudflare le pone un tope DURO de 200MB (confirmado
-    // en sesión: un archivo más grande vuelve un 4xx acá). El backend ya decide por
-    // adelantado si el archivo entra en este método o necesita TUS (controller/
-    // fichaConfeccionVideoController.js crearSesionSubida), así que si esto se llama es
-    // porque el archivo mide menos de ese tope.
-    const subirArchivoDirectoSimple = (v, uploadURL) => new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', uploadURL);
-        xhr.upload.addEventListener('progress', (e) => {
-            if (!e.lengthComputable) return;
-            v.porcentaje = Math.round((e.loaded / e.total) * 100);
-            pintarFila(v);
-        });
-        xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) return resolve();
-            reject(new Error(`Cloudflare rechazó la subida (HTTP ${xhr.status})${detalleError(xhr)}`));
-        });
-        xhr.addEventListener('error', () => reject(new Error('Se perdió la conexión subiendo el video (red o CORS).')));
-
-        const formData = new FormData();
-        formData.append('file', v.archivo);
-        xhr.send(formData);
-    });
-
-    // TUS (resumable, por partes) — para un archivo que pasó los ~200MB del método simple.
-    // La sesión ya se creó en el backend (crearSubidaTus); acá solo se manda el archivo en
-    // pedazos con PATCH directo a `uploadURL`, respetando el offset que Cloudflare confirma
-    // en cada respuesta (protocolo TUS 1.0.0). Los bytes tampoco pasan por este backend.
-    const TAMANO_PARTE_TUS = 50 * 1024 * 1024;
-    const subirArchivoDirectoTus = (v, uploadURL) => new Promise((resolve, reject) => {
-        const total = v.archivo.size;
-
-        const enviarParte = (offset) => {
-            const parte = v.archivo.slice(offset, Math.min(offset + TAMANO_PARTE_TUS, total));
-            const xhr = new XMLHttpRequest();
-            xhr.open('PATCH', uploadURL);
-            xhr.setRequestHeader('Tus-Resumable', '1.0.0');
-            xhr.setRequestHeader('Upload-Offset', String(offset));
-            xhr.setRequestHeader('Content-Type', 'application/offset+octet-stream');
-            xhr.upload.addEventListener('progress', (e) => {
-                if (!e.lengthComputable) return;
-                v.porcentaje = Math.round(((offset + e.loaded) / total) * 100);
-                pintarFila(v);
-            });
-            xhr.addEventListener('load', () => {
-                console.debug('[video-tus]', v.idVideo, `parte [${offset},${offset + parte.size}) → HTTP ${xhr.status}, Upload-Offset recibido:`, xhr.getResponseHeader('Upload-Offset'));
-                if (xhr.status < 200 || xhr.status >= 300) {
-                    return reject(new Error(`Cloudflare rechazó una parte de la subida (HTTP ${xhr.status})${detalleError(xhr)}`));
-                }
-                const nuevoOffset = Number(xhr.getResponseHeader('Upload-Offset'));
-                const siguiente = Number.isFinite(nuevoOffset) ? nuevoOffset : offset + parte.size;
-                if (siguiente >= total) { v.porcentaje = 100; pintarFila(v); console.debug('[video-tus]', v.idVideo, 'todas las partes enviadas, resolviendo.'); return resolve(); }
-                enviarParte(siguiente);
-            });
-            xhr.addEventListener('error', (ev) => { console.error('[video-tus]', v.idVideo, `parte [${offset},...) tiró error de red/CORS:`, ev); reject(new Error('Se perdió la conexión subiendo el video (red o CORS).')); });
-            xhr.send(parte);
-        };
-
-        enviarParte(0);
-    });
-
-    // Cloudflare devuelve el motivo real del rechazo en el cuerpo (JSON `errors[].message`,
-    // o texto plano) — mostrarlo tal cual en vez de un genérico es lo que de verdad ayuda a
-    // diagnosticar (tamaño, formato, URL vencida...).
-    const detalleError = (xhr) => {
-        let detalle = '';
-        try {
-            const cuerpo = JSON.parse(xhr.responseText);
-            detalle = cuerpo?.errors?.[0]?.message || cuerpo?.messages?.[0]?.message || '';
-        } catch (_) {
-            detalle = (xhr.responseText || '').slice(0, 200);
-        }
-        return detalle ? `: ${detalle}` : '.';
-    };
-
+    // Subida real por src/js/subidaVideo.js (simple o por partes, según decidió el backend).
     const subirArchivoDirecto = (v, uploadURL) => {
         if (!uploadURL) return simularSubida(v);
-        return v.modoSubida === 'tus' ? subirArchivoDirectoTus(v, uploadURL) : subirArchivoDirectoSimple(v, uploadURL);
-    };
-
-    // Transcodeando puede tardar más que la subida misma — se consulta cada pocos segundos
-    // hasta 'ready'/'error' en vez de darlo por completado apenas terminan los bytes.
-    const esperarListo = async (v) => {
-        console.debug('[video]', v.idVideo, 'esperando a que Cloudflare termine de procesar…');
-        let vuelta = 0;
-        for (;;) {
-            vuelta += 1;
-            const r = await fetch(`${URL_VIDEO}/${v.idVideo}`).catch((err) => { console.debug('[video]', v.idVideo, 'consulta de estado falló (red), reintenta:', err); return null; });
-            if (r) {
-                const d = await r.json().catch(() => ({}));
-                if (r.ok && d.success) {
-                    if (vuelta % 5 === 1) console.debug('[video]', v.idVideo, 'vuelta', vuelta, 'estado actual:', d.video.estado);
-                    if (d.video.estado === 'ready') return;
-                    if (d.video.estado === 'error') throw new Error(d.video.errorMensaje || 'Cloudflare no pudo procesar el video.');
-                } else {
-                    console.debug('[video]', v.idVideo, 'consulta de estado respondió sin éxito:', r.status, d);
-                }
-            }
-            // Una consulta fallida (red cortada un instante) no es un error del video — se
-            // reintenta en la próxima vuelta en vez de tirar la fila a error por eso.
-            await new Promise((res) => setTimeout(res, 3000));
-        }
+        return subirVideo(v.archivo, {
+            uploadURL,
+            modo: v.modoSubida,
+            alProgreso: (porcentaje) => { v.porcentaje = porcentaje; pintarFila(v); }
+        });
     };
 
     const procesarVideo = async (v) => {
@@ -905,8 +772,8 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
             console.debug('[video]', v.idVideo, 'confirmar respondió estado =', dConfirmar.estado);
 
-            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'Cloudflare no pudo procesar el video.');
-            if (dConfirmar.estado !== 'ready') await esperarListo(v);
+            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'No se pudo procesar el video.');
+            if (dConfirmar.estado !== 'ready') await esperarVideoListo(URL_VIDEO, v.idVideo);
 
             v.estado = 'completado';
             v.porcentaje = 100;
@@ -949,8 +816,8 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
             const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', });
             const dConfirmar = await rConfirmar.json().catch(() => ({}));
             if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
-            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'Cloudflare no pudo procesar el video.');
-            if (dConfirmar.estado !== 'ready') await esperarListo(v);
+            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'No se pudo procesar el video.');
+            if (dConfirmar.estado !== 'ready') await esperarVideoListo(URL_VIDEO, v.idVideo);
 
             v.estado = 'completado';
             v.porcentaje = 100;
@@ -1051,7 +918,7 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     // caja vacía invitando a "elegir un insumo" sin que nadie la pidiera confundía más de
     // lo que ayudaba.
 
-    // Mismo criterio permisivo que obtenerColores: una fila sin insumo o sin cantidad
+    // Criterio permisivo: una fila sin insumo o sin cantidad
     // simplemente no cuenta, no es un error — el operador pudo abrir "Agregar insumo" y
     // cambiar de opinión.
     estadoFicha.obtenerInsumos = () => [...lista.querySelectorAll('[data-fila-insumo]')]

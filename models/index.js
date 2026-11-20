@@ -61,6 +61,7 @@ import FichaConfeccionTaller from './FichaConfeccionTaller.js'
 import FichaConfeccionTallerColor from './FichaConfeccionTallerColor.js'
 import FichaConfeccionProceso from './FichaConfeccionProceso.js'
 import FichaConfeccionProcesoHistorial from './FichaConfeccionProcesoHistorial.js'
+import FichaConfeccionEstado from './FichaConfeccionEstado.js'
 import FichaConfeccionProcesoBitacora from './FichaConfeccionProcesoBitacora.js'
 import CajaTienda from './CajaTienda.js'
 import CajasYBancos from './CajasYBancos.js'
@@ -440,6 +441,11 @@ FichaConfeccionProceso.belongsTo(FichaConfeccionTaller, { foreignKey: 'idTaller'
 FichaConfeccionProceso.hasMany(FichaConfeccionProcesoHistorial, { foreignKey: 'idProceso', as: 'historial' });
 FichaConfeccionProcesoHistorial.belongsTo(FichaConfeccionProceso, { foreignKey: 'idProceso', as: 'proceso' });
 Usuarios.hasMany(FichaConfeccionProcesoHistorial, { foreignKey: 'idUsuario', as: 'cambiosProcesoConfeccion' });
+
+// Anulaciones, reactivaciones y borrados de una ficha (models/FichaConfeccionEstado.js).
+FichaConfeccion.hasMany(FichaConfeccionEstado, { foreignKey: 'idFicha', as: 'cambiosEstado' });
+FichaConfeccionEstado.belongsTo(FichaConfeccion, { foreignKey: 'idFicha', as: 'ficha' });
+FichaConfeccionEstado.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
 FichaConfeccionProcesoHistorial.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
 
 FichaConfeccionProceso.hasMany(FichaConfeccionProcesoBitacora, { foreignKey: 'idProceso', as: 'bitacora' });
@@ -634,4 +640,5 @@ export {
   FichaConfeccionProceso,
   FichaConfeccionProcesoHistorial,
   FichaConfeccionProcesoBitacora,
+  FichaConfeccionEstado,
 }

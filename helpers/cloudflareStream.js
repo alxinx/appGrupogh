@@ -132,7 +132,63 @@ export async function obtenerEstadoVideoCloudflare(uid) {
     if (!r.ok || !data.success) return { estado: 'uploading', errorMensaje: null };
 
     if (data.result?.status?.state === 'error') {
-        return { estado: 'error', errorMensaje: data.result.status.errorReasonText || 'Cloudflare no pudo procesar el video.' };
+        return { estado: 'error', errorMensaje: data.result.status.errorReasonText || 'No se pudo procesar el video.' };
     }
     return { estado: data.result?.readyToStream ? 'ready' : 'uploading', errorMensaje: null };
+}
+
+
+/**
+ * URL del reproductor embebible (iframe) de un video listo — para verlo dentro de un modal del
+ * panel. Null en los mismos casos que urlVerVideo.
+ */
+export function urlIframeVideo(uid) {
+    if (!CLOUDFLARE_STREAMING_SUBDOMAIN || !uid || uid.startsWith(UID_SIMULADO_PREFIJO)) return null;
+    return `https://${CLOUDFLARE_STREAMING_SUBDOMAIN}/${uid}/iframe`;
+}
+
+/**
+ * Borra el video en Cloudflare Stream. Un 404 cuenta como borrado (ya no estaba). Lanza si
+ * Cloudflare no lo pudo borrar: quien llama no debe quitar la fila de la base en ese caso,
+ * o el video quedaría en Cloudflare sin nada que lo referencie.
+ */
+export async function eliminarVideoCloudflare(uid) {
+    if (!CLOUDFLARE_STREAM_CONFIGURADO || !uid || uid.startsWith(UID_SIMULADO_PREFIJO)) return;
+    const r = await fetch(`${CLOUDFLARE_STREAM_BASE_URL}/${uid}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${CLOUDFLARE_STREAM_API_TOKEN}` }
+    });
+    if (!r.ok && r.status !== 404) {
+        const texto = await r.text().catch(() => '');
+        throw new Error(`Cloudflare no pudo borrar el video (HTTP ${r.status}). ${texto.slice(0, 200)}`);
+    }
+}
+
+
+/** Miniatura del video (un cuadro del segundo 2) para la lista del editor. Null si es simulado. */
+export function urlMiniaturaVideo(uid) {
+    if (!CLOUDFLARE_STREAMING_SUBDOMAIN || !uid || uid.startsWith(UID_SIMULADO_PREFIJO)) return null;
+    return `https://${CLOUDFLARE_STREAMING_SUBDOMAIN}/${uid}/thumbnails/thumbnail.jpg?time=2s&height=160`;
+}
+
+/**
+ * Duración en segundos de varios videos (Map uid → segundos). Una consulta por video, todas a
+ * la vez y con tope de 3 s cada una: una ficha tiene a lo sumo 3 videos. Lo que no responde a
+ * tiempo queda sin duración; la lista se pinta igual.
+ */
+export async function duracionesVideosCloudflare(uids) {
+    const duraciones = new Map();
+    if (!CLOUDFLARE_STREAM_CONFIGURADO) return duraciones;
+    await Promise.all(uids.filter((uid) => uid && !uid.startsWith(UID_SIMULADO_PREFIJO)).map(async (uid) => {
+        try {
+            const r = await fetch(`${CLOUDFLARE_STREAM_BASE_URL}/${uid}`, {
+                headers: { Authorization: `Bearer ${CLOUDFLARE_STREAM_API_TOKEN}` },
+                signal: AbortSignal.timeout(3000)
+            });
+            const d = await r.json().catch(() => ({}));
+            const segundos = Number(d?.result?.duration);
+            if (r.ok && segundos > 0) duraciones.set(uid, segundos);
+        } catch { /* sin duración: se muestra la fila sin ella */ }
+    }));
+    return duraciones;
 }

@@ -64,6 +64,7 @@ export function presentarFichaBiblioteca(ficha, { talleres }) {
     return {
         idFicha: ficha.idFicha,
         referencia: ficha.referencia,
+        anulada: ficha.estado === 'anulada',
         telas: String(ficha.materialNombre || '').split(',').map(s => s.trim()).filter(Boolean),
         // DECIMAL(15,2): Sequelize ya lo entrega como texto con sus dos decimales.
         precioConfeccion: String(ficha.precioConfeccion ?? '0'),

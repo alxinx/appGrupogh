@@ -10,7 +10,6 @@ import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS
 import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
 import { borrarObjetos, urlDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { listarConfeccionistas, resumenConfeccionistas, keyFotoConfeccionista, ETAPAS_EN_CURSO } from '../helpers/confeccionistas.js';
-import { coloresSimplesDisponibles } from '../helpers/ordenesCompra.js';
 import { INCLUDES_IMAGEN_FICHA, INCLUDE_CREADOR_FICHA, keyImagenFicha, detalleBibliotecaFichas, presentarFichaBiblioteca } from '../helpers/bibliotecaFichas.js';
 
 // Caja de recorte de la foto de un material: igual a la de una foto de producto
@@ -171,14 +170,10 @@ const homeFichasConfeccion = (req, res) => {
 // Piezas.tsx useTransicionPasos): lo que sale se desliza y encoge, lo que entra llega con
 // un leve rebote y un destello marca el avance — portado a CSS/JS plano acá (sin React) y
 // con los tokens gh-* en vez del rosa del sitio público (public/css/input.css,
-// src/js/fichaConfeccionNueva.js). `colores` es el catálogo de ATRIBUTOS tipo='COLOR' PARA
-// LA TABLA DE COLORES de la ficha, nunca con combinados — una ficha de confección corta UNA
-// tela de UN color, "Blanco + Negro" no es nada que un operario pueda elegir acá (mismo
-// filtro y mismo motivo que ya usa una orden de compra: helpers/ordenesCompra.js
-// coloresSimplesDisponibles, CLAUDE.md DRY).
+// src/js/fichaConfeccionNueva.js). La ficha no pide colores ni cantidades: eso es de la
+// orden de producción (wiki "Proceso de confección").
 const homeFichaConfeccionNueva = async (req, res) => {
     try {
-        const colores = await coloresSimplesDisponibles();
         // Familias existentes para el datalist de "Crear familia" del paso 1 — mismo
         // criterio que el datalist de familia del alta de producto (adminControllers.js
         // dashboardInventorys): escribir el nombre exacto de una que ya existe es lo que
@@ -194,7 +189,6 @@ const homeFichaConfeccionNueva = async (req, res) => {
             pagina: 'Fichas de confección',
             subPagina: 'Nueva ficha de confección',
             currentPath: '/procesos',
-            colores,
             familias,
             insumos
         });
@@ -233,7 +227,7 @@ const homeFichaConfeccionBiblioteca = async (req, res) => {
 // `materialNombre` son las fotos congeladas de familia/tela en la propia fila (CLAUDE.md
 // §7) — filtrar contra ellas directo evita el join a FICHAS_CONFECCION_DXF que, si la ficha
 // tiene dos telas, ni siquiera identificaría una sola fila de forma simple.
-const condicionesListadoFichas = ({ busqueda, familia, tela } = {}) => {
+const condicionesListadoFichas = ({ busqueda, familia, tela, estado } = {}) => {
     const y = [];
 
     // Búsqueda libre: referencia O tela, igual criterio que nombreProducto/sku/ean del
@@ -255,7 +249,9 @@ const condicionesListadoFichas = ({ busqueda, familia, tela } = {}) => {
     const telaNombre = String(tela || '').trim();
     if (telaNombre) y.push({ materialNombre: { [Op.like]: `%${telaNombre}%` } });
 
-    return { estado: 'activa', ...(y.length ? { [Op.and]: y } : {}) };
+    // Activas por defecto; las anuladas solo con el filtro (de ahí se reactivan). Las borradas
+    // no salen nunca: FichaConfeccion es `paranoid`.
+    return { estado: estado === 'anulada' ? 'anulada' : 'activa', ...(y.length ? { [Op.and]: y } : {}) };
 };
 
 // GET /admin/json/fichas-confeccion — mismo contrato que /admin/json/productos/: página +
@@ -272,7 +268,7 @@ const filterFichaConfeccionListJson = async (req, res) => {
         // Los includes son belongsTo (uno por ficha): no multiplican filas ni el conteo.
         const { count, rows } = await FichaConfeccion.findAndCountAll({
             where: condicionesListadoFichas(req.query),
-            attributes: ['idFicha', 'referencia', 'materialNombre', 'cantidadTotal', 'precioConfeccion', 'createdAt'],
+            attributes: ['idFicha', 'referencia', 'materialNombre', 'cantidadTotal', 'precioConfeccion', 'estado', 'createdAt'],
             include: [INCLUDE_CREADOR_FICHA, ...INCLUDES_IMAGEN_FICHA],
             order: [['createdAt', 'DESC'], ['idFicha', 'ASC']],
             limit: limite,

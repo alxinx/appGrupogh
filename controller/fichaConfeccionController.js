@@ -2,21 +2,16 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 
 import db from '../config/bd.js';
 import {
-    FichaConfeccion, FichaConfeccionColor, FichaConfeccionInsumo, FichaConfeccionTaller, FichaConfeccionTallerColor,
-    FichaConfeccionProceso, FichaConfeccionProcesoHistorial,
+    FichaConfeccion, FichaConfeccionInsumo, FichaConfeccionTaller, FichaConfeccionEstado,
     FichaConfeccionDxf, FichaConfeccionDxfMaterial, FichaConfeccionMolde, FichaConfeccionMoldeIaIntento, FichaConfeccionVideo,
-    Material, Familia, Atributos, Provedores, CategoriasDeProvedores
+    Material, Familia
 } from '../models/index.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { keyDocumento, urlDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { montoPositivo } from '../helpers/helpers.js';
 import { generarPdfFichaConfeccion } from '../helpers/fichaConfeccionPdf.js';
-import { coloresSimplesDisponibles } from '../helpers/ordenesCompra.js';
 import { presentarMaterial } from '../helpers/insumos.js';
-import { CATEGORIA_CONFECCIONISTA } from '../helpers/proveedores.js';
-
-// La categoría de proveedor que puede ser taller de una ficha vive en helpers/proveedores.js.
-const CATEGORIA_TALLER = CATEGORIA_CONFECCIONISTA;
+import { urlIframeVideo, urlMiniaturaVideo, duracionesVideosCloudflare, eliminarVideoCloudflare } from '../helpers/cloudflareStream.js';
 
 // Último paso del asistente "Nueva ficha de confección" — junta lo que el DXF, el molde y
 // los videos venían subiendo sueltos (FichaConfeccionDxf/Molde/MoldeIaIntento/Video, todos
@@ -30,7 +25,6 @@ const INCLUDES_PDF = [
     { model: FichaConfeccionMolde, as: 'moldeReferencia' },
     { model: FichaConfeccionMoldeIaIntento, as: 'moldeIaIntento' },
     { model: FichaConfeccionVideo, as: 'videos' },
-    { model: FichaConfeccionColor, as: 'colores', include: [{ model: Atributos, as: 'color' }, { model: Material, as: 'material' }] },
     { model: FichaConfeccionInsumo, as: 'insumos' }
 ];
 
@@ -50,7 +44,7 @@ async function generarYGuardarPdf(idFicha) {
 }
 
 // Validaciones compartidas entre finalizarFicha (ficha nueva) y actualizarFichaConfeccion
-// (ficha ya creada) — las dos reciben la MISMA forma de body para colores/insumos/talleres
+// (ficha ya creada) — las dos reciben la MISMA forma de body para los insumos
 // y tienen que aplicar las MISMAS reglas (CLAUDE.md DRY). Nunca lanzan: devuelven
 // `{ error }` para que el controlador decida el status/mensaje de la respuesta.
 
@@ -77,47 +71,6 @@ async function validarInsumosBody(insumosBody) {
     insumosLimpios.forEach((i) => { i.nombreMaterial = nombrePorId.get(i.idMaterial); });
 
     return { insumosLimpios };
-}
-
-// Talleres: OPCIONALES. Cada uno tiene que ser un PROVEDORES real de categoría
-// 'Confeccionista' (nunca cualquier proveedor) con su propio precio de confección — dos
-// talleres pueden cobrar distinto por la misma prenda (models/FichaConfeccionTaller.js). Los
-// colores que se le asignan a un taller tienen que ser de los que la ficha REALMENTE tiene
-// (idsColoresFicha, los que la ficha ya tiene guardados) — nunca uno que el navegador
-// inventó. Es un tag informativo, no reparte cantidad (models/FichaConfeccionTallerColor.js).
-async function validarTalleresBody(talleresBody, idsColoresFicha) {
-    if (!talleresBody.length) return { talleresLimpios: [] };
-
-    const idsColoresValidos = new Set(idsColoresFicha);
-    const talleresLimpios = [];
-    const idsProveedorVistos = new Set();
-    for (const fila of talleresBody) {
-        const idProveedor = String(fila?.idProveedor ?? '');
-        const precioConfeccion = montoPositivo(fila?.precioConfeccion);
-        if (!idProveedor) return { error: 'Hay un taller inválido en la lista.' };
-        if (precioConfeccion === null) return { error: 'Cada taller necesita un precio de confección mayor a $0.' };
-        if (idsProveedorVistos.has(idProveedor)) return { error: 'Un mismo taller no puede estar dos veces en la lista.' };
-        idsProveedorVistos.add(idProveedor);
-
-        const idsColoresTaller = [];
-        for (const idColor of (Array.isArray(fila?.colores) ? fila.colores : [])) {
-            const id = parseInt(idColor, 10);
-            if (!Number.isInteger(id) || !idsColoresValidos.has(id)) return { error: 'Un taller tiene asignado un color que no está en la ficha.' };
-            idsColoresTaller.push(id);
-        }
-        talleresLimpios.push({ idProveedor, precioConfeccion, idsColoresTaller: [...new Set(idsColoresTaller)] });
-    }
-
-    const idsProveedor = talleresLimpios.map((t) => t.idProveedor);
-    const proveedores = await Provedores.findAll({
-        where: { idProveedor: idsProveedor },
-        include: [{ model: CategoriasDeProvedores, as: 'categorias', attributes: ['nombre'], through: { attributes: [] } }]
-    });
-    if (proveedores.length !== idsProveedor.length) return { error: 'Alguno de los talleres elegidos no existe.' };
-    const noConfeccionista = proveedores.find((p) => !(p.categorias || []).some((c) => c.nombre === CATEGORIA_TALLER));
-    if (noConfeccionista) return { error: `${noConfeccionista.razonSocial} no está registrado como confeccionista.` };
-
-    return { talleresLimpios };
 }
 
 // POST /admin/procesos/fichas-confeccion/finalizar
@@ -303,9 +256,9 @@ const verFichaDxf = async (req, res) => {
 // completo. La tela (Mayatext, Polilicra…) y la familia/referencia-de-catálogo SIGUEN
 // saliendo del DXF y no se re-editan acá — cambiarlas re-dispararía toda la resolución de
 // materiales/familia del paso 1 del asistente, que es un flujo aparte. Lo que SÍ es
-// editable: nombre de referencia, colores (agregar/quitar/cantidad), insumos
-// (agregar/quitar), talleres de confección con su propio precio y los colores que le tocan
-// a cada uno, más videos adicionales — exactamente lo que pidió el usuario.
+// editable: referencia, complementos, observaciones, precio, insumos (reemplazar y cantidad
+// por prenda, sin agregar ni quitar), las imágenes (foto de referencia e IA) y los videos.
+// Los talleres NO se asignan acá: se asignan al iniciar el proceso (orden de producción).
 const homeFichaConfeccionEditar = async (req, res) => {
     try {
         const ficha = await FichaConfeccion.findByPk(req.params.idFicha, {
@@ -321,34 +274,15 @@ const homeFichaConfeccionEditar = async (req, res) => {
                 { model: FichaConfeccionMolde, as: 'molde' },
                 { model: FichaConfeccionMolde, as: 'moldeReferencia' },
                 { model: FichaConfeccionMoldeIaIntento, as: 'moldeIaIntento' },
-                { model: FichaConfeccionColor, as: 'colores', include: [{ model: Atributos, as: 'color' }, { model: Material, as: 'material' }] },
-                { model: FichaConfeccionInsumo, as: 'insumos' },
-                { model: FichaConfeccionVideo, as: 'videos' },
-                {
-                    model: FichaConfeccionTaller, as: 'talleres',
-                    include: [
-                        { model: Provedores, as: 'proveedor', attributes: ['idProveedor', 'razonSocial'] },
-                        { model: FichaConfeccionTallerColor, as: 'colores', include: [{ model: Atributos, as: 'color' }] }
-                    ]
-                }
+                { model: FichaConfeccionInsumo, as: 'insumos', separate: true, order: [['orden', 'ASC'], ['idDetalle', 'ASC']] },
+                { model: FichaConfeccionVideo, as: 'videos' }
             ]
         });
         if (!ficha) return res.status(404).send('Esa ficha no existe.');
 
-        // Catálogos que necesita el editor — mismo criterio y mismos helpers que ya usa el
-        // asistente de la ficha nueva (CLAUDE.md DRY): colores simples para "Agregar color"
-        // (helpers/ordenesCompra.js, nunca combinados), insumos activos con foto para
-        // "Agregar insumo" (helpers/insumos.js presentarMaterial), y los proveedores de
-        // categoría 'Confeccionista' para "Agregar taller".
-        const [coloresCatalogo, insumosCatalogo, confeccionistas] = await Promise.all([
-            coloresSimplesDisponibles(),
-            Material.findAll({ where: { activo: true }, order: [['nombre', 'ASC']] }).then((filas) => filas.map(presentarMaterial)),
-            Provedores.findAll({
-                include: [{ model: CategoriasDeProvedores, as: 'categorias', attributes: [], where: { nombre: CATEGORIA_TALLER }, through: { attributes: [] } }],
-                attributes: ['idProveedor', 'razonSocial'],
-                order: [['razonSocial', 'ASC']]
-            })
-        ]);
+        // Catálogo de insumos activos con foto para "Reemplazar insumo" (helpers/insumos.js
+        // presentarMaterial), el mismo que usa el asistente (CLAUDE.md DRY).
+        const insumosCatalogo = (await Material.findAll({ where: { activo: true }, order: [['nombre', 'ASC']] })).map(presentarMaterial);
 
         // Imágenes de "Referencias visuales" — igual que el PDF (helpers/fichaConfeccionPdf.js
         // cajaImagen), pero acá hace falta una URL para un <img>, no los bytes: un molde en
@@ -374,14 +308,34 @@ const homeFichaConfeccionEditar = async (req, res) => {
             ficha.moldeReferencia?.objectKey ? urlDocumento(ficha.moldeReferencia.objectKey) : null
         ]);
 
+        // ¿Se puede borrar? Solo si nunca se usó (fichaTieneUso). Si está anulada, el motivo
+        // de la última anulación para el aviso de arriba.
+        const usada = await fichaTieneUso(ficha.idFicha);
+        const ultimaAnulacion = ficha.estado === 'anulada'
+            ? await FichaConfeccionEstado.findOne({ where: { idFicha: ficha.idFicha, accion: 'anulada' }, order: [['createdAt', 'DESC']] })
+            : null;
+
+        // Videos listos con su reproductor (modal), miniatura y duración (mm:ss).
+        const listos = (ficha.videos || []).filter((v) => v.estado === 'ready').sort((x, y) => x.orden - y.orden);
+        const duraciones = await duracionesVideosCloudflare(listos.map((v) => v.cloudflareVideoUid));
+        const mmss = (seg) => `${String(Math.floor(seg / 60)).padStart(2, '0')}:${String(Math.round(seg % 60)).padStart(2, '0')}`;
+        const videos = listos.map((v) => ({
+            idVideo: v.idVideo,
+            nombre: v.nombreOriginal.replace(/\.(mp4|mov|avi)$/i, ''),
+            iframeUrl: urlIframeVideo(v.cloudflareVideoUid),
+            miniaturaUrl: urlMiniaturaVideo(v.cloudflareVideoUid),
+            duracion: duraciones.has(v.cloudflareVideoUid) ? mmss(duraciones.get(v.cloudflareVideoUid)) : null
+        }));
+
         return res.render('./administrador/produccion/fichaConfeccionEditar', {
             pagina: 'Fichas de confección',
             subPagina: ficha.referencia,
             currentPath: '/procesos',
             ficha,
-            coloresCatalogo,
+            usada,
+            motivoAnulacion: ultimaAnulacion?.motivo || null,
             insumosCatalogo,
-            confeccionistas,
+            videos,
             moldeImagenUrl,
             moldeIaImagenUrl,
             moldeReferenciaImagenUrl
@@ -394,9 +348,8 @@ const homeFichaConfeccionEditar = async (req, res) => {
 
 // POST /admin/procesos/fichas-confeccion/:idFicha/actualizar — guarda TODO lo editable del
 // editor en un solo POST (mismo criterio que finalizarFicha: el front junta el estado
-// completo y lo manda de una vez, no hay autosave por campo). Colores/insumos/talleres se
-// reemplazan enteros (borrar + recrear) en vez de un diff granular — son pocas filas por
-// ficha (CLAUDE.md §7) y así no hay que inventar un endpoint por línea.
+// completo y lo manda de una vez, no hay autosave por campo). Las imágenes y los videos van
+// por sus propios endpoints (asignarImagenFicha, eliminarVideoFicha) porque se suben aparte.
 const actualizarFichaConfeccion = async (req, res) => {
     try {
         const ficha = await FichaConfeccion.findOne({
@@ -426,39 +379,19 @@ const actualizarFichaConfeccion = async (req, res) => {
         const complementos = String(req.body?.complementos ?? '').trim().slice(0, 2000) || null;
         const observaciones = String(req.body?.observaciones ?? '').trim().slice(0, 2000) || null;
 
-        // Insumos por prenda: sin tope contra una cantidad total que la ficha ya no maneja.
-        const { insumosLimpios, error: errorInsumos } = await validarInsumosBody(
-            Array.isArray(req.body?.insumos) ? req.body.insumos : []
-        );
-        if (errorInsumos) return res.status(422).json({ success: false, mensaje: errorInsumos });
-
-        // Los colores que se le marcan a un taller tienen que ser de la ficha: los que ya
-        // tenía guardados (hoy, ninguno en una ficha nueva).
-        const idsColoresFicha = (await FichaConfeccionColor.findAll({ where: { idFicha: ficha.idFicha }, attributes: ['idAtributoColor'] }))
-            .map((c) => c.idAtributoColor);
-        const { talleresLimpios, error: errorTalleres } = await validarTalleresBody(
-            Array.isArray(req.body?.talleres) ? req.body.talleres : [], idsColoresFicha
-        );
-        if (errorTalleres) return res.status(422).json({ success: false, mensaje: errorTalleres });
-
-        // Talleres existentes de la ficha, con su proceso — hace falta ANTES de la
-        // transacción para decidir qué se puede tocar: un taller con seguimiento ya
-        // arrancado (estado != 'asignado') no se puede borrar ni recrear desde acá, se
-        // perdería su historial y su bitácora. Por eso esto ya NO es un destroy+recreate
-        // como colores/insumos — es un diff (CLAUDE.md, no perder datos de producción real).
-        const talleresExistentes = await FichaConfeccionTaller.findAll({
-            where: { idFicha: ficha.idFicha },
-            include: [{ model: FichaConfeccionProceso, as: 'proceso' }]
-        });
-        const idsProveedorNuevos = new Set(talleresLimpios.map((t) => t.idProveedor));
-        const talleresQueSeQuitan = talleresExistentes.filter((ex) => !idsProveedorNuevos.has(ex.idProveedor));
-        const bloqueado = talleresQueSeQuitan.find((ex) => ex.proceso && ex.proceso.estado !== 'asignado');
-        if (bloqueado) {
-            return res.status(422).json({
-                success: false,
-                mensaje: 'No se puede quitar un taller que ya tiene seguimiento de producción iniciado.'
-            });
+        // Insumos: en el editor no se agregan ni se quitan — eso cambiaría el diseño, que se
+        // decidió al crear la ficha. Sí se puede REEMPLAZAR uno por otro (el original ya no se
+        // consigue) y cambiar su cantidad POR PRENDA. Por eso el body trae exactamente las
+        // mismas líneas (`idDetalle`) que la ficha ya tiene, ni una más ni una menos.
+        const lineasActuales = await FichaConfeccionInsumo.findAll({ where: { idFicha: ficha.idFicha }, attributes: ['idDetalle'] });
+        const idsActuales = new Set(lineasActuales.map((l) => l.idDetalle));
+        const insumosBody = Array.isArray(req.body?.insumos) ? req.body.insumos : [];
+        const idsBody = insumosBody.map((l) => parseInt(l?.idDetalle, 10));
+        if (idsBody.length !== idsActuales.size || new Set(idsBody).size !== idsBody.length || !idsBody.every((id) => idsActuales.has(id))) {
+            return res.status(422).json({ success: false, mensaje: 'Los insumos de una ficha creada solo se reemplazan o cambian de cantidad: no se agregan ni se quitan.' });
         }
+        const { insumosLimpios, error: errorInsumos } = await validarInsumosBody(insumosBody);
+        if (errorInsumos) return res.status(422).json({ success: false, mensaje: errorInsumos });
 
         let t = null;
         try {
@@ -469,66 +402,13 @@ const actualizarFichaConfeccion = async (req, res) => {
                 { where: { idFicha: ficha.idFicha }, transaction: t }
             );
 
-            await FichaConfeccionInsumo.destroy({ where: { idFicha: ficha.idFicha }, transaction: t });
-            if (insumosLimpios.length) {
-                await FichaConfeccionInsumo.bulkCreate(
-                    insumosLimpios.map((ins, idx) => ({ idFicha: ficha.idFicha, idMaterial: ins.idMaterial, nombreMaterial: ins.nombreMaterial, cantidad: ins.cantidad, orden: idx + 1 })),
-                    { transaction: t }
+            // Línea por línea, en su lugar: conserva el orden y el id de cada insumo.
+            for (let i = 0; i < insumosLimpios.length; i++) {
+                const ins = insumosLimpios[i];
+                await FichaConfeccionInsumo.update(
+                    { idMaterial: ins.idMaterial, nombreMaterial: ins.nombreMaterial, cantidad: ins.cantidad },
+                    { where: { idDetalle: idsBody[i], idFicha: ficha.idFicha }, transaction: t }
                 );
-            }
-
-            // Talleres: diff, no destroy+recreate (ver el aviso de arriba) — un taller que
-            // ya existía conserva su idDetalle y, con él, su FichaConfeccionProceso con todo
-            // el historial/bitácora que tenga. Los colores asignados a cada taller (la parte
-            // sin seguimiento, un simple tag) sí se reemplazan enteros, es barato.
-            const porProveedorExistente = new Map(talleresExistentes.map((ex) => [ex.idProveedor, ex]));
-
-            // Quitar los que ya no están (acá sí es seguro: la única razón por la que
-            // llegaron hasta este punto es que su proceso seguía en 'asignado' — el filtro
-            // de arriba ya habría cortado con un 422 si alguno tenía seguimiento real).
-            if (talleresQueSeQuitan.length) {
-                await FichaConfeccionTaller.destroy({
-                    where: { idDetalle: talleresQueSeQuitan.map((ex) => ex.idDetalle) },
-                    transaction: t
-                });
-            }
-
-            for (let i = 0; i < talleresLimpios.length; i++) {
-                const datos = talleresLimpios[i];
-                const existente = porProveedorExistente.get(datos.idProveedor);
-                let idTaller;
-
-                if (existente) {
-                    await existente.update({ precioConfeccion: datos.precioConfeccion, orden: i + 1 }, { transaction: t });
-                    idTaller = existente.idDetalle;
-                } else {
-                    const nuevoTaller = await FichaConfeccionTaller.create({
-                        idFicha: ficha.idFicha,
-                        idProveedor: datos.idProveedor,
-                        precioConfeccion: datos.precioConfeccion,
-                        orden: i + 1
-                    }, { transaction: t });
-                    idTaller = nuevoTaller.idDetalle;
-
-                    // Nace el seguimiento de producción — pedido explícito del usuario: "si
-                    // existen confeccionistas en esta hoja, crearemos el nuevo proceso".
-                    const nuevoProceso = await FichaConfeccionProceso.create(
-                        { idTaller, estado: 'asignado' },
-                        { transaction: t }
-                    );
-                    await FichaConfeccionProcesoHistorial.create(
-                        { idProceso: nuevoProceso.idProceso, estado: 'asignado', idUsuario: req.usuario.idUsuario },
-                        { transaction: t }
-                    );
-                }
-
-                await FichaConfeccionTallerColor.destroy({ where: { idTaller }, transaction: t });
-                if (datos.idsColoresTaller.length) {
-                    await FichaConfeccionTallerColor.bulkCreate(
-                        datos.idsColoresTaller.map((idAtributoColor) => ({ idTaller, idAtributoColor })),
-                        { transaction: t }
-                    );
-                }
             }
 
             await t.commit();
@@ -553,4 +433,135 @@ const actualizarFichaConfeccion = async (req, res) => {
     }
 };
 
-export { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion };
+// POST /admin/procesos/fichas-confeccion/:idFicha/imagenes — pone (o cambia) la foto de
+// referencia o la imagen de IA de una ficha ya creada. Una de cada (decidido con el dueño):
+// la nueva reemplaza a la anterior. Las mismas reglas de pertenencia que finalizarFicha: la
+// foto la subió este usuario y es JPG; el intento de IA está aprobado y salió del molde de
+// ESTA ficha. Después del cambio se regenera el PDF.
+const asignarImagenFicha = async (req, res) => {
+    try {
+        const ficha = await FichaConfeccion.findOne({ where: { idFicha: req.params.idFicha, estado: 'activa' }, attributes: ['idFicha', 'idMolde'] });
+        if (!ficha) return res.status(404).json({ success: false, mensaje: 'Esa ficha no existe.' });
+
+        const tipo = req.body?.tipo;
+        let cambio = null;
+        if (tipo === 'referencia') {
+            const molde = await FichaConfeccionMolde.findOne({
+                where: { idMolde: String(req.body?.idMolde ?? ''), idUsuarioCarga: req.usuario.idUsuario, tipoArchivo: 'jpg' },
+                attributes: ['idMolde']
+            });
+            if (!molde) return res.status(422).json({ success: false, mensaje: 'Esa foto no existe o no la subiste tú.' });
+            cambio = { idMoldeReferencia: molde.idMolde };
+        } else if (tipo === 'ia') {
+            if (!ficha.idMolde) return res.status(422).json({ success: false, mensaje: 'La ficha no tiene molde para generar con IA.' });
+            const intento = await FichaConfeccionMoldeIaIntento.findOne({
+                where: { idIntento: String(req.body?.idIntento ?? ''), idMolde: ficha.idMolde, aprobado: true },
+                attributes: ['idIntento']
+            });
+            if (!intento) return res.status(422).json({ success: false, mensaje: 'Esa imagen de IA no está aprobada o no es de esta ficha.' });
+            cambio = { idMoldeIaIntento: intento.idIntento };
+        } else {
+            return res.status(422).json({ success: false, mensaje: 'Tipo de imagen inválido.' });
+        }
+
+        await FichaConfeccion.update(cambio, { where: { idFicha: ficha.idFicha } });
+
+        try { await generarYGuardarPdf(ficha.idFicha); } catch (e) {
+            console.error('fichaConfeccionController(asignarImagen) pdf:', e);
+            return res.json({ success: true, avisoPdf: 'La imagen quedó guardada, pero el PDF no se pudo regenerar todavía.' });
+        }
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('fichaConfeccionController(asignarImagen):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo guardar la imagen.' });
+    }
+};
+
+// ── Anular, reactivar y borrar ─────────────────────────────────────────────────────────
+// Una ficha que ya se usó no se borra: se ANULA (sale de la biblioteca, no inicia procesos
+// nuevos, se puede reactivar). Solo una ficha que nunca se usó se BORRA, y con ella sus videos
+// (decidido con el dueño el 2026-11-20). Cada cambio deja constancia en
+// FICHAS_CONFECCION_ESTADOS (append-only).
+
+/**
+ * ¿La ficha ya se usó? Hoy, uso = tener talleres asignados (de ellos cuelgan los procesos).
+ * Cuando existan las órdenes de producción y los cortes, se suman acá: es el único lugar que
+ * decide si se puede borrar.
+ */
+async function fichaTieneUso(idFicha) {
+    return (await FichaConfeccionTaller.count({ where: { idFicha } })) > 0;
+}
+
+/**
+ * Pasa la ficha de un estado a otro y deja la constancia, en una transacción. El update va
+ * condicionado al estado de partida (CLAUDE.md §9): dos clics a la vez no dejan dos
+ * constancias. Devuelve false si la ficha no estaba en `desde`.
+ */
+async function cambiarEstadoFicha({ idFicha, desde, hacia, accion, motivo = null, idUsuario }) {
+    return db.transaction(async (t) => {
+        const [filas] = await FichaConfeccion.update({ estado: hacia }, { where: { idFicha, estado: desde }, transaction: t });
+        if (!filas) return false;
+        await FichaConfeccionEstado.create({ idFicha, accion, motivo, idUsuario }, { transaction: t });
+        return true;
+    });
+}
+
+// POST /admin/procesos/fichas-confeccion/:idFicha/anular — { motivo }
+const anularFicha = async (req, res) => {
+    try {
+        const motivo = String(req.body?.motivo ?? '').trim().slice(0, 500);
+        if (motivo.length < 3) return res.status(422).json({ success: false, mensaje: 'Escribe el motivo de la anulación.' });
+        const ok = await cambiarEstadoFicha({ idFicha: req.params.idFicha, desde: 'activa', hacia: 'anulada', accion: 'anulada', motivo, idUsuario: req.usuario.idUsuario });
+        if (!ok) return res.status(409).json({ success: false, mensaje: 'La ficha no existe o ya estaba anulada.' });
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('fichaConfeccionController(anular):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo anular la ficha.' });
+    }
+};
+
+// POST /admin/procesos/fichas-confeccion/:idFicha/reactivar
+const reactivarFicha = async (req, res) => {
+    try {
+        const ok = await cambiarEstadoFicha({ idFicha: req.params.idFicha, desde: 'anulada', hacia: 'activa', accion: 'reactivada', idUsuario: req.usuario.idUsuario });
+        if (!ok) return res.status(409).json({ success: false, mensaje: 'La ficha no existe o no estaba anulada.' });
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('fichaConfeccionController(reactivar):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo reactivar la ficha.' });
+    }
+};
+
+// POST /admin/procesos/fichas-confeccion/:idFicha/borrar — solo si nunca se usó. Primero se
+// borran los videos en el servicio de videos (si alguno falla, no se toca nada más: se puede
+// reintentar); después, en una transacción, las filas de video, la constancia y la ficha
+// (borrado lógico: `paranoid`). El PDF y las imágenes quedan guardados como respaldo.
+const borrarFicha = async (req, res) => {
+    try {
+        const ficha = await FichaConfeccion.findByPk(req.params.idFicha, { attributes: ['idFicha'] });
+        if (!ficha) return res.status(404).json({ success: false, mensaje: 'Esa ficha no existe.' });
+        if (await fichaTieneUso(ficha.idFicha)) {
+            return res.status(409).json({ success: false, mensaje: 'Esta ficha ya tiene uso: anúlala en vez de borrarla.' });
+        }
+
+        const videos = await FichaConfeccionVideo.findAll({ where: { idFicha: ficha.idFicha }, attributes: ['idVideo', 'cloudflareVideoUid'] });
+        try {
+            for (const v of videos) await eliminarVideoCloudflare(v.cloudflareVideoUid);
+        } catch (e) {
+            console.error('fichaConfeccionController(borrar) videos:', e);
+            return res.status(502).json({ success: false, mensaje: 'No se pudieron borrar los videos. Intenta de nuevo en un momento.' });
+        }
+
+        await db.transaction(async (t) => {
+            await FichaConfeccionVideo.destroy({ where: { idFicha: ficha.idFicha }, transaction: t });
+            await FichaConfeccionEstado.create({ idFicha: ficha.idFicha, accion: 'borrada', idUsuario: req.usuario.idUsuario }, { transaction: t });
+            await FichaConfeccion.destroy({ where: { idFicha: ficha.idFicha }, transaction: t });
+        });
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('fichaConfeccionController(borrar):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo borrar la ficha.' });
+    }
+};
+
+export { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion, asignarImagenFicha, generarYGuardarPdf, anularFicha, reactivarFicha, borrarFicha };

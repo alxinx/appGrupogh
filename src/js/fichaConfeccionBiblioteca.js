@@ -9,6 +9,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
     const inputBusqueda = document.querySelector('#busquedaFichas');
     const selectFamilia = document.querySelector('#familiaFichas');
     const selectTela = document.querySelector('#telaFichas');
+    const selectEstado = document.querySelector('#estadoFichas');
     const contenedor = document.querySelector('#contenedor-fichas');
     const conteo = document.querySelector('#conteo-fichas');
     if (!inputBusqueda || !contenedor) return;
@@ -45,7 +46,10 @@ import { escaparHtml as esc } from './escaparHtml.js';
                     ${imagen}
                 </span>
                 <span class="min-w-0">
-                    <span class="block font-semibold text-slate-800 truncate group-hover/ficha:text-gh-primaryHover">${esc(f.referencia)}</span>
+                    <span class="flex items-center gap-2 min-w-0">
+                        <span class="font-semibold text-slate-800 truncate group-hover/ficha:text-gh-primaryHover">${esc(f.referencia)}</span>
+                        ${f.anulada ? '<span class="table-badge table-badge-low flex-shrink-0"><span class="table-badge-dot"></span>Anulada</span>' : ''}
+                    </span>
                     <span class="block text-xs text-slate-400 mt-0.5">${fecha(f.createdAt)}${autor}</span>
                 </span>
             </a>`;
@@ -133,7 +137,8 @@ import { escaparHtml as esc } from './escaparHtml.js';
     const leerFiltros = () => ({
         busqueda: inputBusqueda.value,
         familia: selectFamilia?.value || '',
-        tela: selectTela?.value || ''
+        tela: selectTela?.value || '',
+        estado: selectEstado?.value || ''
     });
 
     const obtenerFichas = async () => {
@@ -146,7 +151,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
             if (consultaId !== ultimaConsultaId) return; // ya salió otra consulta más nueva
 
             if (d.success) {
-                const hayFiltro = Boolean(filtros.busqueda.trim() || filtros.familia || filtros.tela);
+                const hayFiltro = Boolean(filtros.busqueda.trim() || filtros.familia || filtros.tela || filtros.estado);
                 mostrarFichas(d.fichas, hayFiltro);
                 if (conteo) conteo.textContent = d.totalRegistros === 1 ? '1 ficha' : `${(d.totalRegistros || 0).toLocaleString('es-CO')} fichas`;
                 generarPaginacion('#paginacionFichas', d.totalPaginas, d.paginaActual, (nuevaPagina) => {
@@ -169,7 +174,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
         clearTimeout(timer);
         timer = setTimeout(filtrar, 300);
     });
-    [selectFamilia, selectTela].filter(Boolean).forEach((el) => el.addEventListener('change', filtrar));
+    [selectFamilia, selectTela, selectEstado].filter(Boolean).forEach((el) => el.addEventListener('change', filtrar));
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', filtrar);
     else filtrar();
