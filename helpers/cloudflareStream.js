@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import {
     CLOUDFLARE_STREAM_CONFIGURADO, CLOUDFLARE_STREAM_BASE_URL, CLOUDFLARE_STREAM_API_TOKEN,
+    VIDEO_SIMULADO, VIDEO_DISPONIBLE, MENSAJE_VIDEO_NO_DISPONIBLE,
     CLOUDFLARE_STREAMING_SUBDOMAIN
 } from '../config/cloudflareStream.js';
 
@@ -34,7 +35,7 @@ import {
 // `uploadURL: null`, y el front lo toma como señal para simular la barra de progreso en
 // vez de hacer la subida real — así todo el flujo (slots, progreso, persistencia entre
 // pasos, reintentar) se puede probar sin la clave y sin gastar nada, mismo espíritu que
-// OPENAI_CONFIGURADO en helpers/moldeIa.js, adaptado: acá lo que falta no es el trabajo de
+// OPENAI_CONFIGURADO en config/openai.js, adaptado: acá lo que falta no es el trabajo de
 // ESTE backend, es el destino al que el navegador tendría que subir.
 const UID_SIMULADO_PREFIJO = 'simulado-';
 
@@ -48,7 +49,8 @@ export const VIDEO_FICHA_MAX_SEGUNDOS = (() => {
 })();
 
 export async function crearSubidaDirecta({ maxDurationSeconds = VIDEO_FICHA_MAX_SEGUNDOS } = {}) {
-    if (!CLOUDFLARE_STREAM_CONFIGURADO) {
+    if (!VIDEO_DISPONIBLE) throw new Error(MENSAJE_VIDEO_NO_DISPONIBLE);
+    if (VIDEO_SIMULADO) {
         return { uid: `${UID_SIMULADO_PREFIJO}${crypto.randomUUID()}`, uploadURL: null };
     }
 
@@ -68,7 +70,8 @@ export async function crearSubidaDirecta({ maxDurationSeconds = VIDEO_FICHA_MAX_
 }
 
 export async function crearSubidaTus({ uploadLength, nombreArchivo }) {
-    if (!CLOUDFLARE_STREAM_CONFIGURADO) {
+    if (!VIDEO_DISPONIBLE) throw new Error(MENSAJE_VIDEO_NO_DISPONIBLE);
+    if (VIDEO_SIMULADO) {
         return { uid: `${UID_SIMULADO_PREFIJO}${crypto.randomUUID()}`, uploadURL: null };
     }
 

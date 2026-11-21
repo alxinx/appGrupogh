@@ -1,6 +1,7 @@
 import { FichaConfeccion, FichaConfeccionVideo } from '../models/index.js';
 import { crearSubidaDirecta, crearSubidaTus, obtenerEstadoVideoCloudflare, eliminarVideoCloudflare, VIDEO_FICHA_MAX_SEGUNDOS } from '../helpers/cloudflareStream.js';
 import { generarYGuardarPdf } from './fichaConfeccionController.js';
+import { VIDEO_DISPONIBLE, MENSAJE_VIDEO_NO_DISPONIBLE } from '../config/cloudflareStream.js';
 
 // Cloudflare le pone un tope DURO de 200MB al POST simple (helpers/cloudflareStream.js) —
 // un video de celular grabando el proceso de confección lo pasa fácil, así que a partir de
@@ -33,6 +34,8 @@ const crearSesionSubida = async ({ pesoBytes, nombreOriginal }) => {
 // ver helpers/cloudflareStream.js) y recién después avisa con /confirmar.
 const solicitarSubidaVideo = async (req, res) => {
     try {
+        // Sin servicio de videos configurado se avisa antes de crear una fila que no va a subir nada.
+        if (!VIDEO_DISPONIBLE) return res.status(503).json({ success: false, mensaje: MENSAJE_VIDEO_NO_DISPONIBLE });
         const orden = Number(req.body?.orden);
         const nombreOriginal = String(req.body?.nombreOriginal ?? '').trim().slice(0, 255);
         const pesoBytes = Number(req.body?.pesoBytes) || null;
@@ -125,6 +128,7 @@ const estadoVideo = async (req, res) => {
 // el mismo slot, solo cambia a qué UID de Cloudflare apunta.
 const reintentarVideo = async (req, res) => {
     try {
+        if (!VIDEO_DISPONIBLE) return res.status(503).json({ success: false, mensaje: MENSAJE_VIDEO_NO_DISPONIBLE });
         const video = await FichaConfeccionVideo.findOne({
             where: { idVideo: req.params.idVideo, idUsuarioCarga: req.usuario.idUsuario }
         });

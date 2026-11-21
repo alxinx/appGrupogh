@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { toFile } from 'openai';
 import { Op } from 'sequelize';
-import openaiClient, { OPENAI_CONFIGURADO } from '../config/openai.js';
+import openaiClient, { IA_SIMULADA, IA_DISPONIBLE, MENSAJE_IA_NO_DISPONIBLE } from '../config/openai.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { FichaConfeccionMoldeIaIntento, FichaConfeccionMolde } from '../models/index.js';
 import { broadcast } from './sseManager.js';
@@ -44,15 +44,14 @@ export function construirPromptMolde({ fabric, pattern, colors }) {
  * el buffer PNG resultante (la API de los modelos GPT Image siempre contesta en base64,
  * nunca con una URL — helpers/moldeIa.js no guarda nada: eso lo hace el controlador).
  *
- * MODO SIMULADO — sin OPENAI_API_KEY (OPENAI_CONFIGURADO=false) no se llama a la API real:
- * se espera un momento y se devuelve el propio molde como si fuera el resultado. Así todo
- * el resto del flujo (modal, cola, SSE, Repetir/Aprobar) se puede probar de punta a punta
- * sin la clave y sin gastar nada — mismo criterio que REDIS_CONFIGURADO en helpers/
- * colaEmailProducto.js. En cuanto haya OPENAI_API_KEY en .env, esta misma función empieza a
- * llamar a la API real sin tocar nada más.
+ * MODO SIMULADO — solo con IA_SIMULADA=true y sin OPENAI_API_KEY (config/openai.js): no se
+ * llama a la API real, se espera un momento y se devuelve el propio molde como resultado, para
+ * probar el flujo (modal, cola, SSE, Repetir/Aprobar) sin gastar. Sin clave y sin esa
+ * variable, falla con un mensaje claro: nunca un molde haciéndose pasar por imagen generada.
  */
 export async function generarImagenMoldeIA({ buffer, nombreArchivo, prompt }) {
-    if (!OPENAI_CONFIGURADO) {
+    if (!IA_DISPONIBLE) throw new Error(MENSAJE_IA_NO_DISPONIBLE);
+    if (IA_SIMULADA) {
         await new Promise((r) => setTimeout(r, 1500));
         return buffer;
     }

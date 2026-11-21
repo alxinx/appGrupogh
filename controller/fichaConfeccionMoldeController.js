@@ -8,6 +8,7 @@ import { keyDocumento, urlDocumento } from '../helpers/almacenamientoDocumentos.
 import { validarImagen, detectarTipoReal, aWebp } from '../helpers/imagenSegura.js';
 import { esPdfSeguro } from '../helpers/comprobantesMovimiento.js';
 import { construirPromptMolde, marcarIntentosInterrumpidos, MINUTOS_MAXIMO_GENERACION } from '../helpers/moldeIa.js';
+import { IA_DISPONIBLE, MENSAJE_IA_NO_DISPONIBLE } from '../config/openai.js';
 import { encolarGeneracionMoldeIa } from '../helpers/colaMoldeIa.js';
 
 // Molde (JPG/PDF) de una ficha de confección y sus intentos de generación de imagen con IA
@@ -83,6 +84,8 @@ const subirMolde = async (req, res) => {
 // de inmediato: la generación real corre después (helpers/colaMoldeIa.js).
 const iniciarGeneracionMolde = async (req, res) => {
     try {
+        // Sin IA configurada se avisa antes de abrir un intento que no va a poder terminar.
+        if (!IA_DISPONIBLE) return res.status(503).json({ success: false, mensaje: MENSAJE_IA_NO_DISPONIBLE });
         const molde = await FichaConfeccionMolde.findByPk(req.params.idMolde);
         if (!molde) return res.status(404).json({ success: false, mensaje: 'Ese molde no existe.' });
         if (molde.tipoArchivo !== 'jpg') {
