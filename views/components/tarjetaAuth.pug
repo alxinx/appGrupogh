@@ -1,0 +1,22 @@
+//- Tarjeta de las pantallas de acceso: login, olvidé mi contraseña, nueva contraseña y
+//- cambiar contraseña. Una sola copia del logo + título + texto; cada pantalla pone su
+//- formulario como bloque.
+//-
+//- Uso:  +tarjetaAuth({ titulo: 'Hola de nuevo!! 👋', texto: 'Logueate…' })
+//-           form(...)
+mixin tarjetaAuth(opts)
+    div(class="w-full max-w-md cardLogin rounded-xl shadow-lg p-6 sm:p-8")
+        div(class="flex justify-center mb-6")
+            img(src="/img/logo.png" width="100" alt="Grupo GH")
+        h1(class="h1")= opts.titulo
+        if opts.texto
+            p(class="p")= opts.texto
+        block
+
+//- Mensaje de error o de éxito dentro de la tarjeta.
+mixin avisoAuth(tipo, texto)
+    if texto
+        if tipo === 'ok'
+            p(class="mt-4 mb-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm p-3" role="status")= texto
+        else
+            p(class="error" role="alert")= texto

@@ -72,8 +72,7 @@
                 const respuesta = await fetch(formulario.action, {
                     method: 'POST',
                     body: data,
-                    headers: { 'CSRF-Token': document.querySelector('input[name="_csrf"]').value }
-                });
+                    });
 
                 const resultado = await respuesta.json();
 
@@ -230,11 +229,9 @@
                     try {
                         const fd = new FormData();
                         fd.append('documentos', file);
-                        const csrfToken = document.querySelector('input[name="_csrf"]')?.value || '';
                         const r    = await fetch(`/admin/api/tiendas/${idPdv}/documentos/subir`, {
                             method: 'POST', body: fd,
-                            headers: { 'CSRF-Token': csrfToken }
-                        });
+                            });
                         const data = await r.json();
                         liProg.remove();
                         if (data.success && data.archivos?.length) {
@@ -273,11 +270,9 @@
                 btn.innerHTML = '<i class="fi fi-rr-spinner animate-spin text-red-400 text-xs"></i>';
 
                 try {
-                    const csrfToken = document.querySelector('input[name="_csrf"]')?.value || '';
                     const r    = await fetch(`/admin/api/tiendas/documentos/${idDoc}/eliminar`, {
                         method: 'POST',
-                        headers: { 'CSRF-Token': csrfToken }
-                    });
+                        });
                     const data = await r.json();
                     if (data.success) {
                         btn.closest('li').remove();

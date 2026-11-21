@@ -1,0 +1,146 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { toFile } from 'openai';
+import { Op } from 'sequelize';
+import openaiClient, { IA_SIMULADA, IA_DISPONIBLE, MENSAJE_IA_NO_DISPONIBLE } from '../config/openai.js';
+import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
+import { FichaConfeccionMoldeIaIntento, FichaConfeccionMolde } from '../models/index.js';
+import { broadcast } from './sseManager.js';
+
+// Generación de la vista previa fotorealista del molde con IA (admin/procesos/
+// fichas-confeccion/nueva, paso "Carga el molde"). Este archivo es el ÚNICO punto que lee
+// promptsIA.json y el ÚNICO que llama a la API de imágenes de OpenAI — ni el prompt crudo
+// ni la clave salen de acá. controller/fichaConfeccionMoldeController.js nunca manda el
+// texto del prompt al navegador, solo el resultado (la imagen) o un mensaje de error.
+//
+// promptsIA.json es JSON plano leído con fs, no un `import` — un import de un .json queda
+// en el grafo de módulos de Node igual, pero así es explícito que nadie de src/js/ (el
+// código que webpack empaqueta para el navegador) puede traerlo por accidente: ese árbol
+// de imports nunca toca `helpers/`.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROMPTS = JSON.parse(fs.readFileSync(path.join(__dirname, 'promptsIA.json'), 'utf8'));
+
+const MODEL = process.env.MODEL_IA_IMAGE_OPENAI || 'gpt-image-1';
+const SIZE = process.env.SIZE_IA_IMAGE_OPENAI || '1024x1024';
+const QUALITY = process.env.QUALITY_IA_IMAGE_OPENAI || 'medium';
+const N = parseInt(process.env.NUMBER_IA_IMAGE_OPENAI) || 1;
+
+/**
+ * Arma el prompt final sustituyendo {fabric}/{pattern}/{colors} en la plantilla
+ * `garment_render` de promptsIA.json. Un campo sin valor se avisa como tal en el propio
+ * prompt — mejor que mandarle a la IA un hueco en blanco sin que se note.
+ */
+export function construirPromptMolde({ fabric, pattern, colors }) {
+    return PROMPTS.garment_render
+        .replaceAll('{fabric}', fabric || 'not specified')
+        .replaceAll('{pattern}', pattern || 'not specified')
+        .replaceAll('{colors}', colors || 'not specified');
+}
+
+/**
+ * Llama a la API de edición de imágenes de OpenAI con el molde como referencia. Devuelve
+ * el buffer PNG resultante (la API de los modelos GPT Image siempre contesta en base64,
+ * nunca con una URL — helpers/moldeIa.js no guarda nada: eso lo hace el controlador).
+ *
+ * MODO SIMULADO — solo con IA_SIMULADA=true y sin OPENAI_API_KEY (config/openai.js): no se
+ * llama a la API real, se espera un momento y se devuelve el propio molde como resultado, para
+ * probar el flujo (modal, cola, SSE, Repetir/Aprobar) sin gastar. Sin clave y sin esa
+ * variable, falla con un mensaje claro: nunca un molde haciéndose pasar por imagen generada.
+ */
+export async function generarImagenMoldeIA({ buffer, nombreArchivo, prompt }) {
+    if (!IA_DISPONIBLE) throw new Error(MENSAJE_IA_NO_DISPONIBLE);
+    if (IA_SIMULADA) {
+        await new Promise((r) => setTimeout(r, 1500));
+        return buffer;
+    }
+
+    // `toFile` sin `type` manda 'application/octet-stream' — la API lo rechaza con 400
+    // (probado contra la API real): el molde siempre es un JPG en este punto (subirMolde ya
+    // lo validó), así que el mimetype es fijo.
+    const archivo = await toFile(buffer, nombreArchivo, { type: 'image/jpeg' });
+    const resultado = await openaiClient.images.edit({
+        model: MODEL,
+        image: archivo,
+        prompt,
+        size: SIZE,
+        quality: QUALITY,
+        n: N
+    });
+
+    const b64 = resultado.data?.[0]?.b64_json;
+    if (!b64) throw new Error('La API de OpenAI no devolvió ninguna imagen.');
+    return Buffer.from(b64, 'base64');
+}
+
+/**
+ * El trabajo de fondo completo de un intento: baja el molde de R2, genera la imagen,
+ * sube el resultado a la carpeta de BORRADORES (nunca a moldesIa/ — eso es solo al
+ * aprobar, controller/fichaConfeccionMoldeController.js aprobarMoldeIa) y avisa por SSE
+ * al canal del usuario que lo pidió (helpers/sseManager.js, mismo canal que permisos en
+ * vivo — CLAUDE.md §13). Firma estable a propósito: es lo mismo que llama tanto
+ * helpers/colaMoldeIa.js (con o sin Redis) como un reintento manual futuro.
+ */
+export async function procesarIntentoMoldeIa(idIntento) {
+    const intento = await FichaConfeccionMoldeIaIntento.findByPk(idIntento, {
+        include: [{ model: FichaConfeccionMolde, as: 'molde' }]
+    });
+    if (!intento) return;
+
+    try {
+        if (intento.molde.tipoArchivo !== 'jpg') {
+            throw new Error('La generación con IA solo está disponible hoy para moldes en JPG.');
+        }
+
+        const original = await r2PrivateClient.send(new GetObjectCommand({
+            Bucket: R2_PRIVATE_BUCKET,
+            Key: intento.molde.objectKey
+        }));
+        const partes = [];
+        for await (const parte of original.Body) partes.push(parte);
+        const bufferMolde = Buffer.concat(partes);
+
+        const resultado = await generarImagenMoldeIA({
+            buffer: bufferMolde,
+            nombreArchivo: intento.molde.nombreOriginal,
+            prompt: intento.promptFinal
+        });
+
+        // Carpeta aparte de moldesIa/ a propósito — el resultado es un borrador hasta que
+        // se aprueba explícitamente.
+        const objectKeyBorrador = `moldes-ia-borradores/${idIntento}.png`;
+        await r2PrivateClient.send(new PutObjectCommand({
+            Bucket: R2_PRIVATE_BUCKET,
+            Key: objectKeyBorrador,
+            Body: resultado,
+            ContentType: 'image/png',
+            CacheControl: 'no-store'
+        }));
+
+        await intento.update({ estado: 'listo', objectKeyBorrador, generadoEn: new Date() });
+        broadcast(intento.idUsuarioSolicita, 'molde_ia_listo', { idIntento, estado: 'listo' });
+    } catch (e) {
+        console.error('moldeIa(procesarIntentoMoldeIa):', e);
+        await intento.update({ estado: 'error', errorMensaje: e.message || 'No se pudo generar la imagen.' }).catch(() => {});
+        broadcast(intento.idUsuarioSolicita, 'molde_ia_listo', { idIntento, estado: 'error', errorMensaje: e.message });
+    }
+}
+
+
+// Un intento que pasa este tiempo en 'procesando' ya no va a terminar: OpenAI tarda 20-60s,
+// así que esto solo pasa si el proceso que lo generaba murió (sin Redis, la generación corre
+// dentro de Express — helpers/colaMoldeIa.js). Se cierra como error para que la pantalla
+// ofrezca reintentar en vez de esperar para siempre.
+export const MINUTOS_MAXIMO_GENERACION = 3;
+export const MENSAJE_INTERRUMPIDO = 'Se interrumpió la generación; vuelve a intentarlo.';
+
+/** Pasa a 'error' los intentos en 'procesando' creados antes de `antesDe`. Devuelve cuántos. */
+export async function marcarIntentosInterrumpidos({ antesDe, idIntento } = {}) {
+    const [n] = await FichaConfeccionMoldeIaIntento.update(
+        { estado: 'error', errorMensaje: MENSAJE_INTERRUMPIDO },
+        // Condicionado al estado (CLAUDE.md §9): si justo terminó, no se pisa el resultado.
+        { where: { estado: 'procesando', createdAt: { [Op.lt]: antesDe }, ...(idIntento ? { idIntento } : {}) } }
+    );
+    return n;
+}

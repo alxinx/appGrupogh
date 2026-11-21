@@ -116,8 +116,10 @@ aside(
 
   // Logout
   div(class="p-4 border-t border-gray-300")
+    a(href="/cuenta/contrasena" class="w-full flex items-center justify-center gap-2 mb-2 px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100 hover:text-gh-primaryHover")
+        i(class="fi fi-rr-key")
+        span Cambiar contraseña
     form(action="/logout" method="POST")
-        input(type="hidden" name="_csrf" value=csrfToken)
         button(
         class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium shadow-neutral-500 shadow-2xl cursor-pointer"    )
             i(class="fi fi-rr-sign-out-alt")

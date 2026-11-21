@@ -19,6 +19,23 @@ export const fmtFecha = d => new Date(d).toLocaleDateString('es-CO', { day: '2-d
 export const fmtHora  = d => new Date(d).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
 
 /**
+ * Fila de varias columnas que pueden partirse en varios renglones: cada columna se escribe
+ * desde `startY` y la fila termina debajo de la más alta. `cols` = [{ txt, x, w, align,
+ * bold, size }]. La usan las tirillas de factura del POS (storeControllers.js), que tenían
+ * cada una su copia.
+ */
+export function filaColumnas(doc, cols, startY) {
+    let maxY = startY;
+    for (const { txt, x, w, align, bold, size } of cols) {
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size || 6.5);
+        doc.text(txt, x, startY, { width: w, align: align || 'left', lineBreak: true });
+        if (doc.y > maxY) maxY = doc.y;
+        doc.y = startY;
+    }
+    doc.y = maxY + 1;
+}
+
+/**
  * Crea el documento y devuelve las piezas para armarlo.
  *
  * `alto` lo calcula cada comprobante según su contenido: la tirilla se imprime en rollo

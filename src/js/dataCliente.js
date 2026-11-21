@@ -260,14 +260,6 @@
     });
 
     // ─── DOCUMENTOS EXISTENTES (modo edición) ────────────────────────────────
-    const iconoFormato = (fmt) => {
-        const f = (fmt || '').toLowerCase();
-        if (f === 'pdf')  return 'fi-rr-file-pdf text-red-400';
-        if (f === 'doc' || f === 'docx') return 'fi-rr-file-word text-blue-400';
-        if (f === 'xls' || f === 'xlsx') return 'fi-rr-file-spreadsheet text-emerald-500';
-        if (['jpg','jpeg','png','webp','gif'].includes(f)) return 'fi-rr-picture text-purple-400';
-        return 'fi-rr-document text-slate-400';
-    };
 
     const docsExistentesEl = document.getElementById('docs-existentes');
 
@@ -277,7 +269,7 @@
 
         docsExistentesEl.innerHTML = archivos.map(a => `
             <li class="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
-                <i class="fi ${iconoFormato(a.formato)} text-base flex-shrink-0"></i>
+                <i class="fi ${window.iconoDoc(a.formato, { conColor: true })} text-base flex-shrink-0"></i>
                 <a href="${a.url}" target="_blank" rel="noopener"
                    class="text-xs text-slate-700 font-medium truncate flex-1 hover:text-pink-500 hover:underline"
                    title="Ver archivo">${a.nombreDocumento}</a>

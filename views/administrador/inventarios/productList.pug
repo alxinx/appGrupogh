@@ -15,8 +15,7 @@ block contenedor
                             //- relative + z-30: el menú "Más" cae sobre los filtros y la tabla, que
                             //- tienen su propio backdrop-filter y si no lo taparían.
                             div(class="col-span-12 grid grid-cols-1 md:grid-cols-2  bg-white/70 backdrop-blur-md rounded-2xl p-6 relative z-30"
-                                data-campos-exportar=JSON.stringify(camposExportar || [])
-                                data-csrf=csrfToken)
+                                data-campos-exportar=JSON.stringify(camposExportar || []))
                                 include  ./headers/headerProducts.pug
                                 include  ./headers/actionBtns.pug
 

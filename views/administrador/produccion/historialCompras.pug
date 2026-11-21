@@ -1,0 +1,76 @@
+extends ../../layout/index
+block contenedor
+    //- Historial de compras (admin/insumos/compra/historial) — listado real de
+    //- ORDENES_COMPRA (controller/ordenesCompraController.js, historialComprasJson). Mismo
+    //- patrón que supplierList.js: busqueda + filtros + paginación de servidor
+    //- (src/js/paginador.js), nada inventado — una orden nueva aparece acá apenas se crea.
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- ── MIGA DE PAN ───────────────────────────────────────────
+                            div(class="col-span-12 flex items-center gap-2 text-sm")
+                                a(href="/admin/insumos" class="flex items-center gap-1.5 text-slate-500 hover:text-gh-primaryHover transition-colors")
+                                    i(class="fi fi-rr-boxes text-xs")
+                                    | Insumos
+                                i(class="fi fi-rr-angle-small-right text-[10px] text-slate-300")
+                                span(class="text-slate-700 font-semibold") Historial de compras
+
+                            //- ── HEADER ─────────────────────────────────────────────────
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-start md:justify-between gap-4")
+                                div(class="flex items-start gap-4")
+                                    div(class="w-14 h-14 rounded-2xl bg-gh-primary flex items-center justify-center flex-shrink-0 shadow-lg shadow-gh-primary/30")
+                                        i(class="fi fi-rr-clock-three text-white text-xl")
+                                    div
+                                        h1(class="text-2xl font-bold text-slate-800") Historial de compras
+                                        p(class="text-sm text-slate-500 mt-1") Órdenes de compra y cotizaciones a proveedores.
+                                a(href="/admin/insumos/compra" class="btn btn-danger btn-sm text-xs whitespace-nowrap flex items-center gap-1.5")
+                                    i(class="fi fi-rr-plus-small text-xs")
+                                    | Nueva orden
+
+                            //- ── LISTADO ────────────────────────────────────────────────
+                            section(class="col-span-12 cards cardsWhite p-6 flex flex-col gap-4")
+                                div(class="flex flex-wrap items-center gap-3")
+                                    div(class="relative flex-1 min-w-[220px]")
+                                        input#busqueda-historial(type="text" placeholder="Buscar por número de orden o proveedor..." autocomplete="off" class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20")
+                                        i(class="fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs")
+                                    select#filtro-tipo-historial(class="py-2 px-3 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20")
+                                        option(value="") Todos los tipos
+                                        each t in tiposOrden
+                                            option(value=t.valor)= t.etiqueta
+                                    select#filtro-estado-historial(class="py-2 px-3 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20")
+                                        option(value="") Todos los estados
+                                        each e in estadosOrden
+                                            option(value=e.valor)= e.etiqueta
+                                    span#contador-historial(class="text-sm text-slate-500 ml-auto")
+
+                                div(class="overflow-x-auto")
+                                    table(class="w-full text-sm")
+                                        thead
+                                            tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                th(class="py-2 pr-3 font-semibold") Orden
+                                                th(class="py-2 pr-3 font-semibold") Proveedor
+                                                th(class="py-2 pr-3 font-semibold") Tipo
+                                                th(class="py-2 pr-3 font-semibold") Estado
+                                                th(class="py-2 pr-3 font-semibold text-center") Ítems
+                                                th(class="py-2 pr-3 font-semibold text-right") Total
+                                                th(class="py-2 pr-3 font-semibold") Origen
+                                                th(class="py-2 pr-3 font-semibold") Fecha
+                                                th(class="py-2 font-semibold text-right") Acciones
+                                        tbody#tabla-historial
+                                            tr
+                                                td(colspan="9" class="py-12 text-center text-sm text-slate-400")
+                                                    i(class="fi fi-rr-spinner animate-spin mr-2")
+                                                    | Cargando...
+
+                                div#paginacion-historial
+
+        script(src="/js/paginador.js")
+        script(src="/js/historialCompras.js")

@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Provedores, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion } from '../models/index.js';
+import { Provedores, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Municipios, Departamentos } from '../models/index.js';
 import { validarDocumento, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR } from './tiposDocumento.js';
 
 // Un proveedor, escrito desde un solo lugar: lo usan el alta del panel (saveSupplier), su
@@ -42,6 +42,13 @@ export const validarDocumentoProveedor = async (tipo, numero, idExcluir = null) 
 // encarga la producción, y las fotos de sus máquinas y su espacio dicen si puede con ella.
 // Se comparan por nombre normalizado porque las categorías son datos fijos de la tabla.
 const CATEGORIAS_CON_FOTOS = ['confeccionista'];
+
+// Nombre EXACTO de la categoría del taller de confección (CATEGORIAS_DE_PROVEDORES.nombre):
+// la única que se puede asignar como taller en una ficha y la que arma admin/confeccionistas.
+export const CATEGORIA_CONFECCIONISTA = 'Confeccionista';
+// Prefijo del objeto de R2 de las fotos del lugar de trabajo (registro web del proveedor):
+// provedores/{idProveedor}/lugar-trabajo-{ts}-{i}.webp. La lista de confeccionistas las busca por él.
+export const PREFIJO_FOTOS_LUGAR_TRABAJO = 'lugar-trabajo';
 const normalizar = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
 export const requiereFotosLugarTrabajo = (categoria) => CATEGORIAS_CON_FOTOS.includes(normalizar(categoria?.nombre ?? categoria));
@@ -111,3 +118,26 @@ export async function crearProveedorCompleto({ datos, categorias = [], cuentas =
     if (docs.length) await Documentacion.bulkCreate(docs, { transaction });
     return proveedor;
 }
+
+// ── Presentación ─────────────────────────────────────────────────────────────────────────
+
+/** "Distribuidora Andina" → "DA". Para el avatar de un proveedor en cualquier lista. */
+export const inicialesProveedor = (nombre) =>
+    String(nombre || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('') || '—';
+
+/**
+ * Ciudad y departamento (códigos DIVIPOLA en PROVEDORES, CLAUDE.md §6) de VARIOS proveedores
+ * de una sola vez: dos consultas con Op.in, nunca un findOne por proveedor (CLAUDE.md §7).
+ * Cada proveedor trae `ciudad` y `departamento` (códigos).
+ */
+export const resolverUbicacionesProveedores = async (proveedores) => {
+    const idsCiudad = [...new Set(proveedores.map(p => p.ciudad).filter(Boolean))];
+    const idsDepto   = [...new Set(proveedores.map(p => p.departamento).filter(Boolean))];
+    const [municipios, departamentos] = await Promise.all([
+        idsCiudad.length ? Municipios.findAll({ where: { id: { [Op.in]: idsCiudad } }, attributes: ['id', 'nombre'], raw: true }) : [],
+        idsDepto.length  ? Departamentos.findAll({ where: { id: { [Op.in]: idsDepto } }, attributes: ['id', 'nombre'], raw: true }) : []
+    ]);
+    const mapaMunicipios   = new Map(municipios.map(m => [m.id, m.nombre]));
+    const mapaDepartamentos = new Map(departamentos.map(d => [d.id, d.nombre]));
+    return { mapaMunicipios, mapaDepartamentos };
+};

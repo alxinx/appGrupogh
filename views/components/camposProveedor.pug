@@ -1,0 +1,68 @@
+//- Campos del alta de un proveedor, en una sola copia. Los usan la página "Nuevo proveedor"
+//- (supplier/forms/supplier.pug) y el modal "Crear proveedor" de la orden de compra
+//- (components/modalNuevoProveedor.pug). Los dos guardan por el mismo POST
+//- /admin/provedores/new (saveSupplier), así que piden exactamente los mismos campos.
+//-
+//- Comportamiento compartido, sin JS propio:
+//-   - tipo + número de documento: +documentoProveedor (src/js/documentoProveedor.js);
+//-   - departamento → ciudad: src/js/ubicacionProveedor.js, por los ids
+//-     #departamentoSelect / #ciudadSelect (no puede haber dos de estos en una página);
+//-   - la confirmación: src/js/confirmarProveedor.js lee estos mismos names.
+//-
+//- No traen grilla propia: entran en la grilla de 12 del formulario que los incluye.
+//- opts.col  anchos por campo; los que no se pasan quedan como en la página de alta.
+include ./documentoProveedor.pug
+
+//- Razón social, documento, ubicación, correo y categorías.
+mixin datosBasicosProveedor(opts)
+    - const c = Object.assign({ razon: 'col-span-12 md:col-span-6', tipo: 'col-span-12 md:col-span-3', numero: 'col-span-12 md:col-span-3', campo: 'col-span-12 md:col-span-3' }, opts.col)
+    div(class=c.razon)
+        label.label.label-required Razón social (nombre del proveedor)
+            input(class="field-text" type="text" name="razonSocial" id="razonSocial" placeholder="¿Cómo se llama el proveedor?" autocomplete="off" value=opts.razonSocial || '')
+
+    +documentoProveedor({ tipos: opts.tiposDocumento, nombre: 'nit', claseTipo: c.tipo, claseNumero: c.numero })
+
+    div(class=c.campo)
+        label.label.label-required Departamento
+            select(name="departamentoSelect" id="departamentoSelect" class="field-text")
+                option(value="") Selecciona el departamento
+                each departamento in opts.departamentos || []
+                    option(value=departamento.id)= departamento.nombre
+            span.select-icon
+                i.fi-rr-chevron-double-down
+
+    //- Ciudad: la llena ubicacionProveedor.js con las del departamento elegido.
+    div(class=c.campo)
+        label.label.label-required Ciudad
+            div(class="select-wrapper")
+                select(name="ciudadSelect" id="ciudadSelect" class="field-text" disabled)
+                    option(value="") Elige primero el departamento
+                span.select-icon
+                    i.fi-rr-chevron-double-down
+
+    div(class=c.campo)
+        label.label.label-required Dirección del proveedor
+            input(class="field-text" type="text" id="direccionProvedor" name="direccionProvedor" placeholder="Calle 10 # 20 - 30")
+
+    div(class=c.campo)
+        label.label.label-required Email
+            input(class="field-text" type="email" id="emailProvedor" name="emailProvedor" placeholder="ventas@proveedor.com")
+
+    div(class="col-span-12")
+        label.label.label-required ¿Qué categorías nos vende este proveedor?
+            div(class="flex flex-wrap gap-2 mt-2")
+                each categoria in opts.categorias || []
+                    label(class="subItems")
+                        input(type="checkbox" name="categorias" value=categoria.idCategoria class="categoria-checkbox checkbox")
+                        span(class="text-xs font-bold text-gray-700 uppercase")= categoria.nombre
+
+//- Nombre y teléfono de la persona de contacto.
+mixin contactoProveedor(opts)
+    - const c = Object.assign({ contacto: 'col-span-12 md:col-span-6' }, (opts || {}).col)
+    div(class=c.contacto)
+        label.label.label-required Nombre del contacto
+            input(class="field-text" type="text" id="nombreContacto" name="nombreContacto" placeholder="JUAN PEREZ")
+
+    div(class=c.contacto)
+        label.label Teléfono
+            input(class="field-text" type="text" id="telefonoContacto" name="telefonoContacto" placeholder="3001234567" maxlength="10" inputmode="numeric")

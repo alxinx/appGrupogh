@@ -1,0 +1,9 @@
+[
+    { "codigo": "UNICA", "etiqueta": "ÚNICA", "exclusiva": true },
+    { "codigo": "XS",  "etiqueta": "XS" },
+    { "codigo": "S",   "etiqueta": "S" },
+    { "codigo": "M",   "etiqueta": "M" },
+    { "codigo": "L",   "etiqueta": "L" },
+    { "codigo": "XL",  "etiqueta": "XL" },
+    { "codigo": "XXL", "etiqueta": "XXL" }
+]

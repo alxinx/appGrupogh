@@ -1,0 +1,192 @@
+extends ../../layout/index
+block contenedor
+    //- Nuevo corte (admin/procesos/cortes/nuevo): orden de corte → guía para el cortador.
+    //- El formulario lo maneja src/js/corteNuevo.js (bloques dinámicos desde los <template>
+    //- de abajo) y los totales salen de src/js/corteCalculos.js. Todavía no guarda nada en la
+    //- base: la guía se arma e imprime en el navegador.
+    include ../../components/headerAdmin
+    include ../../components/selectBuscable.pug
+    include ../../components/fechaInput.pug
+
+    //- Impresión de la guía. CSS propio y no utilidades: aplica solo al imprimir y sobre el
+    //- contenedor que el JS cuelga directo de <body> (ver `montarGuia` en corteNuevo.js).
+    style.
+        .guia-obs-impresa { display: none; }
+        @media print {
+            @page { size: letter; margin: 12mm; }
+            html.guia-abierta body > *:not(#guia-corte) { display: none !important; }
+            html.guia-abierta, html.guia-abierta body { background: #fff !important; overflow: visible !important; height: auto !important; min-height: 0 !important; }
+            #guia-corte { position: static !important; overflow: visible !important; background: #fff !important; padding: 0 !important; }
+            #guia-corte [data-no-imprimir] { display: none !important; }
+            #guia-corte .guia-hoja { box-shadow: none !important; border: 0 !important; padding: 0 !important; max-width: none !important; margin: 0 !important; border-radius: 0 !important; }
+            #guia-corte .guia-card, #guia-corte .guia-bloque { break-inside: avoid; page-break-inside: avoid; }
+            #guia-corte textarea { display: none !important; }
+            #guia-corte .guia-obs-impresa { display: block; }
+            #guia-corte * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div#corte-nuevo(class="mainDashboard" data-catalogos=JSON.stringify(catalogosCorte))
+
+                            //- ── Encabezado y acciones (§4.1.1: Volver → secundarias → principal)
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-scissors',
+                                    titulo:    'Nuevo corte',
+                                    subtitulo: 'Orden de corte y guía para el taller',
+                                    iconoSub:  'fi-rr-ruler-combined'
+                                })
+                                div(class="flex flex-wrap items-center gap-2 flex-shrink-0")
+                                    a(href="/admin/procesos" class="btn btn-secondary")
+                                        i(class="fi fi-rr-arrow-left")
+                                        | Volver
+                                    button#btn-cargar-ejemplo(type="button" class="btn btn-secondary")
+                                        i(class="fi fi-rr-magic-wand")
+                                        | Cargar ejemplo
+
+                            //- ── Cabecera de la orden
+                            section(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-5 md:p-6")
+                                h2(class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2")
+                                    i(class="fi fi-rr-document text-gh-primaryHover")
+                                    | Datos de la orden
+                                div(class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4")
+                                    div
+                                        label(class="label label-required" for="corte-fecha") Fecha
+                                        input#corte-fecha(type="text" autocomplete="off" placeholder="dd/mm/aaaa" class="field-text")
+                                        p(class="label-error hidden" data-error-de="corte-fecha")
+                                    div
+                                        label(class="label label-required" for="corte-tela") Tela
+                                        select#corte-tela(class="field-text")
+                                            option(value="") Elige la tela
+                                            each t in catalogosCorte.telas
+                                                option(value=t.id)= t.nombre
+                                        p(class="label-error hidden" data-error-de="corte-tela")
+                                    div
+                                        label(class="label label-required" for="corte-proveedor") Proveedor
+                                        select#corte-proveedor(class="field-text")
+                                            option(value="") Elige el proveedor
+                                            each p in catalogosCorte.proveedores
+                                                option(value=p.id)= p.nombre
+                                        if !catalogosCorte.proveedores.length
+                                            p(class="text-xs text-amber-600 mt-1") No hay proveedores activos con la categoría "Textiles y Telas".
+                                        p(class="label-error hidden" data-error-de="corte-proveedor")
+                                    div
+                                        label(class="label label-required" for="corte-trazos") Número de trazos
+                                        input#corte-trazos(type="number" min="1" max="99" step="1" value="1" inputmode="numeric" class="field-text")
+                                        p(class="label-error hidden" data-error-de="corte-trazos")
+
+                            //- ── Referencias (1 a 8 bloques)
+                            section(class="col-span-12 space-y-4")
+                                div(class="flex items-center justify-between gap-3 px-1")
+                                    h2(class="text-base font-bold text-slate-800 flex items-center gap-2")
+                                        i(class="fi fi-rr-shirt-long-sleeve text-gh-primaryHover")
+                                        | Referencias
+                                        span#contador-referencias(class="text-xs font-semibold text-slate-400")
+                                div#lista-referencias(class="space-y-4")
+                                button#btn-agregar-referencia(type="button" class="w-full rounded-2xl border-2 border-dashed border-slate-300 hover:border-gh-primary hover:bg-gh-primarySoft/40 text-slate-500 hover:text-gh-primaryHover py-4 font-semibold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed")
+                                    i(class="fi fi-rr-plus")
+                                    | Agregar referencia
+
+                            //- ── Resumen en vivo + acción principal
+                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                div#resumen-orden(class="flex flex-wrap gap-6 text-sm text-slate-500")
+                                div(class="flex flex-wrap gap-2 justify-end")
+                                    button#btn-generar-guia(type="button" class="btn btn-danger")
+                                        i(class="fi fi-rr-scissors")
+                                        | Generar guía de corte
+
+        //- ── Plantillas de los bloques dinámicos ───────────────────────────────
+        template#tpl-referencia
+            article(data-ref class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 md:p-6 space-y-5")
+                div(class="flex items-center justify-between gap-3")
+                    span(class="inline-flex items-center gap-2 rounded-full bg-gh-primarySoft text-gh-primaryHover px-3 py-1 text-xs font-bold uppercase tracking-wide")
+                        i(class="fi fi-rr-tags")
+                        span(data-ref-numero) Referencia 1
+                    button(type="button" data-quitar-ref class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-500 transition cursor-pointer")
+                        i(class="fi fi-rr-trash")
+                        | Quitar
+
+                div(class="grid grid-cols-1 md:grid-cols-12 gap-4")
+                    div(class="md:col-span-3")
+                        label(class="label label-required") Código
+                        input(type="text" data-campo="codigo" maxlength="20" placeholder="Ej: 0438" autocomplete="off" class="field-text")
+                        p(class="label-error hidden" data-error-de="codigo")
+                    div(class="md:col-span-6")
+                        label(class="label label-required") Prenda (referencia existente)
+                        select(data-campo="familia" class="field-text")
+                        p(class="label-error hidden" data-error-de="familia")
+                    div(class="md:col-span-3")
+                        label(class="label label-required") Veces por talla
+                        input(type="number" data-campo="veces" min="1" max="99" step="1" value="1" inputmode="numeric" class="field-text")
+                        p(class="label-error hidden" data-error-de="veces")
+
+                div
+                    span(class="label label-required") Tipo de prenda
+                    div(data-tipos class="space-y-2")
+                    p(class="label-error hidden" data-error-de="tipos")
+
+                div
+                    span(class="label label-required") Tallas
+                    div(data-tallas class="flex flex-wrap gap-2")
+                    p(class="label-error hidden" data-error-de="tallas")
+
+                div(class="space-y-3")
+                    div(class="flex items-center justify-between")
+                        span(class="label label-required mb-0") Materiales
+                        span(data-contador-materiales class="text-xs font-semibold text-slate-400")
+                    div(data-materiales class="space-y-3")
+                    button(type="button" data-agregar-material class="inline-flex items-center gap-1.5 text-sm font-semibold text-gh-primaryHover hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline")
+                        i(class="fi fi-rr-plus-small")
+                        | Agregar material
+
+                div
+                    label(class="label") Separar piezas
+                        span(class="text-slate-400 font-normal")  — instrucción para después de cortar (opcional)
+                    textarea(data-campo="separar" rows="2" maxlength="300" placeholder="Ej: Separar los frentes del forro antes de pasarlos a confección" class="field-text resize-y")
+
+                div(data-resumen-ref class="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-100 pt-4 text-sm text-slate-500")
+
+        template#tpl-material
+            div(data-material class="rounded-xl border border-l-4 p-4 space-y-3")
+                div(class="flex flex-col sm:flex-row sm:items-center gap-3")
+                    span(data-mat-numero class="inline-flex w-fit items-center rounded-lg px-2.5 py-1 text-xs font-black tracking-wide") MAT 1
+                    input(type="text" data-campo="nombre-material" list="sugerencias-materiales" maxlength="60" placeholder="Nombre del material (ej: Polilicra principal, Forro, RIB)" autocomplete="off" class="field-text flex-1")
+                    button(type="button" data-quitar-material title="Quitar material" class="self-end sm:self-auto inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-red-500 transition cursor-pointer")
+                        i(class="fi fi-rr-cross-small")
+                        | Quitar
+                p(class="label-error hidden" data-error-de="nombre-material")
+                div
+                    div(data-chips class="flex flex-wrap items-center gap-2 rounded-lg border border-gray-300 bg-white p-2 focus-within:ring-2 focus-within:ring-gh-primary")
+                        input(type="text" data-pieza-input maxlength="40" placeholder="Escribe una pieza y presiona Enter" autocomplete="off" class="flex-1 min-w-[12rem] border-0 bg-transparent px-1 py-1 text-sm outline-none")
+                    p(class="label-error hidden" data-error-de="piezas")
+                    div(data-sugerencias class="mt-2 flex flex-wrap gap-1.5")
+
+        datalist#sugerencias-materiales
+            each t in catalogosCorte.telas
+                option(value=t.nombre)
+
+        //- ── Guía de corte (modal de pantalla completa). corteNuevo.js la mueve a <body>.
+        div#guia-corte(class="hidden fixed inset-0 z-[60] overflow-y-auto bg-slate-900/50 backdrop-blur-sm p-0 md:p-6" role="dialog" aria-modal="true" aria-labelledby="guia-titulo")
+            div(data-no-imprimir class="sticky top-0 z-10 mx-auto max-w-[900px] flex flex-wrap items-center justify-between gap-2 bg-white/95 backdrop-blur md:rounded-t-2xl border-b border-slate-200 px-4 py-3")
+                button#guia-editar(type="button" class="btn btn-secondary")
+                    i(class="fi fi-rr-pencil")
+                    | Editar
+                div(class="flex flex-wrap gap-2")
+                    button#guia-nueva(type="button" class="btn btn-secondary")
+                        i(class="fi fi-rr-document")
+                        | Nueva orden
+                    button#guia-imprimir(type="button" class="btn btn-danger")
+                        i(class="fi fi-rr-print")
+                        | Imprimir
+            div#guia-contenido(class="guia-hoja mx-auto max-w-[900px] bg-white md:rounded-b-2xl shadow-xl px-4 py-6 md:px-10 md:py-8 text-base text-slate-800")
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/corteNuevo.js")

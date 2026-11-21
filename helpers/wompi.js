@@ -3,9 +3,7 @@ import crypto from 'crypto';
 // Algoritmo verificado contra la documentación oficial de Wompi (docs.wompi.co) —
 // no se debe modificar sin volver a confirmar ahí, un error acá deja pasar pagos falsificados.
 
-const WOMPI_BASE_URL = process.env.WOMPI_BASE_URL || 'https://sandbox.wompi.co/v1';
 const PUBLIC_KEY = process.env.PUBLIC_KEY;
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const INTEGRITY_SECRET = process.env.TEST_INTEGRITY || process.env.INTEGRITY_SECRET;
 const EVENTS_SECRET = process.env.TEST_EVENTS || process.env.EVENTS_SECRET;
 
@@ -53,12 +51,3 @@ export function verificarChecksumWebhook(payload) {
     return checksumCalculado.toLowerCase() === String(signature.checksum).toLowerCase();
 }
 
-// Consulta el estado real de una transacción directamente en Wompi (para la reconciliación).
-export async function consultarTransaccion(idTransaccionWompi) {
-    const res = await fetch(`${WOMPI_BASE_URL}/transactions/${idTransaccionWompi}`, {
-        headers: { Authorization: `Bearer ${PUBLIC_KEY}` }
-    });
-    if (!res.ok) throw new Error(`Wompi respondió ${res.status} al consultar la transacción ${idTransaccionWompi}`);
-    const { data } = await res.json();
-    return data;
-}

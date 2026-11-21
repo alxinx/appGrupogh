@@ -1,0 +1,3 @@
+{
+  "garment_render": "You are receiving a flat technical sketch of a garment as a reference image. Generate a front and back view of this garment on a neutral dress form mannequin, side by side. Garment details:\n- Fabric: {fabric}\n- Pattern: {pattern}\n- Colors: {colors}\nStyle: white studio background, photorealistic fabric rendering, soft studio lighting, high-detail fabric texture, realistic material appearance. No text, no labels."
+}

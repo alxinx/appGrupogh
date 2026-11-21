@@ -1,38 +1,23 @@
 extends ../layout/index
+include ../components/tarjetaAuth
 block contenedor
-    // Card
-    div(class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 sm:p-8")
-      
-      // Logo placeholder
-      div(class="flex justify-center mb-6")
-            img(src="/img/logo.png" width="100" alt="")
+    +tarjetaAuth({ titulo: '¿Olvidaste tu contraseña?', texto: 'Escribe el correo con el que entras y te enviamos un enlace para crear una nueva 😎' })
+        +avisoAuth('error', error)
+        +avisoAuth('ok', enviado)
 
-      // Title
-      h1(class="h1")
-        | Como recuperar tu contraseña?
-      
-      p(class="p")
-        | Solo ingresa tu correo electronico y te enviaré un link para que restablescas la contraseña😎
-
-      // Form
-      form(class="space-y-4")
-        
-        // Email
-        div
-          label(class="label")
-            |Tu Email
-          input(
-            type="text"
-            placeholder="Ingresa el email con que estas registrado"
-            class="field-text"
-          )
-
-        // Forgot password
-        div(class="flex justify-end")
-          a(href="/", class="link")
-            | Volver a loguearse 
-
-        // Button
-        button(type="submit" class="btn-primary")
-    
-          | Recuperar
+        form(action="/forgot" method="post" class="space-y-4")
+            div
+                label(class="label" for="forgot-email") Tu email
+                input#forgot-email(
+                    type="email"
+                    name="emailUsuario"
+                    autocomplete="username"
+                    required
+                    maxlength="254"
+                    value=emailUsuario || ""
+                    placeholder="Ingresa el email con que estás registrado"
+                    class="field-text"
+                )
+            div(class="flex justify-end")
+                a(href="/" class="link") Volver a iniciar sesión
+            button(type="submit" class="btn btn-primary w-full")= enviado ? 'Enviar otro enlace' : 'Enviarme el enlace'

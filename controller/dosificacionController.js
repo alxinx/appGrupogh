@@ -1,10 +1,8 @@
-import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, Usuarios, Stock, DetalleTraslados, Empleados, PuntosDeVenta, InsidenciaTraslado } from '../models/index.js';
-import jwt from "jsonwebtoken";
+import { Dosificaciones, Pack, DetallesPack, Productos, Traslados, DetalleTraslados, Empleados, PuntosDeVenta, InsidenciaTraslado } from '../models/index.js';
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
 import { formatearFecha } from '../helpers/helpers.js';
 import db from '../config/bd.js';
-import { v4 as uuidv4 } from 'uuid'; // Para generar los códigos de etiqueta únicos
 import { Op } from 'sequelize';
 import ExcelJS from 'exceljs';
 import {
@@ -30,14 +28,11 @@ import { PORTAL_URL } from '../config/marca.js';
 dotenv.config()
 
 
-
-
 //DASHBOARD DOSIDI
 const homeDose = async (req, res) => {
     return res.status(201).render('./administrador/dose/homeDose', {
         pagina: "Dosificacion de productos",
         subPagina: "Dosificar Productos",
-        csrfToken: req.csrfToken(),
         currentPath: '/dosificaciones',
         subPath: 'dosificaciones',
     })
@@ -48,20 +43,11 @@ const newDose = async (req, res) => {
     return res.status(201).render('./administrador/dose/new', {
         pagina: "Dosificacion de productos",
         subPagina: "Dosificar Productos",
-        csrfToken: req.csrfToken(),
         currentPath: '/dosificaciones',
         subPath: 'dosificar',
         btnName: "Guardar Dosificación"
     })
 }
-
-
-
-
-
-
-
-
 
 
 const guardarDosificacion = async (req, res) => {
@@ -117,8 +103,6 @@ const guardarDosificacion = async (req, res) => {
                 transaction: t,
                 returning: true
             });
-
-
 
 
             // Preparar los detalles para este grupo de bultos
@@ -180,8 +164,6 @@ function ejecutarAlgoritmoKittingBackend(productosArray, capacidad) {
     });
     return calcularKitting(stock, capacidad);
 }
-
-
 
 
 const obtenerDosificacionesPaginadas = async (req, res) => {
@@ -257,9 +239,6 @@ const obtenerDosificacionesPaginadas = async (req, res) => {
 };
 
 
-
-
-
 //VISUAL DE LA DOSIFICACION
 const verDosificacion = async (req, res) => {
     try {
@@ -330,7 +309,6 @@ const verDosificacion = async (req, res) => {
             subPagina: `Ver dosificacion de ${codigo}`,
             idDosificacion,
             codigoDose: codigo,
-            csrfToken: req.csrfToken(),
             currentPath: '/dosificaciones',
             subPath: 'dosificaciones',
             lotes: lotesOrdenados,
@@ -342,31 +320,6 @@ const verDosificacion = async (req, res) => {
         res.status(500).send('Error interno del servidor');
     }
 }
-
-
-
-const verDosificacionDetalle = async (req, res) => {
-    try {
-        const { idDosificacion } = req.params;
-        const dose = await Dosificacion.findByPk(idDosificacion, {
-            include: [{
-                model: Pack,
-                as: 'PACKs',
-                include: [{
-                    model: DetallesPack,
-                    as: 'DETALLES_PACKs',
-                    include: [{ model: Producto, as: 'producto' }]
-                }]
-            }]
-        });
-
-
-
-
-    } catch (error) {
-        res.status(500).send('Error');
-    }
-};
 
 
 //formatearFecha
@@ -394,15 +347,6 @@ const obtenerMetadataDose = async (req, res) => {
 
         if (!dose) return res.status(404).json({ error: 'No encontrada' });
 
-        const gruposLotes = dose.PACKs.reduce((acc, pack) => {
-            const lote = pack.numLote;
-            if (!acc[lote]) acc[lote] = [];
-            acc[lote].push(pack);
-            return acc;
-        }, {});
-
-        // DEBUG: Verifica si aquí los valores vienen en 0 o con datos
-
         const totalBultos = dose.PACKs ? dose.PACKs.length : 0;
 
         const totalPrendas = (dose.PACKs || []).reduce((accPack, pack) => {
@@ -429,7 +373,6 @@ const obtenerMetadataDose = async (req, res) => {
         res.status(500).json({ error: 'Error interno' });
     }
 };
-
 
 
 const obtenerProductosPorDose = async (req, res) => {
@@ -470,10 +413,7 @@ const obtenerProductosPorDose = async (req, res) => {
 };
 
 
-
-
 //STATS
-
 
 
 const widgetGlobales = async (req, res) => {
@@ -487,19 +427,6 @@ const widgetGlobales = async (req, res) => {
         totalPacks: totalP
     });
 };
-
-
-
-const nroPacks = async (req, res) => {
-    try {
-        const total = await Dosificaciones.count();
-        res.json({ total })
-
-    } catch (error) {
-        res.status(500).json({ error: 'Error Al Contar' })
-    }
-}
-
 
 
 const trasladarPacks = async (req, res) => {
@@ -691,9 +618,6 @@ const imprimirEtiquetasLote = async (req, res) => {
         res.status(500).send('Error interno al generar etiquetas');
     }
 };
-
-
-
 
 
 const imprimirEtiquetasPorPack = async (req, res) => {
@@ -1398,8 +1322,8 @@ const historialPack = async (req, res) => {
 };
 
 export {
-    guardarDosificacion, homeDose, verDosificacionDetalle, obtenerMetadataDose,
-    newDose, obtenerDosificacionesPaginadas, nroPacks, verDosificacion, widgetGlobales,
+    guardarDosificacion, homeDose, obtenerMetadataDose,
+    newDose, obtenerDosificacionesPaginadas, verDosificacion, widgetGlobales,
     obtenerProductosPorDose, trasladarPacks, imprimirEtiquetasLote, imprimirEtiquetasPorPack,
     imprimirComprobanteTraslado, historialPack, imprimirGuiaEmpaque
 };

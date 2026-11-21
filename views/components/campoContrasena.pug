@@ -1,0 +1,28 @@
+//- Campo de contraseña con botón para mostrarla u ocultarla. El comportamiento vive en
+//- public/js/verContrasena.js (delegado por data-atributo, sin JS por pantalla).
+//-
+//- El botón es type="button" para que no envíe el formulario, y lleva aria-pressed para
+//- que un lector de pantalla anuncie si la contraseña está visible.
+//-
+//- Uso:  +campoContrasena({ name: 'password', id: 'login-password', autocomplete: 'current-password' })
+mixin campoContrasena(opts)
+    - const o = opts || {}
+    div(class="relative")
+        input(
+            id=o.id
+            type="password"
+            name=o.name || 'password'
+            placeholder=o.placeholder || '••••••••'
+            autocomplete=o.autocomplete || 'current-password'
+            class="field-text pr-11"
+        )
+        button(
+            type="button"
+            data-ver-contrasena=o.id
+            aria-controls=o.id
+            aria-pressed="false"
+            aria-label="Mostrar contraseña"
+            title="Mostrar contraseña"
+            class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gh-primaryHover focus:outline-none focus-visible:text-gh-primaryHover cursor-pointer"
+        )
+            i(class="fi fi-rr-eye leading-none" aria-hidden="true")

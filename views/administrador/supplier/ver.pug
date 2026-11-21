@@ -38,7 +38,6 @@ block contenedor
                                 //- ── COLUMNA IZQUIERDA: Formulario ───────────────────────────────────
                                 div(class="col-span-12 md:col-span-8")
                                     form#form-proveedor(action=`/admin/provedores/editar/${proveedor.idProveedor}` method="post" class="cards cardsWhite p-6 grid grid-cols-12 gap-x-4 gap-y-3")
-                                        input(type="hidden" name="_csrf" value=csrfToken)
 
                                         //- ── Datos básicos ───────────────────────────────────────────
                                         div(class="col-span-12 -mx-6 pb-3 border-b border-gray-100")

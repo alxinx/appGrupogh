@@ -176,7 +176,7 @@ export const categoriasWeb = async (req, res) => {
         include: [{ model: Categorias, as: 'Subcategorias', attributes: ['idCategoria', 'nombreCategoria', 'webActiva'] }],
         order: [['nombreCategoria', 'ASC']]
     });
-    return res.render('./administrador/web/categorias', { currentPath, categorias, csrfToken: req.csrfToken() });
+    return res.render('./administrador/web/categorias', { currentPath, categorias });
 };
 
 export const toggleCategoriaWeb = async (req, res) => {
@@ -242,7 +242,7 @@ export const quitarImagenCategoria = async (req, res) => {
 export const listaBanners = async (req, res) => {
     const currentPath = req.path;
     const banners = await BannersWeb.findAll({ order: [['orden', 'ASC'], ['createdAt', 'DESC']] });
-    return res.render('./administrador/web/banners', { currentPath, banners, csrfToken: req.csrfToken() });
+    return res.render('./administrador/web/banners', { currentPath, banners });
 };
 
 // Convierte y sube a R2 el archivo de un campo de multer (`.fields()`), validando primero
@@ -327,7 +327,7 @@ export const eliminarBanner = async (req, res) => {
 export const listaCenefas = async (req, res) => {
     const currentPath = req.path;
     const cenefas = await CenefasWeb.findAll({ order: [['createdAt', 'DESC']] });
-    return res.render('./administrador/web/cenefas', { currentPath, cenefas, csrfToken: req.csrfToken() });
+    return res.render('./administrador/web/cenefas', { currentPath, cenefas });
 };
 
 export const crearCenefa = async (req, res) => {
@@ -374,7 +374,7 @@ export const listaSecciones = async (req, res) => {
         }),
         Categorias.findAll({ where: { webActiva: true }, order: [['nombreCategoria', 'ASC']] })
     ]);
-    return res.render('./administrador/web/secciones', { currentPath, secciones, categorias, csrfToken: req.csrfToken() });
+    return res.render('./administrador/web/secciones', { currentPath, secciones, categorias });
 };
 
 export const crearSeccion = async (req, res) => {
@@ -438,7 +438,7 @@ export const eliminarSeccion = async (req, res) => {
 export const gestionPopup = async (req, res) => {
     const currentPath = req.path;
     const popup = await PopupWeb.findOne({ order: [['createdAt', 'DESC']] }) || await PopupWeb.create({ activo: false });
-    return res.render('./administrador/web/popup', { currentPath, popup, csrfToken: req.csrfToken() });
+    return res.render('./administrador/web/popup', { currentPath, popup });
 };
 
 export const actualizarPopup = async (req, res) => {
@@ -472,7 +472,7 @@ export const actualizarPopup = async (req, res) => {
 export const listaEtiquetas = async (req, res) => {
     const currentPath = req.path;
     const etiquetas = await EtiquetasWeb.findAll({ order: [['createdAt', 'DESC']] });
-    return res.render('./administrador/web/tracking', { currentPath, etiquetas, csrfToken: req.csrfToken() });
+    return res.render('./administrador/web/tracking', { currentPath, etiquetas });
 };
 
 export const crearEtiqueta = async (req, res) => {
@@ -516,12 +516,12 @@ export const eliminarEtiqueta = async (req, res) => {
 export const listaPaginas = async (req, res) => {
     const currentPath = req.path;
     const paginas = await PaginasWeb.findAll({ order: [['nombrePagina', 'ASC']] });
-    return res.render('./administrador/web/paginas', { currentPath, paginas, csrfToken: req.csrfToken() });
+    return res.render('./administrador/web/paginas', { currentPath, paginas });
 };
 
 export const nuevaPaginaForm = async (req, res) => {
     return res.render('./administrador/web/paginas-form', {
-        pagina: null, csrfToken: req.csrfToken(), accion: 'crear'
+        pagina: null, accion: 'crear'
     });
 };
 
@@ -529,7 +529,7 @@ export const editarPaginaForm = async (req, res) => {
     const pagina = await PaginasWeb.findByPk(req.params.idPagina);
     if (!pagina) return res.redirect('/admin/web/paginas');
     return res.render('./administrador/web/paginas-form', {
-        pagina: pagina.toJSON(), csrfToken: req.csrfToken(), accion: 'editar'
+        pagina: pagina.toJSON(), accion: 'editar'
     });
 };
 
@@ -624,7 +624,6 @@ export const paginaPedidosWeb = async (req, res) => {
 
     return res.render('./administrador/web/pedidos', {
         currentPath,
-        csrfToken: req.csrfToken(),
         stats: {
             pedidosNuevosHoy,
             canceladosMes,
@@ -865,7 +864,6 @@ export const paginaDetallePedidoWeb = async (req, res) => {
     if (!pedido) return res.redirect('/admin/web/pedidos');
     return res.render('./administrador/web/pedidoDetalle', {
         currentPath: req.path,
-        csrfToken: req.csrfToken(),
         idPedido: req.params.idPedido
     });
 };

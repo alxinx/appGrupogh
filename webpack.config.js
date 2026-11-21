@@ -24,7 +24,6 @@ export default {
         documentosProveedorGaleria: '/src/js/documentosProveedorGaleria.js',
         supplierList: '/src/js/supplierList.js',
         dataDose : '/src/js/dataDose.js',
-        dosificador : '/src/js/dosificador.js',
         listadoDose : '/src/js/listadoDose.js',
         doseView : '/src/js/doseView.js',
         dataEmployee : '/src/js/dataEmployee.js',
@@ -55,7 +54,19 @@ export default {
         adminAlertas        : '/src/js/adminAlertas.js',
         importaciones       : '/src/js/importaciones.js',
         importarClientes : '/src/js/importarClientes.js',
-        storeClienteDetalle : '/src/js/storeClienteDetalle.js'
+        storeClienteDetalle : '/src/js/storeClienteDetalle.js',
+        menuAdminTabs       : '/src/js/menuAdminTabs.js',
+        insumos             : '/src/js/insumos.js',
+        confeccionistas     : '/src/js/confeccionistas.js',
+        insumoPerfil        : '/src/js/insumoPerfil.js',
+        ordenCompra         : '/src/js/ordenCompra.js',
+        ordenCompraDetalle  : '/src/js/ordenCompraDetalle.js',
+        historialCompras    : '/src/js/historialCompras.js',
+        fichaConfeccionNueva: '/src/js/fichaConfeccionNueva.js',
+        fichaConfeccionBiblioteca: '/src/js/fichaConfeccionBiblioteca.js',
+        corteNuevo: '/src/js/corteNuevo.js',
+        fichaConfeccionEditar: '/src/js/fichaConfeccionEditar.js',
+        procesoDetalle: '/src/js/procesoDetalle.js'
     },
     output: {
         filename: '[name].js',

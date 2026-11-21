@@ -57,6 +57,21 @@ window.formatMoney = (n, decimals = 0) => {
 
 // Enlaza formato de miles (es-CO) a un <input type="text"> de dinero.
 // Úsalo en cualquier campo donde el usuario ingrese valores en pesos.
+// Cantidad con decimales escrita como en Colombia ("2,5", "18.400", "1.250,75") → el string
+// que espera el servidor ("2.5", "18400", "1250.75"), o null si no es un número. Con coma, los
+// puntos son de miles; sin coma, un punto seguido de exactamente 3 dígitos también es de
+// miles ("18.400") y cualquier otro punto es el decimal ("2.5"). Hasta 4 decimales, como las
+// columnas DECIMAL(15,4) del inventario de insumos (helpers/unidadesInsumo.js).
+window.leerDecimal = (texto) => {
+    let t = String(texto ?? '').replace(/\s/g, '');
+    if (!t) return null;
+    if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    return /^\d{1,11}(\.\d{1,4})?$/.test(t) ? String(Number(t)) : null;
+};
+// Y al revés, para mostrar: 18400 → "18.400", 2.5 → "2,5".
+window.mostrarDecimal = (n) => Number(n).toLocaleString('es-CO', { maximumFractionDigits: 4 });
+
 window.initMoneyInput = (el) => {
     if (!el) return;
     el.addEventListener('input', function (e) {
@@ -94,7 +109,13 @@ window.parseMoney = (val) => parseInt(String(val).replace(/\D/g, ''), 10) || 0;
 //
 // Requiere las clases .select-buscable-* — están en views/components/selectBuscable.pug,
 // hay que incluir ese partial en cualquier vista que llame a esto.
-window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
+//
+// Opcionales:
+//   conImagen  cada opción muestra la miniatura de su `data-imagen` (una foto; si la opción
+//              trae `data-sin-foto`, es un ícono de reemplazo y se pinta más chico).
+//   accion     { etiqueta(termino), alElegir(termino) }: una última fila fija de la lista
+//              —p. ej. "Crear insumo «tela»"— para lo que no está entre las opciones.
+window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...', conImagen = false, accion = null } = {}) => {
     if (!select) return { refresh() {} };
 
     const wrap = document.createElement('div');
@@ -141,13 +162,22 @@ window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
 
     const cerrar = () => { lista.classList.add('hidden'); lista.innerHTML = ''; };
 
+    // El texto de una opción puede venir de un dato que escribió alguien (el nombre de un
+    // insumo): se escapa siempre antes de ir al innerHTML.
+    const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const miniatura = (o) => !conImagen ? ''
+        : o.dataset.imagen
+            ? `<img src="${escHtml(o.dataset.imagen)}" alt="" loading="lazy" class="select-buscable-img${o.dataset.sinFoto !== undefined ? ' select-buscable-img--icono' : ''}">`
+            : '<span class="select-buscable-img select-buscable-img--vacia"></span>';
+
     const abrir = (filtro = '') => {
         if (select.disabled) return;
         const termino   = sinTildes(filtro.trim());
         const filtradas = opciones().filter(o => sinTildes(o.text).includes(termino));
-        lista.innerHTML = filtradas.length
-            ? filtradas.map(o => `<li data-value="${o.value}" class="select-buscable-item${o.value === select.value ? ' select-buscable-item--activo' : ''}">${o.text}</li>`).join('')
-            : '<li class="select-buscable-vacio">Sin resultados</li>';
+        lista.innerHTML = (filtradas.length
+            ? filtradas.map(o => `<li data-value="${escHtml(o.value)}" class="select-buscable-item${conImagen ? ' select-buscable-item--img' : ''}${o.value === select.value ? ' select-buscable-item--activo' : ''}">${miniatura(o)}<span>${escHtml(o.text)}</span></li>`).join('')
+            : '<li class="select-buscable-vacio">Sin resultados</li>')
+            + (accion ? `<li data-accion class="select-buscable-accion">${escHtml(accion.etiqueta(filtro.trim()))}</li>` : '');
         lista.classList.remove('hidden');
     };
 
@@ -172,6 +202,14 @@ window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
         }, 150);
     });
     lista.addEventListener('mousedown', (e) => {
+        if (accion && e.target.closest('li[data-accion]')) {
+            e.preventDefault();
+            const termino = input.value.trim();
+            cerrar();
+            sync();
+            accion.alElegir(termino);
+            return;
+        }
         const li = e.target.closest('li[data-value]');
         if (!li) return;
         e.preventDefault();
@@ -185,14 +223,20 @@ window.enhanceSelectBuscable = (select, { placeholder = 'Buscar...' } = {}) => {
     return api;
 };
 
-window.iconoDoc = (fmt) => {
+// Ícono (Flaticon) de un documento según su formato. `conColor` agrega el color de cada
+// tipo, que es como lo muestran las fichas de cliente; sin él, quien llama pone el suyo.
+// Antes las fichas de cliente tenían su propia copia con colores, y ésta no reconocía
+// `webp`: el formato en que se guarda TODA imagen subida (CLAUDE.md §5.9).
+window.iconoDoc = (fmt, { conColor = false } = {}) => {
     const f = (fmt || '').toLowerCase();
-    if (f === 'pdf')                          return 'fi-rr-file-pdf';
-    if (['doc', 'docx'].includes(f))          return 'fi-rr-file-word';
-    if (['xls', 'xlsx'].includes(f))          return 'fi-rr-file-spreadsheet';
-    if (['ppt', 'pptx'].includes(f))          return 'fi-rr-file-powerpoint';
-    if (['jpg', 'jpeg', 'png'].includes(f))   return 'fi-rr-picture';
-    return 'fi-rr-document';
+    const [icono, color] =
+        f === 'pdf'                                        ? ['fi-rr-file-pdf',         'text-red-400'] :
+        ['doc', 'docx'].includes(f)                        ? ['fi-rr-file-word',        'text-blue-400'] :
+        ['xls', 'xlsx'].includes(f)                        ? ['fi-rr-file-spreadsheet', 'text-emerald-500'] :
+        ['ppt', 'pptx'].includes(f)                        ? ['fi-rr-file-powerpoint',  'text-orange-400'] :
+        ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(f)  ? ['fi-rr-picture',          'text-purple-400'] :
+                                                             ['fi-rr-document',         'text-slate-400'];
+    return conColor ? `${icono} ${color}` : icono;
 };
 
 // ─── SSE ADMIN: una conexión para todas las pestañas ─────────────────────────

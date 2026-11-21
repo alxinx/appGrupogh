@@ -1,0 +1,95 @@
+extends ../../layout/index
+block contenedor
+    //- Biblioteca de fichas de confección (admin/procesos/fichas-confeccion/biblioteca).
+    //- La tabla arranca VACÍA a propósito — la llena src/js/fichaConfeccionBiblioteca.js por
+    //- fetch a GET /admin/json/fichas-confeccion (filtros + LIMIT/OFFSET + paginador global
+    //- window.generarPaginacion), mismo contrato que el listado de inventario
+    //- (src/js/productList.js, controller/adminControllers.js filterProductListJson —
+    //- CLAUDE.md DRY, "mismos principios de paginación" pedidos explícitamente).
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-books',
+                                    titulo:    'Biblioteca de fichas de confección',
+                                    subtitulo: 'Fichas ya creadas',
+                                    iconoSub:  'fi-rr-document'
+                                })
+                                //- Orden del panel (CLAUDE.md §4.1.1): Volver → acción principal al final, en btn-danger.
+                                div(class="flex flex-wrap items-center gap-2 flex-shrink-0")
+                                    a(href="/admin/procesos/fichas-confeccion" class="btn btn-secondary flex items-center gap-2")
+                                        i(class="fi fi-rr-arrow-left")
+                                        | Volver
+                                    if puedeAdmin('Procesos', 'CREATE')
+                                        a(href="/admin/procesos/fichas-confeccion/nueva" class="btn btn-danger flex items-center gap-2")
+                                            i(class="fi fi-rr-add-document")
+                                            | Nueva ficha de confección
+
+                            //- Filtros — búsqueda libre (referencia o tela) + familia exacta +
+                            //- tela (LIKE, una ficha puede tener más de una — helpers/dxf.js).
+                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                div(class="p-5 flex flex-col gap-4 border-b border-slate-100")
+                                    div(class="flex items-center justify-between gap-4")
+                                        h2(class="text-lg font-bold text-slate-800") Fichas
+                                        p#conteo-fichas(class="text-sm text-slate-500" aria-live="polite")
+                                    div(class="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_auto] gap-3")
+                                        div(class="relative")
+                                            i(class="fi fi-rr-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm")
+                                            input#busquedaFichas(type="text" autocomplete="off" placeholder="Busca por referencia o tela…" class="field-text pl-9")
+                                        select#familiaFichas(class="field-select" aria-label="Familia")
+                                            option(value="") Todas las familias
+                                            each f in (familias || [])
+                                                option(value=f.nombreFamilia)= f.nombreFamilia
+                                        select#telaFichas(class="field-select" aria-label="Tela")
+                                            option(value="") Todas las telas
+                                            each m in (telas || [])
+                                                option(value=m.nombre)= m.nombre
+                                        select#estadoFichas(class="field-select" aria-label="Estado")
+                                            option(value="") Activas
+                                            option(value="anulada") Anuladas
+
+                                //- `relative`: el contenedor que recorta es la referencia de lo posicionado
+                                //- adentro; sin eso un `sr-only` de la tabla ensancha la página en el celular.
+                                div(class="relative overflow-x-auto")
+                                    table(class="w-full text-sm min-w-[980px]")
+                                        thead
+                                            tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
+                                                th(class="py-3 px-5 font-semibold") Prenda
+                                                th(class="py-3 px-5 font-semibold") Telas
+                                                th(class="py-3 px-5 font-semibold text-right") Confección
+                                                th(class="py-3 px-5 font-semibold w-[18rem]") Talleres
+                                                th(class="py-3 px-5 font-semibold text-right")
+                                                    span.sr-only Acciones
+                                        //- Mientras llega la primera página, filas fantasma con la forma real.
+                                        tbody#contenedor-fichas
+                                            - for (var i = 0; i < 4; i++)
+                                                tr(class="border-b border-slate-100 animate-pulse")
+                                                    td(class="py-4 px-5")
+                                                        div(class="flex items-center gap-3")
+                                                            div(class="w-14 h-14 rounded-xl bg-slate-100")
+                                                            div(class="flex flex-col gap-2")
+                                                                div(class="h-3 w-32 rounded bg-slate-100")
+                                                                div(class="h-2.5 w-24 rounded bg-slate-100")
+                                                    td(class="py-4 px-5")
+                                                        div(class="h-3 w-28 rounded bg-slate-100")
+                                                    td(class="py-4 px-5")
+                                                        div(class="h-3 w-20 rounded bg-slate-100 ml-auto")
+                                                    td(class="py-4 px-5")
+                                                        div(class="h-3 w-36 rounded bg-slate-100")
+                                                    td(class="py-4 px-5")
+
+                                div(class="px-5 pb-4")
+                                    #paginacionFichas
+
+        script(src="/js/paginador.js")
+        script(src="/js/fichaConfeccionBiblioteca.js")

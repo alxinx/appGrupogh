@@ -711,11 +711,9 @@ import { cristalBloqueo } from './cristalBloqueo.js';
         if (reconciliando) return;
         const items = [...cart.values()].map(i => ({ idProducto: i.idProducto, cantidad: i.cantidad }));
         try {
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content
-                      || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
             const res = await fetch('/store/json/pos/reservas', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({ items })
             });
             const data = await res.json();
@@ -771,9 +769,7 @@ import { cristalBloqueo } from './cristalBloqueo.js';
     const liberarReservasPos = async () => {
         productosYaAvisados.clear();
         try {
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content
-                      || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
-            await fetch('/store/json/pos/reservas', { method: 'DELETE', headers: { 'X-CSRF-Token': csrf } });
+            await fetch('/store/json/pos/reservas', { method: 'DELETE', });
         } catch (_) {}
     };
 
@@ -1971,7 +1967,6 @@ import { cristalBloqueo } from './cristalBloqueo.js';
 
     // ── Guardar cliente ───────────────────────────────────────────────────────
     document.getElementById('btn-guardar-cliente')?.addEventListener('click', async () => {
-        const csrf         = document.querySelector('meta[name="csrf-token"]')?.content || '';
         const idCliModal   = document.getElementById('cli-id-hidden')?.value || inputIdCliente?.value || '0';
         const esEmpresa    = tabActivo === 'empresa';
         const getVal       = (id) => document.getElementById(id)?.value?.trim() || '';
@@ -2036,7 +2031,7 @@ import { cristalBloqueo } from './cristalBloqueo.js';
         try {
             const resp = await fetch('/store/clientes/guardar', {
                 method:  'POST',
-                headers: { 'X-CSRF-Token': csrf },
+                
                 body:    fd
             });
             const data = await resp.json();
@@ -2347,16 +2342,9 @@ import { cristalBloqueo } from './cristalBloqueo.js';
             actualizarResumenPagos(); // deshabilita el botón mientras se confirma
             pintarEstadoCreditoTienda('info', 'Verificando cupo disponible...');
             try {
-                // El middleware CSRF global (index.js) protege esta ruta aunque no se la
-                // haya marcado con csrfProtection en storeRoutes.js — sin el token, csurf
-                // la rechaza con EBADCSRFTOKEN, que el handler de index.js devuelve como
-                // "Sesión expirada" (texto engañoso: no es la sesión, es el token que
-                // faltaba en este fetch). Mismo patrón que el resto de pos.js.
-                const csrf = document.querySelector('meta[name="csrf-token"]')?.content
-                          || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
                 const resp = await fetch(`/store/json/clientes/${idCliente}/credito/validar`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({ monto })
                 });
                 const data = await resp.json();
@@ -3224,12 +3212,10 @@ import { cristalBloqueo } from './cristalBloqueo.js';
             btn.className = 'flex items-center gap-3 px-8 py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-bold transition-all cursor-not-allowed';
 
             try {
-                const csrf = document.querySelector('meta[name="csrf-token"]')?.content
-                          || document.cookie.match(/_csrf=([^;]+)/)?.[1] || '';
 
                 const resp = await fetch('/store/facturas/procesar', {
                     method:  'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    headers: { 'Content-Type': 'application/json'},
                     // Del pack solo viaja su id: el servidor reconstruye las prendas y sus
                     // precios, e ignora cualquier línea que mandara el POS. Mismo principio
                     // que el pedido web.

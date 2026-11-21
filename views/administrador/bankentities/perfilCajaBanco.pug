@@ -318,7 +318,6 @@ block contenedor
                                     p(class="text-sm text-slate-400 mb-5") Ingresa un nuevo ingreso o egreso
 
                                     form#form-movimiento(class="space-y-4" inert=formularioSellado)
-                                        input(type="hidden" name="_csrf" value=csrfToken)
 
                                         //- Ingreso o egreso: define el sentido del movimiento.
                                         div(class="grid grid-cols-2 gap-2")
@@ -649,7 +648,6 @@ block contenedor
         script(src="/js/helpers.js")
         script.
             (function () {
-                const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
                 const idCuenta = location.pathname.split('/').pop();
                 const pesos = (n) => (n < 0 ? '-$' : '$') + Math.abs(Number(n) || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
                 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -1114,7 +1112,7 @@ block contenedor
                     try {
                         const r = await fetch(`/admin/bankentities/traslados/${t.idTraslado}/decidir`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, Accept: 'application/json' },
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
                             body: JSON.stringify({ decision, ...datos })
                         });
                         const d = await r.json();
@@ -1335,7 +1333,7 @@ block contenedor
                     btnGuardar.disabled = true; btnGuardar.textContent = 'Guardando...';
                     try {
                         const r = await fetch(`/admin/bankentities/cajas/${idCuenta}/movimientos`, {
-                            method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }, body: fd
+                            method: 'POST', headers: { 'Accept': 'application/json' }, body: fd
                         });
                         const d = await r.json();
                         // Cinco códigos fallidos cierran la sesión: no hay nada que reintentar.
@@ -1525,7 +1523,7 @@ block contenedor
                             try {
                                 const r = await fetch(`/admin/bankentities/cajas/${idCuenta}/editar`, {
                                     method: 'POST',
-                                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, Accept: 'application/json' },
+                                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
                                     body: JSON.stringify(cuerpo)
                                 });
                                 const d = await r.json();

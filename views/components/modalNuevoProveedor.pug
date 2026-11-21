@@ -1,0 +1,51 @@
+//- ── MODAL "CREAR PROVEEDOR" (orden de compra / cotización) ─────────────────────────────
+//- Cuando el proveedor que se busca no existe, se crea acá sin salir de la orden. Pide los
+//- mismos campos que la página "Nuevo proveedor" (components/camposProveedor.pug) y guarda
+//- por el mismo POST /admin/provedores/new (saveSupplier, permiso Provedores CREATE): no
+//- hay una segunda alta. Cuentas bancarias y documentos se completan después en la ficha
+//- del proveedor — una orden no necesita saber a dónde pagarle para pedirle algo.
+//-
+//- La vista lo dibuja SOLO si quien entra puede crear proveedores (puedeAdmin), y el JS
+//- (src/js/ordenCompra.js) ofrece el botón solo si el modal existe. Si le quitan el permiso
+//- con la pantalla abierta, data-requiere-permiso lo sella (src/js/permisosEnVivo.js). La
+//- garantía es la ruta, que responde 403 a quien no lo tiene.
+//-
+//- Uso:
+//-     include ../../components/modalNuevoProveedor.pug
+//-     +modalNuevoProveedor({ tiposDocumento, departamentos, categorias })
+include ./camposProveedor.pug
+
+mixin modalNuevoProveedor(opts)
+    div#modal-nuevo-proveedor(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="modal-nuevo-proveedor-titulo")
+        form#form-nuevo-proveedor(class="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" novalidate
+            data-requiere-permiso="Provedores:CREATE"
+            data-bloqueo-titulo="Sin permiso para crear proveedores"
+            data-bloqueo-texto="Tu usuario ya no puede dar de alta proveedores."
+            data-bloqueo-pista="Lo habilita un administrador en Personal.")
+            div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
+                div(class="flex items-center gap-4")
+                    div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
+                        i(class="fi fi-rr-user-add text-white")
+                    div
+                        h2#modal-nuevo-proveedor-titulo(class="text-lg font-bold text-slate-800") Crear proveedor
+                        p(class="text-sm text-slate-500") Queda elegido en la orden al guardarlo.
+                button(type="button" data-cerrar-modal-proveedor class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer" aria-label="Cerrar")
+                    i(class="fi fi-rr-cross-small text-xl")
+
+            div(class="flex-1 overflow-y-auto px-8 py-6 grid grid-cols-12 gap-4 content-start")
+                +datosBasicosProveedor({
+                    tiposDocumento: opts.tiposDocumento,
+                    departamentos: opts.departamentos,
+                    categorias: opts.categorias,
+                    col: { razon: 'col-span-12', tipo: 'col-span-12 md:col-span-5', numero: 'col-span-12 md:col-span-7', campo: 'col-span-12 md:col-span-6' }
+                })
+                +contactoProveedor()
+                p(class="col-span-12 flex items-start gap-2 text-xs text-slate-500 bg-slate-50 rounded-xl px-4 py-3")
+                    i(class="fi fi-rr-info mt-0.5")
+                    span Las cuentas bancarias y los documentos se agregan después, desde la ficha del proveedor.
+
+            div(class="flex items-center justify-end gap-3 px-8 py-4 border-t border-gray-100 flex-shrink-0")
+                button(type="button" data-cerrar-modal-proveedor class="btn btn-secondary") Cancelar
+                button#btn-guardar-proveedor(type="submit" class="btn btn-danger")
+                    i(class="fi fi-rr-disk")
+                    | Guardar proveedor

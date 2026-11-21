@@ -128,10 +128,8 @@ block contenedor
                                         span(class="font-bold text-gh-primaryHover mx-1")= categorias.filter(c => c.webActiva).length
                                         | activa(s) en el catálogo web
 
-        input(type="hidden" id="csrf-token" value=csrfToken)
         script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
         script.
-            const csrfToken = document.getElementById('csrf-token').value;
             document.querySelectorAll('.toggle-categoria').forEach(toggle => {
                 toggle.addEventListener('change', async function() {
                     const idCategoria = this.dataset.id;
@@ -139,7 +137,7 @@ block contenedor
                         const resp = await fetch(`/admin/web/categorias/toggle/${idCategoria}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ _csrf: csrfToken })
+                            body: JSON.stringify({ })
                         });
                         const data = await resp.json();
                         if (!data.success) {
@@ -179,12 +177,11 @@ block contenedor
 
                     const datos = new FormData();
                     datos.append('imagen', archivo);
-                    datos.append('_csrf', csrfToken);
 
                     try {
                         const resp = await fetch('/admin/web/categorias/' + id + '/imagen', { method: 'POST', body: datos });
 
-                        // Si la respuesta no es JSON (403 de CSRF, 413 de tamaño, error del proxy),
+                        // Si la respuesta no es JSON (403 de origen, 413 de tamaño, error del proxy),
                         // resp.json() reventaria y el catch mostraria "error de red", que despista.
                         // Mejor leer el codigo y decir que paso de verdad.
                         const tipo = resp.headers.get('content-type') || '';
@@ -229,7 +226,7 @@ block contenedor
                         const resp = await fetch('/admin/web/categorias/' + id + '/imagen/quitar', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ _csrf: csrfToken })
+                            body: JSON.stringify({ })
                         });
                         const data = await resp.json();
                         if (data.success) location.reload();

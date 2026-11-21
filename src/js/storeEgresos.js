@@ -5,7 +5,6 @@ import { imprimirPdf } from './imprimirPdf.js';
 (function () {
     'use strict';
 
-    const csrf = () => document.getElementById('csrf-token').value;
 
     // Formatea un valor que viene del backend: un número (el total) o un DECIMAL de
     // Sequelize, que llega como string con punto decimal ("10000.00").
@@ -887,13 +886,13 @@ import { imprimirPdf } from './imprimirPdf.js';
 
                 res = await fetch('/store/storebehivors/expenses/traslado', {
                     method: 'POST',
-                    headers: { 'X-CSRF-Token': csrf() },
+                    
                     body: fd
                 });
             } else {
                 res = await fetch('/store/storebehivors/expenses/crear', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({ valorEgreso: valor, referencia, codigoEmpleado, descripcion, metodoPago, idCajaBanco, idPucEgreso: selPuc?.value || '' })
                 });
             }

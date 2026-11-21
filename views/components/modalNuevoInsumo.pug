@@ -1,0 +1,47 @@
+//- ── MODAL "NUEVO INSUMO" ──────────────────────────────────────────────────────────────
+//- El alta de un material del catálogo, en una sola copia. Lo usan el catálogo de insumos
+//- (admin/insumos) y el modal "Agregar insumo" de la orden de compra, cuando el insumo que
+//- se busca no existe (components/modalInsumoOrden.pug). Los dos guardan por POST
+//- /admin/insumos (crearInsumo, permiso Insumos CREATE) y el comportamiento lo pone
+//- src/js/formularioInsumo.js (activarFormularioInsumo) sobre estos mismos ids.
+//-
+//- Uso:
+//-     include ../../components/modalNuevoInsumo.pug
+//-     +modalNuevoInsumo({ tiposInsumo, unidadesCompra, limites })
+include ./camposInsumo.pug
+
+mixin modalNuevoInsumo(opts)
+    - const tiposInsumo = opts.tiposInsumo, unidadesCompra = opts.unidadesCompra, limites = opts.limites
+    //- MODAL — alta de insumo. Mismo estilo de modal que el resto del panel
+    //- (views/components/modals.pug, "Finalizar Venta"/"Hacer Traslado"): overlay
+    //- oscuro con blur + tarjeta blanca redondeada, cabecera con icono y cierre.
+    //- Lo abre el botón del header, el submenu "Nuevo insumo" (?nuevo=1, ver
+    //- src/js/insumos.js) o queda cerrado por defecto.
+    div#modal-nuevo-insumo(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+        //- Si le quitan el permiso con la pantalla abierta, se sella solo (permisosEnVivo.js).
+        div(class="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            data-requiere-permiso="Insumos:CREATE"
+            data-bloqueo-titulo="Sin permiso para crear insumos"
+            data-bloqueo-texto="Tu usuario ya no puede agregar materiales al catálogo."
+            data-bloqueo-pista="Lo habilita un administrador en Personal.")
+
+            //- Header
+            div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
+                div(class="flex items-center gap-4")
+                    div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
+                        i(class="fi fi-rr-boxes text-white")
+                    div
+                        h2(class="text-lg font-bold text-slate-800") Nuevo insumo
+                        p(class="text-sm text-slate-500") Se agrega al catálogo al confirmar.
+                button#modal-nuevo-insumo-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
+                    i(class="fi fi-rr-cross-small text-xl")
+
+            //- FORMULARIO DE ALTA
+            form(id="form-insumo" novalidate class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-5"
+                data-nombre-max=limites.nombreMax)
+
+                +camposInsumo({ tiposInsumo, unidadesCompra, unidadesConsumo: opts.unidadesConsumo, limites })
+
+                div(class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100")
+                    button(type="button" id="btn-limpiar-insumo" class="btn btn-secondary") Limpiar
+                    button(type="submit" id="btn-guardar-insumo" class="btn btn-danger") Guardar insumo

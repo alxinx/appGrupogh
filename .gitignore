@@ -2,6 +2,7 @@
 .env.*
 .env.production
 .env.production.bak
+.md
 
 # Dependencias
 node_modules/
@@ -9,6 +10,7 @@ node_modules/
 # Variables de entorno
 .env
 .env.*
+!.env.example
 
 # Logs
 logs/

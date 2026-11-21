@@ -4,7 +4,6 @@
     const EXTS    = ['jpg', 'jpeg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
     const MAX_TAM = 5 * 1024 * 1024;
 
-    const getCsrf = () => document.getElementById('doc-csrf')?.value || '';
     const getPdv  = () => document.getElementById('doc-pdv-id')?.value || '';
 
     // ─── Placeholder vacío ───────────────────────────────────────────────────
@@ -39,8 +38,7 @@
             fd.append('documentos', file);
             const r    = await fetch(`/admin/api/tiendas/${getPdv()}/documentos/subir`, {
                 method: 'POST', body: fd,
-                headers: { 'CSRF-Token': getCsrf() }
-            });
+                });
             const data = await r.json();
             liProg.remove();
 
@@ -88,8 +86,7 @@
         try {
             const r    = await fetch(`/admin/api/tiendas/documentos/${idDoc}/eliminar`, {
                 method: 'POST',
-                headers: { 'CSRF-Token': getCsrf() }
-            });
+                });
             const data = await r.json();
             if (data.success) {
                 liElement.remove();

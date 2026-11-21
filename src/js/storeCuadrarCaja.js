@@ -37,7 +37,6 @@ import { cristalBloqueo } from './cristalBloqueo.js';
 
     // ── Estado ───────────────────────────────────────────────────────────────
     let dataSistema  = null;
-    let empleadoId   = null;
     let empleadoNombre = null;
 
     // ── Referencias DOM ──────────────────────────────────────────────────────
@@ -285,11 +284,10 @@ import { cristalBloqueo } from './cristalBloqueo.js';
     // Si viene a cerrar de verdad, la caja pasa a 'auditoria' y el POS deja de facturar:
     // sin eso, una venta que entra mientras cuenta queda en los totales del cierre pero
     // no en lo que él contó, y el descuadre se le anota a él aunque la plata esté ahí.
-    const CSRF = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
 
     const post = (url) => fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF() }
+        headers: { 'Content-Type': 'application/json'}
     }).then(r => r.json()).catch(() => ({ success: false }));
 
     const cristalHTML = (titulo, texto, accion) =>
@@ -343,7 +341,7 @@ import { cristalBloqueo } from './cristalBloqueo.js';
             const url = '/store/storebehivors/caja/cuadre/liberar';
             // sendBeacon sobrevive a la descarga de la página; un fetch normal se cancela.
             if (navigator.sendBeacon) {
-                navigator.sendBeacon(url, new Blob([JSON.stringify({ _csrf: CSRF() })],
+                navigator.sendBeacon(url, new Blob([JSON.stringify({ })],
                     { type: 'application/json' }));
             }
         }, { once: true });
@@ -552,12 +550,10 @@ import { cristalBloqueo } from './cristalBloqueo.js';
             const r = await fetch(`/store/json/personal/validar/${encodeURIComponent(codigo)}?accion=EDIT`);
             const d = await r.json();
             if (d.success) {
-                empleadoId     = d.idEmpleado;
                 empleadoNombre = d.nombre;
                 setEmpInfo(d.nombre, true);
                 empleadoOk = true;
             } else {
-                empleadoId = null;
                 setEmpInfo(d.mensaje || 'No pertenece a esta tienda', false);
                 empleadoOk = false;
             }
@@ -571,7 +567,6 @@ import { cristalBloqueo } from './cristalBloqueo.js';
     };
 
     codEmpleado.addEventListener('input', () => {
-        empleadoId = null;
         clearTimeout(validarTimer);
         const codigo = codEmpleado.value.trim();
         // Se habilita de forma optimista por longitud; la validación asíncrona
@@ -649,11 +644,10 @@ import { cristalBloqueo } from './cristalBloqueo.js';
         // Abrir ventana ANTES del await para evitar el popup-blocker
         const pdfWin = window.open('about:blank', '_blank');
 
-        const csrf = document.getElementById('csrf-token')?.value || '';
         try {
             const r = await fetch('/store/storebehivors/caja/cerrar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                headers: { 'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     idCajaTienda:         dataSistema.caja.idCajaTienda,
                     codigoEmpleado:       codEmpleado.value.trim().toUpperCase(),
@@ -820,10 +814,9 @@ import { cristalBloqueo } from './cristalBloqueo.js';
                 if (!desc.ok)             { Swal.showValidationMessage(desc.mensaje); return false; }
                 if (!codigoRequerido('me-codigo')) return false;
 
-                const csrf = document.getElementById('csrf-token')?.value || '';
                 const r = await fetch('/store/storebehivors/expenses/crear', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    headers: { 'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         valorEgreso: valor, referencia, descripcion: desc.valor,
                         codigoEmpleado: codigo, metodoPago: 'Efectivo', idPucEgreso

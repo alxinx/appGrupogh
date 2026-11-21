@@ -1,0 +1,26 @@
+extends ../layout/index
+include ../components/tarjetaAuth
+include ../components/campoContrasena
+block contenedor
+    script(src="/js/verContrasena.js" defer)
+    if exito
+        +tarjetaAuth({ titulo: 'Contraseña actualizada ✅', texto: 'Desde ahora entras con tu contraseña nueva. Si tenías la sesión abierta en otro equipo, allá se cerró.' })
+            a(href=volver class="btn btn-primary w-full justify-center mt-4") Volver al panel
+    else
+        +tarjetaAuth({ titulo: 'Cambiar contraseña', texto: `Mínimo ${minimo} caracteres, con al menos una letra y un número.` })
+            +avisoAuth('error', error)
+            form(action="/cuenta/contrasena" method="post" class="space-y-4")
+                input(type="email" name="emailUsuario" value=usuario && usuario.emailUsuario autocomplete="username" class="hidden" readonly tabindex="-1" aria-hidden="true")
+                div
+                    label(class="label" for="actual-password") Contraseña actual
+                    +campoContrasena({ name: 'actual', id: 'actual-password', autocomplete: 'current-password' })
+                div
+                    label(class="label" for="nueva-password") Contraseña nueva
+                    +campoContrasena({ name: 'password', id: 'nueva-password', autocomplete: 'new-password' })
+                div
+                    label(class="label" for="confirmar-password") Repítela
+                    +campoContrasena({ name: 'confirmacion', id: 'confirmar-password', autocomplete: 'new-password' })
+                div(class="flex justify-between items-center")
+                    a(href=volver class="link") Cancelar
+                    a(href="/forgot" class="link") ¿No recuerdas la actual?
+                button(type="submit" class="btn btn-primary w-full") Guardar contraseña

@@ -52,3 +52,40 @@ style.
         color: #9ca3af;
         text-align: center;
     }
+    /* conImagen: miniatura a la izquierda de cada opción. */
+    .select-buscable-item--img {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 10px;
+    }
+    .select-buscable-img {
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+        border-radius: 8px;
+        object-fit: cover;
+        background: #f1f5f9;
+        border: 1px solid #e5e7eb;
+    }
+    .select-buscable-img--icono {
+        object-fit: contain;
+        padding: 6px;
+    }
+    /* accion: la última fila fija ("Crear …"). */
+    .select-buscable-accion {
+        margin-top: 4px;
+        padding: 9px 10px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #E24C95;
+        border-top: 1px solid #f1f5f9;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .select-buscable-accion::before {
+        content: '+ ';
+    }
+    .select-buscable-accion:hover {
+        background: #FDE7F2;
+    }

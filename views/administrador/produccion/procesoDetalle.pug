@@ -1,0 +1,118 @@
+extends ../../layout/index
+block contenedor
+    //- Detalle de un proceso (admin/procesos/:idProceso) — src/js/procesoDetalle.js.
+    //- Avanza de a una etapa (controller/fichaConfeccionProcesoController.js
+    //- ORDEN_ESTADOS: asignado → entregado_taller → en_revision → entregada, sin saltos ni
+    //- retrocesos) y lleva una bitácora de novedades aparte, que no mueve el estado.
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-scissors',
+                                    titulo:    proceso.taller.proveedor.razonSocial,
+                                    subtitulo: `${proceso.taller.ficha.referencia} · ${proceso.taller.ficha.materialNombre}`,
+                                    iconoSub:  'fi-rr-tshirt'
+                                })
+                                a(href="/admin/procesos" class="btn btn-secondary btn-sm text-xs whitespace-nowrap flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-xs")
+                                    | Volver
+
+                            div(id="proceso-detalle" data-id-proceso=proceso.idProceso class="col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-4")
+
+                                //- Columna izquierda: estado actual + avanzar.
+                                div(class="lg:col-span-1 flex flex-col gap-4")
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Estado actual
+                                        span(class=`table-badge w-fit ${proceso.estado === 'entregada' ? 'table-badge-active' : 'table-badge-pending'}`)
+                                            span(class="table-badge-dot")
+                                            = etiquetaEstado[proceso.estado]
+                                        div(class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100")
+                                            div
+                                                span(class="text-xs text-slate-400 block") Cantidad asignada
+                                                span(class="text-sm font-bold text-slate-800")= cantidadAsignada.toLocaleString('es-CO')
+                                            div
+                                                span(class="text-xs text-slate-400 block") Precio de confección
+                                                span(class="text-sm font-bold text-slate-800") $#{Math.round(proceso.taller.precioConfeccion).toLocaleString('es-CO')}
+                                        if (proceso.taller.colores || []).length
+                                            div(class="pt-2 border-t border-slate-100")
+                                                span(class="text-xs text-slate-400 block mb-1.5") Colores a cargo
+                                                div(class="flex flex-wrap gap-1.5")
+                                                    each c in proceso.taller.colores
+                                                        span(class="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full border border-slate-200")
+                                                            span(class="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-1 ring-black/10" style=`background-color: ${(c.color && c.color.codigo1) || '#ccc'}`)
+                                                            = c.color ? c.color.valor : '—'
+
+                                    if siguienteEstado
+                                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Siguiente etapa
+                                            p(class="text-sm font-bold text-slate-800") #{siguienteEtiqueta}
+                                            if siguienteEstado === 'entregado_taller' || siguienteEstado === 'entregada'
+                                                div
+                                                    label(class="text-xs font-semibold text-slate-500 mb-1 block" for="avanzar-cantidad") Cantidad
+                                                    input#avanzar-cantidad(type="number" inputmode="numeric" min="1" value=cantidadAsignada class="field-text")
+                                            div
+                                                label(class="text-xs font-semibold text-slate-500 mb-1 block" for="avanzar-notas") Notas (opcional)
+                                                textarea#avanzar-notas(rows="2" placeholder="Algo para dejar anotado en el historial…" class="field-text resize-none")
+                                            p#error-avanzar(class="hidden text-xs font-semibold text-rose-600")
+                                            button#btn-avanzar(type="button" data-siguiente-estado=siguienteEstado class="btn btn-danger justify-center")
+                                                i(class="fi fi-rr-arrow-right text-xs")
+                                                | Marcar "#{siguienteEtiqueta}"
+                                    else
+                                        div(class="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex items-center gap-3")
+                                            i(class="fi fi-rr-check-circle text-xl text-emerald-500")
+                                            div
+                                                p(class="text-sm font-bold text-emerald-700") Proceso entregado
+                                                p(class="text-xs text-emerald-600") Listo para dosificación.
+
+                                //- Columna derecha: bitácora + historial.
+                                div(class="lg:col-span-2 flex flex-col gap-4")
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Bitácora de novedades
+                                        div(class="flex items-center gap-2 mb-3")
+                                            input#nueva-bitacora(type="text" placeholder="Ej: le hizo falta tela, le hizo falta herrajes…" class="field-text flex-1")
+                                            button#btn-agregar-bitacora(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                                i(class="fi fi-rr-plus-small text-xs")
+                                                | Agregar
+                                        p#error-bitacora(class="hidden text-xs font-semibold text-rose-600 mb-2")
+                                        div#lista-bitacora(class="flex flex-col gap-2")
+                                            if (proceso.bitacora || []).length
+                                                each b in proceso.bitacora
+                                                    div(class="flex items-start gap-2.5 text-sm bg-slate-50 rounded-xl px-3 py-2.5")
+                                                        i(class="fi fi-rr-comment-alt text-slate-400 text-xs flex-shrink-0 mt-0.5")
+                                                        div(class="flex-1 min-w-0")
+                                                            p(class="text-slate-700")= b.nota
+                                                            p(class="text-[11px] text-slate-400 mt-0.5") #{b.usuario ? b.usuario.nombreUsuario : '—'} · #{new Date(b.createdAt).toLocaleString('es-CO')}
+                                            else
+                                                p#bitacora-vacio(class="text-sm text-slate-400") Sin novedades todavía.
+
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Historial de etapas
+                                        if (proceso.historial || []).length
+                                            div(class="flex flex-col gap-3")
+                                                each h, i in proceso.historial
+                                                    div(class="flex items-start gap-3")
+                                                        div(class="w-2 h-2 rounded-full bg-gh-primaryHover flex-shrink-0 mt-1.5")
+                                                        div(class="flex-1 min-w-0 pb-3 border-b border-slate-100 last:border-0 last:pb-0")
+                                                            div(class="flex items-center justify-between gap-2")
+                                                                span(class="text-sm font-bold text-slate-800")= etiquetaEstado[h.estado]
+                                                                span(class="text-[11px] text-slate-400") #{new Date(h.createdAt).toLocaleString('es-CO')}
+                                                            p(class="text-xs text-slate-500 mt-0.5")
+                                                                | #{h.usuario ? h.usuario.nombreUsuario : '—'}
+                                                                if h.cantidad
+                                                                    |  · #{h.cantidad.toLocaleString('es-CO')} unidades
+                                                            if h.notas
+                                                                p(class="text-xs text-slate-600 mt-1 italic") "#{h.notas}"
+                                        else
+                                            p(class="text-sm text-slate-400") Sin historial todavía.
+
+        script(src="/js/procesoDetalle.js")

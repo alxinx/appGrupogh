@@ -7,19 +7,6 @@
 
     let paginaActual = 1;
 
-    const estadoBadge = (estado) => {
-        const map = {
-            activo:      'bg-emerald-100 text-emerald-700',
-            suspendido:  'bg-yellow-100 text-yellow-700',
-            despedido:   'bg-red-100 text-red-700',
-            vacaciones:  'bg-blue-100 text-blue-700',
-            enfermedad:  'bg-orange-100 text-orange-700',
-            licencia:    'bg-purple-100 text-purple-700',
-            otro:        'bg-gray-100 text-gray-600',
-        };
-        const clase = map[estado] || map.otro;
-        return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${clase}">${estado}</span>`;
-    };
 
     const mostrarEmpleados = (empleados) => {
         contenedor.innerHTML = '';

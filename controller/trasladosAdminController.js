@@ -44,7 +44,6 @@ const paginaTraslados = async (req, res) => {
         return res.render('./administrador/traslados/index', {
             pagina: 'Traslados',
             subPagina: 'Traslados',
-            csrfToken: req.csrfToken(),
             currentPath: '/traslados',
             puntos,
             controversias

@@ -1,4 +1,5 @@
 import { Op } from 'sequelize';
+import { OPCIONES_COOKIE_SESION } from '../helpers/genToken.js';
 import { Empleados, PuntosDeVenta, CajaTienda, UserPermisos, PermisosRecursos, PermisosAcciones, PedidosWeb } from '../models/index.js';
 
 const API_PATH = /\/(json|sse|pdf|api)\//;
@@ -92,7 +93,7 @@ export const cargarPuntoDeVenta = async (req, res, next) => {
                 if (!tieneAcceso) {
                     // Sin ningún permiso: cerrar sesión
                     if (!carpetasPermitidas.length) {
-                        res.clearCookie('_token');
+                        res.clearCookie('_token', OPCIONES_COOKIE_SESION);
                         return res.redirect('/');
                     }
                     // Redirigir a la primera carpeta accesible

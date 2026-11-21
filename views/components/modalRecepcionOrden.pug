@@ -1,0 +1,25 @@
+//- ── MODAL "RECIBIR ORDEN" ───────────────────────────────────────────────────────────
+//- Lo que llega de cada línea de una orden de compra y entra al inventario de insumos. Lo
+//- usan el detalle de una orden ("Recibir orden") y la creación de una orden con "La
+//- mercancía ya llegó". Las filas y la lectura las pone src/js/recepcionOrden.js
+//- (pedirRecepcion); el servidor es ordenesCompraController.js recibirEnTransaccion.
+mixin modalRecepcionOrden()
+    div#modal-recibir-orden(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+        div(class="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden")
+            div(class="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0")
+                div(class="flex items-center gap-4")
+                    div(class="w-10 h-10 rounded-2xl bg-gh-primary flex items-center justify-center shadow-lg shadow-gh-primary/30")
+                        i(class="fi fi-rr-box-check text-white")
+                    div
+                        h2(class="text-lg font-bold text-slate-800") Recibir orden
+                        p(class="text-sm text-slate-500") Lo que llega entra al inventario de insumos.
+                button#modal-recibir-orden-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
+                    i(class="fi fi-rr-cross-small text-xl")
+
+            div(class="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-4")
+                p(class="helper-text -mt-1") Escribe solo lo que llega ahora: se suma a lo ya recibido. Si de un insumo no llegó nada, déjalo en 0.
+                div#filas-recibir-orden(class="flex flex-col gap-3")
+
+            div(class="flex items-center justify-end gap-3 px-8 py-5 border-t border-slate-100 flex-shrink-0")
+                button(type="button" id="btn-cancelar-recibir" class="btn btn-secondary") Cancelar
+                button(type="button" id="btn-confirmar-recibir" class="btn btn-danger") Confirmar recepción

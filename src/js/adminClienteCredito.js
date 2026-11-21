@@ -6,9 +6,6 @@ import { imprimirPdf } from './imprimirPdf.js';
 // numeroALetras.js — ambos cargados antes que este archivo.
 document.addEventListener('DOMContentLoaded', () => {
     const datos = window.__creditoCliente || {};
-    const csrfToken = () => document.querySelector('[name="_csrf"]')?.value
-        || document.querySelector('meta[name="csrf-token"]')?.content
-        || '';
 
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -96,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const r = await fetch('/admin/api/clientes/verificar-codigo-credito', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ codigoEmpleado: codigo, _csrf: csrfToken() })
+                        body: JSON.stringify({ codigoEmpleado: codigo})
                     });
                     const data = await r.json();
                     if (!data.success) { setEstado('error', data.mensaje || 'Código inválido.'); return; }
@@ -229,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = await fetch(`/admin/api/clientes/${datos.idCliente}/credito/modificar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ valorCreditoCliente: value.nuevoValor, codigoEmpleado: value.codigoEmpleado, _csrf: csrfToken() })
+                body: JSON.stringify({ valorCreditoCliente: value.nuevoValor, codigoEmpleado: value.codigoEmpleado})
             });
             const data = await r.json();
             if (!data.success) return mostrarError(data.mensaje);
@@ -292,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = await fetch(`/admin/api/clientes/${datos.idCliente}/credito/suspender`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ codigoEmpleado: codigoEmpleado.trim(), _csrf: csrfToken() })
+                body: JSON.stringify({ codigoEmpleado: codigoEmpleado.trim()})
             });
             const data = await r.json();
             if (!data.success) return mostrarError(data.mensaje);
@@ -486,18 +483,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (abono.fecha)         fd.append('fecha', abono.fecha);
         fd.append('nroReferencia', abono.nroReferencia);
         for (const archivo of abono.comprobantes || []) fd.append('comprobantes', archivo);
-        // El _csrf va igual en el body por si algún día la ruta se valida después de
-        // multer, pero el que cuenta es el de la cabecera (ver `cabecerasAbono`).
-        fd.append('_csrf', csrfToken());
         return fd;
     };
 
-    // csurf corre GLOBAL en index.js, antes que multer: con multipart, `req.body` todavía
-    // está vacío cuando valida, así que un `_csrf` metido en el FormData no lo ve y
-    // responde EBADCSRFTOKEN. Por eso el token viaja en la cabecera, que csurf sí lee sin
-    // depender del parseo del cuerpo — mismo patrón que el formulario de movimientos de
-    // caja/banco (perfilCajaBanco.pug).
-    const cabecerasAbono = () => ({ 'X-CSRF-Token': csrfToken(), Accept: 'application/json' });
+    const cabecerasAbono = () => ({ Accept: 'application/json' });
 
     // Cierre del flujo: confirmación con los DOS comprobantes que deja un abono.
     //

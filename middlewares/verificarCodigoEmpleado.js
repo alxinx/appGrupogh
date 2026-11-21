@@ -1,4 +1,5 @@
 import { Empleados } from '../models/index.js';
+import { OPCIONES_COOKIE_SESION } from '../helpers/genToken.js';
 
 // Contador en memoria: userId → { count, primeraFalla (timestamp) }
 const _intentos  = new Map();
@@ -6,7 +7,7 @@ const MAX        = 5;
 const VENTANA_MS = 15 * 60 * 1000; // 15 minutos desde la primera falla
 
 const _logout = (res, mensaje) => {
-    res.clearCookie('_token');
+    res.clearCookie('_token', OPCIONES_COOKIE_SESION);
     return res.status(401).json({ success: false, mensaje, logout: true });
 };
 

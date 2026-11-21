@@ -11,7 +11,7 @@ import {
 import { TIPOS_DOCUMENTO_PROVEEDOR } from '../helpers/tiposDocumento.js';
 import {
     validarDocumentoProveedor, validarCategoriasProveedor, requiereFotosLugarTrabajo,
-    crearProveedorCompleto, cuentasDeLaWeb
+    crearProveedorCompleto, cuentasDeLaWeb, PREFIJO_FOTOS_LUGAR_TRABAJO
 } from '../helpers/proveedores.js';
 import { mailBienvenidaProveedor } from '../helpers/mailBienvenidaProveedor.js';
 import {
@@ -185,7 +185,7 @@ export const registrarProveedorWeb = async (req, res) => {
         await subir('cedula', [cedula], 'cedula', esEmpresa ? 'Cédula del representante legal' : 'Cédula');
         if (rut) await subir('rut', [rut], 'rut', 'RUT');
         if (fotos.length) {
-            await subir('fotos', fotos, 'lugar-trabajo', (i) => `Lugar de trabajo · foto ${i + 1}`, { soloImagenes: true });
+            await subir('fotos', fotos, PREFIJO_FOTOS_LUGAR_TRABAJO, (i) => `Lugar de trabajo · foto ${i + 1}`, { soloImagenes: true });
         }
     } catch (e) {
         await borrarComprobantes(subidos);

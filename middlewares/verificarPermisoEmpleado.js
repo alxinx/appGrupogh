@@ -24,20 +24,30 @@ export const resolverIds = async (nombreRecurso, tipo, nombreAccion) => {
 // Factory: devuelve un middleware Express.
 // Uso: verificarPermisoEmpleado('Traslados', 'vendedor', 'CREATE')
 // Requiere que verificarCodigoEmpleado haya corrido antes (req.empleadoVerificado.idUsuario).
+/**
+ * ¿Ese usuario tiene ese permiso fino? true/false; null si el recurso/acción no existe en la
+ * configuración. Lo usa el middleware y cualquier controlador que tenga que exigir un permiso
+ * extra según lo que pida el cuerpo (p. ej. crear una orden de compra Y recibirla).
+ */
+export const empleadoTienePermiso = async (idUsuario, nombreRecurso, tipo, nombreAccion) => {
+    const ids = await resolverIds(nombreRecurso, tipo, nombreAccion);
+    if (!ids) return null;
+    const permiso = await UserPermisos.findOne({
+        where: { idUsuario, idRecurso: ids.idRecurso, idAccion: ids.idAccion },
+        attributes: ['idPermiso']
+    });
+    return Boolean(permiso);
+};
+
 const verificarPermisoEmpleado = (nombreRecurso, tipo, nombreAccion) => async (req, res, next) => {
     const idUsuario = req.empleadoVerificado?.idUsuario;
     if (!idUsuario)
         return res.status(403).json({ success: false, mensaje: 'El empleado no tiene acceso al sistema.' });
 
     try {
-        const ids = await resolverIds(nombreRecurso, tipo, nombreAccion);
-        if (!ids)
+        const permiso = await empleadoTienePermiso(idUsuario, nombreRecurso, tipo, nombreAccion);
+        if (permiso === null)
             return res.status(500).json({ success: false, mensaje: 'Configuración de permisos inválida.' });
-
-        const permiso = await UserPermisos.findOne({
-            where: { idUsuario, idRecurso: ids.idRecurso, idAccion: ids.idAccion },
-            attributes: ['idPermiso']
-        });
 
         if (!permiso)
             return res.status(403).json({

@@ -128,11 +128,9 @@ function iniciar(caja) {
             focusCancel: true
         }));
         if (!isConfirmed) return;
-        const token = document.querySelector('input[name="_csrf"]')?.value || '';
         try {
             const r = await fetch(`/admin/provedores/${caja.dataset.idProveedor}/cuentas/${fila.dataset.idCuenta}/verificar`, {
-                method: 'POST', headers: { 'CSRF-Token': token }
-            });
+                method: 'POST', });
             const data = await r.json();
             if (!data.success) throw new Error(data.mensaje);
             delete fila.dataset.huellaWeb;

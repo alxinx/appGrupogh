@@ -126,7 +126,7 @@ block contenedor
                             method: 'POST',
                             //- El panel de admin no publica el token en un <meta>: se
                             //- pasa desde el render, como en el resto de sus vistas.
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '#{csrfToken}' }
+                            headers: { 'Content-Type': 'application/json'}
                         });
                         const d = await r.json();
                         if (!d.success) {

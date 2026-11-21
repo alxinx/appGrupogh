@@ -1,0 +1,58 @@
+extends ../../layout/index
+block contenedor
+    //- Listado de procesos (admin/procesos) — seguimiento de producción por taller. Nace
+    //- solo cuando una ficha de confección tiene uno o más confeccionistas asignados
+    //- (controller/fichaConfeccionController.js actualizarFichaConfeccion); acá se ve el
+    //- estado de cada uno y se entra a avanzarlo (controller/fichaConfeccionProcesoController.js).
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-scissors',
+                                    titulo:    'Listado de procesos',
+                                    subtitulo: 'Seguimiento de producción por taller de confección',
+                                    iconoSub:  'fi-rr-document'
+                                })
+
+                            if !procesos.length
+                                div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 px-6 py-14 flex flex-col items-center text-center gap-2")
+                                    i(class="fi fi-rr-scissors text-2xl text-slate-300")
+                                    span(class="text-sm font-semibold text-slate-500") Todavía no hay procesos
+                                    span(class="text-xs text-slate-400") Aparecen solos apenas le asignás un taller de confección a una ficha.
+                            else
+                                div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-sm")
+                                            thead
+                                                tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
+                                                    th(class="py-3 px-5 font-semibold") Ficha
+                                                    th(class="py-3 px-5 font-semibold") Taller
+                                                    th(class="py-3 px-5 font-semibold") Estado
+                                                    th(class="py-3 px-5 font-semibold text-right") Última actualización
+                                                    th(class="py-3 px-5 font-semibold text-right") Ver
+                                            tbody
+                                                each p in procesos
+                                                    tr(class="border-b border-slate-100 last:border-0")
+                                                        td(class="py-3.5 px-5 font-semibold text-slate-800")
+                                                            = p.taller.ficha.referencia
+                                                            div(class="text-xs text-slate-400 font-normal")= p.taller.ficha.materialNombre
+                                                        td(class="py-3.5 px-5 text-slate-600")= p.taller.proveedor.razonSocial
+                                                        td(class="py-3.5 px-5")
+                                                            span(class=`table-badge ${p.estado === 'entregada' ? 'table-badge-active' : 'table-badge-pending'}`)
+                                                                span(class="table-badge-dot")
+                                                                = etiquetaEstado[p.estado]
+                                                        td(class="py-3.5 px-5 text-right text-slate-500 text-xs")= new Date(p.updatedAt).toLocaleDateString('es-CO')
+                                                        td(class="py-3.5 px-5 text-right")
+                                                            a(href=`/admin/procesos/${p.idProceso}` class="inline-flex items-center gap-1.5 text-xs font-bold text-gh-primaryHover hover:underline")
+                                                                i(class="fi fi-rr-eye text-xs")
+                                                                | Ver

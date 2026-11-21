@@ -20,36 +20,21 @@ const registerValidation = [
 ]
 
 
-
 const loginValidation = [
     
     check('emailUsuario')
         .trim()
         .isEmail().withMessage('Debe ser un email válido'),
 
+    // Sin largo mínimo ni trim: eso es una regla para CREAR una contraseña, no para entrar.
+    // La contraseña inicial de un empleado es su documento, y una cédula de menos de 6
+    // dígitos quedaba rechazada aquí antes de llegar a compararse. Y `.trim()` modificaba
+    // lo que se comparaba: lo que escribió la persona se compara tal cual.
     check('password')
-        .trim()
-        .isLength({ min: 6 })
-        .withMessage('La contraseña debe tener mínimo 6 caracteres')
+        .notEmpty()
+        .withMessage('Escribe tu contraseña')
 ]
  
-
-const storeRegisterValidation =  [
-
-    check("razonSocial").trim().notEmpty().withMessage('Es necesario que me des la razón social.'),
-    check("tipo").trim().isIn(['Punto de venta', 'Bodega', 'Transito']).withMessage('Debe ser alguna de las opciones del campo.'),
-    check("nombreComercial").trim().notEmpty().withMessage('Debes darme el nombre comercial.'),
-    check("direccionPrincipal").trim().notEmpty().withMessage('La dirección del punto de venta es importante.'),
-    check("departamento").trim().isInt().withMessage('El departamento debe ser uno de los de la lista.'),
-    check("ciudad").trim().isInt().withMessage('La ciudad debe ser uno de los de la lista.'),
-    
-]
-
-const storeBasicTaxDataValidation = [
-    check("taxId").trim().isInt().optional({checkFalsy: true}).withMessage('El numero del RUT es importante'),
-    check("DV").trim().isLength({min:1, max: 1}).optional({checkFalsy: true}).withMessage('El código de verificación es importante'),
-    check("emailRut").isEmail().optional({checkFalsy: true}).withMessage('Es necesario el email que tienes registrado ante la DIAN.'),
-]
 
 
 const productBasicValidation = [
@@ -144,8 +129,7 @@ const cajaBancoEditValidation = [
 
 export {    registerValidation,
             loginValidation,
-            storeRegisterValidation,
-            storeBasicTaxDataValidation,
+            
             productBasicValidation,
             cajaBancoValidation,
             cajaBancoEditValidation

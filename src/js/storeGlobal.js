@@ -255,8 +255,7 @@ activarCajitasCodigo();
             await fetch('/store/traslados/avisos/visto', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ idTraslado })
             });
@@ -438,7 +437,6 @@ activarCajitasCodigo();
         const btnAbrir     = document.getElementById('btn-abrir-caja');
         const btnCerrar    = document.getElementById('btn-cerrar-caja-modal');
 
-        let empleadoValido = false;
         let debounceTimer  = null;
 
         // ── Formateo con puntos de miles ─────────────────────────────────────
@@ -486,7 +484,6 @@ activarCajitasCodigo();
         // El botón se habilita por longitud del campo; el servidor es quien
         // valida y cuenta los intentos fallidos.
         inputCodigo.addEventListener('input', () => {
-            empleadoValido = false;
             clearInfo();
             clearTimeout(debounceTimer);
 
@@ -501,7 +498,6 @@ activarCajitasCodigo();
                     const d = await r.json();
                     if (d.success) {
                         setInfo(d.nombre, true);
-                        empleadoValido = true;
                     } else {
                         setInfo(d.mensaje || 'No pertenece a esta tienda', false);
                     }
@@ -536,11 +532,10 @@ activarCajitasCodigo();
             btnAbrir.disabled    = true;
             btnAbrir.textContent = 'Abriendo...';
 
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             try {
                 const r = await fetch('/store/caja/abrir', {
                     method:  'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    headers: { 'Content-Type': 'application/json'},
                     body:    JSON.stringify({ cajaMenor, codigoEmpleado })
                 });
                 const d = await r.json();

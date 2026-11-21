@@ -1,5 +1,9 @@
 import sanitizeHtml from 'sanitize-html';
 
+// Error con un mensaje apto para mostrarle al usuario: el controlador responde con su
+// `status` y su `message` (`error.publico`). Para cualquier otro error, mensaje genérico.
+export const errorPublico = (mensaje, status = 400) => Object.assign(new Error(mensaje), { publico: true, status });
+
 // Sanitizador para descripciones cortas: negritas, listas, enlaces y poco más.
 export const sanitizarHTML = (contenido) => {
     return sanitizeHtml(contenido, {

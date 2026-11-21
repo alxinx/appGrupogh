@@ -1,0 +1,119 @@
+//- Campos del formulario de un material del catálogo, en una sola copia. Los usan el alta
+//- ("Nuevo insumo", components/modalNuevoInsumo.pug) y la edición ("Editar insumo",
+//- produccion/insumoPerfil.pug); antes eran dos copias que se iban separando. El
+//- comportamiento lo pone src/js/formularioInsumo.js sobre estos ids.
+//-
+//- opts.material         el material a editar (sin él, alta en blanco)
+//- opts.tieneInventario  true → la unidad de consumo no se puede cambiar
+//- opts.tiposInsumo, opts.unidadesCompra, opts.unidadesConsumo, opts.limites
+mixin camposInsumo(opts)
+    - const m = opts.material || null
+    //- ¿Es variante de otro material? Dos botones de modo.
+    div(class="flex gap-2")
+        button#btn-modo-base(type="button" class="btn btn-secondary flex-1 justify-center gap-1.5")
+            i(class="fi fi-rr-hashtag")
+            | Material base
+        button#btn-modo-variante(type="button" class="btn btn-danger flex-1 justify-center gap-1.5")
+            i(class="fi fi-rr-diagram-project")
+            | Variante de otro
+
+    //- Panel VARIANTE: aparece antes del nombre cuando está activo
+    div#panel-codigo-variante(class="grid grid-cols-12 gap-4 items-end")
+        div(class="col-span-5 flex flex-col gap-1")
+            label(class="label label-required" for="grupoMaterial") Material base
+            div(class="select-wrapper")
+                select#grupoMaterial.field-text.appearance-none.pr-10
+                    option(value="") — cargando… —
+                span(class="select-icon")
+                    i(class="fi-rr-chevron-double-down")
+            p#error-grupoMaterial(class="label-error text-xs hidden")
+        div(class="col-span-3 flex flex-col gap-1")
+            label(class="label label-required" for="subCodigoMaterial") Nro. variante
+            input#subCodigoMaterial.field-text(type="text" inputmode="numeric" placeholder="1" maxlength="10" autocomplete="off")
+            p#error-subCodigoMaterial(class="label-error text-xs hidden")
+        div(class="col-span-4 flex flex-col gap-1")
+            p(class="label") Código resultante
+            div(class="field-text bg-slate-50 text-slate-700 font-mono flex items-center min-h-[2.5rem] select-none")
+                span#codigoResultante(class="text-slate-400") —
+
+    //- Grid código + nombre: base=[código col-3 | nombre col-9],
+    //- variante=panel-base oculto y nombre arranca desde col-1 en 9 cols.
+    div(class="grid grid-cols-12 gap-4 items-start")
+        div#panel-codigo-base(class="col-span-3 hidden flex flex-col gap-1")
+            label(class="label label-required" for="codigoMaterial") Código DXF
+            input#codigoMaterial.field-text(name="codigoMaterial" type="text" inputmode="numeric" autocomplete="off" placeholder="1" maxlength="10" value=m ? m.codigoMaterial : undefined)
+        div(class="col-span-9 flex flex-col gap-1")
+            label#label-nombre(class="label label-required" for="nombre") Nombre insumo / materia prima
+            input#nombre.field-text(name="nombre" type="text" autocomplete="off" placeholder="Ej. Tela algodón blanca" maxlength=opts.limites.nombreMax value=m ? m.nombre : undefined)
+            p#error-nombre(class="label-error text-xs hidden")
+
+    //- Error del código (aplica a ambos modos)
+    p#error-codigoMaterial(class="label-error text-xs hidden")
+    p#helper-codigo(class="helper-text") Es el número principal del material en el archivo DXF (1, 2, 3…).
+
+    fieldset(class="flex flex-col gap-2")
+        legend(class="label label-required") Tipo
+        div(class="grid grid-cols-1 sm:grid-cols-2 gap-3")
+            each t in opts.tiposInsumo
+                label(class="cursor-pointer")
+                    input(type="radio" name="tipo" value=t.valor checked=(m && t.valor === m.tipo) data-etiqueta=t.etiqueta data-etiqueta-nombre=t.etiquetaNombre class="peer sr-only")
+                    div(class="flex items-center gap-3 h-full rounded-xl border-2 border-slate-200 bg-white p-3 transition peer-checked:border-gh-primary peer-checked:bg-gh-primarySoft peer-focus-visible:ring-2 peer-focus-visible:ring-gh-primary")
+                        img(src=t.icono alt=t.etiqueta class="w-11 h-11 rounded-lg bg-slate-100 p-1.5 object-contain flex-shrink-0")
+                        div(class="min-w-0")
+                            p(class="text-sm font-semibold text-slate-800")= t.etiqueta
+                            p(class="text-xs text-slate-500 leading-snug")= t.detalle
+        p#error-tipo(class="label-error text-xs hidden")
+
+    //- Cómo se compra y en qué se gasta (PLAN_COSTEO_PRODUCCION.md §1): "10 metros de resorte"
+    //- se compran por metro y se gastan en centímetros; las argollas, por bolsa y por unidad.
+    div(class="grid grid-cols-1 sm:grid-cols-2 gap-4")
+        div(class="flex flex-col gap-1")
+            label(class="label" for="unidadCompra") Se compra por lo general en
+            div(class="select-wrapper")
+                select#unidadCompra.field-text.appearance-none.pr-10(name="unidadCompra")
+                    option(value="" selected=(!m || !m.unidadCompra)) Sin unidad
+                    each u in opts.unidadesCompra
+                        option(value=u.valor selected=(m && u.valor === m.unidadCompra))= u.etiqueta
+                span(class="select-icon")
+                    i(class="fi-rr-chevron-double-down")
+            p#error-unidadCompra(class="label-error text-xs hidden")
+        div(class="flex flex-col gap-1")
+            label(class="label label-required" for="unidadConsumo") Se gasta en
+            div(class="select-wrapper")
+                select#unidadConsumo.field-text.appearance-none.pr-10(name="unidadConsumo" disabled=Boolean(opts.tieneInventario) data-bloqueada=opts.tieneInventario ? '1' : undefined)
+                    each u in opts.unidadesConsumo
+                        option(value=u.valor selected=(m ? u.valor === m.unidadConsumo : u.valor === 'unidad'))= u.etiqueta
+                span(class="select-icon")
+                    i(class="fi-rr-chevron-double-down")
+            if opts.tieneInventario
+                p(class="helper-text") Ya tiene inventario: no se cambia.
+            else
+                p(class="helper-text") En esto se mide en la ficha y en el inventario.
+            p#error-unidadConsumo(class="label-error text-xs hidden")
+
+    //- Solo telas: lo usa la estimación de consumo desde el DXF (ancho) y el paso metros↔kg
+    //- (gramaje). formularioInsumo.js lo muestra solo con "Materia prima".
+    div#campos-tela(class="grid grid-cols-1 sm:grid-cols-2 gap-4")
+        div(class="flex flex-col gap-1")
+            label(class="label" for="anchoUtilCm") Ancho útil (cm)
+            input#anchoUtilCm.field-text(name="anchoUtilCm" type="text" inputmode="decimal" autocomplete="off" placeholder="Ej. 150" value=m && m.anchoUtilCm ? String(Number(m.anchoUtilCm)).replace('.', ',') : undefined)
+            p#error-anchoUtilCm(class="label-error text-xs hidden")
+        div(class="flex flex-col gap-1")
+            label(class="label" for="gramajeGm2") Gramaje (g/m²)
+            input#gramajeGm2.field-text(name="gramajeGm2" type="text" inputmode="decimal" autocomplete="off" placeholder="Si se compra por kilo" value=m && m.gramajeGm2 ? String(Number(m.gramajeGm2)).replace('.', ',') : undefined)
+            p#error-gramajeGm2(class="label-error text-xs hidden")
+
+    //- Mismo patrón de carga con vista previa real que el modal de QR de pago
+    //- (views/administrador/bankentities/listado.pug): caja punteada, input invisible encima,
+    //- y al elegir archivo la imagen de verdad reemplaza el ícono.
+    div(class="flex flex-col gap-1")
+        label(class="label") Foto (opcional)
+        div(class="relative group")
+            input#imagen(type="file" name="imagen" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".jpg,.jpeg,.png,.webp")
+            div(class="inputUpload_mini")
+                img#preview-imagen(src=m && m.imagenUrl || undefined class=`w-20 h-20 object-contain mb-2 rounded-lg bg-white border border-slate-200 ${m && m.imagenUrl ? '' : 'hidden'}`)
+                div#icono-imagen(class=`w-14 h-14 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-purple-500 ${m && m.imagenUrl ? 'hidden' : ''}`)
+                    i.fi-rr-picture.text-2xl
+                span#nombre-archivo-imagen(class="text-sm font-bold text-gray-600")= m && m.imagenUrl ? 'Foto actual del material' : 'Sube o arrastra la foto del material'
+                span(class="text-xs text-gray-400 mt-1")= m ? 'JPG, PNG o WebP, hasta 2MB — deja esto vacío para conservar la foto actual' : 'JPG, PNG o WebP, hasta 2MB'
+        p#error-imagen(class="label-error text-xs hidden")

@@ -104,7 +104,6 @@ block contenedor
                                     p(class="text-sm text-slate-400 mb-4") Modifica los datos de la entidad
 
                                     form#form-editar-entidad(class="flex flex-col gap-4 px-4 pb-4")
-                                        input(type="hidden" name="_csrf" value=csrfToken)
 
                                         //- Primero el tipo: banco y billetera se eligen del catálogo, el
                                         //- resto se escribe (mismo criterio que el alta en listado.pug).
@@ -154,7 +153,6 @@ block contenedor
         script(src="/js/entidadFinanciera.js")
         script.
             (function () {
-                const csrf       = document.querySelector('meta[name="csrf-token"]')?.content || '';
                 const idEntidad  = !{JSON.stringify(entidad.idEntidad)};
                 const fmtMoney   = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
 
@@ -280,7 +278,7 @@ block contenedor
                     try {
                         const r = await fetch(`/admin/bankentities/editar/${idEntidad}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                            headers: { 'Content-Type': 'application/json'},
                             body: JSON.stringify({ nombreEntidad: nombre, tipoEntidad: tipo, recibirPagosPos: recibir })
                         });
                         const d = await r.json();

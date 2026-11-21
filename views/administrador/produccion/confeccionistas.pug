@@ -1,0 +1,301 @@
+extends ../../layout/index
+block contenedor
+    //- Lista de confeccionistas (admin/confeccionistas). Un confeccionista es un proveedor de
+    //- categoría Confeccionista; los datos salen de helpers/confeccionistas.js. Misma familia
+    //- que el catálogo de insumos (filtros arriba, lista o cuadrícula, filtrado en el
+    //- navegador con src/js/catalogoFiltrable.js), pero cada fila muestra lo que la persona
+    //- que la mira necesita para decidir a quién llamar: dónde trabaja el taller, qué tiene
+    //- encima ahora, qué tan bien trabaja (calificación) y si ya se le puede pagar.
+    include ../../components/headerAdmin
+    include ../../components/calificacionTaller
+
+    //- Lo que el taller tiene en la mesa: las tres etapas abiertas del proceso como una sola
+    //- tira (el orden ES el flujo, asignado → taller → revisión), y lo ya entregado aparte.
+    mixin mesaTaller(c)
+        - var tonos = { asignado: 'bg-violet-50 text-violet-700 ring-violet-200', entregado_taller: 'bg-gh-primarySoft text-gh-primaryHover ring-pink-200', en_revision: 'bg-amber-50 text-amber-700 ring-amber-200' }
+        div(class="flex flex-col gap-1.5")
+            div(class="flex items-stretch gap-0.5" role="list" aria-label=`Trabajo en curso de ${c.nombre}`)
+                each e, i in c.etapas
+                    - var redondeo = i === 0 ? 'rounded-l-lg' : i === c.etapas.length - 1 ? 'rounded-r-lg' : ''
+                    div(role="listitem" title=`${e.etiqueta}: ${e.n}`
+                        class=`flex-1 min-w-[4.25rem] px-2 py-1 ${redondeo} ring-1 ring-inset ${e.n ? tonos[e.estado] : 'bg-slate-50 text-slate-400 ring-slate-100'}`)
+                        span(class="block text-sm font-bold tabular-nums leading-tight")= e.n
+                        span(class="block text-[10px] font-semibold uppercase tracking-wide leading-tight truncate")= e.corta
+            div(class="flex items-center gap-3 text-xs text-slate-500")
+                if c.unidadesEnTaller
+                    span(class="inline-flex items-center gap-1 font-semibold text-slate-700")
+                        i(class="fi fi-rr-tshirt text-[11px] text-gh-primaryHover")
+                        | #{c.unidadesEnTaller.toLocaleString('es-CO')} prendas en proceso
+                if c.entregadas
+                    span(class="inline-flex items-center gap-1 text-emerald-700")
+                        i(class="fi fi-rr-check text-[10px]")
+                        = c.entregadas === 1 ? '1 entregada' : `${c.entregadas} entregadas`
+                else if !c.enCurso
+                    span Sin trabajos todavía
+
+    mixin pagoTaller(c)
+        - var cls = { verificada: 'table-badge-active', sin_verificar: 'table-badge-pending', sin_cuenta: 'table-badge-low' }
+        span(class=`table-badge ${cls[c.pago.clave]}`)
+            span(class="table-badge-dot")
+            = c.pago.etiqueta
+
+    //- Foto del taller o, si no subió (los creados desde el panel no la piden), sus iniciales.
+    //- La foto va ENCIMA de las iniciales: si no carga, el JS la quita y queda la letra.
+    //- `clases` trae la posición: sin `absolute`, el mixin pone `relative` (las dos juntas se pisan).
+    mixin fotoTaller(c, clases)
+        div(class=`${/\babsolute\b/.test(clases) ? '' : 'relative'} overflow-hidden bg-gh-primarySoft flex flex-col items-center justify-center gap-1 flex-shrink-0 ${clases}`)
+            span(class="font-bold text-gh-primaryHover select-none")= c.iniciales
+            if attributes.conAviso && !c.fotos.length
+                span(class="text-[11px] font-medium text-gh-primaryHover/70 flex items-center gap-1")
+                    i(class="fi fi-rr-camera text-[10px]")
+                    | Sin fotos del taller
+            if c.fotos.length
+                img(src=c.fotos[0] alt=`Lugar de trabajo de ${c.nombre}` loading="lazy" data-foto-taller class="absolute inset-0 w-full h-full object-cover")
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            //- HEADER — resumen de la mesa en chips, debajo del título (headerAdmin acepta bloque).
+                            div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white/70 backdrop-blur-md rounded-2xl p-6")
+                                +headerAdmin({ avatar: '/img/avatars/telita.webp', titulo: subPagina, subtitulo: subtitulo })
+                                    if resumen.total
+                                        div(class="flex flex-wrap gap-2 mt-2")
+                                            span(class="status-chip status-active text-xs py-1")
+                                                span.status-dot
+                                                = resumen.conTrabajo === 1 ? '1 con trabajo' : `${resumen.conTrabajo} con trabajo`
+                                            span(class="status-chip text-xs py-1 border-slate-200 text-slate-600")
+                                                = resumen.disponibles === 1 ? '1 disponible' : `${resumen.disponibles} disponibles`
+                                            if resumen.unidadesEnTaller
+                                                span(class="status-chip text-xs py-1 border-pink-200 bg-gh-primarySoft/60 text-gh-primaryHover")
+                                                    i(class="fi fi-rr-tshirt text-[11px]")
+                                                    | #{resumen.unidadesEnTaller.toLocaleString('es-CO')} prendas en talleres
+                                            if resumen.calificacionPromedio
+                                                span(class="status-chip text-xs py-1 border-amber-200 bg-amber-50/60 text-amber-800")
+                                                    +estrellasCalificacion(100, 11, 1)
+                                                    | #{resumen.calificacionPromedio} promedio
+                                            if resumen.enRevision
+                                                span(class="status-chip status-pending text-xs py-1")
+                                                    span.status-dot
+                                                    = resumen.enRevision === 1 ? '1 en revisión' : `${resumen.enRevision} en revisión`
+                                //- Estándar de botones (views/components/accionesAdmin.pug): secundaria → principal.
+                                div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
+                                    if puedeAdmin('Procesos')
+                                        a(href="/admin/procesos" class="btn btn-secondary flex items-center gap-2")
+                                            i(class="fi fi-rr-scissors")
+                                            | Ver procesos
+                                    if puedeAdmin('Provedores', 'CREATE')
+                                        a(href="/admin/provedores/new" class="btn btn-danger flex items-center gap-2")
+                                            i(class="fi fi-rr-user-add")
+                                            | Nuevo confeccionista
+
+                            div(class="col-span-12")
+                                section(class="cards cardsWhite p-6 flex flex-col gap-4")
+                                    div(class="flex items-center justify-between gap-4")
+                                        h2(class="text-lg font-bold text-slate-800") Talleres
+                                        div(class="flex items-center gap-4")
+                                            p#conteo-talleres(class="text-sm text-slate-500")
+                                                = confeccionistas.length === 1 ? '1 taller' : `${confeccionistas.length} talleres`
+                                            div(class="inline-flex p-1 rounded-xl bg-slate-100" role="group" aria-label="Vista de la lista")
+                                                button(type="button" data-vista="lista" aria-pressed="true" title="Ver como lista"
+                                                    class="vista-catalogo-btn w-9 h-8 rounded-lg flex items-center justify-center text-slate-500 cursor-pointer")
+                                                    i(class="fi fi-rr-list")
+                                                button(type="button" data-vista="cuadricula" aria-pressed="false" title="Ver como cuadrícula"
+                                                    class="vista-catalogo-btn w-9 h-8 rounded-lg flex items-center justify-center text-slate-500 cursor-pointer")
+                                                    i(class="fi fi-rr-apps")
+
+                                    if !confeccionistas.length
+                                        div(class="flex flex-col items-center text-center gap-3 py-14")
+                                            div(class="w-14 h-14 rounded-2xl bg-gh-primarySoft flex items-center justify-center")
+                                                i(class="fi fi-rr-tshirt text-xl text-gh-primaryHover")
+                                            div(class="max-w-sm")
+                                                p(class="font-semibold text-slate-700") Todavía no hay confeccionistas
+                                                p(class="text-sm text-slate-500 mt-1") Un taller aparece acá cuando se registra como proveedor con la categoría Confeccionista, desde el panel o desde el formulario web.
+                                            if puedeAdmin('Provedores', 'CREATE')
+                                                a(href="/admin/provedores/new" class="btn btn-danger mt-1") Registrar el primero
+                                    else
+                                        - var claseCampo = 'py-2 px-3 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gh-primaryHover/20'
+                                        div(class="flex flex-wrap items-center gap-3")
+                                            div(class="relative flex-1 min-w-[200px]")
+                                                input#busqueda-taller(type="search" placeholder="Buscar por nombre, documento o contacto..." aria-label="Buscar taller"
+                                                    class=`w-full pl-9 pr-3 ${claseCampo.replace('px-3 ', '')}`)
+                                                i(class="fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs")
+                                            select#filtro-carga-taller(class=claseCampo aria-label="Carga de trabajo")
+                                                option(value="") Toda la carga
+                                                option(value="trabajo") Con trabajo en curso
+                                                option(value="libre") Disponibles
+                                                option(value="revision") Con algo en revisión
+                                            if ciudades.length > 1
+                                                select#filtro-ciudad-taller(class=claseCampo aria-label="Ciudad")
+                                                    option(value="") Todas las ciudades
+                                                    each ci in ciudades
+                                                        option(value=ci.id)= ci.nombre
+                                            select#filtro-pago-taller(class=claseCampo aria-label="Cuenta de pago")
+                                                option(value="") Cualquier cuenta
+                                                option(value="verificada") Cuenta verificada
+                                                option(value="sin_verificar") Sin verificar
+                                                option(value="sin_cuenta") Sin cuenta
+                                            select#filtro-calificacion-taller(class=claseCampo aria-label="Calificación")
+                                                option(value="") Cualquier calificación
+                                                option(value="4") 4 o más
+                                                option(value="3") 3 o más
+                                                option(value="bajo") Menos de 3
+                                                option(value="sin") Sin calificar
+                                            select#filtro-estado-taller(class=claseCampo aria-label="Estado")
+                                                option(value="") Todos los estados
+                                                option(value="activo") Activo
+                                                option(value="inactivo") Inactivo
+                                            select#orden-talleres(class=claseCampo aria-label="Ordenar")
+                                                option(value="carga") Con trabajo primero
+                                                option(value="calificacion") Mejor calificados
+                                                option(value="nombre") Por nombre
+                                            button#limpiar-filtros-taller(type="button" class="hidden text-xs font-semibold text-gh-primaryHover hover:underline cursor-pointer") Limpiar
+
+                                        //- ── LISTA ───────────────────────────────────────────────
+                                        div#vista-lista-talleres
+                                            //- `relative`: el contenedor que recorta es también la referencia de lo
+                                            //- posicionado adentro. Sin eso el `sr-only` de la última columna se ubicaba
+                                            //- contra la página, a 1.200px, y en el celular ensanchaba todo el documento.
+                                            div(class="relative overflow-x-auto -mx-2 px-2")
+                                                table(class="w-full text-sm min-w-[1040px]")
+                                                    thead
+                                                        tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                            th(class="py-2 pr-4 font-semibold") Taller
+                                                            th(class="py-2 pr-4 font-semibold") Contacto
+                                                            th(class="py-2 pr-4 font-semibold w-[17rem]") En la mesa
+                                                            th(class="py-2 pr-4 font-semibold") Calificación
+                                                            th(class="py-2 pr-4 font-semibold text-right") Tarifa por prenda
+                                                            th(class="py-2 pr-4 font-semibold") Pago
+                                                            th(class="py-2 font-semibold text-right")
+                                                                span.sr-only Acción
+                                                    tbody
+                                                        each c, idx in confeccionistas
+                                                            tr(class=`group border-b border-slate-100 hover:bg-slate-50/70 transition-colors ${c.activo ? '' : 'opacity-60'}`
+                                                                data-taller
+                                                                data-nombre=c.nombre.toLowerCase()
+                                                                data-documento=c.documentoPlano
+                                                                data-contacto=(c.contacto || '').toLowerCase()
+                                                                data-ciudad=c.idCiudad
+                                                                data-pago=c.pago.clave
+                                                                data-activo=c.activo ? '1' : '0'
+                                                                data-encurso=c.enCurso
+                                                                data-revision=c.etapas[2].n
+                                                                data-puntaje=c.calificacion ? c.calificacion.puntaje : ''
+                                                                data-orden=idx)
+                                                                td(class="py-3.5 pr-4")
+                                                                    div(class="flex items-center gap-3")
+                                                                        +fotoTaller(c, 'w-14 h-14 rounded-xl text-base')
+                                                                        div(class="min-w-0")
+                                                                            div(class="flex items-center gap-2")
+                                                                                p(class="font-semibold text-slate-800 truncate")= c.nombre
+                                                                                if !c.activo
+                                                                                    span(class="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 rounded px-1.5 py-0.5") Inactivo
+                                                                            p(class="text-xs text-slate-500 tabular-nums")= c.documento
+                                                                            p(class="text-xs text-slate-500 truncate flex items-center gap-1")
+                                                                                i(class="fi fi-rr-marker text-[10px] text-slate-400")
+                                                                                = [c.ciudad, c.departamento].filter(Boolean).join(', ') || 'Sin ciudad registrada'
+                                                                td(class="py-3.5 pr-4")
+                                                                    if c.contacto
+                                                                        p(class="text-slate-700 truncate max-w-[12rem]")= c.contacto
+                                                                    if c.telefono
+                                                                        if c.whatsapp
+                                                                            a(href=c.whatsapp target="_blank" rel="noopener"
+                                                                                class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:underline tabular-nums" title="Escribir por WhatsApp")
+                                                                                i(class="fi fi-brands-whatsapp text-[12px]")
+                                                                                = c.telefono
+                                                                        else
+                                                                            p(class="text-xs text-slate-500 tabular-nums")= c.telefono
+                                                                    else
+                                                                        p(class="text-xs text-slate-400") Sin teléfono
+                                                                td(class="py-3.5 pr-4")
+                                                                    +mesaTaller(c)
+                                                                td(class="py-3.5 pr-4")
+                                                                    +calificacionTaller(c.calificacion, { id: c.idProveedor, nombre: c.nombre })
+                                                                td(class="py-3.5 pr-4 text-right")
+                                                                    if c.tarifa
+                                                                        p(class="font-semibold text-slate-800 tabular-nums whitespace-nowrap")= c.tarifa
+                                                                    else
+                                                                        p(class="text-xs text-slate-400") Sin fichas
+                                                                    if c.ultimaActividad
+                                                                        p(class="text-[11px] text-slate-400 whitespace-nowrap") Actualizado el #{c.ultimaActividad}
+                                                                td(class="py-3.5 pr-4")
+                                                                    +pagoTaller(c)
+                                                                td(class="py-3.5 text-right")
+                                                                    if puedeAdmin('Provedores')
+                                                                        a(href=`/admin/provedores/ver/${c.idProveedor}` class="btn btn-secondary whitespace-nowrap")
+                                                                            i(class="fi fi-rr-arrow-right text-xs")
+                                                                            | Ver perfil
+                                            nav#paginacion-talleres(aria-label="Páginas de la lista de talleres")
+
+                                        //- ── CUADRÍCULA ─────────────────────────────────────────────
+                                        //- Acá manda la foto: el taller se reconoce por su espacio. Hasta tres
+                                        //- fotos en mosaico; sin fotos, el bloque de iniciales.
+                                        div#vista-cuadricula-talleres(class="hidden")
+                                            div#rejilla-talleres(class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4")
+                                                each c, idx in confeccionistas
+                                                    - var perfil = puedeAdmin('Provedores') ? `/admin/provedores/ver/${c.idProveedor}` : null
+                                                    article(class=`group flex flex-col rounded-2xl border border-slate-100 bg-white overflow-hidden hover:border-gh-primary hover:shadow-md transition-all ${c.activo ? '' : 'opacity-60'}`
+                                                        data-taller
+                                                        data-nombre=c.nombre.toLowerCase()
+                                                        data-documento=c.documentoPlano
+                                                        data-contacto=(c.contacto || '').toLowerCase()
+                                                        data-ciudad=c.idCiudad
+                                                        data-pago=c.pago.clave
+                                                        data-activo=c.activo ? '1' : '0'
+                                                        data-encurso=c.enCurso
+                                                        data-revision=c.etapas[2].n
+                                                        data-puntaje=c.calificacion ? c.calificacion.puntaje : ''
+                                                        data-orden=idx)
+                                                        div(class="relative aspect-[16/10] bg-gh-primarySoft")
+                                                            if c.fotos.length > 1
+                                                                div(class="absolute inset-0 grid grid-cols-3 grid-rows-2 gap-0.5")
+                                                                    each f, i in c.fotos
+                                                                        div(class=`relative overflow-hidden bg-gh-primarySoft ${i === 0 ? 'col-span-2 row-span-2' : c.fotos.length === 2 ? 'row-span-2' : ''}`)
+                                                                            img(src=f alt=i === 0 ? `Lugar de trabajo de ${c.nombre}` : '' loading="lazy" data-foto-taller class="absolute inset-0 w-full h-full object-cover")
+                                                            else
+                                                                +fotoTaller(c, 'absolute inset-0 text-4xl')(conAviso=true)
+                                                            if c.calificacion
+                                                                span(class="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/90 text-[11px] font-bold text-slate-800 tabular-nums")
+                                                                    +estrellasCalificacion(100, 11, 1)
+                                                                    = c.calificacion.texto
+                                                            if c.totalFotos > c.fotos.length
+                                                                span(class="absolute bottom-2 right-2 px-2 py-0.5 rounded-lg bg-black/55 text-white text-[11px] font-semibold") +#{c.totalFotos - c.fotos.length} fotos
+                                                            if c.enCurso
+                                                                span(class="absolute top-2 left-2 status-chip status-active text-[11px] py-0.5 px-2 bg-white/90")
+                                                                    span.status-dot
+                                                                    | Con trabajo
+                                                            else if c.activo
+                                                                span(class="absolute top-2 left-2 status-chip text-[11px] py-0.5 px-2 bg-white/90 border-slate-200 text-slate-600") Disponible
+                                                            else
+                                                                span(class="absolute top-2 left-2 status-chip text-[11px] py-0.5 px-2 bg-white/90 border-slate-200 text-slate-500") Inactivo
+                                                        div(class="p-4 flex flex-col gap-3 flex-1")
+                                                            div(class="min-w-0")
+                                                                if perfil
+                                                                    a(href=perfil class="font-semibold text-slate-800 truncate block group-hover:text-gh-primaryHover focus:outline-none focus-visible:underline")= c.nombre
+                                                                else
+                                                                    p(class="font-semibold text-slate-800 truncate")= c.nombre
+                                                                p(class="text-xs text-slate-500 truncate")
+                                                                    = [c.ciudad, c.contacto].filter(Boolean).join(' · ') || c.documento
+                                                            +mesaTaller(c)
+                                                            +calificacionTaller(c.calificacion, { id: `${c.idProveedor}-tarjeta`, nombre: c.nombre, compacta: true })
+                                                            div(class="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2")
+                                                                +pagoTaller(c)
+                                                                if c.tarifa
+                                                                    span(class="text-sm font-semibold text-slate-800 tabular-nums")= c.tarifa
+                                                                        span(class="text-[11px] font-normal text-slate-400")  /prenda
+                                            //- Al llegar acá se pintan las tarjetas siguientes (src/js/catalogoFiltrable.js).
+                                            div#centinela-talleres(class="hidden" aria-live="polite")
+                                                p(class="flex items-center justify-center gap-2 py-6 text-xs text-slate-400")
+                                                    span(class="w-1.5 h-1.5 rounded-full bg-gh-primary animate-pulse")
+                                                    span#aviso-tanda-talleres
+
+                                        p#sin-resultados-taller(class="hidden py-12 text-center text-sm text-slate-400") Ningún taller coincide con el filtro.
+
+        script(src="/js/paginador.js")
+        script(src="/js/confeccionistas.js")

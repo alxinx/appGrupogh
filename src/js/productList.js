@@ -180,7 +180,6 @@ import { abrirPreciosMasivos } from './preciosMasivos.js';
     document.querySelector('#opcion-editar-precios')?.addEventListener('click', () => {
         menuMas.cerrar();
         abrirPreciosMasivos({
-            csrfToken: document.querySelector('[data-csrf]')?.dataset.csrf || '',
             alTerminar: obtenerProductos   // el listado muestra los precios nuevos sin recargar
         });
     });

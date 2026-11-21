@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
-import { COLORES_CORREO as C, LOGO_URL, PORTAL_URL, NOMBRE_EMPRESA, DIRECCION_EMPRESA } from '../config/marca.js';
+import { PORTAL_URL, NOMBRE_EMPRESA } from '../config/marca.js';
+import { plantillaMarca, ICONO_CORREO, filaCorreo, tarjetaCorreo, datosCorreo, parrafoCorreo, botonCorreo } from './plantillaCorreo.js';
+import { escaparHtml } from '../src/js/escaparHtml.js';
 import { enviarCorreoSes, REMITENTE_EMPLEADOS } from './emailSes.js';
 dotenv.config();
 
@@ -22,78 +24,29 @@ const mailWelcomeEmployer = async (datos) => {
         + `Tu código es personal e intransferible: con él se registran tus ventas y traslados.\n`
         + `Ingresa en ${url}`;
 
-    // El logo se toma del sitio público (LOGO_URL), no de este backend: un cliente de
-    // correo tiene que poder resolver la URL desde afuera de la red del servidor.
-    const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="utf-8">
-    <style>
-        /* Estilos base para clientes que soportan bloques de estilo */
-        body { margin: 0; padding: 0; font-family: 'Helvetica', Arial, sans-serif; background-color: #f9fafb; color: #334155; }
-        .btn-shadow { box-shadow: 0 4px 14px 0 rgba(255, 94, 170, 0.39); }
-    </style>
-</head>
-<body style="background-color: #f9fafb; padding: 20px;">
-    <div style="max-width: 600px; margin: 0 auto; bg-color: #ffffff; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden;">
-        
-        <div style="background-color: ${C.primarySoft}; padding: 30px; text-align: center;">
-            <img src="${LOGO_URL}" alt="Grupo GH" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #ffffff;">
-        </div>
+    // Diseño de marca (plantillaMarca, el de la confirmación de pedido). El logo lo pone la
+    // plantilla desde el sitio público: un cliente de correo tiene que poder resolverlo.
+    const filasHtml = [
+        filaCorreo(tarjetaCorreo({
+            titulo: '&#128274; Tus credenciales de acceso',
+            html: datosCorreo([
+                ['Usuario', escaparHtml(emailEmpleado)],
+                ['Contraseña', 'Tu número de identidad'],
+                ['Código de vendedor', `<span style="color:#E24C95;font-size:16px;">${escaparHtml(codigoEmpleado)}</span>`]
+            ])
+        })),
+        filaCorreo(parrafoCorreo('Tu código es <strong>personal e intransferible</strong>: con él se registran tus ventas y traslados. Cuando entres, cambia tu contraseña en el menú → <strong>Cambiar contraseña</strong>.')),
+        filaCorreo(botonCorreo(url, 'Acceder a mi portal'), { arriba: 24 })
+    ].join('');
 
-        <div style="width: 100%; height: 200px; overflow: hidden;">
-            <img src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=600&h=200" alt="Moda GH" style="width: 100%; height: 100%; object-fit: cover;">
-        </div>
-
-        <div style="padding: 40px;">
-            <h1 style="color: ${C.primary}; font-size: 28px; margin-bottom: 10px; text-align: center;">¡Bienvenido a la familia Grupo GH!</h1>
-            <p style="text-align: center; color: #64748b; font-size: 16px;">Estamos encantados de tenerte con nosotros.</p>
-            
-            <div style="margin-top: 30px; font-size: 16px; line-height: 1.6;">
-                <p style="font-weight: bold; font-size: 18px;">Hola, ${PrimerNombre},</p>
-                <p>Es un placer darte la bienvenida oficial a <strong>${NOMBRE_EMPRESA}</strong>. Te unes a un equipo apasionado por la moda y la innovación.</p>
-            </div>
-
-            <div style="background-color: ${C.primarySoft}; border: 1px solid #fce7f3; border-radius: 16px; padding: 25px; margin: 30px 0;">
-                <h2 style="font-size: 18px; color: #0f172a; margin-top: 0;">🔒 Tus Credenciales de Acceso</h2>
-                
-                <table style="width: 100%; border-collapse: collapse;">
-                    <tr>
-                        <td style="padding: 10px 0; border-bottom: 1px solid #fbcfe8; font-size: 14px; color: #64748b;">USUARIO</td>
-                        <td style="padding: 10px 0; border-bottom: 1px solid #fbcfe8; text-align: right; font-weight: bold;">${emailEmpleado}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px 0; border-bottom: 1px solid #fbcfe8; font-size: 14px; color: #64748b;">CONTRASEÑA</td>
-                        <td style="padding: 10px 0; border-bottom: 1px solid #fbcfe8; text-align: right; font-weight: bold;">Tu número de identidad</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px 0; font-size: 14px; color: #64748b;">CÓDIGO VENDEDOR</td>
-                        <td style="padding: 10px 0; text-align: right; color: ${C.primary}; font-weight: bold; font-size: 18px;">${codigoEmpleado}</td>
-                    </tr>
-                </table>
-
-                <div style="background-color: rgba(255,255,255,0.6); padding: 15px; border-radius: 10px; margin-top: 15px; font-size: 13px; color: #475569;">
-                    <strong>Asignación: Ventas Online.</strong> Tu código es personal e intransferible para registrar tus ventas y traslados.
-                </div>
-            </div>
-
-            <div style="text-align: center; margin-top: 40px;">
-                <a href="${url}" style="background-color: ${C.primary}; color: #ffffff; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">
-                    Acceder a mi Portal
-                </a>
-            </div>
-        </div>
-
-        <div style="background-color: #f8fafc; padding: 30px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
-            <p style="font-weight: bold; color: #1e293b; margin-bottom: 5px;">${NOMBRE_EMPRESA}</p>
-            <p>${DIRECCION_EMPRESA}</p>
-            <p style="margin-top: 20px; font-size: 10px; line-height: 1.5;">
-                Este es un mensaje automático. La información contenida es confidencial para uso exclusivo de empleados de Grupo GH.
-            </p>
-        </div>
-    </div>
-</body>
-</html>`;
+    const html = plantillaMarca({
+        icono: { simbolo: '&#127881;', ...ICONO_CORREO.marca },
+        titulo: "¡Bienvenido a la familia Grupo GH!",
+        saludo: `Hola ${escaparHtml(PrimerNombre)} &#128075;`,
+        intro: 'Estamos encantados de tenerte con nosotros. Aquí tienes cómo entrar al sistema.',
+        filasHtml,
+        despedida: 'Bienvenido al equipo &#128156;'
+    });
 
     return enviarCorreoSes({
         remitente: REMITENTE_EMPLEADOS,

@@ -1,0 +1,23 @@
+extends ../layout/index
+include ../components/tarjetaAuth
+include ../components/campoContrasena
+block contenedor
+    script(src="/js/verContrasena.js" defer)
+    if vencido
+        +tarjetaAuth({ titulo: 'Este enlace ya no sirve', texto: 'El enlace ya se usó, venció o fue reemplazado por uno más nuevo. Pide otro y úsalo dentro de los 30 minutos.' })
+            div(class="flex flex-col gap-3 mt-4")
+                a(href="/forgot" class="btn btn-primary w-full justify-center") Pedir un enlace nuevo
+                a(href="/" class="link text-center") Volver a iniciar sesión
+    else
+        +tarjetaAuth({ titulo: 'Crea tu nueva contraseña 🔑', texto: `Para ${emailUsuario}. Mínimo ${minimo} caracteres, con al menos una letra y un número.` })
+            +avisoAuth('error', error)
+            form(action=`/restablecer/${token}` method="post" class="space-y-4")
+                //- Para que el gestor de contraseñas la guarde con el correo correcto.
+                input(type="email" name="emailUsuario" value=emailUsuario autocomplete="username" class="hidden" readonly tabindex="-1" aria-hidden="true")
+                div
+                    label(class="label" for="nueva-password") Contraseña nueva
+                    +campoContrasena({ name: 'password', id: 'nueva-password', autocomplete: 'new-password' })
+                div
+                    label(class="label" for="confirmar-password") Repítela
+                    +campoContrasena({ name: 'confirmacion', id: 'confirmar-password', autocomplete: 'new-password' })
+                button(type="submit" class="btn btn-primary w-full") Guardar y entrar

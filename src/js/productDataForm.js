@@ -418,14 +418,13 @@ actualizarEstadoWeb();
         });
 
         const formData = new FormData(formulario);
-        const token = document.querySelector('input[name="_csrf"]').value;
         try {
             const respuesta = await fetch(formulario.action, {
                 method: 'POST',
                 body: formData,
                 // Accept explícito: le dice al servidor que los errores deben venir en JSON
                 // y no como página HTML.
-                headers: { 'x-csrf-token': token, 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json' }
             });
 
             // Un 4xx trae el motivo en el cuerpo (demasiadas imágenes, sesión expirada…).

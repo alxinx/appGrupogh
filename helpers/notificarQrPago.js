@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
-import { COLORES_CORREO as C, SOPORTE_EMAIL } from '../config/marca.js';
+import { SOPORTE_EMAIL } from '../config/marca.js';
 import { enviarCorreoSes, REMITENTE_ALERTAS } from './emailSes.js';
-import { plantillaSimple, filasDefinicion, fmtFechaLarga } from './plantillaCorreo.js';
+import { plantillaMarca, ICONO_CORREO, filaCorreo, tarjetaCorreo, datosCorreo, avisoCorreo, fmtFechaLarga } from './plantillaCorreo.js';
 dotenv.config();
 
 // Avisos al operador sobre el QR de pago. Son notificaciones de seguridad: si alguien
@@ -16,14 +16,14 @@ const AVISO_SEGURIDAD = 'Si no realizaste este cambio, contacta soporte inmediat
 
 const destinatario = () => process.env.QR_ALERTAS_EMAIL || SOPORTE_EMAIL;
 
-// El aviso va con el encabezado sólido (no el rosa suave por defecto) para que se
-// distinga de un correo comercial a simple vista: el color lo elige cada llamador según
-// la gravedad — rosa de marca si el cambio fue normal, rojo si el QR se comprometió.
-const plantilla = ({ titulo, color, lineas }) => plantillaSimple({
+// Diseño de marca (plantillaMarca). La gravedad la marca el ícono: rosa de marca si el
+// cambio fue normal, rojo si el QR se comprometió.
+const plantilla = ({ titulo, grave, lineas }) => plantillaMarca({
+    icono: grave ? { simbolo: '&#9888;', ...ICONO_CORREO.peligro } : { simbolo: '&#128274;', ...ICONO_CORREO.marca },
     titulo,
-    encabezado: { fondo: color, texto: '#ffffff' },
-    cuerpoHtml: filasDefinicion(lineas),
-    avisoHtml: AVISO_SEGURIDAD
+    intro: 'Aviso de seguridad sobre el QR por el que los clientes transfieren.',
+    filasHtml: filaCorreo(tarjetaCorreo({ titulo: 'Detalle', html: datosCorreo(lineas) }))
+        + filaCorreo(avisoCorreo('Importante', AVISO_SEGURIDAD))
 });
 
 // Envío best-effort: un fallo de correo no puede tumbar la subida ya persistida.
@@ -68,7 +68,7 @@ export async function notificarQrActualizado({ nombreEntidad, usuario, fecha, re
 
     const html = plantilla({
         titulo: 'Se actualizó un QR de pago',
-        color: C.primary,
+        grave: false,
         lineas: [
             ['Entidad', nombreEntidad],
             ['Realizado por', quien],
@@ -88,8 +88,8 @@ export async function notificarQrComprometido({ nombreEntidad, idEntidad, motivo
     const text    = `El QR de pago de ${nombreEntidad} (id ${idEntidad}) fue deshabilitado automáticamente.\nMotivo: ${motivo}\nFecha: ${cuando}\n\n${AVISO_SEGURIDAD}`;
 
     const html = plantilla({
-        titulo: '⚠️ QR de pago deshabilitado automáticamente',
-        color: C.alerta,
+        titulo: 'QR de pago deshabilitado automáticamente',
+        grave: true,
         lineas: [
             ['Entidad', `${nombreEntidad} (id ${idEntidad})`],
             ['Motivo', motivo],

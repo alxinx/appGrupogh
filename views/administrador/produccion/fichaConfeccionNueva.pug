@@ -1,0 +1,434 @@
+extends ../../layout/index
+block contenedor
+    //- Asistente "Nueva ficha de confección" (admin/procesos/fichas-confeccion/nueva).
+    //- Transición entre pasos PORTADA de /formularios/registroClientes (grupoghweb,
+    //- src/components/registro/Piezas.tsx useTransicionPasos + globals.css): lo que sale se
+    //- desliza y encoge, lo que entra llega con un leve rebote, y avanzar dispara un
+    //- destello — mismo mecanismo, reescrito en CSS/JS plano (acá no hay React) y con los
+    //- tokens gh-* en vez del rosa del sitio público (public/css/input.css .gh-paso-*,
+    //- src/js/fichaConfeccionNueva.js).
+    //-
+    //- Dos pasos: 1) archivos (DXF/molde/video, suben de verdad apenas se eligen — ver más
+    //- abajo) y 2) insumos por prenda, complementos, observaciones y precio, con la tela del
+    //- DXF a la vista. Sin colores ni cantidades: eso es de la orden de producción. "Guardar
+    //- ficha" junta todo en POST .../finalizar (controller/fichaConfeccionController.js): crea
+    //- la fila de FICHAS_CONFECCION, genera el PDF y la deja visible en la Biblioteca.
+    include ../../components/headerAdmin
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-pencil-ruler',
+                                    titulo:    'Nueva ficha de confección',
+                                    subtitulo: 'Arma la ficha técnica paso a paso',
+                                    iconoSub:  'fi-rr-document'
+                                })
+                                a(href="/admin/procesos/fichas-confeccion" class="btn btn-secondary btn-sm text-xs whitespace-nowrap flex-shrink-0")
+                                    i(class="fi fi-rr-arrow-left text-xs")
+                                    | Volver
+
+                            div(class="col-span-12 max-w-4xl mx-auto w-full flex flex-col gap-5")
+
+                                //- ── INDICADOR DE PASOS ──────────────────────────────────
+                                //- Mismo espíritu que `Pasos` en Piezas.tsx (número en círculo,
+                                //- el activo resaltado) simplificado a dos pasos: con solo dos no
+                                //- hace falta el estado "ya pasado" con check, un paso futuro
+                                //- siempre se ve igual hasta que le toca.
+                                nav(aria-label="Pasos de la ficha")
+                                    ol(class="flex items-center justify-center gap-2")
+                                        each nombre, i in ['Archivos', 'Notas y precio']
+                                            li(class="flex items-center gap-2")
+                                                button(
+                                                    type="button"
+                                                    data-indicador-paso=i
+                                                    disabled=i > 0
+                                                    class=`gh-paso-ind flex items-center gap-2 text-xs font-bold transition-colors ${i === 0 ? 'text-slate-800' : 'text-slate-400'}`)
+                                                    span(class=`gh-paso-ind-circulo w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 ${i === 0 ? 'bg-gh-primary text-white' : 'bg-slate-100 text-slate-400'}`)= i + 1
+                                                    span(class="hidden sm:inline")= nombre
+                                                if i < 1
+                                                    span(class="text-slate-300" aria-hidden="true") ›
+
+                                //- Indicador persistente de subida de video — a propósito AFUERA de
+                                //- los dos `data-paso`: si el usuario avanza al paso 2 con algún
+                                //- video todavía subiendo/transcodeando, esto sigue visible (el
+                                //- requerimiento lo pide explícito). src/js/fichaConfeccionNueva.js
+                                //- lo prende/actualiza/apaga según el estado agregado de los slots.
+                                div#indicador-videos(class="hidden items-center gap-2 text-xs font-bold text-gh-primaryHover bg-gh-primarySoft border border-gh-primary/30 rounded-full px-4 py-1.5 mx-auto w-fit")
+                                    span(data-indicador-videos-spinner class="w-3 h-3 rounded-full border-2 border-gh-primary/30 border-t-gh-primaryHover animate-spin flex-shrink-0")
+                                    span(data-indicador-videos-texto)
+
+                                //- ── CONTENEDOR DE PASOS (con transición) ────────────────
+                                div#asistente-ficha(class="relative bg-white rounded-2xl shadow-sm border border-slate-100 p-6 md:p-8 overflow-hidden")
+                                    //- Input oculto para la foto de referencia del molde — lo dispara el IIFE del
+                                    //- molde después de que el operador elige "Cargar foto de referencia" en el
+                                    //- modal de elección. Nunca lleva data-input-archivo ni está en la grilla de
+                                    //- slots: el handler genérico no lo debe tocar.
+                                    input#input-molde-referencia(type="file" accept=".jpg,.jpeg,.webp" class="hidden" aria-hidden="true")
+
+                                    //- PASO 1 — Archivos de la prenda: tres cargas en paralelo, cada
+                                    //- una con su propio slot vacío/lleno (src/js/
+                                    //- fichaConfeccionNueva.js). Mismo patrón `.inputUpload` que ya
+                                    //- usa el resto del panel (documentLoader.pug, insumoPerfil.pug)
+                                    //- — un input de archivo real y transparente encima de la caja
+                                    //- punteada, así que soltar un archivo encima también funciona,
+                                    //- sin JS de arrastre propio.
+                                    //-
+                                    //- Solo el DXF sube de verdad hoy (data-subida-url): se manda a
+                                    //- POST .../dxf apenas se elige, y mientras el servidor lo analiza
+                                    //- en segundo plano (controller/fichaConfeccionDxfController.js)
+                                    //- el front hace polling a GET .../dxf/:id hasta ver 'listo' o
+                                    //- 'error'. El molde queda solo de vista previa local por ahora
+                                    //- (no tiene `data-subida-url`) — el video sí sube de verdad,
+                                    //- pero con su propio flujo (ver más abajo): Direct Creator
+                                    //- Upload de Cloudflare Stream, el archivo nunca pasa por este
+                                    //- servidor (helpers/cloudflareStream.js).
+                                    section(data-paso class="gh-paso-entra")
+                                        h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Sube los archivos de la prenda
+                                        p(class="mt-1.5 mb-6 text-sm text-slate-500") El DXF, el molde y el video del proceso de confección.
+                                        div(class="grid grid-cols-1 sm:grid-cols-3 gap-4")
+                                            - const archivosFicha = [{ id: 'dxf', etiqueta: 'Carga tu archivo DXF', icono: 'fi-rr-file-code', accept: '.dxf', caption: 'Archivo .dxf del patronaje', subidaUrl: '/admin/procesos/fichas-confeccion/dxf' }, { id: 'molde', etiqueta: 'Carga el molde', icono: 'fi-rr-vector', accept: '.jpg,.jpeg,.webp', caption: 'Foto de referencia o generar por IA', subidaUrl: '/admin/procesos/fichas-confeccion/molde', usaEleccion: true }]
+                                            each campo in archivosFicha
+                                                div(data-slot-archivo=campo.id data-subida-url=campo.subidaUrl || '' data-usa-eleccion=campo.usaEleccion ? '1' : '' class="flex flex-col gap-2")
+                                                    span(class="text-sm font-bold text-slate-700")= campo.etiqueta
+
+                                                    //- Estado vacío: caja punteada + input real transparente encima.
+                                                    //- El molde no lleva data-input-archivo para que el handler
+                                                    //- genérico lo salte — su propio IIFE gestiona la subida y el
+                                                    //- modal de elección posterior (src/js/fichaConfeccionNueva.js).
+                                                    div(data-zona-vacia class="relative group")
+                                                        if !campo.usaEleccion
+                                                            input(type="file" accept=campo.accept data-input-archivo=campo.id class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
+                                                        else
+                                                            input(type="file" accept=campo.accept class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
+                                                        div(class="inputUpload !p-6 !mb-0 h-full")
+                                                            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-gh-primaryHover")
+                                                                i(class=`fi ${campo.icono} text-xl`)
+                                                            span(class="text-sm font-bold text-gray-600 text-center leading-snug")= campo.etiqueta
+                                                            span(class="text-xs text-gray-400 mt-1 text-center")= campo.caption
+
+                                                    //- Estado lleno: nombre + peso + quitar. Empieza oculto.
+                                                    div(data-zona-llena class="hidden flex-col gap-3 border-2 border-gh-primary bg-gh-primarySoft/40 rounded-2xl px-4 py-3.5")
+                                                        div(class="flex items-center gap-3")
+                                                            div(class="w-9 h-9 rounded-full bg-white flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                                i(class=`fi ${campo.icono} text-sm`)
+                                                            div(class="flex-1 min-w-0")
+                                                                p(data-nombre-archivo class="text-xs font-bold text-slate-800 truncate")
+                                                                p(data-peso-archivo class="text-[11px] text-slate-500 tabular-nums")
+                                                            button(type="button" data-quitar-archivo aria-label=`Quitar: ${campo.etiqueta}` class="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
+                                                                i(class="fi fi-rr-cross-small")
+
+                                                        //- Solo para el DXF: estado del análisis en segundo plano.
+                                                        if campo.subidaUrl && !campo.usaEleccion
+                                                            div(data-estado-analisis class="hidden items-center gap-2 pt-3 border-t border-gh-primary/20 text-xs font-semibold text-slate-500")
+                                                                span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0" data-spinner-analisis)
+                                                                span(data-texto-analisis) Analizando el archivo…
+                                                            div(data-resultado-analisis class="hidden flex-col gap-1 pt-3 border-t border-gh-primary/20")
+                                                                div(class="flex items-center justify-between gap-2 text-xs")
+                                                                    span(class="text-slate-500") Style Name
+                                                                    span(data-campo-estiloNombre class="font-bold text-slate-800 text-right")
+                                                                div(class="flex items-center justify-between gap-2 text-xs")
+                                                                    span(class="text-slate-500") Size
+                                                                    span(data-campo-talla class="font-bold text-slate-800 text-right")
+                                                                //- Material(es): tantas filas como códigos DISTINTOS de
+                                                                //- "Material: X" tenga el DXF — una prenda puede traer más
+                                                                //- de una tela (cuerpo + puño/elástico en capas distintas,
+                                                                //- CLAUDE.md / helpers/dxf.js). Se llena entera de una vez
+                                                                //- cuando el polling trae la respuesta (no hay un estado
+                                                                //- "buscando" por fila, a diferencia de familia abajo, que
+                                                                //- sigue siendo un solo valor): src/js/fichaConfeccionNueva.js.
+                                                                div(data-materiales-lista class="flex flex-col gap-1 mt-1")
+                                                                    span(data-materiales-pendiente class="text-slate-600 text-[11px]") Buscando los insumos por código DXF…
+
+                                                                //- Asociación automática: Style Name por familia (contra
+                                                                //- FAMILIA.nombreFamilia) — helpers/dxf.js asociarCamposDxf.
+                                                                //- Arranca en amarillo (viñeta, "buscando") y pasa a check
+                                                                //- verde si encontró o check rojo si no, cuando el polling
+                                                                //- trae la respuesta (src/js/fichaConfeccionNueva.js).
+                                                                div(class="flex flex-col gap-1.5 mt-2 pt-2 border-t border-gh-primary/20")
+                                                                    div(data-asociacion="familia" class="flex items-center gap-2 text-[11px]")
+                                                                        span(data-marca-pendiente class="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0")
+                                                                        span(data-marca-resuelta class="hidden w-3.5 h-3.5 rounded-full items-center justify-center flex-shrink-0")
+                                                                            i(class="fi fi-rr-check text-white text-[7px]")
+                                                                        span(data-texto-asociacion class="text-slate-600") Buscando la familia por nombre…
+
+                                                                    //- Sin familia encontrada: crearla/asociarla ahí mismo en
+                                                                    //- vez de bloquear el paso hasta que alguien la cree desde
+                                                                    //- Inventario (controller/fichaConfeccionDxfController.js
+                                                                    //- crearFamiliaDxf). Prefilled con el Style Name detectado,
+                                                                    //- si hubo uno — igual se puede corregir antes de crear.
+                                                                    //- `list` con las familias que YA existen (datalist nativo,
+                                                                    //- mismo patrón que el alta de producto — views/administrador/
+                                                                    //- inventarios/forms/product.pug): si el operador elige una
+                                                                    //- de la lista en vez de escribir una nueva, crearFamiliaDxf
+                                                                    //- la asocia en vez de crear un duplicado por un typo.
+                                                                    div(data-crear-familia class="hidden flex items-center gap-1.5 mt-0.5")
+                                                                        input(type="text" data-input-crear-familia placeholder="Nueva o ya existente…" list="familias-existentes-ficha" class="flex-1 min-w-0 text-[11px] border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-gh-primary")
+                                                                        button(type="button" data-btn-crear-familia class="text-[11px] font-bold text-gh-primaryHover hover:underline cursor-pointer whitespace-nowrap flex-shrink-0") Asignar
+                                                                    p(data-error-crear-familia class="hidden text-[11px] font-semibold text-rose-600 mt-0.5")
+                                                                    datalist#familias-existentes-ficha
+                                                                        each f in (familias || [])
+                                                                            option(value=f.nombreFamilia)
+                                                            p(data-error-analisis class="hidden pt-3 border-t border-rose-200 text-xs font-semibold text-rose-600")
+
+                                                        //- Solo para el molde: foto de referencia adicional (si el operador
+                                                        //- eligió esa opción en el modal de elección) y/o generación con IA.
+                                                        if campo.usaEleccion
+                                                            //- Resultado de "Cargar foto de referencia": miniatura + nombre + quitar.
+                                                            //- Aparece solo cuando ya se subió la segunda imagen.
+                                                            div(data-resultado-referencia class="hidden flex-col gap-2 pt-3 border-t border-gh-primary/20")
+                                                                div(class="flex items-center gap-2.5")
+                                                                    img(data-imagen-referencia class="w-10 h-10 rounded-lg object-cover border border-slate-200 flex-shrink-0" alt="Foto de referencia")
+                                                                    div(class="flex-1 min-w-0")
+                                                                        p(data-nombre-referencia class="text-xs font-bold text-slate-800 truncate")
+                                                                        p(class="text-[11px] text-emerald-600 font-semibold flex items-center gap-1")
+                                                                            i(class="fi fi-rr-check-circle")
+                                                                            | Foto de referencia cargada
+                                                                    button(type="button" data-btn-quitar-referencia class="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer" aria-label="Quitar foto de referencia")
+                                                                        i(class="fi fi-rr-cross-small")
+                                                            div(data-estado-generacion class="hidden items-center gap-2 pt-3 border-t border-gh-primary/20 text-xs font-semibold text-slate-500")
+                                                                span(class="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0")
+                                                                span Generando la vista previa con IA (hasta un minuto)…
+                                                            div(data-resultado-generacion class="hidden flex-col gap-3 pt-3 border-t border-gh-primary/20")
+                                                                img(data-imagen-generada class="w-full rounded-xl border border-slate-200" alt="Vista previa generada con IA")
+                                                                div(data-acciones-generacion class="grid grid-cols-2 gap-2")
+                                                                    button(type="button" data-btn-repetir class="btn btn-secondary btn-sm justify-center text-xs px-2")
+                                                                        i(class="fi fi-rr-refresh text-xs")
+                                                                        | Repetir
+                                                                    button(type="button" data-btn-aprobar class="btn btn-danger btn-sm justify-center text-xs px-2")
+                                                                        i(class="fi fi-rr-check text-xs")
+                                                                        | Aprobar
+                                                                p(data-aprobado-aviso class="hidden text-xs font-semibold text-emerald-600 flex items-center gap-1.5")
+                                                                    i(class="fi fi-rr-check-circle")
+                                                                    | Imagen aprobada y guardada
+                                                            p(data-error-generacion class="hidden pt-3 border-t border-rose-200 text-xs font-semibold text-rose-600")
+                                                            //- Las dos imágenes se pueden tener a la vez: después de elegir una en el modal, la
+                                                            //- otra queda a un clic. Cada botón se esconde mientras su imagen ya está (o se genera).
+                                                            div(data-agregar-extras class="hidden flex-wrap gap-2 pt-3 border-t border-gh-primary/20")
+                                                                button(type="button" data-btn-agregar-referencia class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer")
+                                                                    i(class="fi fi-rr-picture text-xs")
+                                                                    | Agregar foto de referencia
+                                                                button(type="button" data-btn-agregar-ia class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer")
+                                                                    i(class="fi fi-rr-sparkles text-xs")
+                                                                    | Generar con IA
+
+                                            //- Video del proceso — a diferencia del DXF y el molde, no
+                                            //- sube por este backend: pide una URL de Cloudflare Stream
+                                            //- (Direct Creator Upload) y el navegador sube el archivo
+                                            //- directo a Cloudflare (src/js/fichaConfeccionNueva.js,
+                                            //- helpers/cloudflareStream.js). Hasta 3, cada uno en
+                                            //- paralelo con su propia fila de progreso — la caja de
+                                            //- subida se deshabilita sola al llegar a 3.
+                                            div(data-slot-video class="flex flex-col gap-2")
+                                                span(class="text-sm font-bold text-slate-700") Carga el video del proceso
+
+                                                div(data-zona-vacia-video class="relative group")
+                                                    input(type="file" accept=".mp4,.mov,.avi" multiple data-input-video class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10")
+                                                    div(class="inputUpload !p-6 !mb-0 h-full")
+                                                        div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-gh-primaryHover")
+                                                            i(class="fi fi-rr-video-camera text-xl")
+                                                        span(class="text-sm font-bold text-gray-600 text-center leading-snug") Carga el video del proceso
+                                                        span(class="text-xs text-gray-400 mt-1 text-center") Hasta 3 — .mp4, .mov, .avi
+
+                                                div(data-lista-videos class="flex flex-col gap-2")
+
+                                            //- Plantilla de una fila de video — clonada por JS, una por
+                                            //- archivo (data-fila-video dentro de data-lista-videos).
+                                            template#plantilla-fila-video
+                                                div(data-fila-video class="flex flex-col gap-1.5 border border-slate-200 rounded-xl px-3 py-2.5 bg-slate-50")
+                                                    div(class="flex items-center gap-2")
+                                                        i(data-icono-fila class="fi fi-rr-video-camera text-slate-400 text-sm flex-shrink-0")
+                                                        p(data-nombre-fila class="flex-1 min-w-0 text-xs font-semibold text-slate-700 truncate")
+                                                        span(data-spinner-fila class="w-3 h-3 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin flex-shrink-0")
+                                                        span(data-check-fila class="hidden w-4 h-4 rounded-full bg-emerald-500 items-center justify-center flex-shrink-0")
+                                                            i(class="fi fi-rr-check text-white text-[8px]")
+                                                    div(data-barra-wrap class="h-1.5 bg-slate-200 rounded-full overflow-hidden")
+                                                        div(data-barra-fila class="h-full bg-gh-primary rounded-full transition-all" style="width:0%")
+                                                    div(class="flex items-center justify-between gap-2")
+                                                        span(data-texto-estado-fila class="text-[11px] text-slate-500")
+                                                        button(type="button" data-btn-reintentar-fila class="hidden text-[11px] font-bold text-gh-primaryHover hover:underline cursor-pointer") Reintentar
+
+                                    //- Plantilla de una fila "insumo + cantidad" del paso 3 — mismo
+                                    //- patrón que plantilla-fila-color, pero con la FOTO del insumo en
+                                    //- vez de una pastilla de color (el pedido era justamente poder
+                                    //- reconocerlo de un vistazo, no solo por nombre).
+                                    template#plantilla-fila-insumo
+                                        div(data-fila-insumo class="flex items-center gap-2.5")
+                                            button(type="button" data-abrir-insumo class="field-text flex-1 flex items-center gap-2.5 text-left cursor-pointer")
+                                                span(data-insumo-foto class="w-6 h-6 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                                                    i(class="fi fi-rr-box text-xs")
+                                                span(data-insumo-nombre class="text-slate-400") Elige un insumo…
+                                            input(type="hidden" data-insumo-id)
+                                            input(type="number" inputmode="numeric" min="1" data-insumo-cantidad placeholder="Por prenda" class="field-text w-28 text-right")
+                                            button(type="button" data-quitar-insumo aria-label="Quitar insumo" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0 cursor-pointer")
+                                                i(class="fi fi-rr-cross-small")
+
+                                    //- ── MODAL "ELEGIR INSUMO" ────────────────────────────────
+                                    //- Mismo lenguaje visual que #modal-elegir-color (buscador +
+                                    //- grilla, una pastilla por click) pero cada opción muestra la
+                                    //- FOTO real del insumo (helpers/insumos.js urlImagenMaterial) —
+                                    //- si no tiene, cae al ícono genérico de su tipo, igual que el
+                                    //- catálogo de /admin/insumos.
+                                    div#modal-elegir-insumo(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                        div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
+                                            div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
+                                                h2(class="text-lg font-bold text-slate-800") Elige un insumo
+                                                button#cerrar-modal-insumo(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                                    i(class="fi fi-rr-cross-small text-xl")
+                                            div(class="px-7 pt-5 flex-shrink-0")
+                                                input#buscador-insumo-ficha(type="text" autocomplete="off" placeholder="Buscar insumo…" class="field-text")
+                                            div#grid-insumos-ficha(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
+                                                each m in (insumos || [])
+                                                    button(
+                                                        type="button"
+                                                        data-opcion-insumo
+                                                        data-id=m.idMaterial
+                                                        data-nombre=m.nombre
+                                                        data-imagen=m.imagenUrl || ''
+                                                        class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
+                                                        span(class="w-8 h-8 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                                                            if m.imagenUrl
+                                                                img(src=m.imagenUrl alt=m.nombre class="w-full h-full object-cover")
+                                                            else
+                                                                i(class=`fi ${m.icono} text-sm`)
+                                                        span(class="text-sm font-medium text-slate-700 truncate")= m.nombre
+
+                                    //- PASO 3 — Complementos, observaciones y precio de confección.
+                                    //- "Guardar ficha" en este paso manda todo a POST .../finalizar.
+                                    //- Mismo lenguaje visual que la tarjeta "Tela" del paso 2 (icono +
+                                    //- microetiqueta en vez del <label> rosa genérico del resto del
+                                    //- panel): es el cierre del asistente, no un formulario suelto.
+                                    section(data-paso class="hidden")
+                                        h2(class="text-xl md:text-2xl font-black tracking-tight text-slate-800") Complementos, notas y precio
+                                        p(class="mt-1.5 mb-6 text-sm text-slate-500") Lo último antes de generar la ficha en PDF.
+                                        //- La tela sale del DXF del paso 1 y no se vuelve a preguntar. La ficha
+                                        //- describe la prenda (el QUÉ): colores y cantidades van en la orden
+                                        //- de producción, no acá (wiki "Proceso de confección").
+                                        div(class="rounded-2xl border border-gh-primary/20 bg-gh-primarySoft/30 px-5 py-4 flex items-center gap-3 mb-6")
+                                            div#paso2-material-foto(class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-gh-primaryHover overflow-hidden")
+                                                i(class="fi fi-rr-thread text-base")
+                                            div
+                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Tela
+                                                p#paso2-material(class="text-sm font-bold text-slate-800") Resuelve primero el DXF en el paso 1…
+
+                                        div(class="grid grid-cols-1 sm:grid-cols-2 gap-4")
+                                            div(class="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4")
+                                                div(class="flex items-center gap-2")
+                                                    div(class="w-7 h-7 rounded-lg bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                        i(class="fi fi-rr-tags text-xs")
+                                                    label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-complementos") Complementos
+                                                textarea#ficha-complementos(rows="4" placeholder="Botones, cierres, elástico, marquilla…" class="field-text resize-none bg-white")
+
+                                                //- Insumos del catálogo — opcional, además del texto libre de
+                                                //- arriba. Solo cuando de verdad conviene dejar trazado CUÁL
+                                                //- insumo real (MATERIAL) y cuántos, no todo complemento
+                                                //- necesita pasar por acá (controller/fichaConfeccionController.js
+                                                //- finalizarFicha, FICHAS_CONFECCION_INSUMOS). Mismo patrón que
+                                                //- la lista de colores del paso 2, pero con foto en vez de
+                                                //- pastilla de color y sin mínimo obligatorio.
+                                                div(class="pt-2.5 border-t border-slate-200/70 flex flex-col gap-2")
+                                                    p(class="text-[11px] font-semibold text-slate-400") ¿Necesita algún insumo del catálogo? Agrégalo con lo que lleva cada prenda.
+                                                    div(data-lista-insumos class="flex flex-col gap-2")
+                                                    p(data-error-insumos class="hidden text-xs font-semibold text-rose-600")
+                                                    button#btn-agregar-insumo(type="button" class="btn btn-secondary btn-sm w-fit")
+                                                        i(class="fi fi-rr-plus-small text-xs")
+                                                        | Agregar insumo
+
+                                            div(class="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4")
+                                                div(class="flex items-center gap-2")
+                                                    div(class="w-7 h-7 rounded-lg bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                        i(class="fi fi-rr-comment-alt text-xs")
+                                                    label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-observaciones") Observaciones
+                                                textarea#ficha-observaciones(rows="4" placeholder="Instrucciones o notas para confección…" class="field-text resize-none bg-white")
+
+                                        //- El precio queda aparte y con más peso: es el último dato antes
+                                        //- de generar el PDF, el mismo tratamiento rosa-suave que la
+                                        //- tarjeta "Tela" del paso 2 para que se lea como el cierre.
+                                        div(class="mt-4 rounded-2xl border border-gh-primary/20 bg-gh-primarySoft/30 px-5 py-4 flex items-center justify-between gap-4 flex-wrap")
+                                            div(class="flex items-center gap-3")
+                                                div(class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                    i(class="fi fi-rr-sack-dollar text-base")
+                                                div
+                                                    p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Precio de confección
+                                                    p(class="text-xs text-slate-500") Lo que se paga por prenda confeccionada
+                                            div(class="relative")
+                                                span(class="absolute left-4 top-1/2 -translate-y-1/2 text-gh-primaryHover font-bold") $
+                                                input#ficha-precio(type="text" inputmode="numeric" autocomplete="off" placeholder="0" class="w-40 pl-8 pr-4 py-2.5 rounded-xl border border-gh-primary/30 bg-white text-right text-lg font-bold text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-gh-primary/40" aria-label="Precio de confección")
+
+                                        p(data-error-finalizar class="hidden mt-3 text-xs font-semibold text-rose-600 flex items-center gap-1.5")
+
+                                //- ── NAV ───────────────────────────────────────────────
+                                div(class="flex items-center justify-between gap-3")
+                                    button#btn-paso-atras(type="button" disabled class="btn btn-secondary")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Atrás
+                                    button#btn-paso-continuar(type="button" class="btn btn-danger") Continuar
+
+                            //- ── MODAL "¿QUÉ AGREGAR AL MOLDE?" ─────────────────────────
+                            //- Se abre DESPUÉS de que el molde técnico sube correctamente.
+                            //- El molde SIEMPRE va en el PDF — es lo que necesita la confeccionista.
+                            //- Estas dos opciones son para agregar una imagen ADICIONAL:
+                            //- "Foto de referencia" → el operador sube una segunda imagen; ambas
+                            //- van en el PDF. "Generar con IA" → la IA genera una vista previa a
+                            //- partir del molde subido; ambas van en el PDF.
+                            div#modal-elegir-molde(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden")
+                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100")
+                                        div
+                                            h2(class="text-lg font-bold text-slate-800") ¿Deseas agregar algo más?
+                                            p(class="text-xs text-slate-400 mt-0.5") El molde siempre va en el PDF — elige si quieres una imagen adicional.
+                                        button#cerrar-modal-elegir-molde(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                            i(class="fi fi-rr-cross-small text-xl")
+                                    div(class="px-7 py-6 flex flex-col gap-3")
+                                        button#btn-molde-foto(type="button" class="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-2xl cursor-pointer hover:border-gh-primary/50 hover:bg-gh-primarySoft/30 transition-colors text-left")
+                                            div(class="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                i(class="fi fi-rr-picture text-xl")
+                                            div
+                                                p(class="text-sm font-bold text-slate-800") Cargar foto de referencia
+                                                p(class="text-xs text-slate-500 mt-0.5") Sube una segunda imagen que va junto al molde en el PDF
+                                        button#btn-molde-ia-eleccion(type="button" class="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-2xl cursor-pointer hover:border-gh-primary/50 hover:bg-gh-primarySoft/30 transition-colors text-left")
+                                            div(class="w-10 h-10 rounded-xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                i(class="fi fi-rr-sparkles text-xl")
+                                            div
+                                                p(class="text-sm font-bold text-slate-800") Generar vista previa con IA
+                                                p(class="text-xs text-slate-500 mt-0.5") La IA genera una imagen a partir del molde y va en el PDF
+
+                            //- ── MODAL "GENERAR VISTA PREVIA CON IA" ─────────────────────
+                            //- Un solo modal para la primera generación y para "Repetir" — al
+                            //- repetir se abre precargado con pattern/colors del intento
+                            //- anterior (src/js/fichaConfeccionNueva.js), el usuario los deja
+                            //- igual o los cambia. El Fabric NO se pregunta acá: sale solo del
+                            //- material ya resuelto en el DXF (controller/
+                            //- fichaConfeccionMoldeController.js iniciarGeneracionMolde).
+                            include ../../components/modalMoldeIa
+
+                            //- ── MODAL "FICHA GUARDADA" ───────────────────────────────────
+                            //- Resultado de POST .../finalizar: la ficha ya quedó en la
+                            //- Biblioteca. El PDF puede no estar listo todavía si la generación
+                            //- falló justo después de guardar (controller/
+                            //- fichaConfeccionController.js) — en ese caso no hay link y se avisa
+                            //- que se genera solo al abrirla desde la Biblioteca.
+                            div#modal-ficha-lista(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center")
+                                    div(class="px-7 pt-8 pb-6 flex flex-col items-center gap-3")
+                                        div(class="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center")
+                                            i(class="fi fi-rr-check-circle text-2xl text-emerald-500")
+                                        h2(class="text-lg font-bold text-slate-800") Ficha guardada
+                                        p(data-ficha-lista-texto class="text-sm text-slate-500") Ya quedó en la Biblioteca de fichas de confección.
+                                    div(class="px-7 pb-7 flex flex-col gap-2.5")
+                                        a(data-ficha-lista-pdf href="#" target="_blank" rel="noopener" class="btn btn-danger justify-center")
+                                            i(class="fi fi-rr-document-signed text-xs")
+                                            | Ver PDF
+                                        a(href="/admin/procesos/fichas-confeccion/biblioteca" class="btn btn-secondary justify-center") Ir a la Biblioteca
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/fichaConfeccionNueva.js")

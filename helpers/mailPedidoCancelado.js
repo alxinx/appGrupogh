@@ -1,303 +1,78 @@
-import dotenv from 'dotenv';
+import { SOPORTE_EMAIL, WHATSAPP_URL } from '../config/marca.js';
+import { money } from './formatMoney.js';
 import {
+<<<<<<< HEAD
     COLORES_CORREO, WEB_STORE_URL, LOGO_WEBP_URL, BOX_URL,
     SOPORTE_EMAIL, WHATSAPP_URL, REDES
 } from '../config/marca.js';
 import { moneyCOP } from './formatMoney.js';
 import { fmtFechaCorta, fmtHora, icono as iconoCompartido } from './plantillaCorreo.js';
+=======
+    plantillaMarca, ICONO_CORREO, filaCorreo, tarjetaCorreo, datosCorreo, avisoCorreo,
+    tablaProductosCorreo, fmtFechaCorta, fmtHora
+} from './plantillaCorreo.js';
+>>>>>>> PRODUCCION
 import { enviarCorreoSes, REMITENTE_COMPRAS } from './emailSes.js';
-dotenv.config();
+import { escaparHtml } from '../src/js/escaparHtml.js';
 
-// Los colores, las URLs y los contactos salen de config/marca.js; el layout (hero,
-// tarjetas de info, tabla de productos, franja de confianza) es propio de este correo y
-// se queda acá. El rosa pasó de #EC1876 al token de marca: era el tercer rosa distinto
-// que convivía en los correos del proyecto.
-const COLOR_PRIMARY = COLORES_CORREO.primary;
-const COLOR_PRIMARY_SOFT = COLORES_CORREO.primarySoft;
-const COLOR_BG = COLORES_CORREO.fondo;
-const COLOR_TEXT = COLORES_CORREO.texto;
-const COLOR_MUTED = COLORES_CORREO.textoSuave;
+// Pedido web cancelado. Diseño de marca (plantillaMarca, el de la confirmación de pedido):
+// misma tabla de productos que la confirmación, así las dos mitades de la vida de un
+// pedido se ven como un mismo documento. Antes tenía su propio layout (hero con caja,
+// franja de confianza, redes) — se reemplazó por la regla de un solo diseño (2026-11-20).
 
+<<<<<<< HEAD
 // Iconos de línea compartidos con helpers/mailBienvenidaProveedor.js — ver
 // helpers/plantillaCorreo.js. El color por defecto de este correo es el rosa de marca.
 function icono(nombre, opts = {}) {
     return iconoCompartido(nombre, { color: COLOR_PRIMARY, ...opts });
 }
+=======
+const fechaHora = (f) => `${fmtFechaCorta(f)} · ${fmtHora(f)}`;
+>>>>>>> PRODUCCION
 
-function itemFilaHtml(it) {
-    const linkProducto = it.slug ? `${WEB_STORE_URL}/producto/${it.slug}` : null;
-    return `
-    <tr>
-        <td style="padding:16px 0; border-bottom:1px solid #F3E4EC;" valign="top">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                    <td width="56" valign="top">
-                        ${it.imagen
-                            ? `<img src="${it.imagen}" width="56" height="66" alt="${it.nombre}" style="display:block; border-radius:10px; object-fit:cover; background:#F3E4EC;">`
-                            : `<div style="width:56px; height:66px; border-radius:10px; background:#F3E4EC;"></div>`}
-                    </td>
-                    <td width="14"></td>
-                    <td valign="top">
-                        <p style="margin:0; font-size:14px; font-weight:700; color:${COLOR_TEXT};">${it.nombre}</p>
-                        ${linkProducto ? `<a href="${linkProducto}" style="font-size:12px; color:${COLOR_PRIMARY}; text-decoration:none; font-weight:600;">Ver producto en tienda ↗</a>` : ''}
-                        <p class="prod-mobile-meta" style="display:none; margin:4px 0 0; font-size:12px; color:${COLOR_MUTED};">${it.referencia || '—'} · x${Number(it.cantidad)} · ${moneyCOP(it.valorUnidad)} c/u</p>
-                    </td>
-                </tr>
-            </table>
-        </td>
-        <td class="prod-col-ref" style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:13px; color:${COLOR_MUTED}; font-family:monospace;" valign="top">${it.referencia || '—'}</td>
-        <td class="prod-col-qty" style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:13px; color:${COLOR_TEXT}; text-align:center;" valign="top">${Number(it.cantidad)}</td>
-        <td class="prod-col-price" style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:13px; color:${COLOR_TEXT}; text-align:right;" valign="top">${moneyCOP(it.valorUnidad)}</td>
-        <td style="padding:16px 0; border-bottom:1px solid #F3E4EC; font-size:14px; font-weight:700; color:${COLOR_TEXT}; text-align:right;" valign="top">${moneyCOP(it.subTotal)}</td>
-    </tr>`;
-}
+const botonContacto = (href, texto) =>
+    `<a href="${href}" style="display:inline-block;margin:4px;border:1px solid #E24C95;color:#E24C95;font-family:Helvetica,Arial,sans-serif;font-size:12.5px;font-weight:700;text-decoration:none;padding:9px 16px;border-radius:10px;">${texto}</a>`;
 
-function infoCardHtml(iconoNombre, label, valor) {
-    return `
-    <td class="info-card" width="25%" style="padding:20px 10px; text-align:center; vertical-align:top;">
-        <div style="margin-bottom:8px;">${icono(iconoNombre, { size: 20 })}</div>
-        <p style="margin:0 0 4px; font-size:11px; font-weight:700; color:${COLOR_MUTED}; text-transform:uppercase; letter-spacing:.04em;">${label}</p>
-        <p style="margin:0; font-size:14px; font-weight:700; color:${COLOR_TEXT}; white-space:pre-line;">${valor}</p>
-    </td>`;
-}
-
-function featureHtml(iconoNombre, titulo, subtitulo) {
-    return `
-    <td class="feature-card" width="25%" style="padding:14px 8px; text-align:center; vertical-align:top;">
-        <div style="margin-bottom:6px;">${icono(iconoNombre, { size: 20 })}</div>
-        <p style="margin:0; font-size:12px; font-weight:700; color:${COLOR_TEXT};">${titulo}</p>
-        <p style="margin:0; font-size:11px; color:${COLOR_MUTED};">${subtitulo}</p>
-    </td>`;
-}
-
-const ESTILOS_RESPONSIVE = `
-    body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
-    table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
-    img { -ms-interpolation-mode:bicubic; border:0; line-height:100%; outline:none; text-decoration:none; }
-    body { margin:0; padding:0; width:100% !important; }
-    .prod-mobile-meta { display: none; }
-
-    @media screen and (max-width: 480px) {
-        .email-container { width:100% !important; }
-        .px-mobile { padding-left:20px !important; padding-right:20px !important; }
-
-        /* Hero: texto arriba, caja debajo, centrado */
-        .hero-text-cell, .hero-img-cell { display:block !important; width:100% !important; text-align:center !important; }
-        .hero-text-cell p { text-align:left !important; }
-        .hero-img-cell { padding-top:16px !important; }
-        .hero-img-cell img { margin:0 auto !important; }
-
-        /* Tarjetas de info: 2 columnas en vez de 4 */
-        .info-card { display:inline-block !important; width:46% !important; padding:14px 4px !important; }
-
-        /* Ayuda: texto arriba, botones debajo, apilados */
-        .help-text-cell, .help-btns-cell { display:block !important; width:100% !important; text-align:left !important; }
-        .help-btns-cell { padding-top:16px !important; }
-        .help-btns-cell a { display:block !important; }
-
-        /* Iconos de confianza: 2 columnas */
-        .feature-card { display:inline-block !important; width:46% !important; padding:10px 4px !important; }
-
-        /* Tabla de productos: ocultar columnas secundarias, mostrar resumen bajo el nombre */
-        .prod-col-ref, .prod-col-qty, .prod-col-price { display:none !important; }
-        .prod-mobile-meta { display:block !important; }
-
-        .h1-mobile { font-size:22px !important; }
-    }
-`;
-
-// Construye el HTML del correo. `imgLogo`/`imgBox` permiten pasar data-URIs (para previsualizar
-// sin depender de que el sitio esté publicado) o dejar el default (URLs públicas del sitio web).
-export function construirHtmlPedidoCancelado(datos, opts = {}) {
-    const {
-        nombreCliente, numeroPedido, fechaPedido, fechaCancelacion,
-        total, razones, items = []
-    } = datos;
-
-    const imgLogo = opts.imgLogo || LOGO_WEBP_URL;
-    const imgBox = opts.imgBox || BOX_URL;
-    const listaRazones = Array.isArray(razones) ? razones : [razones];
-
+export function construirHtmlPedidoCancelado(datos) {
+    const { nombreCliente, numeroPedido, fechaPedido, fechaCancelacion, total, razones, items = [] } = datos;
+    const listaRazones = (Array.isArray(razones) ? razones : [razones]).filter(Boolean);
     const totalPedido = total ?? items.reduce((s, it) => s + Number(it.subTotal || 0), 0);
-    const LOGO_SIZE = 90;
 
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="light">
-<title>Tu pedido fue cancelado</title>
-<style>${ESTILOS_RESPONSIVE}</style>
-</head>
-<body style="margin:0; padding:0; background-color:${COLOR_BG}; font-family:Helvetica, Arial, sans-serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${COLOR_BG};">
-<tr><td align="center" style="padding:24px 12px;">
-<table role="presentation" class="email-container" width="640" cellpadding="0" cellspacing="0" border="0" style="width:640px; max-width:100%; background:#ffffff; border-radius:20px; overflow:hidden; border:1px solid #FBDCEA;">
+    const filasHtml = [
+        filaCorreo(tarjetaCorreo({
+            titulo: `Pedido #${escaparHtml(numeroPedido)}`,
+            html: datosCorreo([
+                ['Fecha del pedido', fechaHora(fechaPedido)],
+                ['Fecha de cancelación', fechaHora(fechaCancelacion)],
+                ['Valor del pedido', `<span style="color:#E24C95;">$${money(totalPedido)}</span>`]
+            ])
+        })),
+        filaCorreo(avisoCorreo('Razones de la cancelación', `
+            <ul style="margin:0;padding-left:18px;">${listaRazones.map(r => `<li>${escaparHtml(r)}</li>`).join('')}</ul>
+            <p style="margin:8px 0 0;">Si tienes alguna duda o crees que es un error, contáctanos y con gusto te ayudamos.</p>`)),
+        filaCorreo(tablaProductosCorreo('Productos que pediste', items.map(it => ({
+            nombreProducto: escaparHtml(it.nombre),
+            referencia: it.referencia && it.referencia !== '—' ? escaparHtml(it.referencia) : null,
+            imagen: it.imagen,
+            cantidad: Number(it.cantidad),
+            valorUnidad: it.valorUnidad,
+            subTotal: it.subTotal
+        })))),
+        filaCorreo(`<div style="text-align:center;">
+            <p style="margin:0 0 8px;font-size:13.5px;font-weight:700;color:#241f38;">¿Necesitas ayuda?</p>
+            ${WHATSAPP_URL ? botonContacto(WHATSAPP_URL, 'Escribir por WhatsApp') : ''}
+            ${botonContacto(`mailto:${SOPORTE_EMAIL}`, SOPORTE_EMAIL)}
+        </div>`)
+    ].join('');
 
-    <!-- Top bar: fondo rosa claro, línea inferior que el logo va a atravesar -->
-    <tr>
-        <td class="px-mobile" style="padding:18px 32px ${LOGO_SIZE / 2 + 18}px; background:${COLOR_BG}; border-bottom:1px solid #F6CFE1;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                    <td style="font-size:13px; font-weight:700; color:${COLOR_PRIMARY};">Grupo GH - Tienda Web</td>
-                    <td style="text-align:right; font-size:12px;"><a href="${WEB_STORE_URL}" style="color:${COLOR_MUTED}; text-decoration:underline;">Ver en el navegador</a></td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-
-    <!-- Logo — se monta sobre la línea de arriba con un margen negativo, quedando entre las dos zonas -->
-    <tr>
-        <td style="padding:0 32px; background:#ffffff; text-align:center;">
-            <img src="${imgLogo}" width="${LOGO_SIZE}" height="${LOGO_SIZE}" alt="Grupo GH" style="display:inline-block; border-radius:50%; margin-top:-${LOGO_SIZE / 2}px; border:4px solid #ffffff;">
-        </td>
-    </tr>
-
-    <!-- Hero -->
-    <tr>
-        <td class="px-mobile" style="padding:20px 32px 8px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                    <td class="hero-text-cell" valign="middle">
-                        <p class="h1-mobile" style="margin:0; font-size:26px; font-weight:800; line-height:1.2; color:${COLOR_TEXT};">Tu pedido ha sido</p>
-                        <p class="h1-mobile" style="margin:0 0 12px; font-size:26px; font-weight:800; line-height:1.2; color:${COLOR_PRIMARY};">cancelado</p>
-                        <p style="margin:0; font-size:14px; line-height:1.6; color:${COLOR_MUTED}; max-width:320px;">Sentimos que tu pedido no haya podido completarse. Aquí te compartimos los detalles.</p>
-                    </td>
-                    <td class="hero-img-cell" width="150" align="right" valign="middle">
-                        <img src="${imgBox}" width="140" alt="" style="display:block;">
-                    </td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-
-    <!-- Info cards -->
-    <tr>
-        <td class="px-mobile" style="padding:20px 32px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${COLOR_BG}; border:1px solid #FBDCEA; border-radius:16px;">
-                <tr>
-                    ${infoCardHtml('doc', 'Pedido', `#${numeroPedido}`)}
-                    ${infoCardHtml('calendario', 'Fecha del pedido', `${fmtFechaCorta(fechaPedido)}\n${fmtHora(fechaPedido)}`)}
-                    ${infoCardHtml('calendarioX', 'Fecha de cancelación', `${fmtFechaCorta(fechaCancelacion)}\n${fmtHora(fechaCancelacion)}`)}
-                    ${infoCardHtml('dolar', 'Valor del pedido', moneyCOP(totalPedido))}
-                </tr>
-            </table>
-        </td>
-    </tr>
-
-    <!-- Razones -->
-    <tr>
-        <td class="px-mobile" style="padding:20px 32px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #F0E4EA; border-radius:16px;">
-                <tr><td style="padding:22px 24px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                        <td style="padding-right:8px;">${icono('alerta', { size: 18 })}</td>
-                        <td style="font-size:15px; font-weight:700; color:${COLOR_TEXT};">Razones de la cancelación</td>
-                    </tr></table>
-                    <p style="margin:8px 0 14px; font-size:13px; color:${COLOR_MUTED};">Tu pedido fue cancelado por las siguientes razones:</p>
-                    <div style="background:${COLOR_PRIMARY_SOFT}; border-radius:12px; padding:16px 18px;">
-                        <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.9; color:${COLOR_TEXT};">
-                            ${listaRazones.map(r => `<li>${r}</li>`).join('')}
-                        </ul>
-                    </div>
-                    <p style="margin:14px 0 0; font-size:12.5px; color:${COLOR_MUTED};">Si tenés alguna duda o considerás que esto es un error, contáctanos y con gusto te ayudamos.</p>
-                </td></tr>
-            </table>
-        </td>
-    </tr>
-
-    <!-- Productos -->
-    <tr>
-        <td class="px-mobile" style="padding:20px 32px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #F0E4EA; border-radius:16px;">
-                <tr><td style="padding:22px 24px 8px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                        <td style="padding-right:8px;">${icono('bolsa', { size: 18 })}</td>
-                        <td style="font-size:15px; font-weight:700; color:${COLOR_TEXT};">Productos que pediste</td>
-                    </tr></table>
-                </td></tr>
-                <tr><td style="padding:0 24px; overflow-x:auto;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                            <td style="font-size:11px; font-weight:700; color:${COLOR_MUTED}; text-transform:uppercase; padding-bottom:8px; border-bottom:2px solid ${COLOR_PRIMARY_SOFT};">Producto</td>
-                            <td class="prod-col-ref" style="font-size:11px; font-weight:700; color:${COLOR_MUTED}; text-transform:uppercase; padding-bottom:8px; border-bottom:2px solid ${COLOR_PRIMARY_SOFT};">Referencia</td>
-                            <td class="prod-col-qty" style="font-size:11px; font-weight:700; color:${COLOR_MUTED}; text-transform:uppercase; padding-bottom:8px; border-bottom:2px solid ${COLOR_PRIMARY_SOFT}; text-align:center;">Cant.</td>
-                            <td class="prod-col-price" style="font-size:11px; font-weight:700; color:${COLOR_MUTED}; text-transform:uppercase; padding-bottom:8px; border-bottom:2px solid ${COLOR_PRIMARY_SOFT}; text-align:right;">Precio</td>
-                            <td style="font-size:11px; font-weight:700; color:${COLOR_MUTED}; text-transform:uppercase; padding-bottom:8px; border-bottom:2px solid ${COLOR_PRIMARY_SOFT}; text-align:right;">Total</td>
-                        </tr>
-                        ${items.map(itemFilaHtml).join('')}
-                        <tr>
-                            <td colspan="4" style="padding:16px 0; text-align:right; font-size:14px; font-weight:700; color:${COLOR_TEXT};">Total del pedido</td>
-                            <td style="padding:16px 0; text-align:right; font-size:16px; font-weight:800; color:${COLOR_PRIMARY};">${moneyCOP(totalPedido)}</td>
-                        </tr>
-                    </table>
-                </td></tr>
-                <tr><td style="padding-bottom:22px;"></td></tr>
-            </table>
-        </td>
-    </tr>
-
-    <!-- Ayuda -->
-    <tr>
-        <td class="px-mobile" style="padding:20px 32px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #F0E4EA; border-radius:16px;">
-                <tr><td style="padding:20px 24px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                        <td class="help-text-cell" valign="middle">
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                                <td style="width:44px; height:44px; background:${COLOR_PRIMARY_SOFT}; border-radius:50%; text-align:center;">${icono('audifonos', { size: 20 })}</td>
-                                <td style="padding-left:12px;">
-                                    <p style="margin:0; font-size:14px; font-weight:700; color:${COLOR_TEXT};">¿Necesitás ayuda?</p>
-                                    <p style="margin:0; font-size:12.5px; color:${COLOR_MUTED}; max-width:260px;">Estamos acá para ayudarte. Escribinos por WhatsApp o a nuestro correo.</p>
-                                </td>
-                            </tr></table>
-                        </td>
-                        <td class="help-btns-cell" align="right" valign="middle">
-                            ${WHATSAPP_URL ? `<a href="${WHATSAPP_URL}" style="display:block; margin-bottom:8px; border:1px solid ${COLOR_PRIMARY}; color:${COLOR_PRIMARY}; font-size:12.5px; font-weight:700; text-decoration:none; padding:9px 16px; border-radius:10px; white-space:nowrap; text-align:center;">${icono('mensaje', { size: 14 })} Escribir por WhatsApp</a>` : ''}
-                            <a href="mailto:${SOPORTE_EMAIL}" style="display:block; border:1px solid ${COLOR_PRIMARY}; color:${COLOR_PRIMARY}; font-size:12.5px; font-weight:700; text-decoration:none; padding:9px 16px; border-radius:10px; white-space:nowrap; text-align:center;">${icono('sobre', { size: 14 })} ${SOPORTE_EMAIL}</a>
-                        </td>
-                    </tr></table>
-                </td></tr>
-            </table>
-        </td>
-    </tr>
-
-    <!-- Features -->
-    <tr>
-        <td class="px-mobile" style="padding:20px 32px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${COLOR_BG}; border-radius:16px;">
-                <tr>
-                    ${featureHtml('escudo', 'Compra segura', 'Tus datos están protegidos')}
-                    ${featureHtml('estrella', 'Productos de calidad', 'Lo mejor para ti')}
-                    ${featureHtml('camion', 'Envíos rápidos', 'Recibe tu pedido en tiempo récord')}
-                    ${featureHtml('audifonos', 'Atención personalizada', 'Te acompañamos')}
-                </tr>
-            </table>
-        </td>
-    </tr>
-
-    <!-- Footer -->
-    <tr>
-        <td class="px-mobile" style="padding:32px 32px 28px; text-align:center;">
-            <img src="${imgLogo}" width="52" height="52" alt="Grupo GH" style="display:inline-block; border-radius:50%; margin-bottom:10px;">
-            <p style="margin:0; font-size:13px; font-weight:700; color:${COLOR_PRIMARY};">Grupo GH - Tienda Web</p>
-            <p style="margin:0 0 12px; font-size:12px; color:${COLOR_MUTED};">Moda que te representa</p>
-            <p style="margin:0 0 16px;">
-                <a href="${REDES.instagram}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">Instagram</a>
-                <a href="${REDES.facebook}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">Facebook</a>
-                <a href="${REDES.tiktok}" style="display:inline-block; margin:0 6px; color:${COLOR_PRIMARY}; text-decoration:none; font-size:14px;">TikTok</a>
-            </p>
-            <p style="margin:0; font-size:11px; color:#b9b9c2;">© ${new Date().getFullYear()} Grupo GH. Todos los derechos reservados.</p>
-            <p style="margin:0; font-size:11px; color:#b9b9c2;">Este correo fue enviado automáticamente, por favor no respondas.</p>
-        </td>
-    </tr>
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+    return plantillaMarca({
+        icono: { simbolo: '&#10005;', ...ICONO_CORREO.peligro },
+        titulo: 'Tu pedido fue cancelado',
+        saludo: nombreCliente ? `Hola ${escaparHtml(nombreCliente)} &#128075;` : null,
+        intro: 'Sentimos que tu pedido no haya podido completarse. Aquí te compartimos los detalles.',
+        filasHtml,
+        despedida: 'Gracias por confiar en nosotros &#128156;'
+    });
 }
 
 // Sale por SES con el mismo remitente de compras que la confirmación de pedido

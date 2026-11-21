@@ -1,5 +1,7 @@
 extends ../layout/index
+include ../components/campoContrasena
 block contenedor
+    script(src="/js/verContrasena.js" defer)
     // Card
     div(class="w-full max-w-md bg-white rounded-xl shadow-lg p-6 sm:p-8")
       
@@ -21,7 +23,6 @@ block contenedor
         if success
           p(class="success")=success.msg
 
-        input(type="hidden", name="_csrf" value = csrfToken)
         // Nombre
         div
           label(class="label")
@@ -71,15 +72,7 @@ block contenedor
         div
           label(class="label")
             | Password  
-          div(class="relative")
-            input(
-              type="password"
-              name ="password"
-              placeholder="••••••••"
-              class="field-text"
-            )
-            span(class="absolute inset-y-0 right-3 flex items-center text-gray-400")
-              | 👁️
+          +campoContrasena({ name: 'password', id: 'register-password', autocomplete: 'new-password' })
           if errores && errores.password != null
               p(class="error")=errores.password
 
