@@ -1,6 +1,8 @@
+import { crearModalElegirInsumo } from './modalElegirInsumo.js';
+import { escaparHtml as esc } from './escaparHtml.js';
 import { duracionVideo } from './duracionVideo.js';
 import { subirArchivoMolde, iniciarGeneracionIa, consultarIntentoIa, aprobarIntentoIa } from './moldeIaCliente.js';
-import { subirVideo, esperarVideoListo } from './subidaVideo.js';
+import { subirVideoProceso, reintentarVideoProceso } from './subidaVideo.js';
 
 // Asistente "Nueva ficha de confección" (admin/procesos/fichas-confeccion/nueva).
 //
@@ -721,112 +723,47 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
         return v;
     };
 
-    // Modo simulado (uploadURL === null, sin CLOUDFLARE_STREAM_API_TOKEN/
-    // CLOUDFLARE_ACCOUNT_ID — helpers/cloudflareStream.js): imita el progreso con un
-    // intervalo, así el flujo completo se puede probar sin la clave.
-    const simularSubida = (v) => new Promise((resolve) => {
-        let pct = 0;
-        const t = setInterval(() => {
-            pct = Math.min(100, pct + 10 + Math.random() * 15);
-            v.porcentaje = Math.round(pct);
+    // Solicitar → subir → confirmar → esperar: src/js/subidaVideo.js (una sola copia para el
+    // asistente, el editor y el corte nuevo). Acá solo se pinta la fila.
+    const avisos = (v) => ({
+        alProgreso: (porcentaje) => { v.porcentaje = porcentaje; pintarFila(v); },
+        alEstado: (estadoVideo, idVideo) => {
+            if (idVideo) v.idVideo = idVideo;
+            v.estado = estadoVideo === 'pendiente' ? 'pendiente' : 'subiendo';
             pintarFila(v);
-            if (pct >= 100) { clearInterval(t); resolve(); }
-        }, 180);
+        }
     });
-
-    // Subida real por src/js/subidaVideo.js (simple o por partes, según decidió el backend).
-    const subirArchivoDirecto = (v, uploadURL) => {
-        if (!uploadURL) return simularSubida(v);
-        return subirVideo(v.archivo, {
-            uploadURL,
-            modo: v.modoSubida,
-            alProgreso: (porcentaje) => { v.porcentaje = porcentaje; pintarFila(v); }
-        });
-    };
 
     const procesarVideo = async (v) => {
         try {
-            v.estado = 'pendiente';
-            pintarFila(v);
-
             // El servidor rechaza un video más largo que el máximo antes de que suba un byte.
             const duracionSegundos = await duracionVideo(v.archivo);
-            const r = await fetch(`${URL_VIDEO}/solicitar-subida`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json'},
-                body: JSON.stringify({ orden: [...videos.values()].indexOf(v) + 1, nombreOriginal: v.archivo.name, pesoBytes: v.archivo.size, duracionSegundos })
-            });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo iniciar la subida.');
-            v.idVideo = d.idVideo;
-            v.modoSubida = d.modo;
-
-            v.estado = 'subiendo';
-            pintarFila(v);
-            console.debug('[video]', v.idVideo, 'subida directa iniciada, modo', v.modoSubida);
-            await subirArchivoDirecto(v, d.uploadURL);
-            console.debug('[video]', v.idVideo, 'subida directa resuelta, confirmando con el backend…');
-
-            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', });
-            const dConfirmar = await rConfirmar.json().catch(() => ({}));
-            if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
-            console.debug('[video]', v.idVideo, 'confirmar respondió estado =', dConfirmar.estado);
-
-            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'No se pudo procesar el video.');
-            if (dConfirmar.estado !== 'ready') await esperarVideoListo(URL_VIDEO, v.idVideo);
-
+            v.idVideo = await subirVideoProceso(v.archivo, { orden: [...videos.values()].indexOf(v) + 1, duracionSegundos, ...avisos(v) });
             v.estado = 'completado';
             v.porcentaje = 100;
-            pintarFila(v);
         } catch (e) {
             console.error('[video]', v.idVideo, 'procesarVideo falló:', e);
+            if (e.idVideo) v.idVideo = e.idVideo;
             v.estado = 'error';
             v.errorMensaje = e.message;
-            pintarFila(v);
-            // Si la subida directa falló del lado del navegador, Cloudflare puede no tener
-            // nada que reportar todavía — se avisa al backend para que el estado no se quede
-            // en 'uploading' para siempre.
-            if (v.idVideo) {
-                fetch(`${URL_VIDEO}/${v.idVideo}/marcar-error`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json'},
-                    body: JSON.stringify({ mensaje: e.message })
-                }).catch(() => {});
-            }
         } finally {
+            pintarFila(v);
             actualizarZonaVacia();
         }
     };
 
     const reintentar = async (v) => {
-        v.estado = 'pendiente';
         v.errorMensaje = null;
         v.porcentaje = 0;
-        pintarFila(v);
         try {
-            const r = await fetch(`${URL_VIDEO}/${v.idVideo}/reintentar`, { method: 'POST', });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo reintentar.');
-            v.modoSubida = d.modo;
-
-            v.estado = 'subiendo';
-            pintarFila(v);
-            await subirArchivoDirecto(v, d.uploadURL);
-
-            const rConfirmar = await fetch(`${URL_VIDEO}/${v.idVideo}/confirmar`, { method: 'POST', });
-            const dConfirmar = await rConfirmar.json().catch(() => ({}));
-            if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
-            if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'No se pudo procesar el video.');
-            if (dConfirmar.estado !== 'ready') await esperarVideoListo(URL_VIDEO, v.idVideo);
-
+            await reintentarVideoProceso(v.idVideo, v.archivo, avisos(v));
             v.estado = 'completado';
             v.porcentaje = 100;
-            pintarFila(v);
         } catch (e) {
             v.estado = 'error';
             v.errorMensaje = e.message;
-            pintarFila(v);
         }
+        pintarFila(v);
     };
 
     input?.addEventListener('change', () => {
@@ -853,57 +790,23 @@ document.querySelectorAll('[data-slot-archivo]').forEach((slot) => {
     const plantilla = document.getElementById('plantilla-fila-insumo');
     const btnAgregar = document.getElementById('btn-agregar-insumo');
     const errorInsumos = document.querySelector('[data-error-insumos]');
-    const modal = document.getElementById('modal-elegir-insumo');
-    const buscador = document.getElementById('buscador-insumo-ficha');
-    const grid = document.getElementById('grid-insumos-ficha');
-    const btnCerrarModalInsumo = document.getElementById('cerrar-modal-insumo');
     if (!lista || !plantilla || !btnAgregar) return;
 
-    let filaActual = null;
-
-    const cerrarModalInsumo = () => {
-        modal?.classList.add('hidden');
-        modal?.classList.remove('flex');
-        filaActual = null;
-        if (buscador) buscador.value = '';
-        grid?.querySelectorAll('[data-opcion-insumo]').forEach((b) => { b.style.display = ''; });
-    };
-
-    const abrirModalInsumo = (fila) => {
-        filaActual = fila;
-        modal?.classList.remove('hidden');
-        modal?.classList.add('flex');
-        buscador?.focus();
-    };
-
-    btnCerrarModalInsumo?.addEventListener('click', cerrarModalInsumo);
-    modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarModalInsumo(); });
-
-    buscador?.addEventListener('input', (e) => {
-        const termino = e.target.value.toLowerCase().trim();
-        grid?.querySelectorAll('[data-opcion-insumo]').forEach((b) => {
-            const coincide = (b.dataset.nombre || '').toLowerCase().includes(termino);
-            b.style.display = coincide ? '' : 'none';
-        });
-    });
-
-    grid?.addEventListener('click', (e) => {
-        const opcion = e.target.closest('[data-opcion-insumo]');
-        if (!opcion || !filaActual) return;
-
-        const foto = filaActual.querySelector('[data-insumo-foto]');
-        const nombreEl = filaActual.querySelector('[data-insumo-nombre]');
-        const inputId = filaActual.querySelector('[data-insumo-id]');
-        if (inputId) inputId.value = opcion.dataset.id;
-        if (nombreEl) { nombreEl.textContent = opcion.dataset.nombre; nombreEl.classList.remove('text-slate-400'); nombreEl.classList.add('text-slate-800', 'font-semibold'); }
+    const catalogo = crearModalElegirInsumo('modal-elegir-insumo', (insumo, fila) => {
+        if (!fila) return;
+        const foto = fila.querySelector('[data-insumo-foto]');
+        const nombreEl = fila.querySelector('[data-insumo-nombre]');
+        const inputId = fila.querySelector('[data-insumo-id]');
+        if (inputId) inputId.value = insumo.idMaterial;
+        if (nombreEl) { nombreEl.textContent = insumo.nombre; nombreEl.classList.remove('text-slate-400'); nombreEl.classList.add('text-slate-800', 'font-semibold'); }
         if (foto) {
-            foto.innerHTML = opcion.dataset.imagen
-                ? `<img src="${opcion.dataset.imagen}" alt="${opcion.dataset.nombre}" class="w-full h-full object-cover">`
+            foto.innerHTML = insumo.imagen
+                ? `<img src="${esc(insumo.imagen)}" alt="${esc(insumo.nombre)}" class="w-full h-full object-cover">`
                 : '<i class="fi fi-rr-box text-xs"></i>';
         }
         errorInsumos?.classList.add('hidden');
-        cerrarModalInsumo();
     });
+    const abrirModalInsumo = (fila) => catalogo.abrir(fila);
 
     const agregarFila = () => {
         const nodo = plantilla.content.firstElementChild.cloneNode(true);

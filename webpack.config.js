@@ -65,7 +65,11 @@ export default {
         fichaConfeccionBiblioteca: '/src/js/fichaConfeccionBiblioteca.js',
         corteNuevo: '/src/js/corteNuevo.js',
         fichaConfeccionEditar: '/src/js/fichaConfeccionEditar.js',
-        procesoDetalle: '/src/js/procesoDetalle.js'
+        procesoDetalle: '/src/js/procesoDetalle.js',
+        ordenProduccionForm: '/src/js/ordenProduccionForm.js',
+        ordenProduccionDetalle: '/src/js/ordenProduccionDetalle.js',
+        ordenCorteNueva: '/src/js/ordenCorteNueva.js',
+        ordenCorteDetalle: '/src/js/ordenCorteDetalle.js'
     },
     output: {
         filename: '[name].js',

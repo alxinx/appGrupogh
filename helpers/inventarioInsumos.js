@@ -29,7 +29,7 @@ export const actorDelPanel = (req) => ({
     empleado: req.empleadoVerificado ?? null
 });
 
-const columnasActor = (actor = {}) => ({
+export const columnasActor = (actor = {}) => ({
     origen: actor.origen || 'panel',
     idUsuario: actor.idUsuario ?? null,
     nombreUsuario: actor.nombreUsuario ?? null,
@@ -98,7 +98,7 @@ const ESTADOS = new Set(['cantidadDisponible', 'cantidadReservada', 'cantidadEnP
  * Es la pieza que reusa la orden de producción (entrega 2): reservar = disponible→reservada,
  * entregar al taller = reservada→enProceso, consumir = enProceso→consumida, etc.
  */
-export async function moverFIFO({ idMaterial, idAtributoColor, cantidad, desde, hacia, tipo, motivo = null, actor, transaction }) {
+export async function moverFIFO({ idMaterial, idAtributoColor, idCapa = null, cantidad, desde, hacia, tipo, motivo = null, actor, transaction }) {
     exigirTransaccion(transaction);
     if (!ESTADOS.has(desde) || !ESTADOS.has(hacia) || desde === hacia) throw new Error(`moverFIFO: estados inválidos ${desde} → ${hacia}`);
     const pedida = dec(cantidad);
@@ -106,6 +106,9 @@ export async function moverFIFO({ idMaterial, idAtributoColor, cantidad, desde, 
 
     const where = { idMaterial };
     if (idAtributoColor !== undefined) where.idAtributoColor = idAtributoColor;
+    // Una capa puntual: la tela sale del rollo que se eligió, no de la capa más vieja
+    // (helpers/rollosTela.js). Mismos candados y mismo registro que el FIFO.
+    if (idCapa) where.idCapa = idCapa;
     const capas = await InsumoCapa.findAll({
         where,
         order: [['fechaEntrada', 'ASC'], [db.literal('secuencia'), 'ASC']],   // FIFO, orden total
@@ -144,9 +147,12 @@ export async function moverFIFO({ idMaterial, idAtributoColor, cantidad, desde, 
 }
 
 
-/** Salida por conteo físico (pérdida, daño, error de carga): disponible → baja, FIFO. */
-export const registrarSalidaAjuste = ({ idMaterial, idAtributoColor, cantidad, motivo, actor, transaction }) =>
-    moverFIFO({ idMaterial, idAtributoColor, cantidad, desde: 'cantidadDisponible', hacia: 'cantidadBaja', tipo: 'ajuste_salida', motivo, actor, transaction });
+/**
+ * Salida por conteo físico (pérdida, daño, error de carga): disponible → baja, FIFO. Con
+ * `idCapa`, solo de esa capa (la salida de un rollo de tela, helpers/rollosTela.js).
+ */
+export const registrarSalidaAjuste = ({ idMaterial, idAtributoColor, idCapa = null, cantidad, motivo, actor, transaction }) =>
+    moverFIFO({ idMaterial, idAtributoColor, idCapa, cantidad, desde: 'cantidadDisponible', hacia: 'cantidadBaja', tipo: 'ajuste_salida', motivo, actor, transaction });
 
 // ── Presentaciones recordadas ───────────────────────────────────────────────────────────
 
@@ -230,6 +236,46 @@ export const disponiblePorColor = (idMaterial) => db.query(`
     HAVING SUM(c.cantidadDisponible) > 0
     ORDER BY a.valor`,
     { replacements: { idMaterial }, type: QueryTypes.SELECT });
+
+/**
+ * Disponible de varios materiales, por color, en UNA consulta (para revisar el material de
+ * una orden de producción sin una consulta por insumo, CLAUDE.md §7).
+ * Devuelve un Map idMaterial → { total: Decimal, porColor: Map(idAtributoColor|null → Decimal) }.
+ */
+export async function disponiblePorMaterialYColor(idsMaterial, { transaction } = {}) {
+    const res = new Map();
+    if (!idsMaterial.length) return res;
+    const filas = await db.query(`
+        SELECT idMaterial, idAtributoColor, SUM(cantidadDisponible) disponible
+        FROM INSUMOS_CAPAS
+        WHERE idMaterial IN (:ids)
+        GROUP BY idMaterial, idAtributoColor`,
+        { replacements: { ids: idsMaterial }, type: QueryTypes.SELECT, transaction });
+    for (const f of filas) {
+        if (!res.has(f.idMaterial)) res.set(f.idMaterial, { total: dec(0), porColor: new Map() });
+        const m = res.get(f.idMaterial);
+        m.total = m.total.plus(dec(f.disponible));
+        m.porColor.set(f.idAtributoColor ?? null, dec(f.disponible));
+    }
+    return res;
+}
+
+/**
+ * De estos materiales, cuáles manejan colores: los que tienen alguna compra o capa de
+ * inventario con color. MATERIAL no tiene una marca propia de "lleva color": el color vive
+ * en la línea de compra y en la capa (models/DetallesOrdenCompra.js), así que se deduce de ahí.
+ */
+export async function materialesConColor(idsMaterial, { transaction } = {}) {
+    if (!idsMaterial.length) return new Set();
+    const filas = await db.query(`
+        SELECT DISTINCT idMaterial FROM INSUMOS_CAPAS
+         WHERE idMaterial IN (:ids) AND idAtributoColor IS NOT NULL
+        UNION
+        SELECT DISTINCT idMaterial FROM DETALLES_ORDEN_COMPRA
+         WHERE idMaterial IN (:ids) AND idAtributoColor IS NOT NULL`,
+        { replacements: { ids: idsMaterial }, type: QueryTypes.SELECT, transaction });
+    return new Set(filas.map(f => f.idMaterial));
+}
 
 /** Libro de un material, más reciente primero, de a `limite` con cursor por idMovimiento. */
 export const movimientosDeMaterial = (idMaterial, { limite = 20, antesDe = null } = {}) => db.query(`

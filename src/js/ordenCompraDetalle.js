@@ -3,7 +3,7 @@ import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { initFechaInput } from './fechaInput.js';
 import { iniciarModalLineaInsumo, UNIDAD_ETIQUETA, aPayloadLinea } from './modalLineaInsumo.js';
-import { pedirRecepcion } from './recepcionOrden.js';
+import { pedirRecepcion, avisoRecepcion } from './recepcionOrden.js';
 
 // Detalle/edición de UNA orden de compra o cotización ya creada
 // (admin/insumos/compra/:idOrdenCompra, controller/ordenesCompraController.js). Estado,
@@ -371,11 +371,11 @@ if (form) {
         document.getElementById('btn-recibir-orden')?.addEventListener('click', async () => {
             const recepcion = await pedirRecepcion(lineasRecibir);
             if (!recepcion) return;
-            const payloadLineas = recepcion.map(r => ({ idDetalleOrdenCompra: r.clave, cantidadLlega: r.cantidadLlega, contenido: r.contenido }));
+            const payloadLineas = recepcion.map(r => ({ idDetalleOrdenCompra: r.clave, cantidadLlega: r.cantidadLlega, contenido: r.contenido, rollos: r.rollos }));
 
             const CODIGO_ID = 'oc-recibir-codigo';
             const ESTADO_ID = 'oc-recibir-estado';
-            const { isConfirmed } = await Swal.fire(opcionesConfirmacion({
+            const { isConfirmed, value } = await Swal.fire(opcionesConfirmacion({
                 variante: 'neutro',
                 html: `
                     <div class="gh-conf-html">
@@ -420,11 +420,7 @@ if (form) {
             }));
             if (!isConfirmed) return;
 
-            await Swal.fire({
-                ...opcionesConfirmacion({ variante: 'ingreso', html: `<div class="gh-conf-html">${cabeceraConfirmacion({ icono: 'fi-rr-check', badge: 'Recepción registrada', contexto: '' })}</div>` }),
-                showCancelButton: false,
-                confirmButtonText: 'Entendido'
-            });
+            await avisoRecepcion({ badge: 'Recepción registrada', rollos: value?.rollos || [] });
             window.location.reload();
         });
     })();

@@ -18,7 +18,7 @@ const FichaConfeccionEstado = db.define('FICHAS_CONFECCION_ESTADOS', {
         onDelete: 'RESTRICT'
     },
     accion: {
-        type: DataTypes.ENUM('anulada', 'reactivada', 'borrada'),
+        type: DataTypes.ENUM('anulada', 'reactivada', 'borrada', 'creada_pendiente', 'completada'),
         allowNull: false
     },
     motivo: {

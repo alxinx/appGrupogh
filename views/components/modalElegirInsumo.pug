@@ -1,0 +1,35 @@
+//- Modal "Elige un insumo": buscador + grilla con la FOTO real de cada insumo
+//- (helpers/insumos.js urlImagenMaterial; si no tiene, el ícono de su tipo). Una sola copia
+//- para el asistente de la ficha, el editor de la ficha y la orden de producción; la lógica
+//- (abrir, buscar, elegir) es src/js/modalElegirInsumo.js.
+//-
+//-   +modalElegirInsumo('modal-elegir-insumo', insumos)
+//-
+//- Cada opción lleva en data-* lo que la pantalla necesite: id, nombre, imagen, y además
+//- unidad (unidad de consumo corta) y conColor (el material maneja colores), si vienen.
+mixin modalElegirInsumo(id, catalogo)
+    div(id=id data-modal-elegir-insumo class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
+        div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
+            div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
+                h2(class="text-lg font-bold text-slate-800") Elige un insumo
+                button(type="button" data-cerrar-modal-insumo aria-label="Cerrar" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                    i(class="fi fi-rr-cross-small text-xl")
+            div(class="px-7 pt-5 flex-shrink-0")
+                input(type="text" data-buscador-insumo autocomplete="off" placeholder="Buscar insumo…" aria-label="Buscar insumo" class="field-text")
+            div(data-grid-insumos class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
+                each m in (catalogo || [])
+                    button(
+                        type="button"
+                        data-opcion-insumo
+                        data-id=m.idMaterial
+                        data-nombre=m.nombre
+                        data-imagen=m.imagenUrl || ''
+                        data-unidad=m.unidadCorta || ''
+                        data-con-color=m.conColor ? '1' : ''
+                        class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
+                        span(class="w-8 h-8 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                            if m.imagenUrl
+                                img(src=m.imagenUrl alt=m.nombre class="w-full h-full object-cover")
+                            else
+                                i(class=`fi ${m.icono} text-sm`)
+                        span(class="text-sm font-medium text-slate-700 truncate")= m.nombre

@@ -111,6 +111,11 @@ const iniciarGeneracionMolde = async (req, res) => {
             });
             const nombres = (dxf?.materialesDetalle || []).map((m) => m.material?.nombre).filter(Boolean);
             fabric = nombres.length ? nombres.join(', ') : null;
+        } else if (req.body?.idMaterial) {
+            // Sin DXF propio todavía (la ficha que se crea desde un corte): la tela es la del
+            // trazo, que la pantalla ya conoce.
+            const material = await Material.findByPk(String(req.body.idMaterial).slice(0, 36), { attributes: ['nombre'] });
+            fabric = material?.nombre || null;
         }
 
         const promptFinal = construirPromptMolde({ fabric, pattern, colors });

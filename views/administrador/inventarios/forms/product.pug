@@ -146,35 +146,8 @@ form(action="", method="post" id="formularioProducto" enctype="multipart/form-da
                 span(class="text-gray-400 text-sm italic") No has seleccionado colores para las tallas...
 
         //- MODAL DE COLORES 
-        div#modalColores(class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center")
-            div(class="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl")
-                div.flex.justify-between.items-center.mb-6
-                    h2.h2 
-                        | Colores para Talla: 
-                        span#tallaTitulo.text-pink-600 ---
-                    button#cerrarModal(type="button" class="text-gray-400 cursor-pointer hover:text-red-500") 
-                        i.fi-rr-cross-circle.text-2xl
-
-                //- Buscador de colores
-                div(class="mb-4")
-                    input#buscadorColor(type="text" placeholder="Buscar color..." class="input input-bordered w-full rounded-xl text-sm")
-
-                //- Contenedor donde se cargarán los colores
-                div(class="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-2" id="gridColores")
-                    each atributo in atributos
-                        if atributo.tipo === 'COLOR'
-                            label(class="flex items-center gap-3 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gray-50")
-                                input(type="checkbox" value=atributo.idAtributo class="color-checkbox checkbox w-4 h-4" data-nombre=atributo.valor)
-                                //- Circulito de color 
-                                div(class="w-4 h-4 rounded-full  shadow-sm" style=`background-color: ${atributo.codigo1 || '#ccc'}`)
-
-                                if atributo.codigo2
-                                    div(class="w-4 h-4 rounded-full  shadow-sm" style=`background-color: ${atributo.codigo2}`)
-
-
-                                span(class="text-sm font-medium")= atributo.valor
-
-                button#guardarColores(type="button" class="w-full mt-8 b btn btn-primary") Guardar Colores para esta Talla
+        include ../../../components/modalColores
+        +modalColores('modalColores', atributos.filter(function (a) { return a.tipo === 'COLOR'; }), { titulo: 'Colores para Talla:', textoGuardar: 'Guardar colores para esta talla' })
 
 
         //- MODAL DE CONFIRMACIÓN DE LAS COMBINACIONES DEL ALTA

@@ -8,7 +8,7 @@ const LOGO_PATH_ADMIN  = path.resolve(__dirname_admin, '../public/img/logo.png')
 import { validationResult } from "express-validator";
 import { uuidV7 } from "../helpers/uuidV7.js";
 import PDFDocument from 'pdfkit';
-import bwipjs from 'bwip-js';
+import { nuevoDocEtiquetas, paginaEtiqueta } from '../helpers/etiquetaCodigo.js';
 import { ZipArchive } from 'archiver';
 import { Upload } from "@aws-sdk/lib-storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -5138,42 +5138,18 @@ const filterStoreInventoryJson = async (req, res) => {
     }
 }
 
+// Un PDF con la etiqueta de un SKU, en memoria: lo usa el ZIP de etiquetas, que necesita un
+// archivo por producto. La etiqueta en sí es helpers/etiquetaCodigo.js (compartida con los
+// rollos de tela).
 const generarPdfEtiquetaSKU = async (sku, nombre) => {
-    const W = 155.91;
-    const H = 70.87;
-    const mx = 4;
-    const ALTO_TEXTO = 21;
-    const Y_TEXTO = H - mx - ALTO_TEXTO;
-    const ALTO_BARRAS = Y_TEXTO - mx - 1;
-
-    const doc = new PDFDocument({
-        size: [W, H],
-        margins: { top: mx, bottom: mx, left: mx, right: mx },
-        autoFirstPage: false
-    });
+    const doc = nuevoDocEtiquetas();
     const partes = [];
     const pdf = new Promise((resolve, reject) => {
         doc.on('data', parte => partes.push(parte));
         doc.on('end', () => resolve(Buffer.concat(partes)));
         doc.on('error', reject);
     });
-
-    const buffer = await bwipjs.toBuffer({
-        bcid: 'code128',
-        text: sku,
-        scale: 4,
-        height: 14,
-        includetext: false
-    });
-    doc.addPage({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
-    doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
-    doc.fontSize(9).font('Helvetica-Bold')
-        .text(nombre, mx, Y_TEXTO, {
-            width: W - mx * 2,
-            height: ALTO_TEXTO,
-            align: 'center',
-            lineGap: 0
-        });
+    await paginaEtiqueta(doc, { codigo: sku, lineas: [{ texto: nombre, tamano: 9, negrita: true, alto: 21 }] });
     doc.end();
     return pdf;
 };
@@ -5332,46 +5308,14 @@ const imprimirEtiquetaSKU = async (req, res) => {
         return;
     }
 
-    // 5.5 cm = 155.91 pt (ancho) | 2.5 cm = 70.87 pt (alto)
-    const W  = 155.91;
-    const H  = 70.87;
-    const mx = 4;
-    // Reparto vertical de la etiqueta. El alto de las barras se fija acá y NO se deja
-    // que salga de la proporción del PNG: el ancho del código depende de cuántos
-    // caracteres tenga el SKU, así que un SKU largo daba barras más bajas que uno corto
-    // y la etiqueta cambiaba de aspecto entre productos.
-    const ALTO_TEXTO   = 21;              // hasta dos líneas a 9 pt
-    const Y_TEXTO      = H - mx - ALTO_TEXTO;
-    const ALTO_BARRAS  = Y_TEXTO - mx - 1; // separación mínima antes del nombre
-
+    // Una página por SKU, en streaming (CLAUDE.md §11). La etiqueta: helpers/etiquetaCodigo.js.
     try {
-        const doc = new PDFDocument({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx }, autoFirstPage: false });
-
+        const doc = nuevoDocEtiquetas();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=sku_${etiquetas[0].sku}.pdf`);
         doc.pipe(res);
-
         for (const { sku, nombre } of etiquetas) {
-            doc.addPage({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
-
-            // Barcode (sin texto incluido, sin título)
-            const buffer = await bwipjs.toBuffer({
-                bcid:        'code128',
-                text:        sku,
-                scale:       4,
-                height:      14,
-                includetext: false,
-            });
-            doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
-
-            // Nombre del producto centrado, pegado al pie de las barras
-                doc.fontSize(9).font('Helvetica-Bold')
-                    .text(nombre, mx, Y_TEXTO, {
-                         width: W - mx * 2,
-                         height: ALTO_TEXTO,
-                         align: 'center',
-                         lineGap: 0
-                    });
+            await paginaEtiqueta(doc, { codigo: sku, lineas: [{ texto: nombre, tamano: 9, negrita: true, alto: 21 }] });
         }
 
         doc.end();

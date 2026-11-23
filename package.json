@@ -80,6 +80,9 @@
     "db:migrar-ficha-confeccion-talleres": "node ./seed/migracionFichaConfeccionTalleres.js",
     "db:migrar-ficha-confeccion-procesos": "node ./seed/migracionFichaConfeccionProcesos.js",
     "db:migrar-ficha-estados": "node ./seed/migracionFichaConfeccionEstados.js",
+    "db:migrar-ordenes-produccion": "node ./seed/migracionOrdenesProduccion.js",
+    "db:migrar-rollos-tela": "node ./seed/migracionRollosTela.js",
+    "db:migrar-ordenes-corte": "node seed/migracionOrdenesCorte.js",
     "test": "DB_NAME=grupogh_test DB_HOST=127.0.0.1 REDIS_HOST= node --test --test-concurrency=1 --test-force-exit \"tests/**/*.test.js\""
   },
   "keywords": [

@@ -3,7 +3,7 @@ import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 import { initFechaInput } from './fechaInput.js';
 import { iniciarModalLineaInsumo, UNIDAD_ETIQUETA, aPayloadLinea } from './modalLineaInsumo.js';
-import { pedirRecepcion, factorFijoDe } from './recepcionOrden.js';
+import { pedirRecepcion, factorFijoDe, avisoRecepcion } from './recepcionOrden.js';
 import { confirmarProveedor } from './confirmarProveedor.js';
 
 // Orden de compra de insumos (admin/insumos/compra). El proveedor se busca en vivo contra
@@ -543,6 +543,9 @@ if (form) {
             cantidadRecibida: 0,
             unidadConsumo,
             factorFijo: factorFijoDe(datosRecepcion.factores, presentacion, unidadConsumo),
+            // Tela (materia prima que se gasta en cm) comprada por rollo: se pide el metraje de
+            // cada rollo (helpers/rollosTela.js esTelaPorRollo, la misma regla del servidor).
+            porRollo: presentacion === 'rollo' && op?.dataset.tipo === 'materia_prima' && unidadConsumo === 'cm',
             contenidoSugerido: datosRecepcion.recordadas?.[l.idMaterial]?.[presentacion] ?? null,
             valorUnitario: l.valorUnitario
         };
@@ -558,7 +561,7 @@ if (form) {
         if (recibirAhora) {
             const datos = await pedirRecepcion(lineasParaRecibir());
             if (!datos) return;
-            recepcion = datos.map(d => ({ cantidadLlega: d.cantidadLlega, contenido: d.contenido }));
+            recepcion = datos.map(d => ({ cantidadLlega: d.cantidadLlega, contenido: d.contenido, rollos: d.rollos }));
         }
 
         const CODIGO_ID = 'oc-codigo-empleado';
@@ -617,7 +620,8 @@ if (form) {
         }));
         if (!isConfirmed) return;
         const numerosOrden = value.ordenes.map(o => o.numeroOrden).join(', ');
-        await aviso({ variante: 'ingreso', icono: 'fi-rr-check', badge: value.ordenes.length > 1 ? 'Órdenes creadas' : value.recibida ? 'Orden creada y recibida' : 'Orden creada', contexto: value.recibida ? `${numerosOrden} · ya está en el inventario` : numerosOrden });
+        if (value.recibida) await avisoRecepcion({ badge: 'Orden creada y recibida', contexto: `${numerosOrden} · ya está en el inventario`, rollos: value.rollos || [] });
+        else await aviso({ variante: 'ingreso', icono: 'fi-rr-check', badge: value.ordenes.length > 1 ? 'Órdenes creadas' : 'Orden creada', contexto: numerosOrden });
         window.location.href = '/admin/insumos';
     });
 }

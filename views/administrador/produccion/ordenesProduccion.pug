@@ -1,0 +1,93 @@
+extends ../../layout/index
+block contenedor
+    //- Listado de órdenes de producción (controller/ordenProduccionController.js
+    //- homeOrdenesProduccion). Por defecto las abiertas, la fecha requerida más cercana primero.
+    include ../../components/headerAdmin
+
+    - var claseEstado = { borrador: 'table-badge-pending', en_curso: 'table-badge-active', cerrada: 'table-badge-active', cancelada: 'table-badge-low' }
+    - var etiquetaFiltro = { abiertas: 'Abiertas', borrador: 'Borrador', en_curso: 'En curso', cerrada: 'Cerradas', cancelada: 'Canceladas', todas: 'Todas' }
+    - var fechaCorta = function (f) { return new Date(`${f}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }); }
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-list-check',
+                                    titulo:    'Órdenes de confección',
+                                    subtitulo: 'Lo que se cortó, por color y talla, rumbo a los talleres',
+                                    iconoSub:  'fi-rr-calendar'
+                                })
+                                //- Lo normal es que la orden nazca del corte (subir el trazo); armarla a
+                                //- mano, sin trazo, queda como acción secundaria (decidido 2026-11-21).
+                                if puedeAdmin('Procesos', 'CREATE')
+                                    div(class="flex items-center gap-2 flex-shrink-0")
+                                        a(href="/admin/procesos/ordenes/nueva" class="btn btn-secondary flex items-center gap-2")
+                                            i(class="fi fi-rr-add-document")
+                                            | Orden sin trazo
+                                        a(href="/admin/procesos/cortes/nuevo" class="btn btn-danger flex items-center gap-2")
+                                            i(class="fi fi-rr-upload")
+                                            | Subir trazo
+
+                            div(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden")
+                                div(class="p-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100")
+                                    nav(class="flex flex-wrap gap-1.5" aria-label="Filtrar por estado")
+                                        each f in filtros
+                                            a(href=`/admin/procesos/ordenes?estado=${f}`
+                                              aria-current=f === filtro ? 'page' : false
+                                              class=`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${f === filtro ? 'bg-gh-primarySoft border-gh-primary text-gh-primaryHover' : 'border-slate-200 text-slate-600 hover:border-gh-primary'}`)= etiquetaFiltro[f]
+                                    span(class="text-sm text-slate-500")= `${total.toLocaleString('es-CO')} ${total === 1 ? 'orden' : 'órdenes'}`
+
+                                if !ordenes.length
+                                    div(class="px-6 py-14 flex flex-col items-center text-center gap-2")
+                                        i(class="fi fi-rr-list-check text-2xl text-slate-300")
+                                        span(class="text-sm font-semibold text-slate-500") No hay órdenes en este filtro
+                                        span(class="text-xs text-slate-400") Una orden de confección nace al registrar un corte (sube el trazo), o se arma a mano desde una ficha.
+                                else
+                                    div(class="overflow-x-auto")
+                                        table(class="w-full text-sm")
+                                            thead
+                                                tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50")
+                                                    th(class="py-3 px-5") Orden
+                                                    th(class="py-3 px-5") Referencia
+                                                    th(class="py-3 px-5 text-right") Prendas
+                                                    th(class="py-3 px-5") Fecha requerida
+                                                    th(class="py-3 px-5") Estado
+                                                    th(class="py-3 px-5 text-right") Ver
+                                            tbody
+                                                each o in ordenes
+                                                    tr(class="border-b border-slate-100 last:border-0")
+                                                        td(class="py-3.5 px-5 font-bold text-slate-800")= o.numeroProduccion
+                                                        td(class="py-3.5 px-5")
+                                                            span(class="font-semibold text-slate-800")= o.referencia
+                                                            div(class="text-xs text-slate-400")
+                                                                = o.materialNombre
+                                                                if o.numeroCorte
+                                                                    a(href=`/admin/procesos/cortes/${o.idOrdenCorte}` class="ml-1.5 font-semibold text-gh-primaryHover hover:underline")= `· corte ${o.numeroCorte}`
+                                                        td(class="py-3.5 px-5 text-right text-slate-700")= o.prendas.toLocaleString('es-CO')
+                                                        td(class=`py-3.5 px-5 ${o.vencida ? 'text-rose-600 font-semibold' : 'text-slate-600'}`)
+                                                            = fechaCorta(o.fechaRequerida)
+                                                            if o.vencida
+                                                                span(class="block text-[11px]") Vencida
+                                                        td(class="py-3.5 px-5")
+                                                            span(class=`table-badge ${claseEstado[o.estado]}`)
+                                                                span(class="table-badge-dot")
+                                                                = etiquetaEstado[o.estado]
+                                                        td(class="py-3.5 px-5 text-right")
+                                                            a(href=`/admin/procesos/ordenes/${o.idOrdenProduccion}` class="inline-flex items-center gap-1.5 text-xs font-bold text-gh-primaryHover hover:underline")
+                                                                i(class="fi fi-rr-eye text-xs")
+                                                                | Ver
+                                    if totalPaginas > 1
+                                        nav(class="p-4 flex items-center justify-center gap-2 border-t border-slate-100" aria-label="Páginas")
+                                            if paginaActual > 1
+                                                a(href=`/admin/procesos/ordenes?estado=${filtro}&pagina=${paginaActual - 1}` class="btn btn-secondary btn-sm text-xs") Anterior
+                                            span(class="text-xs text-slate-500")= `Página ${paginaActual} de ${totalPaginas}`
+                                            if paginaActual < totalPaginas
+                                                a(href=`/admin/procesos/ordenes?estado=${filtro}&pagina=${paginaActual + 1}` class="btn btn-secondary btn-sm text-xs") Siguiente

@@ -49,6 +49,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
                     <span class="flex items-center gap-2 min-w-0">
                         <span class="font-semibold text-slate-800 truncate group-hover/ficha:text-gh-primaryHover">${esc(f.referencia)}</span>
                         ${f.anulada ? '<span class="table-badge table-badge-low flex-shrink-0"><span class="table-badge-dot"></span>Anulada</span>' : ''}
+                        ${f.pendiente ? '<span class="table-badge table-badge-pending flex-shrink-0"><span class="table-badge-dot"></span>Por terminar</span>' : ''}
                     </span>
                     <span class="block text-xs text-slate-400 mt-0.5">${fecha(f.createdAt)}${autor}</span>
                 </span>

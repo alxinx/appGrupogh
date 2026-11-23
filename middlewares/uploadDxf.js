@@ -5,7 +5,8 @@ import multer from 'multer';
 // (varía entre "application/dxf", "image/vnd.dxf" u "application/octet-stream" según
 // sistema operativo), así que no se filtra por mimetype acá: la validación real de
 // contenido (esDxfValido, helpers/dxf.js) ocurre en el controlador.
-const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024; // 20MB
+// Una sola copia del tope: lo usan esta subida y la pantalla de corte (helpers/ordenesCorte.js LIMITES_CORTE).
+export const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024; // 20MB
 
 const uploadDxf = multer({
     storage: multer.memoryStorage(),

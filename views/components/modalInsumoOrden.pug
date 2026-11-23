@@ -17,6 +17,8 @@ include ./modalNuevoInsumo.pug
 //- crear insumos (ordenesCompraController.js altaInsumoSiPuede). Con él se dibuja también el
 //- modal "Nuevo insumo" y el buscador ofrece crear el que no existe (modalLineaInsumo.js).
 //- `presentaciones`: UNIDADES_COMPRA (helpers/insumos.js) — cómo se compra en ESTA línea.
+include ./modalColores
+
 mixin modalInsumoOrden(materiales, colores, altaInsumo, presentaciones)
     //- ── MODAL "AGREGAR INSUMO" ──────────────────────────────────────────
     //- Mismo estilo de modal que el resto del módulo (Nuevo/Editar insumo).
@@ -41,7 +43,7 @@ mixin modalInsumoOrden(materiales, colores, altaInsumo, presentaciones)
                         select#li-material.field-text.appearance-none.pr-10
                             option(value="") Selecciona un insumo...
                             each m in materiales
-                                option(value=m.idMaterial data-unidad=m.unidadCompra || '' data-consumo=m.unidadConsumo data-nombre=m.nombre data-codigo=m.codigoMaterial data-imagen=m.imagenUrl || m.icono data-sin-foto=m.imagenUrl ? false : '')= `${m.nombre} · código ${m.codigoMaterial}`
+                                option(value=m.idMaterial data-unidad=m.unidadCompra || '' data-consumo=m.unidadConsumo data-tipo=m.tipo data-nombre=m.nombre data-codigo=m.codigoMaterial data-imagen=m.imagenUrl || m.icono data-sin-foto=m.imagenUrl ? false : '')= `${m.nombre} · código ${m.codigoMaterial}`
                         span(class="select-icon")
                             i(class="fi-rr-chevron-double-down")
                     p#error-li-material(class="label-error text-xs hidden")
@@ -108,44 +110,9 @@ mixin modalInsumoOrden(materiales, colores, altaInsumo, presentaciones)
                     button(type="button" id="btn-confirmar-li" class="btn btn-danger") Agregar a la orden
 
     //- ── CAJA DE COLORES (sub-modal, encima de "Agregar insumo") ────────────
-    //- Mismo patrón que "Colores para Talla" en admin/inventario/ingreso
-    //- (views/administrador/inventarios/forms/product.pug): grilla de swatches
-    //- con checkbox + buscador. Acá además se puede dar de alta un color simple
-    //- nuevo si no está en el catálogo (POST /admin/insumos/compra/colores).
-    div#modal-colores-insumo(class="fixed inset-0 z-[60] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm")
-        div(class="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden")
-            div(class="flex items-center justify-between px-6 py-5 border-b border-gray-100 flex-shrink-0")
-                h2(class="text-lg font-bold text-slate-800") Elegir colores
-                button#modal-colores-insumo-cerrar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer")
-                    i(class="fi fi-rr-cross-small text-xl")
-
-            div(class="px-6 pt-4 flex-shrink-0")
-                input#buscador-color-insumo(type="text" placeholder="Buscar color..." autocomplete="off" class="field-text")
-
-            div#grid-colores-insumo(class="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-2 sm:grid-cols-3 gap-2")
-                each c in colores
-                    label(class="color-insumo-item flex items-center gap-2.5 p-2.5 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-50")
-                        input(type="checkbox" value=c.idAtributo data-nombre=c.valor data-hex=c.codigo1 || '' class="color-insumo-checkbox w-4 h-4 flex-shrink-0")
-                        span(class="w-4 h-4 rounded-full border border-black/10 flex-shrink-0" style=`background-color:${c.codigo1 || '#ccc'}`)
-                        span(class="text-sm font-medium text-slate-700 truncate")= c.valor
-
-            //- Dar de alta un color simple nuevo si no está en la grilla de arriba.
-            div(class="px-6 pb-4 pt-4 flex-shrink-0 border-t border-slate-100")
-                button#btn-mostrar-nuevo-color(type="button" class="text-xs font-bold text-gh-primaryHover hover:underline flex items-center gap-1")
-                    i(class="fi fi-rr-plus-small text-[10px]")
-                    | El color que busco no está
-                div#form-nuevo-color(class="hidden items-end gap-2 mt-3")
-                    div(class="flex-1 flex flex-col gap-1")
-                        label(class="text-[11px] font-bold text-slate-500 uppercase tracking-wide") Nombre
-                        input#nuevo-color-nombre(type="text" autocomplete="off" placeholder="Ej. Verde Esmeralda" maxlength="100" class="field-text text-sm")
-                    div(class="flex flex-col gap-1")
-                        label(class="text-[11px] font-bold text-slate-500 uppercase tracking-wide") Color
-                        input#nuevo-color-hex(type="color" value="#E24C95" class="w-12 h-10 bg-white border border-slate-200 rounded-xl cursor-pointer")
-                    button#btn-guardar-nuevo-color(type="button" class="btn btn-secondary text-xs flex-shrink-0 whitespace-nowrap") Agregar
-                p#error-nuevo-color(class="label-error text-xs hidden mt-2")
-
-            div(class="px-6 py-4 border-t border-gray-100 flex-shrink-0")
-                button#btn-usar-colores(type="button" class="btn btn-danger w-full justify-center") Usar colores seleccionados
+    //- El componente compartido de colores, acá con alta de un color simple nuevo
+    //- (POST /admin/insumos/compra/colores). Solo colores simples: `colores` ya viene filtrado.
+    +modalColores('modal-colores-insumo', colores, { altaColor: '/admin/insumos/compra/colores', textoGuardar: 'Usar colores seleccionados' })
 
     //- Después del modal "Agregar insumo" para quedar encima de él (mismo z-50).
     if altaInsumo

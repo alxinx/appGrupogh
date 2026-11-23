@@ -4,13 +4,16 @@ import db from '../config/bd.js';
 import {
     FichaConfeccion, FichaConfeccionInsumo, FichaConfeccionTaller, FichaConfeccionEstado,
     FichaConfeccionDxf, FichaConfeccionDxfMaterial, FichaConfeccionMolde, FichaConfeccionMoldeIaIntento, FichaConfeccionVideo,
-    Material, Familia
+    Material, Familia, OrdenProduccion, OrdenCorteReferencia
 } from '../models/index.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { keyDocumento, urlDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { montoPositivo } from '../helpers/helpers.js';
+import { validarInsumosBody, validarDatosFicha, columnasDatosFicha, guardarDatosFicha } from '../helpers/fichaConfeccionDatos.js';
 import { generarPdfFichaConfeccion } from '../helpers/fichaConfeccionPdf.js';
 import { presentarMaterial } from '../helpers/insumos.js';
+import { faltantesFicha, promoverFichaSiCompleta } from '../helpers/ordenesCorte.js';
+import { resolverIdFamilia } from '../helpers/productos.js';
 import { urlIframeVideo, urlMiniaturaVideo, duracionesVideosCloudflare, eliminarVideoCloudflare } from '../helpers/cloudflareStream.js';
 
 // Último paso del asistente "Nueva ficha de confección" — junta lo que el DXF, el molde y
@@ -48,30 +51,8 @@ async function generarYGuardarPdf(idFicha) {
 // y tienen que aplicar las MISMAS reglas (CLAUDE.md DRY). Nunca lanzan: devuelven
 // `{ error }` para que el controlador decida el status/mensaje de la respuesta.
 
-// Insumos: OPCIONALES (una ficha puede no llevar ninguno — CLAUDE.md, no inventar una
-// obligación que nadie pidió). La cantidad es POR PRENDA ("2 botones"): la ficha describe la
-// prenda y la orden de producción multiplica (wiki "Proceso de confección").
-// `nombreMaterial` se congela acá con el nombre que el material tiene HOY, nunca con el que
-// mande el navegador.
-async function validarInsumosBody(insumosBody) {
-    if (!insumosBody.length) return { insumosLimpios: [] };
-
-    const insumosLimpios = [];
-    for (const fila of insumosBody) {
-        const cantidad = parseInt(fila?.cantidad, 10);
-        if (!fila?.idMaterial || !Number.isInteger(cantidad) || cantidad <= 0) return { error: 'Hay un insumo inválido en la lista.' };
-        insumosLimpios.push({ idMaterial: String(fila.idMaterial), cantidad });
-    }
-
-    const idsInsumos = [...new Set(insumosLimpios.map((i) => i.idMaterial))];
-    const materialesInsumo = await Material.findAll({ where: { idMaterial: idsInsumos, activo: true }, attributes: ['idMaterial', 'nombre'] });
-    if (materialesInsumo.length !== idsInsumos.length) return { error: 'Alguno de los insumos elegidos no existe o ya no está activo.' };
-
-    const nombrePorId = new Map(materialesInsumo.map((m) => [m.idMaterial, m.nombre]));
-    insumosLimpios.forEach((i) => { i.nombreMaterial = nombrePorId.get(i.idMaterial); });
-
-    return { insumosLimpios };
-}
+// Insumos, molde, foto, IA, videos y textos: helpers/fichaConfeccionDatos.js (una sola copia
+// para el asistente y para la ficha que se crea desde un corte).
 
 // POST /admin/procesos/fichas-confeccion/finalizar
 const finalizarFicha = async (req, res) => {
@@ -118,37 +99,8 @@ const finalizarFicha = async (req, res) => {
         // colores lo dice la orden de producción (wiki "Proceso de confección").
         const cantidadTotal = 0;
 
-        const { insumosLimpios, error: errorInsumos } = await validarInsumosBody(
-            Array.isArray(req.body?.insumos) ? req.body.insumos : []
-        );
-        if (errorInsumos) return res.status(422).json({ success: false, mensaje: errorInsumos });
-
-        // Molde / referencia / intento de IA: opcionales — ver models/FichaConfeccion.js.
-        let molde = null;
-        if (req.body?.idMolde) {
-            molde = await FichaConfeccionMolde.findOne({ where: { idMolde: req.body.idMolde, idUsuarioCarga: idUsuario } });
-            if (!molde) return res.status(422).json({ success: false, mensaje: 'El molde indicado no existe.' });
-        }
-        let moldeReferencia = null;
-        if (req.body?.idMoldeReferencia) {
-            moldeReferencia = await FichaConfeccionMolde.findOne({ where: { idMolde: req.body.idMoldeReferencia, idUsuarioCarga: idUsuario } });
-            if (!moldeReferencia) return res.status(422).json({ success: false, mensaje: 'La foto de referencia indicada no existe.' });
-        }
-        let moldeIaIntento = null;
-        if (req.body?.idMoldeIaIntento) {
-            moldeIaIntento = await FichaConfeccionMoldeIaIntento.findOne({ where: { idIntento: req.body.idMoldeIaIntento, aprobado: true } });
-            if (!moldeIaIntento) return res.status(422).json({ success: false, mensaje: 'La imagen generada con IA no existe o no fue aprobada.' });
-        }
-
-        // Videos: solo los que de verdad son del usuario, ya están listos, y todavía no
-        // pertenecen a otra ficha — una lista de ids del body nunca basta sola (§12).
-        const idsVideos = (Array.isArray(req.body?.idsVideos) ? req.body.idsVideos : []).filter((id) => typeof id === 'string' && id);
-        const videos = idsVideos.length
-            ? await FichaConfeccionVideo.findAll({ where: { idVideo: idsVideos, idUsuarioCarga: idUsuario, estado: 'ready', idFicha: null } })
-            : [];
-
-        const complementos = String(req.body?.complementos ?? '').trim().slice(0, 2000) || null;
-        const observaciones = String(req.body?.observaciones ?? '').trim().slice(0, 2000) || null;
+        const { datos: datosFicha, error: errorDatos } = await validarDatosFicha(req.body, idUsuario);
+        if (errorDatos) return res.status(422).json({ success: false, mensaje: errorDatos });
 
         let t = null;
         let idFicha = null;
@@ -158,39 +110,24 @@ const finalizarFicha = async (req, res) => {
             const ficha = await FichaConfeccion.create({
                 idUsuarioCreacion: idUsuario,
                 idDxf: dxf.idArchivoDxf,
-                idMolde: molde?.idMolde || null,
-                idMoldeReferencia: moldeReferencia?.idMolde || null,
-                idMoldeIaIntento: moldeIaIntento?.idIntento || null,
+                ...columnasDatosFicha(datosFicha),
                 referencia: dxf.familiaAsociada.nombreFamilia,
                 // Foto del/los material(es) en el momento de guardar — "Mayatext, Polilicra"
                 // si el DXF traía más de un código (CLAUDE.md §3: mismo criterio que
                 // `referencia`, un texto congelado, no solo la FK).
                 materialNombre: materialesDetalle.map((m) => m.material.nombre).join(', '),
-                complementos,
-                observaciones,
                 precioConfeccion,
                 cantidadTotal,
                 estado: 'activa'
             }, { transaction: t });
             idFicha = ficha.idFicha;
 
-            if (insumosLimpios.length) {
-                await FichaConfeccionInsumo.bulkCreate(
-                    insumosLimpios.map((i, idx) => ({ idFicha, idMaterial: i.idMaterial, nombreMaterial: i.nombreMaterial, cantidad: i.cantidad, orden: idx + 1 })),
-                    { transaction: t }
-                );
-            }
-
-            if (videos.length) {
-                await FichaConfeccionVideo.update(
-                    { idFicha },
-                    { where: { idVideo: videos.map((v) => v.idVideo) }, transaction: t }
-                );
-            }
+            await guardarDatosFicha(idFicha, datosFicha, t);
 
             await t.commit();
         } catch (e) {
             if (t && !t.finished) await t.rollback().catch(() => {});
+            if (e?.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message });
             console.error('fichaConfeccionController(finalizar) transacción:', e);
             return res.status(500).json({ success: false, mensaje: 'No se pudo guardar la ficha. Intenta de nuevo.' });
         }
@@ -338,7 +275,12 @@ const homeFichaConfeccionEditar = async (req, res) => {
             videos,
             moldeImagenUrl,
             moldeIaImagenUrl,
-            moldeReferenciaImagenUrl
+            moldeReferenciaImagenUrl,
+            // Ficha por terminar (base creada desde un corte): lo que le falta para pasar a
+            // confección y las familias para elegir (lista de sugerencias).
+            faltan: ficha.estado === 'anulada' ? [] : faltantesFicha(ficha),
+            familias: (await Familia.findAll({ attributes: ['nombreFamilia'], order: [['nombreFamilia', 'ASC']], raw: true })).map(f => f.nombreFamilia),
+            familiaActual: ficha.dxf?.idFamiliaAsociada ? (await Familia.findByPk(ficha.dxf.idFamiliaAsociada, { attributes: ['nombreFamilia'], raw: true }))?.nombreFamilia || null : null
         });
     } catch (e) {
         console.error('fichaConfeccionController(editar):', e);
@@ -353,7 +295,7 @@ const homeFichaConfeccionEditar = async (req, res) => {
 const actualizarFichaConfeccion = async (req, res) => {
     try {
         const ficha = await FichaConfeccion.findOne({
-            where: { idFicha: req.params.idFicha, estado: 'activa' },
+            where: { idFicha: req.params.idFicha, estado: ['activa', 'pendiente'] },
             include: [{
                 model: FichaConfeccionDxf, as: 'dxf',
                 include: [{
@@ -440,12 +382,22 @@ const actualizarFichaConfeccion = async (req, res) => {
 // ESTA ficha. Después del cambio se regenera el PDF.
 const asignarImagenFicha = async (req, res) => {
     try {
-        const ficha = await FichaConfeccion.findOne({ where: { idFicha: req.params.idFicha, estado: 'activa' }, attributes: ['idFicha', 'idMolde'] });
+        const ficha = await FichaConfeccion.findOne({ where: { idFicha: req.params.idFicha, estado: ['activa', 'pendiente'] }, attributes: ['idFicha', 'idMolde'] });
         if (!ficha) return res.status(404).json({ success: false, mensaje: 'Esa ficha no existe.' });
 
         const tipo = req.body?.tipo;
         let cambio = null;
-        if (tipo === 'referencia') {
+        if (tipo === 'molde') {
+            // El molde de una ficha que no lo tenía (la ficha base que se creó desde un
+            // corte). JPG o PDF, subido por este usuario. Con molde y familia la ficha pasa a
+            // activa (promoverFichaSiCompleta).
+            const molde = await FichaConfeccionMolde.findOne({
+                where: { idMolde: String(req.body?.idMolde ?? ''), idUsuarioCarga: req.usuario.idUsuario },
+                attributes: ['idMolde']
+            });
+            if (!molde) return res.status(422).json({ success: false, mensaje: 'Ese molde no existe o no lo subiste tú.' });
+            cambio = { idMolde: molde.idMolde };
+        } else if (tipo === 'referencia') {
             const molde = await FichaConfeccionMolde.findOne({
                 where: { idMolde: String(req.body?.idMolde ?? ''), idUsuarioCarga: req.usuario.idUsuario, tipoArchivo: 'jpg' },
                 attributes: ['idMolde']
@@ -464,7 +416,10 @@ const asignarImagenFicha = async (req, res) => {
             return res.status(422).json({ success: false, mensaje: 'Tipo de imagen inválido.' });
         }
 
-        await FichaConfeccion.update(cambio, { where: { idFicha: ficha.idFicha } });
+        await db.transaction(async (t) => {
+            await FichaConfeccion.update(cambio, { where: { idFicha: ficha.idFicha }, transaction: t });
+            await promoverFichaSiCompleta(ficha.idFicha, req.usuario.idUsuario, t);
+        });
 
         try { await generarYGuardarPdf(ficha.idFicha); } catch (e) {
             console.error('fichaConfeccionController(asignarImagen) pdf:', e);
@@ -477,6 +432,40 @@ const asignarImagenFicha = async (req, res) => {
     }
 };
 
+// POST /admin/procesos/fichas-confeccion/:idFicha/familia — { nombre }. La familia de una
+// ficha que no la tenía (ficha base creada desde un corte): se elige o se crea por nombre,
+// igual que en el asistente (resolverIdFamilia). La referencia de la ficha toma el nombre de
+// la familia, como en una ficha hecha con el asistente. Una ficha que ya tiene familia no la
+// cambia acá (la familia sale del DXF y no se re-edita, ver homeFichaConfeccionEditar).
+const asignarFamiliaFicha = async (req, res) => {
+    try {
+        const nombre = String(req.body?.nombre ?? '').trim().slice(0, 150);
+        if (!nombre) return res.status(422).json({ success: false, mensaje: 'Escribe el nombre de la familia.' });
+        const ficha = await FichaConfeccion.findOne({
+            where: { idFicha: req.params.idFicha, estado: ['activa', 'pendiente'] },
+            attributes: ['idFicha', 'idDxf'],
+            include: [{ model: FichaConfeccionDxf, as: 'dxf', attributes: ['idArchivoDxf', 'idFamiliaAsociada'] }]
+        });
+        if (!ficha) return res.status(404).json({ success: false, mensaje: 'Esa ficha no existe.' });
+        if (ficha.dxf?.idFamiliaAsociada) return res.status(409).json({ success: false, mensaje: 'Esta ficha ya tiene familia.' });
+
+        await db.transaction(async (t) => {
+            const idFamilia = await resolverIdFamilia(nombre, t);
+            const familia = await Familia.findByPk(idFamilia, { attributes: ['nombreFamilia'], transaction: t });
+            await FichaConfeccionDxf.update({ idFamiliaAsociada: idFamilia }, { where: { idArchivoDxf: ficha.idDxf }, transaction: t });
+            await FichaConfeccion.update({ referencia: familia.nombreFamilia.slice(0, 150) }, { where: { idFicha: ficha.idFicha }, transaction: t });
+            await promoverFichaSiCompleta(ficha.idFicha, req.usuario.idUsuario, t);
+        });
+        try { await generarYGuardarPdf(ficha.idFicha); } catch (e) {
+            console.error('fichaConfeccionController(familia) pdf:', e);
+        }
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('fichaConfeccionController(familia):', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo guardar la familia.' });
+    }
+};
+
 // ── Anular, reactivar y borrar ─────────────────────────────────────────────────────────
 // Una ficha que ya se usó no se borra: se ANULA (sale de la biblioteca, no inicia procesos
 // nuevos, se puede reactivar). Solo una ficha que nunca se usó se BORRA, y con ella sus videos
@@ -484,12 +473,17 @@ const asignarImagenFicha = async (req, res) => {
 // FICHAS_CONFECCION_ESTADOS (append-only).
 
 /**
- * ¿La ficha ya se usó? Hoy, uso = tener talleres asignados (de ellos cuelgan los procesos).
- * Cuando existan las órdenes de producción y los cortes, se suman acá: es el único lugar que
- * decide si se puede borrar.
+ * ¿La ficha ya se usó? Uso = tener talleres asignados (de ellos cuelgan los procesos),
+ * alguna orden de producción aunque esté cancelada (sigue apuntando a la ficha) o estar en
+ * algún corte. Es el único lugar que decide si se puede borrar.
  */
 async function fichaTieneUso(idFicha) {
-    return (await FichaConfeccionTaller.count({ where: { idFicha } })) > 0;
+    const [talleres, ordenes, cortes] = await Promise.all([
+        FichaConfeccionTaller.count({ where: { idFicha } }),
+        OrdenProduccion.count({ where: { idFicha }, paranoid: false }),
+        OrdenCorteReferencia.count({ where: { idFicha } })
+    ]);
+    return talleres + ordenes + cortes > 0;
 }
 
 /**
@@ -564,4 +558,4 @@ const borrarFicha = async (req, res) => {
     }
 };
 
-export { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion, asignarImagenFicha, generarYGuardarPdf, anularFicha, reactivarFicha, borrarFicha };
+export { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion, asignarImagenFicha, asignarFamiliaFicha, generarYGuardarPdf, anularFicha, reactivarFicha, borrarFicha };

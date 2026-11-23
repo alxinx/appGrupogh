@@ -1,7 +1,8 @@
 import { Op } from 'sequelize';
 import { Atributos, Material, Provedores, OrdenesCompraHistorial } from '../models/index.js';
 import { round2 } from './formatMoney.js';
-import { cantidadValida, resolverContenido } from './unidadesInsumo.js';
+import { cantidadValida, resolverContenido, dec } from './unidadesInsumo.js';
+import { esTelaPorRollo, metrajesDesdeMetros, ROLLOS_POR_LINEA_MAX, METRAJE_ROLLO_MAX_M } from './rollosTela.js';
 import { presentarMaterial, UNIDADES_COMPRA } from './insumos.js';
 
 // Orden de compra de insumos (admin/insumos/compra). Una sola fuente para la validación
@@ -350,6 +351,24 @@ export const validarRecepcionOrden = (body = {}, detalles = []) => {
             continue;
         }
         if (llega.eq(0)) continue;   // de esta línea no llegó nada ahora
+
+        // Tela comprada por rollo: cada rollo con su metraje (en metros, como su etiqueta),
+        // porque no miden igual. Lo que entra es la suma; el contenido "por rollo" queda como
+        // el promedio, solo de referencia (helpers/rollosTela.js).
+        if (detalle.unidadCompra === 'rollo' && esTelaPorRollo(detalle.material)) {
+            if (!llega.isInteger() || llega.gt(ROLLOS_POR_LINEA_MAX)) {
+                errores.push({ idDetalleOrdenCompra: id, mensaje: `${detalle.nombreMaterial}: los rollos se reciben enteros (máximo ${ROLLOS_POR_LINEA_MAX}).` });
+                continue;
+            }
+            const metrajesCm = metrajesDesdeMetros(l?.rollos);
+            if (!metrajesCm || metrajesCm.length !== llega.toNumber()) {
+                errores.push({ idDetalleOrdenCompra: id, mensaje: `${detalle.nombreMaterial}: escribe los metros de cada uno de los ${llega.toNumber()} rollos (mayor a 0, hasta ${METRAJE_ROLLO_MAX_M.toLocaleString('es-CO')} m).` });
+                continue;
+            }
+            const totalCm = metrajesCm.reduce((s2, m) => s2.plus(m), dec(0));
+            lineas.push({ detalle, llega, contenido: totalCm.div(llega), fijo: false, metrajesCm, totalCm });
+            continue;
+        }
 
         const r = resolverContenido({
             presentacion: detalle.unidadCompra || 'unidad',

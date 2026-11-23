@@ -215,6 +215,17 @@ aside(
             a(href="/admin/procesos/nuevo" class="submenu-item") Nuevo proceso
           if puede('Procesos', 'READ')
             a(href="/admin/procesos" class="submenu-item") Listado de procesos
+          //- Órdenes de producción: sub-submenú, mismo patrón que Fichas y Corte.
+          if puede('Procesos', 'CREATE') || puede('Procesos', 'READ')
+            details(class="group/ordenes")
+              summary(class="submenu-item cursor-pointer flex justify-between items-center list-none [&::-webkit-details-marker]:hidden")
+                span Órdenes de producción
+                i(class="fi fi-rr-angle-small-right transition-transform group-open/ordenes:rotate-90")
+              div(class="ml-4 mt-1 space-y-1")
+                if puede('Procesos', 'CREATE')
+                  a(href="/admin/procesos/ordenes/nueva" class="submenu-item") Nueva orden
+                if puede('Procesos', 'READ')
+                  a(href="/admin/procesos/ordenes" class="submenu-item") Listado de órdenes
           //- Fichas de confección: sub-submenú, mismo patrón que Corte. Alta con CREATE,
           //- biblioteca con READ — un enlace que lleva a un 403 no se muestra.
           if puede('Procesos', 'CREATE') || puede('Procesos', 'READ')

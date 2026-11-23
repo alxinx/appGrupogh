@@ -1,0 +1,204 @@
+extends ../../layout/index
+block contenedor
+    //- Detalle de una orden de producción (controller/ordenProduccionController.js
+    //- verOrdenProduccion; navegador en src/js/ordenProduccionDetalle.js). Cantidades color ×
+    //- talla, receta de insumos de esta orden, revisión de material (solo aviso) y bitácora.
+    include ../../components/headerAdmin
+
+    - var abierta = orden.estado === 'borrador' || orden.estado === 'en_curso'
+    - var claseEstado = { borrador: 'table-badge-pending', en_curso: 'table-badge-active', cerrada: 'table-badge-active', cancelada: 'table-badge-low' }
+    - var num = function (v) { return Number(v).toLocaleString('es-CO', { maximumFractionDigits: 4 }); }
+    - var fechaLarga = function (f) { return new Date(`${f}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }); }
+    - var etiquetaAccion = { creada: 'Creada', editada: 'Editada', confirmada: 'Confirmada', cancelada: 'Cancelada', cerrada: 'Cerrada' }
+    - var estiloRevision = { alcanza: ['Alcanza', 'text-emerald-700 bg-emerald-50'], falta: ['Falta', 'text-amber-700 bg-amber-50'], sin_existencia: ['Sin existencia', 'text-rose-700 bg-rose-50'] }
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-list-check',
+                                    titulo:    `Orden ${orden.numeroProduccion}`,
+                                    subtitulo: subtituloSeguro,
+                                    iconoSub:  'fi-rr-tshirt'
+                                })
+                                    span(class=`table-badge ${claseEstado[orden.estado]}`)
+                                        span(class="table-badge-dot")
+                                        = etiquetaEstado[orden.estado]
+                                    if vencida
+                                        span(class="table-badge table-badge-low")
+                                            span(class="table-badge-dot")
+                                            | Fecha vencida
+                                //- Orden del panel (CLAUDE.md §4.1.1): Volver → secundarias → principal.
+                                div#orden-acciones(class="flex flex-wrap items-center gap-2 flex-shrink-0"
+                                    data-id-orden=orden.idOrdenProduccion
+                                    data-numero=orden.numeroProduccion
+                                    data-con-faltante=revision ? revision.conFaltante : 0
+                                    data-motivo-max=limites.motivoMax)
+                                    a(href="/admin/procesos/ordenes" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Volver
+                                    a(href=`/admin/procesos/fichas-confeccion/${orden.idFicha}` class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-document-signed text-xs")
+                                        | Ver ficha
+                                    if abierta && puedeAdmin('Procesos', 'DELETE')
+                                        button#btn-cancelar-orden(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap !text-rose-600")
+                                            i(class="fi fi-rr-ban text-xs")
+                                            | Cancelar orden
+                                    if orden.estado === 'borrador' && puedeAdmin('Procesos', 'EDIT')
+                                        a(href=`/admin/procesos/ordenes/${orden.idOrdenProduccion}/editar` class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                            i(class="fi fi-rr-pencil text-xs")
+                                            | Editar
+                                        button#btn-confirmar-orden(type="button" class="btn btn-danger btn-sm text-xs whitespace-nowrap" disabled=impedimentos.length > 0 title=impedimentos[0] || false)
+                                            i(class="fi fi-rr-check text-xs")
+                                            | Confirmar orden
+
+                            //- Lo que falta para pasar a confección (ficha sin terminar, insumos sin color).
+                            if impedimentos.length
+                                div(class="col-span-12 rounded-2xl bg-amber-50 border border-amber-100 px-5 py-4 text-sm text-amber-800")
+                                    p(class="font-semibold mb-1")
+                                        i(class="fi fi-rr-info mr-1.5")
+                                        | Antes de confirmar esta orden
+                                    ul(class="list-disc pl-6 text-xs")
+                                        each m in impedimentos
+                                            li= m
+                                    if orden.ficha && orden.ficha.estado !== 'activa'
+                                        a(href=`/admin/procesos/fichas-confeccion/${orden.idFicha}` class="inline-block mt-2 text-xs font-bold underline") Terminar la ficha
+
+                            div(class="col-span-12 grid grid-cols-1 xl:grid-cols-3 gap-4")
+                                div(class="xl:col-span-2 flex flex-col gap-4")
+
+                                    //- ── Datos ─────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 grid grid-cols-2 sm:grid-cols-4 gap-4")
+                                        div
+                                            span(class="text-xs text-slate-400 block") Fecha requerida
+                                            span(class=`text-sm font-bold ${vencida ? 'text-rose-600' : 'text-slate-800'}`)= fechaLarga(orden.fechaRequerida)
+                                        div
+                                            span(class="text-xs text-slate-400 block") Prendas
+                                            span(class="text-sm font-bold text-slate-800")= total.toLocaleString('es-CO')
+                                        div
+                                            span(class="text-xs text-slate-400 block") Tela
+                                            span(class="text-sm font-bold text-slate-800")= orden.ficha ? orden.ficha.materialNombre : '—'
+                                        if orden.ordenCorte
+                                            div
+                                                span(class="text-xs text-slate-400 block") Nace del corte
+                                                a(href=`/admin/procesos/cortes/${orden.ordenCorte.idOrdenCorte}` class="text-sm font-bold text-gh-primaryHover hover:underline")= orden.ordenCorte.numeroCorte
+                                        div
+                                            span(class="text-xs text-slate-400 block") Creada por
+                                            span(class="text-sm font-bold text-slate-800")= orden.usuarioCreacion ? orden.usuarioCreacion.nombreUsuario : '—'
+                                        if orden.notas
+                                            div(class="col-span-2 sm:col-span-4 pt-3 border-t border-slate-100")
+                                                span(class="text-xs text-slate-400 block") Notas
+                                                p(class="text-sm text-slate-700 whitespace-pre-line")= orden.notas
+
+                                    //- ── Cantidades ────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Cantidades por color y talla
+                                        div(class="overflow-x-auto")
+                                            table(class="w-full text-sm")
+                                                thead
+                                                    tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                        th(class="py-2 pr-3") Color
+                                                        each t in tallas
+                                                            th(class="py-2 px-2 text-center")= t.etiqueta
+                                                        th(class="py-2 pl-2 text-right") Total
+                                                tbody
+                                                    each f in grilla
+                                                        tr(class="border-b border-slate-100")
+                                                            td(class="py-2 pr-3")
+                                                                span(class="inline-flex items-center gap-2 font-semibold text-slate-700")
+                                                                    - var fondo = f.color && f.color.codigo2 ? `linear-gradient(135deg, ${f.color.codigo1} 50%, ${f.color.codigo2} 50%)` : ((f.color && f.color.codigo1) || '#ccc')
+                                                                    span(class="w-3 h-3 rounded-full flex-shrink-0 ring-1 ring-black/10" style=`background:${fondo}`)
+                                                                    = f.color ? f.color.valor : '—'
+                                                            each t in tallas
+                                                                td(class="py-2 px-2 text-center text-slate-700")= f.porTalla[t.codigo] ? f.porTalla[t.codigo].toLocaleString('es-CO') : '—'
+                                                            td(class="py-2 pl-2 text-right font-bold text-slate-800")= f.total.toLocaleString('es-CO')
+                                                tfoot
+                                                    tr(class="text-xs font-bold text-slate-600")
+                                                        td(class="py-2 pr-3") Total
+                                                        each t in tallas
+                                                            td(class="py-2 px-2 text-center")= totalPorTalla[t.codigo].toLocaleString('es-CO')
+                                                        td(class="py-2 pl-2 text-right text-slate-800")= total.toLocaleString('es-CO')
+
+                                    //- ── Receta de esta orden ──────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Insumos por prenda
+                                        if insumos.length
+                                            div(class="flex flex-col gap-2")
+                                                each i in insumos
+                                                    div(class="flex items-start gap-3 rounded-xl border border-slate-100 px-3 py-2")
+                                                        span(class="w-8 h-8 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                                                            if i.imagenUrl
+                                                                img(src=i.imagenUrl alt="" class="w-full h-full object-cover")
+                                                            else
+                                                                i(class="fi fi-rr-box text-xs")
+                                                        div(class="flex-1 min-w-0")
+                                                            div(class="flex items-center justify-between gap-2")
+                                                                span(class="text-sm font-semibold text-slate-800 truncate")= i.nombre
+                                                                span(class="text-sm text-slate-600 flex-shrink-0") #{num(i.cantidadPorPrenda)} #{i.unidad}/prenda
+                                                            if i.colores.length
+                                                                div(class="flex flex-wrap gap-1.5 mt-1.5")
+                                                                    each c in i.colores
+                                                                        span(class="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full border border-slate-200 text-slate-600")
+                                                                            | #{c.prenda}
+                                                                            i(class="fi fi-rr-arrow-right text-[8px] text-slate-400")
+                                                                            span(class="w-2.5 h-2.5 rounded-full ring-1 ring-black/10" style=`background:${c.hex || '#ccc'}`)
+                                                                            = c.insumo
+                                        else
+                                            p(class="text-sm text-slate-400") Esta orden no lleva insumos.
+
+                                //- ── Columna derecha ───────────────────────────────────────
+                                div(class="flex flex-col gap-4")
+                                    if revision
+                                        div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                            div(class="flex items-center justify-between gap-2")
+                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") ¿Alcanza el material?
+                                                span(class="text-[11px] text-slate-400")= revision.lineas.length ? (revision.conFaltante ? `${revision.conFaltante} con faltante` : 'Todo alcanza') : ''
+                                            p(class="text-xs text-slate-500") Disponible en bodega hoy, descontando lo que piden las otras órdenes en curso. Es un aviso: no reserva nada. La tela se revisa en el corte.
+                                            if revision.lineas.length
+                                                each l in revision.lineas
+                                                    div(class="rounded-xl border border-slate-100 px-3 py-2")
+                                                        div(class="flex items-center justify-between gap-2")
+                                                            span(class="text-sm font-semibold text-slate-700 truncate")
+                                                                = l.nombre
+                                                                if l.colorNombre
+                                                                    span(class="font-normal text-slate-500")= ` · ${l.colorNombre}`
+                                                            span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${estiloRevision[l.estado][1]}`)= estiloRevision[l.estado][0]
+                                                        div(class="text-[11px] text-slate-500 mt-0.5")
+                                                            | Necesita #{num(l.necesario)} #{l.unidad} · disponible #{num(l.disponible)}
+                                                            if Number(l.comprometido) > 0
+                                                                |  · otras órdenes #{num(l.comprometido)}
+                                                        if Number(l.faltante) > 0
+                                                            div(class="text-[11px] font-bold text-rose-600 mt-0.5") Faltan #{num(l.faltante)} #{l.unidad}
+                                            else
+                                                p(class="text-sm text-slate-400") Sin insumos que revisar.
+
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Bitácora
+                                        if historial.length
+                                            div(class="flex flex-col gap-3")
+                                                each h in historial
+                                                    div(class="flex items-start gap-3")
+                                                        div(class="w-2 h-2 rounded-full bg-gh-primaryHover flex-shrink-0 mt-1.5")
+                                                        div(class="flex-1 min-w-0 pb-3 border-b border-slate-100 last:border-0 last:pb-0")
+                                                            div(class="flex items-center justify-between gap-2")
+                                                                span(class="text-sm font-bold text-slate-800")= etiquetaAccion[h.accion] || h.accion
+                                                                span(class="text-[11px] text-slate-400")= new Date(h.createdAt).toLocaleString('es-CO', { timeZone: 'America/Bogota' })
+                                                            p(class="text-xs text-slate-500 mt-0.5")= h.nombreUsuario || '—'
+                                                            if h.motivo
+                                                                p(class="text-xs text-slate-600 mt-1 italic")= `"${h.motivo}"`
+                                        else
+                                            p(class="text-sm text-slate-400") Sin movimientos todavía.
+
+                            include ../../components/modalConfirmacion
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/ordenProduccionDetalle.js")

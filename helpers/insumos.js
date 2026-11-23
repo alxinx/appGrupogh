@@ -76,6 +76,7 @@ export const presentarMaterial = (m, padreNombre = null) => ({
     unidadConsumo:  m.unidadConsumo,
     anchoUtilCm:    m.anchoUtilCm ?? null,
     gramajeGm2:     m.gramajeGm2 ?? null,
+    reposoHoras:    m.reposoHoras ?? 48,
     activo:         Boolean(m.activo),
     icono:          ICONO_TIPO[m.tipo] ?? ICONO_TIPO.insumo,
     imagenUrl:      urlImagenMaterial(m.imagen),
@@ -343,8 +344,19 @@ export const validarInsumo = (body = {}) => {
     const anchoUtilCm = medidaTela('anchoUtilCm', 'El ancho útil');
     const gramajeGm2 = medidaTela('gramajeGm2', 'El gramaje');
 
+    // Horas de reposo de una tela tendida antes de cortarse (helpers/rollosTela.js). 48 por
+    // defecto; un insumo no reposa, así que no se toca.
+    let reposoHoras;
+    if (tipo === 'materia_prima') {
+        const txt = String(body.reposoHoras ?? '').trim();
+        reposoHoras = txt === '' ? 48 : Number(txt);
+        if (!Number.isInteger(reposoHoras) || reposoHoras < 0 || reposoHoras > 720) {
+            errores.reposoHoras = 'El reposo va en horas enteras, de 0 a 720 (30 días).';
+        }
+    }
+
     if (Object.keys(errores).length) return { errores };
     // El nombre se guarda en formato de título (POLILICRA -> Polilicra) con el mismo helper que
     // usan clientes y proveedores, para que el catálogo no mezcle mayúsculas.
-    return { datos: { codigoMaterial, nombre: toPascal(nombre), tipo, unidadCompra, unidadConsumo, anchoUtilCm, gramajeGm2 } };
+    return { datos: { codigoMaterial, nombre: toPascal(nombre), tipo, unidadCompra, unidadConsumo, anchoUtilCm, gramajeGm2, ...(reposoHoras !== undefined ? { reposoHoras } : {}) } };
 };

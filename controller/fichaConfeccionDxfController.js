@@ -2,10 +2,11 @@ import crypto from 'crypto';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 
 import db from '../config/bd.js';
-import { FichaConfeccionDxf, FichaConfeccionDxfMaterial, Material, Familia } from '../models/index.js';
+import { FichaConfeccionDxf, FichaConfeccionDxfMaterial, FichaConfeccionDxfPieza, Material, Familia } from '../models/index.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
 import { keyDocumento } from '../helpers/almacenamientoDocumentos.js';
 import { esDxfValido, analizarDxf, asociarCamposDxf } from '../helpers/dxf.js';
+import { piezasParaGuardar } from '../helpers/ordenesCorte.js';
 import { urlImagenMaterial } from '../helpers/insumos.js';
 import { resolverIdFamilia } from '../helpers/productos.js';
 
@@ -76,6 +77,11 @@ async function procesarDxfEnSegundoPlano(idArchivoDxf, buffer, nombreOriginal) {
         //       en null — no es un error del archivo, es "no se encontró".
         const asociaciones = await asociarCamposDxf(campos);
 
+        // 1.7 — Las piezas que lleva la prenda (nombre, talla, cuántas por prenda): con ellas
+        //       el corte sabe si un trazo da prendas completas. Un DXF que no las trae en el
+        //       formato de Optitex queda sin piezas, no es un error del archivo.
+        const piezas = piezasParaGuardar(buffer);
+
         // 2 — Hash del archivo final (el mismo que se sube).
         const hash = sha256(buffer);
 
@@ -122,6 +128,9 @@ async function procesarDxfEnSegundoPlano(idArchivoDxf, buffer, nombreOriginal) {
                     })),
                     { transaction: t }
                 );
+            }
+            if (piezas.length) {
+                await FichaConfeccionDxfPieza.bulkCreate(piezas.map(p => ({ idArchivoDxf, ...p })), { transaction: t });
             }
         });
     } catch (e) {

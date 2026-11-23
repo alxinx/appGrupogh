@@ -1,0 +1,158 @@
+extends ../../layout/index
+block contenedor
+    //- Orden de producción: alta y edición de un borrador (controller/ordenProduccionController.js,
+    //- reglas en helpers/ordenesProduccion.js, navegador en src/js/ordenProduccionForm.js).
+    //- La ficha dice QUÉ; acá va CUÁNTO (color × talla), PARA CUÁNDO y la receta de insumos de
+    //- esta producción. La revisión de material solo AVISA: no reserva nada.
+    include ../../components/headerAdmin
+    include ../../components/modalElegirInsumo
+    include ../../components/modalColores
+    //- Skin del calendario (Flatpickr, src/js/fechaInput.js) con la identidad del panel.
+    include ../../components/fechaInput.pug
+
+    - var catalogoPorId = {}
+    - (insumosCatalogo || []).forEach(function (m) { catalogoPorId[m.idMaterial] = { nombre: m.nombre, imagen: m.imagenUrl || '', unidad: m.unidadCorta || '', conColor: !!m.conColor }; })
+    - var volver = orden ? `/admin/procesos/ordenes/${orden.idOrdenProduccion}` : '/admin/procesos/ordenes'
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-list-check',
+                                    titulo:    orden ? `Editar ${orden.numeroProduccion}` : 'Nueva orden de producción',
+                                    subtitulo: subtituloSeguro,
+                                    iconoSub:  'fi-rr-tshirt'
+                                })
+                                div(class="flex items-center gap-2 flex-shrink-0")
+                                    a(href=volver class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Volver
+
+                            div#orden-produccion-form(
+                                class="col-span-12 grid grid-cols-1 xl:grid-cols-3 gap-4"
+                                data-id-ficha=ficha.idFicha
+                                data-id-orden=orden ? orden.idOrdenProduccion : ''
+                                data-inicial=JSON.stringify(inicial)
+                                data-tallas=JSON.stringify(tallas)
+                                data-colores-prenda=JSON.stringify(coloresPrenda)
+                                data-colores-insumo=JSON.stringify(coloresInsumo)
+                                data-catalogo=JSON.stringify(catalogoPorId)
+                                data-max-celda=limites.cantidadMaxCelda
+                                data-bloquear-cantidades=bloquearCantidades ? '1' : '')
+
+                                div(class="xl:col-span-2 flex flex-col gap-4")
+
+                                    //- ── Datos ─────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 grid grid-cols-1 sm:grid-cols-2 gap-4")
+                                        div
+                                            label(for="op-fecha" class="text-xs font-semibold text-slate-500 mb-1 block") Fecha requerida
+                                            input#op-fecha(type="text" data-min=hoy placeholder="dd/mm/aaaa" class="field-text" required)
+                                            p(data-error="fechaRequerida" class="hidden text-xs font-semibold text-rose-600 mt-1")
+                                        div
+                                            span(class="text-xs font-semibold text-slate-500 mb-1 block") Ficha
+                                            div(class="field-text bg-slate-50 text-slate-700 truncate")= `${ficha.referencia} · ${ficha.materialNombre}`
+                                        div(class="sm:col-span-2")
+                                            label(for="op-notas" class="text-xs font-semibold text-slate-500 mb-1 block") Notas (opcional)
+                                            textarea#op-notas(rows="2" maxlength=limites.notasMax placeholder="Cliente, prioridad, algo para el cortador…" class="field-text resize-none")
+                                            p(data-error="notas" class="hidden text-xs font-semibold text-rose-600 mt-1")
+
+                                    //- ── Cantidades color × talla ─────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                        div(class="flex flex-wrap items-center justify-between gap-3")
+                                            div
+                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Cantidades
+                                                if bloquearCantidades
+                                                    p(class="text-xs text-slate-500")
+                                                        i(class="fi fi-rr-lock text-[10px] mr-1")
+                                                        | Son las prendas que salieron del corte: no se cambian acá.
+                                                else
+                                                    p(class="text-xs text-slate-500") Prendas por color y talla. Las tallas son las del DXF de la ficha.
+                                            if !bloquearCantidades
+                                                button#op-btn-elegir-colores(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                                    i(class="fi fi-rr-palette text-xs")
+                                                    | Elegir colores
+                                        div(class="overflow-x-auto")
+                                            table(class="w-full text-sm")
+                                                thead
+                                                    tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                        th(class="py-2 pr-3") Color
+                                                        each t in tallas
+                                                            th(class="py-2 px-1 text-center")= t.etiqueta
+                                                        th(class="py-2 px-2 text-right") Total
+                                                        th(class="py-2 pl-2 w-8")
+                                                tbody#op-filas-color
+                                                tfoot
+                                                    tr(class="border-t border-slate-200 text-xs font-bold text-slate-600")
+                                                        td(class="py-2 pr-3") Total
+                                                        each t in tallas
+                                                            td(class="py-2 px-1 text-center" data-total-talla=t.codigo) 0
+                                                        td#op-total-general(class="py-2 px-2 text-right text-slate-800") 0
+                                                        td
+                                        p#op-sin-colores(class="text-sm text-slate-400") Elige al menos un color para escribir las cantidades.
+                                        p(data-error="cantidades" class="hidden text-xs font-semibold text-rose-600")
+
+                                    //- ── Receta de insumos de esta orden ───────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3")
+                                        div(class="flex flex-wrap items-center justify-between gap-3")
+                                            div
+                                                p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Insumos por prenda
+                                                p(class="text-xs text-slate-500") Arrancan como los de la ficha. Lo que cambies acá vale solo para esta orden.
+                                            button#op-btn-agregar-insumo(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                                i(class="fi fi-rr-plus-small text-xs")
+                                                | Agregar insumo
+                                        div#op-lista-insumos(class="flex flex-col gap-2")
+                                        p#op-sin-insumos(class="hidden text-sm text-slate-400") Esta orden no lleva insumos.
+                                        p(data-error="insumos" class="hidden text-xs font-semibold text-rose-600")
+
+                                //- ── Columna derecha: revisión de material + guardar ──────
+                                div(class="flex flex-col gap-4")
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col gap-3 xl:sticky xl:top-4")
+                                        div(class="flex items-center justify-between gap-2")
+                                            p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") ¿Alcanza el material?
+                                            span#op-revision-estado(class="text-[11px] text-slate-400" aria-live="polite")
+                                        p(class="text-xs text-slate-500") Compara con lo disponible en bodega, descontando lo que piden las otras órdenes en curso. No reserva nada. La tela se revisa en el corte.
+                                        div#op-revision(class="flex flex-col gap-2")
+                                            p(class="text-sm text-slate-400") Escribe cantidades para revisar.
+                                        div(class="pt-3 border-t border-slate-100 flex flex-col gap-2")
+                                            p#op-error-general(class="hidden text-xs font-semibold text-rose-600")
+                                            button#op-btn-guardar(type="button" class="btn btn-danger justify-center")
+                                                i(class="fi fi-rr-disk text-xs")
+                                                = orden ? 'Guardar cambios' : 'Guardar borrador'
+                                            p(class="text-[11px] text-slate-400 text-center") Queda en borrador. Se confirma desde el detalle.
+
+                            +modalElegirInsumo('op-modal-insumo', insumosCatalogo)
+                            +modalColores('op-modal-colores', coloresPrenda, { titulo: 'Colores de la orden' })
+
+                            //- Una línea de insumo: el insumo, su cantidad por prenda y, si el
+                            //- material maneja colores, de qué color va en cada color de la prenda.
+                            template#op-plantilla-insumo
+                                div(data-fila-insumo class="rounded-xl border border-slate-200 bg-slate-50/60 p-3 flex flex-col gap-2")
+                                    div(class="flex flex-wrap items-center gap-2")
+                                        span(data-insumo-foto class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
+                                            i(class="fi fi-rr-box text-xs")
+                                        span(data-insumo-nombre class="flex-1 min-w-[8rem] truncate text-sm font-semibold text-slate-800")
+                                        div(class="relative flex-shrink-0")
+                                            input(type="text" inputmode="decimal" data-insumo-cantidad aria-label="Cantidad por prenda" class="field-text !py-1.5 w-28 pr-16 text-right")
+                                            span(data-insumo-unidad class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none")
+                                        button(type="button" data-reemplazar-insumo title="Reemplazar por otro insumo" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-gh-primary hover:text-gh-primaryHover transition-colors cursor-pointer")
+                                            i(class="fi fi-rr-refresh text-[10px]")
+                                            | Reemplazar
+                                        button(type="button" data-quitar-insumo title="Quitar de esta orden" aria-label="Quitar insumo" class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer")
+                                            i(class="fi fi-rr-trash text-xs")
+                                    div(data-insumo-colores class="hidden flex-col gap-1.5 pl-10")
+                                        p(class="text-[11px] font-semibold text-slate-500") Este insumo maneja colores: ¿de qué color va en cada color de la prenda?
+                                        div(data-insumo-colores-lista class="grid grid-cols-1 sm:grid-cols-2 gap-1.5")
+
+                            include ../../components/modalConfirmacion
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/ordenProduccionForm.js")

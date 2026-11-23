@@ -198,9 +198,88 @@ block contenedor
 
                                         //- Datos para la ventana "Ajustar existencia" (src/js/insumoPerfil.js).
                                         if puede('Insumos', 'EDIT')
-                                            - const datosAjusteJson = JSON.stringify({ idMaterial: material.idMaterial, unidad: inventario.unidad, colores: inventario.colores }).replace(/</g, '\\u003c')
+                                            - const datosAjusteJson = JSON.stringify({ idMaterial: material.idMaterial, unidad: inventario.unidad, colores: inventario.colores, porRollo: porRollo, rollos: rollos.filter(function (r) { return r.estado !== 'en_corte'; }).map(function (r) { return { idRollo: r.idRollo, codigo: r.codigo, color: r.color, metrajeCm: r.metrajeCm }; }) }).replace(/</g, '\\u003c')
                                             script#datos-ajuste-existencia(type="application/json")!= datosAjusteJson
 
+
+                                    //- ── ROLLOS DE TELA (helpers/rollosTela.js) ───────────────────────────
+                                    //- Toda tela entra sin tender; tendida reposa las horas del material antes de poder
+                                    //- cortarse. Tender, adelantar el reposo y deshacer un tendido: src/js/rollosTela.js.
+                                    if porRollo
+                                        - var fechaHora = function (f) { return new Date(f).toLocaleString('es-CO', { timeZone: 'America/Bogota', weekday: 'short', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }); }
+                                        - var metros = function (cm) { return (Number(cm) / 100).toLocaleString('es-CO', { maximumFractionDigits: 2 }); }
+                                        - var claseRollo = { sin_tender: 'bg-slate-100 text-slate-600', en_reposo: 'bg-amber-50 text-amber-700', listo: 'bg-emerald-50 text-emerald-700', en_corte: 'bg-violet-50 text-violet-700' }
+                                        - var cuenta = { sin_tender: 0, en_reposo: 0, listo: 0, en_corte: 0 }
+                                        - rollos.forEach(function (r) { cuenta[r.estado] = (cuenta[r.estado] || 0) + 1; })
+                                        - var editar = puede('Insumos', 'EDIT')
+                                        div#rollos-tela(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-5"
+                                            data-id-material=material.idMaterial)
+                                            div(class="flex flex-wrap items-center justify-between gap-4")
+                                                div(class="flex items-center gap-3")
+                                                    div(class="w-10 h-10 rounded-xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0")
+                                                        i(class="fi fi-rr-scroll text-gh-primaryHover")
+                                                    div
+                                                        h3(class="text-base font-bold text-slate-800") Rollos de tela
+                                                        p(class="text-xs text-slate-400")= `Toda tela entra sin tender. Tendida reposa ${material.reposoHoras} horas antes de poder cortarse.`
+                                                if editar && cuenta.sin_tender
+                                                    button#btn-tender-rollos(type="button" disabled class="btn btn-danger text-xs whitespace-nowrap")
+                                                        i(class="fi fi-rr-layers")
+                                                        span(data-texto-tender) Tender seleccionados
+                                            if rollos.length
+                                                //- Buscar un rollo por código o color. Con el lector de código de barras: escanear
+                                                //- la etiqueta y Enter abre su etiqueta para reimprimirla (src/js/rollosTela.js).
+                                                div(class="flex flex-col gap-1")
+                                                    input#buscar-rollo(type="search" autocomplete="off" placeholder="Buscar o escanear un rollo (ej. R-14)…" aria-label="Buscar rollo" class="field-text")
+                                                    p#buscar-rollo-vacio(class="hidden text-xs text-slate-400") Ningún rollo en bodega coincide.
+                                                div(class="flex flex-wrap gap-2 text-xs font-semibold")
+                                                    each clave in ['sin_tender', 'en_reposo', 'listo', 'en_corte']
+                                                        if cuenta[clave]
+                                                            span(class=`px-2.5 py-1 rounded-full ${claseRollo[clave]}`)= `${cuenta[clave]} ${etiquetaEstadoRollo[clave].toLowerCase()}`
+                                                div(class="overflow-x-auto")
+                                                    table(class="w-full text-sm")
+                                                        thead
+                                                            tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                                if editar && cuenta.sin_tender
+                                                                    th(class="py-2 pr-2 w-8")
+                                                                        input#rollos-todos(type="checkbox" aria-label="Elegir todos los rollos sin tender" class="w-4 h-4 accent-[#E24C95]")
+                                                                th(class="py-2 pr-3") Rollo
+                                                                th(class="py-2 pr-3") Color
+                                                                th(class="py-2 pr-3 text-right") Metros
+                                                                th(class="py-2 pr-3") Estado
+                                                                th(class="py-2 text-right")
+                                                        tbody
+                                                            each r in rollos
+                                                                tr(class="border-b border-slate-50" data-rollo=r.idRollo data-codigo=r.codigo data-buscar=`${r.codigo} ${r.color || ''}`.toLowerCase())
+                                                                    if editar && cuenta.sin_tender
+                                                                        td(class="py-2.5 pr-2")
+                                                                            if r.estado === 'sin_tender'
+                                                                                input(type="checkbox" data-elegir-rollo value=r.idRollo aria-label=`Elegir ${r.codigo}` class="w-4 h-4 accent-[#E24C95]")
+                                                                    td(class="py-2.5 pr-3 font-semibold text-slate-800 whitespace-nowrap")= r.codigo
+                                                                    td(class="py-2.5 pr-3 text-slate-600")
+                                                                        span(class="inline-flex items-center gap-1.5")
+                                                                            if r.color
+                                                                                span(class="w-2.5 h-2.5 rounded-full ring-1 ring-black/10" style=`background:${r.colorHex || '#ccc'}`)
+                                                                            = r.color || '—'
+                                                                    td(class="py-2.5 pr-3 text-right tabular-nums text-slate-700")
+                                                                        = metros(r.metrajeCm)
+                                                                        if Number(r.metrajeCm) < Number(r.metrajeInicialCm)
+                                                                            span(class="block text-[11px] text-slate-400")= `de ${metros(r.metrajeInicialCm)}`
+                                                                    td(class="py-2.5 pr-3")
+                                                                        span(class=`text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${claseRollo[r.estado] || ''}`)= etiquetaEstadoRollo[r.estado]
+                                                                        if r.estado === 'en_reposo'
+                                                                            span(class="block text-[11px] text-slate-400 mt-0.5")= `Listo el ${fechaHora(r.listoDesde)}`
+                                                                        else if r.estado === 'listo' && r.tendidoEn
+                                                                            span(class="block text-[11px] text-slate-400 mt-0.5")= `Tendido el ${fechaHora(r.tendidoEn)}`
+                                                                    td(class="py-2.5 text-right whitespace-nowrap")
+                                                                        if editar && r.estado === 'en_reposo'
+                                                                            button(type="button" data-adelantar-rollo class="text-xs font-bold text-gh-primaryHover hover:underline mr-3") Adelantar
+                                                                        if editar && (r.estado === 'en_reposo' || r.estado === 'listo')
+                                                                            button(type="button" data-deshacer-rollo class="text-xs font-semibold text-slate-500 hover:text-rose-600 hover:underline mr-3") Deshacer tendido
+                                                                        a(href=`/admin/insumos/rollos/etiquetas?ids=${r.idRollo}` target="_blank" rel="noopener" data-etiqueta-rollo title=`Imprimir la etiqueta de ${r.codigo}` class="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-gh-primaryHover")
+                                                                            i(class="fi fi-rr-barcode-read text-[11px]")
+                                                                            | Etiqueta
+                                            else
+                                                p(class="text-sm text-slate-400 py-4 text-center") No hay rollos en bodega. Entran al recibir una orden de compra de esta tela.
 
                                     //- ── PROCESOS INVOLUCRADOS (relleno) ───────────────────
                                     div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col gap-4")
