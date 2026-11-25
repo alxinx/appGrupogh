@@ -22,6 +22,7 @@ export default {
         cuentasProveedor: '/src/js/cuentasProveedor.js',
         confirmarProveedor: '/src/js/confirmarProveedor.js',
         supplierList: '/src/js/supplierList.js',
+        estadoProveedor: '/src/js/estadoProveedor.js',
         dataDose : '/src/js/dataDose.js',
         listadoDose : '/src/js/listadoDose.js',
         doseView : '/src/js/doseView.js',

@@ -62,6 +62,7 @@ import FichaConfeccionTallerColor from './FichaConfeccionTallerColor.js'
 import FichaConfeccionProceso from './FichaConfeccionProceso.js'
 import FichaConfeccionProcesoHistorial from './FichaConfeccionProcesoHistorial.js'
 import FichaConfeccionEstado from './FichaConfeccionEstado.js'
+import ProvedorEstado from './ProvedorEstado.js'
 import FichaConfeccionProcesoBitacora from './FichaConfeccionProcesoBitacora.js'
 import OrdenProduccion from './OrdenProduccion.js'
 import OrdenProduccionCantidad from './OrdenProduccionCantidad.js'
@@ -460,6 +461,10 @@ FichaConfeccion.hasMany(FichaConfeccionEstado, { foreignKey: 'idFicha', as: 'cam
 FichaConfeccionEstado.belongsTo(FichaConfeccion, { foreignKey: 'idFicha', as: 'ficha' });
 FichaConfeccionEstado.belongsTo(Usuarios, { foreignKey: 'idUsuario', as: 'usuario' });
 
+// Suspensiones y reactivaciones de un proveedor (models/ProvedorEstado.js).
+Provedores.hasMany(ProvedorEstado, { foreignKey: 'idProveedor', as: 'cambiosEstado' });
+ProvedorEstado.belongsTo(Provedores, { foreignKey: 'idProveedor', as: 'proveedor' });
+
 // ─── Órdenes de producción (models/OrdenProduccion.js) ───────────────────────
 FichaConfeccion.hasMany(OrdenProduccion, { foreignKey: 'idFicha', as: 'ordenesProduccion' });
 OrdenProduccion.belongsTo(FichaConfeccion, { foreignKey: 'idFicha', as: 'ficha' });
@@ -707,6 +712,7 @@ export {
   FichaConfeccionProcesoHistorial,
   FichaConfeccionProcesoBitacora,
   FichaConfeccionEstado,
+  ProvedorEstado,
   OrdenProduccion,
   OrdenProduccionCantidad,
   OrdenProduccionInsumo,

@@ -5,6 +5,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
 (function () {
     const inputBusqueda = document.getElementById('busquedaProvedor');
     const selectCategoria = document.getElementById('filtroCategoriaProvedor');
+    const selectEstado = document.getElementById('filtroEstadoProvedor');
     const contenedor = document.getElementById('contenedor-provedores');
 
     let paginaActual = 1;
@@ -32,7 +33,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
             contenedor.innerHTML += `
                 <tr class="hover:bg-gray-50 transition-colors group">
                     <td class="p-4">
-                        <div class="font-bold text-gray-800">${esc(tc(p.razonSocial))}</div>
+                        <div class="font-bold text-gray-800">${esc(tc(p.razonSocial))}${p.estado ? '' : ' <span class="ml-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">Suspendido</span>'}</div>
                         <div class="text-xs text-gray-400">${esc(p.emailProvedor) || 'Sin email'}</div>
                     </td>
                     <td class="p-4 text-sm text-gray-600">${esc(tc(p.nombreContacto)) || '--'}</td>
@@ -59,6 +60,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
             const params = new URLSearchParams({
                 busqueda: inputBusqueda?.value || '',
                 categoria: selectCategoria?.value || '',
+                estado: selectEstado?.value || '',
                 pagina: paginaActual
             });
 
@@ -113,6 +115,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
     if (selectCategoria) {
         selectCategoria.addEventListener('change', filtrar);
     }
+    if (selectEstado) selectEstado.addEventListener('change', filtrar);
 
     // Cargar inicial
     document.addEventListener('DOMContentLoaded', obtenerProvedores);

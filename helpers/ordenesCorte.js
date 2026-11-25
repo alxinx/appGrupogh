@@ -9,7 +9,7 @@ import {
     OrdenProduccion, OrdenProduccionEstado
 } from '../models/index.js';
 import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
-import { keyDocumento } from './almacenamientoDocumentos.js';
+import { keyDocumento, bajarObjetoPrivado } from './almacenamientoDocumentos.js';
 import { esDxfValido, asociarCamposDxf } from './dxf.js';
 import { leerTrazo, referenciasDeTrazo, preguntasEspejo, aplicarEspejos, recetaConEspejos, resultadoReferencia, recetaDeDxf, recetaDeTela, dxfDeReferencia } from './trazo.js';
 import { esTelaPorRollo, rollosEnBodega, estadoVisible } from './rollosTela.js';
@@ -328,11 +328,29 @@ const subirDxfPrivado = (key, buffer, nombre) => r2PrivateClient.send(new PutObj
 
 /**
  * Crea la orden de corte en borrador con sus referencias, piezas y rollos, y las fichas base
- * de las referencias que no tenían. Los archivos suben al bucket privado ANTES de la
- * transacción (si ésta falla, quedan huérfanos, igual que un DXF de ficha abandonado).
+ * de las referencias que no tenían. Solo sube el trazo, ANTES de la transacción (si ésta
+ * falla, queda huérfano, igual que un DXF de ficha abandonado). El DXF de cada ficha base NO
+ * se sube: es un recorte del trazo y se arma al pedirlo (dxfDeFichaDeCorte). Subir uno por
+ * ficha hacía que un trazo con 12 referencias nuevas tardara ~24 s (2026-11-24).
  * `subir` es la subida al bucket; los tests pasan una que no sale de la máquina.
  * @returns { orden, fichasNuevas: [idFicha] }
  */
+/**
+ * El DXF de una ficha base creada en un corte, que no se guarda aparte: el recorte de su
+ * referencia en el trazo de ese corte. null si la ficha no nació en un corte.
+ * @returns { buffer, nombre } | null
+ */
+export async function dxfDeFichaDeCorte(idFicha) {
+    const ref = await OrdenCorteReferencia.findOne({
+        where: { idFicha, fichaCreadaEnCorte: true },
+        attributes: ['estilo'],
+        include: [{ model: OrdenCorte, as: 'ordenCorte', attributes: ['objectKey'], paranoid: false }]
+    });
+    if (!ref?.ordenCorte?.objectKey) return null;
+    const trazo = await bajarObjetoPrivado(ref.ordenCorte.objectKey);
+    return { buffer: Buffer.from(dxfDeReferencia(leerTrazo(trazo.toString('utf8')), ref.estilo), 'utf8'), nombre: `${ref.estilo}.dxf` };
+}
+
 export async function crearOrdenCorte({ buffer, nombreArchivo, analisis, datos, idUsuario, actor, subir = subirDxfPrivado }) {
     const idOrdenCorte = crypto.randomUUID();
     const keyTrazo = keyDocumento({ carpeta: 'dxf', prefijo: 'trazo', idPropietario: idOrdenCorte, idx: 0, extension: 'dxf' });
@@ -343,8 +361,6 @@ export async function crearOrdenCorte({ buffer, nombreArchivo, analisis, datos, 
         const texto = dxfDeReferencia(analisis.lectura, ref.estilo);
         ref.nueva.idArchivoDxf = crypto.randomUUID();
         ref.nueva.buffer = Buffer.from(texto, 'utf8');
-        ref.nueva.objectKey = keyDocumento({ carpeta: 'dxf', prefijo: 'dxf', idPropietario: ref.nueva.idArchivoDxf, idx: 0, extension: 'dxf' });
-        await subir(ref.nueva.objectKey, ref.nueva.buffer, `${ref.estilo}.dxf`);
     }
     // Familias que ya existen con el nombre de la referencia (para las que quedan pendientes).
     const familiaExistente = new Map();
@@ -411,7 +427,7 @@ async function crearFichaBase({ ref, corte, analisis, espejos, familiaExistente,
         nombreOriginal: `${ref.estilo}.dxf`.slice(0, 255),
         pesoBytes: nueva.buffer.length,
         estado: 'listo',
-        objectKey: nueva.objectKey,
+        objectKey: null,   // se arma desde el trazo del corte al pedirlo (dxfDeFichaDeCorte)
         shaHash: sha256(nueva.buffer),
         estiloNombre: ref.estilo,
         talla: tallas.map(tallaAFicha),

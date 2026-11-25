@@ -21,8 +21,11 @@ import { TIPOS_DOCUMENTO_PROVEEDOR, CATALOGO_TIPOS_DOCUMENTO, normalizarNumeroDo
 import { validarCuentasBancarias } from '../helpers/cuentasBancariasProveedor.js';
 import {
     buscarProveedorPorDocumento, validarDocumentoProveedor, crearProveedorCompleto,
-    cuentasDelPanel, conservarVerificacion
+    cuentasDelPanel, conservarVerificacion,
+    PROVEEDOR_ACTIVO, MOTIVO_ESTADO_MAX, exigirProveedorActivo, cambiarEstadoProveedor
 } from '../helpers/proveedores.js';
+import { ProvedorEstado } from '../models/index.js';
+import { actorDelPanel } from '../helpers/inventarioInsumos.js';
 import { addClient, removeClient, broadcast } from '../helpers/sseManager.js';
 import { avisarCambioDePermisos } from '../helpers/permisosEnVivo.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
@@ -4636,6 +4639,14 @@ const verProveedor = async (req, res) => {
             privado:         esKeyPrivada(d.keyName)
         }));
 
+        const historialEstado = await ProvedorEstado.findAll({
+            where: { idProveedor },
+            attributes: ['accion', 'motivo', 'nombreUsuario', 'createdAt'],
+            order: [['createdAt', 'DESC'], ['idRegistro', 'DESC']],
+            limit: 20,
+            raw: true
+        });
+
         const facturasRaw = await FacturaProveedores.findAll({
             where: { idProveedor },
             include: [
@@ -4684,11 +4695,36 @@ const verProveedor = async (req, res) => {
             facturas,
             documentos,
             tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR,
+            historialEstado: historialEstado.map(h => ({
+                ...h,
+                fecha: new Date(h.createdAt).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
+            })),
+            motivoEstadoMax: MOTIVO_ESTADO_MAX,
             currentPath: req.path
         });
     } catch (error) {
         console.error('verProveedor:', error);
         return res.status(500).send('Error al cargar el proveedor.');
+    }
+};
+
+// POST /admin/provedores/:idProveedor/estado — { accion: 'suspender' | 'reactivar', motivo }.
+// Permiso Proveedores EDIT. Las reglas y la constancia viven en helpers/proveedores.js.
+const cambiarEstadoProveedorHandler = async (req, res) => {
+    const accion = String(req.body?.accion ?? '');
+    if (!['suspender', 'reactivar'].includes(accion)) return res.status(422).json({ success: false, mensaje: 'Acción no válida.' });
+    try {
+        await db.transaction((transaction) => cambiarEstadoProveedor({
+            idProveedor: req.params.idProveedor,
+            suspender: accion === 'suspender',
+            motivo: req.body?.motivo,
+            usuario: { idUsuario: req.usuario.idUsuario, nombre: actorDelPanel(req).nombreUsuario }
+        }, transaction));
+        return res.json({ success: true, mensaje: accion === 'suspender' ? 'Proveedor suspendido.' : 'Proveedor reactivado.' });
+    } catch (e) {
+        if (e?.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message });
+        console.error('cambiarEstadoProveedor:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo cambiar el estado del proveedor.' });
     }
 };
 
@@ -4953,7 +4989,9 @@ const filterSupplierListJson = async (req, res) => {
         const limit = parseInt(process.env.LIMIT_PER_PAGE) || 10;
         const offset = (pagina - 1) * limit;
 
-        const whereCondition = {};
+        // Los suspendidos no salen en la búsqueda; solo con el filtro "Suspendidos"
+        // (helpers/proveedores.js PROVEEDOR_ACTIVO).
+        const whereCondition = req.query.estado === 'suspendidos' ? { estado: false } : { ...PROVEEDOR_ACTIVO };
 
         // Filtro por búsqueda (Nombre, NIT, Contacto)
         if (busqueda) {
@@ -8970,6 +9008,8 @@ const registrarAbonoProveedor = async (req, res) => {
     try {
         const factura = await FacturaProveedores.findOne({ where: { idFacturaPro } });
         if (!factura) { await t.rollback(); return res.status(404).json({ success: false, mensaje: 'Factura no encontrada.' }); }
+        // A un proveedor suspendido no se le abona (helpers/proveedores.js).
+        await exigirProveedorActivo(factura.idProveedor, { transaction: t });
 
         const ultima = await CuentasPorPagar.findOne({
             where: { idFacturaPro },
@@ -9004,6 +9044,7 @@ const registrarAbonoProveedor = async (req, res) => {
         });
     } catch (error) {
         await t.rollback();
+        if (error?.publico) return res.status(error.status || 400).json({ success: false, mensaje: error.message });
         console.error('registrarAbonoProveedor:', error);
         return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono.' });
     }
@@ -9224,7 +9265,7 @@ export {
     batchBuyOrder, saveBatchOrder,
     dashboardSupplier,
     newSupplier,
-    verProveedor, actualizarProveedor,
+    verProveedor, actualizarProveedor, cambiarEstadoProveedorHandler,
     saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto,
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
     dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta,

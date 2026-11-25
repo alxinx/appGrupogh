@@ -16,7 +16,6 @@ import {
     analizarTrazo, analisisParaNavegador, validarCorte, crearOrdenCorte, registrarCorte, cancelarCorte,
     cantidadesDeCorte, faltantesFicha, ETIQUETA_ESTADO_CORTE, LIMITES_CORTE
 } from '../helpers/ordenesCorte.js';
-import { generarYGuardarPdf } from './fichaConfeccionController.js';
 import { presentarMaterial } from '../helpers/insumos.js';
 import { VIDEOS_POR_FICHA_MAX } from '../helpers/fichaConfeccionDatos.js';
 
@@ -275,7 +274,7 @@ const pdfCorte = async (req, res) => {
         const detalle = await detalleCorte(req.params.idOrdenCorte);
         if (!detalle) return res.status(404).send('Esa orden de corte no existe.');
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename='orden-corte-${detalle.corte.numeroCorte}.pdf'`);
+        res.setHeader('Content-Disposition', `inline; filename="orden-corte-${detalle.corte.numeroCorte}.pdf"`);
         pdfOrdenCorte(detalle, res);
     } catch (e) {
         console.error('ordenCorteController(pdf):', e);
@@ -321,16 +320,13 @@ const crearCorte = async (req, res) => {
         const { datos, error } = await validarCorte(body, analisis, req.usuario.idUsuario);
         if (error) return res.status(422).json({ success: false, mensaje: error });
 
-        const { orden, fichasNuevas } = await crearOrdenCorte({
+        const { orden } = await crearOrdenCorte({
             buffer: req.file.buffer, nombreArchivo: req.file.originalname, analisis, datos,
             idUsuario: req.usuario.idUsuario, actor: actorDelPanel(req)
         });
 
-        // El PDF de cada ficha base, después del commit y sin tumbar la respuesta (§9): si
-        // falla, se genera al abrirla.
-        for (const idFicha of fichasNuevas) {
-            try { await generarYGuardarPdf(idFicha); } catch (e) { console.error('ordenCorteController(crear) pdf ficha:', e); }
-        }
+        // El PDF de cada ficha base no se genera acá: se arma la primera vez que alguien lo abre
+        // (verFichaPdf). Generarlos en fila hacía esperar ~1 s por ficha nueva.
         return res.status(201).json({ success: true, numeroCorte: orden.numeroCorte, url: `${BASE}/${orden.idOrdenCorte}` });
     } catch (e) {
         return fallo(res, e, 'crear', 'No se pudo crear la orden de corte.');

@@ -12,7 +12,7 @@ import { montoPositivo } from '../helpers/helpers.js';
 import { validarInsumosBody, validarDatosFicha, columnasDatosFicha, guardarDatosFicha } from '../helpers/fichaConfeccionDatos.js';
 import { generarPdfFichaConfeccion } from '../helpers/fichaConfeccionPdf.js';
 import { presentarMaterial } from '../helpers/insumos.js';
-import { faltantesFicha, promoverFichaSiCompleta } from '../helpers/ordenesCorte.js';
+import { faltantesFicha, promoverFichaSiCompleta, dxfDeFichaDeCorte } from '../helpers/ordenesCorte.js';
 import { resolverIdFamilia } from '../helpers/productos.js';
 import { urlIframeVideo, urlMiniaturaVideo, duracionesVideosCloudflare, eliminarVideoCloudflare } from '../helpers/cloudflareStream.js';
 
@@ -179,7 +179,16 @@ const verFichaDxf = async (req, res) => {
             attributes: ['idFicha'],
             include: [{ model: FichaConfeccionDxf, as: 'dxf', attributes: ['objectKey', 'nombreOriginal'] }]
         });
-        if (!ficha || !ficha.dxf?.objectKey) return res.status(404).send('Esa ficha no tiene un DXF para descargar.');
+        if (!ficha) return res.status(404).send('Esa ficha no tiene un DXF para descargar.');
+        // Una ficha base creada en un corte no guarda su DXF: se recorta del trazo al pedirlo.
+        if (!ficha.dxf?.objectKey) {
+            const recorte = await dxfDeFichaDeCorte(ficha.idFicha);
+            if (!recorte) return res.status(404).send('Esa ficha no tiene un DXF para descargar.');
+            res.setHeader('Content-Type', 'application/dxf');
+            res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(recorte.nombre)}`);
+            res.setHeader('Cache-Control', 'no-store');
+            return res.send(recorte.buffer);
+        }
 
         const url = await urlDocumento(ficha.dxf.objectKey, { nombre: ficha.dxf.nombreOriginal });
         return res.redirect(url);

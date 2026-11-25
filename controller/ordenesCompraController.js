@@ -10,7 +10,7 @@ import {
 } from '../models/index.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
 import { empleadoTienePermiso } from '../middlewares/verificarPermisoEmpleado.js';
-import { resolverUbicacionesProveedores, inicialesProveedor } from '../helpers/proveedores.js';
+import { resolverUbicacionesProveedores, inicialesProveedor, PROVEEDOR_ACTIVO } from '../helpers/proveedores.js';
 import { money } from '../helpers/formatMoney.js';
 import { TIPOS_DOCUMENTO_PROVEEDOR } from '../helpers/tiposDocumento.js';
 import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO } from '../helpers/insumos.js';
@@ -133,6 +133,7 @@ const buscarProveedoresOrden = async (req, res) => {
     try {
         const proveedores = await Provedores.findAll({
             where: {
+                ...PROVEEDOR_ACTIVO,   // un suspendido no recibe órdenes nuevas (helpers/proveedores.js)
                 [Op.or]: [
                     { razonSocial: { [Op.like]: `%${q}%` } },
                     { taxIdSupplier: { [Op.like]: `%${q}%` } },

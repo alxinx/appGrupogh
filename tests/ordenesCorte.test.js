@@ -237,7 +237,10 @@ test('crear el corte: fichas base para lo que no tenía, nada movido todavía', 
     const a = await analizarTrazo(TRAZO);
     const { datos, error } = await validarCorte(respuestas(), a, usuario.idUsuario);
     assert.equal(error, undefined);
-    const { orden, fichasNuevas } = await crearOrdenCorte({ buffer: TRAZO, nombreArchivo: 'alejo emvoar.dxf', analisis: a, datos, idUsuario: usuario.idUsuario, actor: ACTOR, subir: sinSubir });
+    const subidas = [];
+    const { orden, fichasNuevas } = await crearOrdenCorte({ buffer: TRAZO, nombreArchivo: 'alejo emvoar.dxf', analisis: a, datos, idUsuario: usuario.idUsuario, actor: ACTOR, subir: async (key) => { subidas.push(key); } });
+    // Solo sube el trazo: el DXF de cada ficha base se recorta del trazo al pedirlo.
+    assert.equal(subidas.length, 1);
     idCorte = orden.idOrdenCorte;
     assert.match(orden.numeroCorte, /^CT-\d+$/);
     assert.equal(fichasNuevas.length, 2);
@@ -246,6 +249,7 @@ test('crear el corte: fichas base para lo que no tenía, nada movido todavía', 
     const porEstilo = Object.fromEntries(nuevas.map(f => [f.dxf.estiloNombre, f]));
     // SEUL quedó pendiente; AGATA se creó completa, con su familia y la manga espejo unida.
     assert.equal(porEstilo[SEUL].estado, 'pendiente');
+    assert.equal(porEstilo[SEUL].dxf.objectKey, null);
     assert.equal(porEstilo[AGATA].estado, 'activa');
     assert.equal(porEstilo[AGATA].referencia, 'BODY AGATA');
     assert.equal(Number(porEstilo[AGATA].precioConfeccion), 3500);

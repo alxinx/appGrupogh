@@ -3,9 +3,8 @@ import path from 'path';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 
-import r2PrivateClient, { R2_PRIVATE_BUCKET } from '../config/r2Private.js';
+import { bajarObjetoPrivado } from './almacenamientoDocumentos.js';
 import { money } from './formatMoney.js';
 import { NOMBRE_EMPRESA } from '../config/marca.js';
 import { urlVerVideo } from './cloudflareStream.js';
@@ -37,12 +36,7 @@ const BORDE = '#F0E4EA';
 // generación con IA) y la imagen aprobada de la IA se guarda en WebP (controller/
 // fichaConfeccionMoldeController.js aprobarMoldeIa) — se convierte a PNG acá con sharp antes
 // de `doc.image()`.
-async function descargarObjeto(key) {
-    const obj = await r2PrivateClient.send(new GetObjectCommand({ Bucket: R2_PRIVATE_BUCKET, Key: key }));
-    const partes = [];
-    for await (const parte of obj.Body) partes.push(parte);
-    return Buffer.concat(partes);
-}
+
 
 /**
  * @param {object} ficha - FichaConfeccion con sus includes: dxf, molde, moldeIaIntento,
@@ -125,18 +119,18 @@ export async function generarPdfFichaConfeccion(ficha) {
 
     let bufferMolde = null;
     if (ficha.molde?.tipoArchivo === 'jpg' && ficha.molde?.objectKey) {
-        try { bufferMolde = await descargarObjeto(ficha.molde.objectKey); } catch { /* se muestra "Sin imagen" */ }
+        try { bufferMolde = await bajarObjetoPrivado(ficha.molde.objectKey); } catch { /* se muestra "Sin imagen" */ }
     }
     let bufferIa = null;
     if (ficha.moldeIaIntento?.aprobado && ficha.moldeIaIntento?.objectKeyFinal) {
         try {
-            const webp = await descargarObjeto(ficha.moldeIaIntento.objectKeyFinal);
+            const webp = await bajarObjetoPrivado(ficha.moldeIaIntento.objectKeyFinal);
             bufferIa = await sharp(webp).png().toBuffer();
         } catch { /* ídem */ }
     }
     let bufferReferencia = null;
     if (ficha.moldeReferencia?.tipoArchivo === 'jpg' && ficha.moldeReferencia?.objectKey) {
-        try { bufferReferencia = await descargarObjeto(ficha.moldeReferencia.objectKey); } catch { /* se omite si falla */ }
+        try { bufferReferencia = await bajarObjetoPrivado(ficha.moldeReferencia.objectKey); } catch { /* se omite si falla */ }
     }
 
     // El molde técnico siempre va — es lo que necesita la confeccionista. Debajo, las

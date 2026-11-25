@@ -182,8 +182,10 @@ export const validarCabeceraOrden = async (body = {}) => {
     } else {
         // Una sola consulta con Op.in para los N proveedores, no un findOne por cada uno
         // dentro de un map (CLAUDE.md §7).
-        const encontrados = await Provedores.count({ where: { idProveedor: { [Op.in]: idsProveedor } } });
-        if (encontrados !== idsProveedor.length) errores.idProveedores = 'Uno o más proveedores elegidos ya no existen.';
+        const encontrados = await Provedores.findAll({ where: { idProveedor: { [Op.in]: idsProveedor } }, attributes: ['razonSocial', 'estado'], raw: true });
+        const suspendidos = encontrados.filter(p => !p.estado);
+        if (encontrados.length !== idsProveedor.length) errores.idProveedores = 'Uno o más proveedores elegidos ya no existen.';
+        else if (suspendidos.length) errores.idProveedores = `${suspendidos.map(p => p.razonSocial).join(', ')}: suspendido, no recibe órdenes nuevas.`;
     }
 
     const fechaOrdenTxt = String(body.fechaOrden ?? '').trim();
