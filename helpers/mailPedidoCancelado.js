@@ -1,17 +1,9 @@
 import { SOPORTE_EMAIL, WHATSAPP_URL } from '../config/marca.js';
 import { money } from './formatMoney.js';
 import {
-<<<<<<< HEAD
-    COLORES_CORREO, WEB_STORE_URL, LOGO_WEBP_URL, BOX_URL,
-    SOPORTE_EMAIL, WHATSAPP_URL, REDES
-} from '../config/marca.js';
-import { moneyCOP } from './formatMoney.js';
-import { fmtFechaCorta, fmtHora, icono as iconoCompartido } from './plantillaCorreo.js';
-=======
     plantillaMarca, ICONO_CORREO, filaCorreo, tarjetaCorreo, datosCorreo, avisoCorreo,
     tablaProductosCorreo, fmtFechaCorta, fmtHora
 } from './plantillaCorreo.js';
->>>>>>> PRODUCCION
 import { enviarCorreoSes, REMITENTE_COMPRAS } from './emailSes.js';
 import { escaparHtml } from '../src/js/escaparHtml.js';
 
@@ -20,15 +12,7 @@ import { escaparHtml } from '../src/js/escaparHtml.js';
 // pedido se ven como un mismo documento. Antes tenía su propio layout (hero con caja,
 // franja de confianza, redes) — se reemplazó por la regla de un solo diseño (2026-11-20).
 
-<<<<<<< HEAD
-// Iconos de línea compartidos con helpers/mailBienvenidaProveedor.js — ver
-// helpers/plantillaCorreo.js. El color por defecto de este correo es el rosa de marca.
-function icono(nombre, opts = {}) {
-    return iconoCompartido(nombre, { color: COLOR_PRIMARY, ...opts });
-}
-=======
 const fechaHora = (f) => `${fmtFechaCorta(f)} · ${fmtHora(f)}`;
->>>>>>> PRODUCCION
 
 const botonContacto = (href, texto) =>
     `<a href="${href}" style="display:inline-block;margin:4px;border:1px solid #E24C95;color:#E24C95;font-family:Helvetica,Arial,sans-serif;font-size:12.5px;font-weight:700;text-decoration:none;padding:9px 16px;border-radius:10px;">${texto}</a>`;

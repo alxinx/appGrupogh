@@ -1,3 +1,4 @@
+import { normalizarCodigoDxf } from './trazo.js';
 import DxfParser from 'dxf-parser';
 import { Material, Familia } from '../models/index.js';
 import { normalizarFamilia } from './helpers.js';
@@ -148,16 +149,6 @@ export function analizarDxf(buffer) {
     return extraerCamposDxf(dxf);
 }
 
-// Normaliza el código crudo del DXF al formato canónico (separador punto): "1-23" → "1.23",
-// "1" → "1". Un código con caracteres que no sean dígitos y los separadores "." o "-" devuelve
-// null — mismo criterio que codigoDxfValido en helpers/insumos.js.
-const normalizarCodigoDxf = (crudo) => {
-    const str = String(crudo).trim();
-    const compuesto = str.match(/^(\d{1,10})[.\-](\d{1,10})$/);
-    if (compuesto) return `${compuesto[1]}.${compuesto[2]}`;
-    if (/^\d{1,10}$/.test(str)) return str;
-    return null;
-};
 
 /**
  * Cruza cada código de `materiales` contra MATERIAL.codigoMaterial y `estiloNombre` contra

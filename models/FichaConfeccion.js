@@ -100,8 +100,11 @@ const FichaConfeccion = db.define('FICHAS_CONFECCION', {
         type: DataTypes.STRING(500),
         allowNull: true
     },
+    // 'pendiente' = ficha base creada desde un corte (la referencia del trazo no tenía ficha)
+    // y todavía sin terminar: le falta el molde o la familia. No pasa a confección hasta
+    // tenerlos (helpers/ordenesCorte.js faltantesFicha); al tenerlos pasa sola a 'activa'.
     estado: {
-        type: DataTypes.ENUM('activa', 'anulada'),
+        type: DataTypes.ENUM('activa', 'pendiente', 'anulada'),
         allowNull: false,
         defaultValue: 'activa'
     }

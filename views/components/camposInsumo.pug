@@ -102,6 +102,11 @@ mixin camposInsumo(opts)
             label(class="label" for="gramajeGm2") Gramaje (g/m²)
             input#gramajeGm2.field-text(name="gramajeGm2" type="text" inputmode="decimal" autocomplete="off" placeholder="Si se compra por kilo" value=m && m.gramajeGm2 ? String(Number(m.gramajeGm2)).replace('.', ',') : undefined)
             p#error-gramajeGm2(class="label-error text-xs hidden")
+        div(class="flex flex-col gap-1 sm:col-span-2")
+            label(class="label" for="reposoHoras") Reposo antes de cortar (horas)
+            input#reposoHoras.field-text(name="reposoHoras" type="text" inputmode="numeric" autocomplete="off" placeholder="48" value=m && m.reposoHoras !== undefined && m.reposoHoras !== null ? String(m.reposoHoras) : '48')
+            p(class="helper-text") Cuánto tiene que reposar un rollo tendido para poder cortarse. 48 horas = 2 días.
+            p#error-reposoHoras(class="label-error text-xs hidden")
 
     //- Mismo patrón de carga con vista previa real que el modal de QR de pago
     //- (views/administrador/bankentities/listado.pug): caja punteada, input invisible encima,

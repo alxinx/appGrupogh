@@ -23,6 +23,7 @@ export default {
         confirmarProveedor: '/src/js/confirmarProveedor.js',
         documentosProveedorGaleria: '/src/js/documentosProveedorGaleria.js',
         supplierList: '/src/js/supplierList.js',
+        estadoProveedor: '/src/js/estadoProveedor.js',
         dataDose : '/src/js/dataDose.js',
         listadoDose : '/src/js/listadoDose.js',
         doseView : '/src/js/doseView.js',
@@ -66,7 +67,11 @@ export default {
         fichaConfeccionBiblioteca: '/src/js/fichaConfeccionBiblioteca.js',
         corteNuevo: '/src/js/corteNuevo.js',
         fichaConfeccionEditar: '/src/js/fichaConfeccionEditar.js',
-        procesoDetalle: '/src/js/procesoDetalle.js'
+        procesoDetalle: '/src/js/procesoDetalle.js',
+        ordenProduccionForm: '/src/js/ordenProduccionForm.js',
+        ordenProduccionDetalle: '/src/js/ordenProduccionDetalle.js',
+        ordenCorteNueva: '/src/js/ordenCorteNueva.js',
+        ordenCorteDetalle: '/src/js/ordenCorteDetalle.js'
     },
     output: {
         filename: '[name].js',

@@ -26,3 +26,14 @@ export function inicioDelDiaBogota(referencia = new Date()) {
     return new Date(medianoche + OFFSET_BOGOTA_MS);
 }
 
+
+/**
+ * El día calendario de hoy en Bogotá como 'YYYY-MM-DD' (el formato de una columna DATEONLY
+ * y de un <input type="date">). Comparar dos de estos strings es comparar fechas.
+ *
+ * @param {Date} [referencia] Momento desde el cual calcular; por defecto, ahora.
+ * @returns {string}
+ */
+export function fechaHoyBogota(referencia = new Date()) {
+    return new Date(referencia.getTime() - OFFSET_BOGOTA_MS).toISOString().slice(0, 10);
+}

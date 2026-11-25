@@ -20,6 +20,7 @@ block contenedor
                             //- Mismo mixin headerAdmin (avatar de 80px) y mismos botones .btn-secondary/
                             //- .btn-danger que el resto del panel (§4.1.1 de CLAUDE.md) — antes este
                             //- header tenía su propio marcado con avatar de 48px y título más chico.
+                            //- Orden: Volver → Suspender/Reactivar (secundaria) → Nuevo proveedor (principal).
                             div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 bg-white/70 backdrop-blur-md rounded-2xl p-6 relative z-40")
                                 include ./headers/headerVerSupplier.pug
                                 div(class="flex items-center gap-3 justify-center md:justify-end flex-wrap")
@@ -27,10 +28,30 @@ block contenedor
                                         button(class="btn btn-secondary flex items-center gap-2")
                                             i(class="fi fi-rr-arrow-left")
                                             | Volver
+                                    //- Suspender / reactivar (src/js/estadoProveedor.js → POST /admin/provedores/:id/estado).
+                                    if puedeAdmin('Provedores', 'EDIT')
+                                        button#btn-estado-proveedor(type="button" class="btn btn-secondary flex items-center gap-2"
+                                            data-id=proveedor.idProveedor data-nombre=proveedor.razonSocial
+                                            data-accion=(proveedor.estado ? 'suspender' : 'reactivar') data-motivo-max=motivoEstadoMax)
+                                            if proveedor.estado
+                                                i(class="fi fi-rr-ban")
+                                                | Suspender
+                                            else
+                                                i(class="fi fi-rr-refresh")
+                                                | Reactivar
                                     a(href="/admin/provedores/new/")
                                         button(class="btn btn-danger flex items-center gap-2")
                                             i(class="fi fi-rr-user-add")
                                             | Nuevo proveedor
+
+                            if !proveedor.estado
+                                div(class="col-span-12 rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700 flex items-start gap-3")
+                                    i(class="fi fi-rr-ban mt-0.5")
+                                    div
+                                        p(class="font-bold") Proveedor suspendido
+                                        p(class="text-xs") No recibe órdenes de compra nuevas, no se le asignan trabajos, no se le abona y no sale en listas ni buscadores (en el listado, filtro "Suspendidos").
+                                            if historialEstado.length && historialEstado[0].accion === 'suspendido'
+                                                |  Motivo: #[strong= historialEstado[0].motivo]
 
                             //- ── BODY ────────────────────────────────────────────────────────────────
                             div(class="col-span-12 grid grid-cols-12 gap-4 items-start")
@@ -223,6 +244,21 @@ block contenedor
                                                             i(class="fi fi-rr-lock absolute top-1.5 right-1.5 text-[11px] text-slate-400" title="Archivo privado: el enlace se firma al abrirlo y vence en minutos")
                                                         i(class="fi fi-rr-arrow-up-right-from-square absolute top-1.5 left-1.5 text-[10px] text-slate-300 group-hover:text-pink-400")
 
+                                    //- ── Historial de estado (PROVEDORES_ESTADOS, append-only) ───────────
+                                    if historialEstado.length
+                                        div(class="flex items-center gap-2 -mx-6 px-6 pt-4 pb-4 border-y border-gray-100")
+                                            i(class="fi fi-rr-time-past text-purple-400")
+                                            h2(class="font-bold text-slate-700 text-sm") Suspensiones
+                                        ul(class="space-y-2")
+                                            each h in historialEstado
+                                                li(class="rounded-xl p-3 bg-slate-50")
+                                                    div(class="flex items-center justify-between gap-2 mb-1")
+                                                        span(class=`text-[10px] font-bold px-2 py-0.5 rounded-full ${h.accion === 'suspendido' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`)= h.accion === 'suspendido' ? 'Suspendido' : 'Reactivado'
+                                                        span(class="text-[10px] text-slate-400")= h.fecha
+                                                    p(class="text-xs text-slate-600")= h.motivo
+                                                    if h.nombreUsuario
+                                                        p(class="text-[10px] text-slate-400 mt-1")= h.nombreUsuario
+
                 //- ── GALERÍA DE DOCUMENTOS (imágenes) ─────────────────────────────────
                 //- Mismo lenguaje visual que #lightbox-comprobante en pedidoDetalle.pug.
                 //- documentosProveedorGaleria.js arma la lista recorriendo [data-doc-imagen]
@@ -255,6 +291,7 @@ block contenedor
                 script(src="/js/ubicacionProveedor.js")
                 script(src="/js/cuentasProveedor.js")
                 script(src="/js/confirmarProveedor.js")
+                script(src="/js/estadoProveedor.js")
                 script.
                     document.getElementById('form-proveedor').addEventListener('submit', async function(e) {
                         e.preventDefault();

@@ -5,6 +5,7 @@ import { Material, FichaConfeccion, Familia, Categorias, Provedores, CategoriasD
 import db from '../config/bd.js';
 import { TALLAS_CORTE, PIEZAS_CORTE_SUGERIDAS } from '../helpers/catalogos.js';
 import { tieneInventario, existenciasDeMateriales, inventarioDelMaterial, registrarEntrada, registrarSalidaAjuste, actorDelPanel } from '../helpers/inventarioInsumos.js';
+import { esTelaPorRollo, crearRollos, salidaDeRollo, rollosEnBodega, ETIQUETA_ESTADO_ROLLO } from '../helpers/rollosTela.js';
 import { UNIDADES_CONSUMO, UNIDAD_CONSUMO_CORTA, cantidadValida } from '../helpers/unidadesInsumo.js';
 import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO, CARPETA_IMAGENES_INSUMOS, presentarMaterial, proveedoresDelInsumo, resumenComprasInsumo, validarInsumo, codigoDxfValido, datosFicticiosInsumo, historialComprasInsumo } from '../helpers/insumos.js';
 import { imagenAWebpSegura } from '../helpers/imagenSegura.js';
@@ -249,9 +250,10 @@ const condicionesListadoFichas = ({ busqueda, familia, tela, estado } = {}) => {
     const telaNombre = String(tela || '').trim();
     if (telaNombre) y.push({ materialNombre: { [Op.like]: `%${telaNombre}%` } });
 
-    // Activas por defecto; las anuladas solo con el filtro (de ahí se reactivan). Las borradas
-    // no salen nunca: FichaConfeccion es `paranoid`.
-    return { estado: estado === 'anulada' ? 'anulada' : 'activa', ...(y.length ? { [Op.and]: y } : {}) };
+    // Activas y por terminar (fichas base de un corte) por defecto; las anuladas solo con el
+    // filtro (de ahí se reactivan). Las borradas no salen nunca: FichaConfeccion es `paranoid`.
+    const estados = { anulada: 'anulada', pendiente: 'pendiente' };
+    return { estado: estados[estado] || ['activa', 'pendiente'], ...(y.length ? { [Op.and]: y } : {}) };
 };
 
 // GET /admin/json/fichas-confeccion — mismo contrato que /admin/json/productos/: página +
@@ -475,6 +477,9 @@ const verInsumo = async (req, res) => {
         // Inventario REAL (helpers/inventarioInsumos.js): existencias, costo ponderado, capas
         // vivas y movimientos. Reemplaza los indicadores de relleno.
         const inventario = await inventarioDelMaterial(material, UNIDAD_CONSUMO_CORTA[material.unidadConsumo] || '');
+        // Una tela se lleva por rollo, cada uno con su estado (helpers/rollosTela.js).
+        const porRollo = esTelaPorRollo(material);
+        const rollos = porRollo ? await rollosEnBodega(material.idMaterial) : [];
         return res.render('./administrador/produccion/insumoPerfil', {
             pagina:    'Insumos',
             subPagina: fila.nombre,
@@ -492,6 +497,9 @@ const verInsumo = async (req, res) => {
             datos,
             inventario,
             tieneInventario: inventario.tiene,
+            porRollo,
+            rollos,
+            etiquetaEstadoRollo: ETIQUETA_ESTADO_ROLLO,
             // Para el modal "Editar insumo" — mismas listas que ya usa el alta (homeInsumos),
             // así el formulario de edición no vuelve a escribirlas.
             tiposInsumo: TIPOS_INSUMO,
@@ -537,11 +545,24 @@ const ajustarExistenciaInsumo = async (req, res) => {
     }
     if (Object.keys(errores).length) return res.status(400).json({ success: false, errores, mensaje: Object.values(errores)[0] });
 
+    // Una tela se lleva por rollo (helpers/rollosTela.js): la salida es de un rollo elegido
+    // (sale de SU capa) y la entrada crea un rollo sin tender. Así los rollos y las capas no
+    // se separan.
+    const porRollo = esTelaPorRollo(material);
+    const idRollo = String(b.idRollo ?? '').trim();
+    if (porRollo && tipo === 'salida' && !idRollo) return res.status(400).json({ success: false, errores: { idRollo: 'Elige el rollo.' }, mensaje: 'Elige de qué rollo sale.' });
+
     const actor = actorDelPanel(req);
     try {
-        await db.transaction((transaction) => tipo === 'entrada'
-            ? registrarEntrada({ idMaterial: material.idMaterial, idAtributoColor, cantidad, costoUnitario, origen: 'ajuste', motivo, actor, transaction })
-            : registrarSalidaAjuste({ idMaterial: material.idMaterial, idAtributoColor, cantidad, motivo, actor, transaction }));
+        await db.transaction(async (transaction) => {
+            if (tipo === 'salida') {
+                return porRollo
+                    ? salidaDeRollo({ idMaterial: material.idMaterial, idRollo, cantidad, motivo, actor, transaction })
+                    : registrarSalidaAjuste({ idMaterial: material.idMaterial, idAtributoColor, cantidad, motivo, actor, transaction });
+            }
+            const capa = await registrarEntrada({ idMaterial: material.idMaterial, idAtributoColor, cantidad, costoUnitario, origen: 'ajuste', motivo, actor, transaction });
+            if (porRollo) await crearRollos({ capa, metrajesCm: [capa.cantidadInicial], actor, transaction });
+        });
         return res.json({ success: true, mensaje: tipo === 'entrada' ? 'Entrada registrada.' : 'Salida registrada.' });
     } catch (e) {
         if (e.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message });

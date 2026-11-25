@@ -8,7 +8,7 @@ const LOGO_PATH_ADMIN  = path.resolve(__dirname_admin, '../public/img/logo.png')
 import { validationResult } from "express-validator";
 import { uuidV7 } from "../helpers/uuidV7.js";
 import PDFDocument from 'pdfkit';
-import bwipjs from 'bwip-js';
+import { nuevoDocEtiquetas, paginaEtiqueta } from '../helpers/etiquetaCodigo.js';
 import { ZipArchive } from 'archiver';
 import { Upload } from "@aws-sdk/lib-storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -21,8 +21,11 @@ import { TIPOS_DOCUMENTO_PROVEEDOR, CATALOGO_TIPOS_DOCUMENTO, normalizarNumeroDo
 import { validarCuentasBancarias } from '../helpers/cuentasBancariasProveedor.js';
 import {
     buscarProveedorPorDocumento, validarDocumentoProveedor, crearProveedorCompleto,
-    cuentasDelPanel, conservarVerificacion
+    cuentasDelPanel, conservarVerificacion,
+    PROVEEDOR_ACTIVO, MOTIVO_ESTADO_MAX, exigirProveedorActivo, cambiarEstadoProveedor
 } from '../helpers/proveedores.js';
+import { ProvedorEstado } from '../models/index.js';
+import { actorDelPanel } from '../helpers/inventarioInsumos.js';
 import { addClient, removeClient, broadcast } from '../helpers/sseManager.js';
 import { avisarCambioDePermisos } from '../helpers/permisosEnVivo.js';
 import { resumenPendientes, listarPendientesDeCuenta } from '../helpers/trasladosPendientes.js';
@@ -4638,6 +4641,14 @@ const verProveedor = async (req, res) => {
             privado:         esKeyPrivada(d.keyName)
         }));
 
+        const historialEstado = await ProvedorEstado.findAll({
+            where: { idProveedor },
+            attributes: ['accion', 'motivo', 'nombreUsuario', 'createdAt'],
+            order: [['createdAt', 'DESC'], ['idRegistro', 'DESC']],
+            limit: 20,
+            raw: true
+        });
+
         const facturasRaw = await FacturaProveedores.findAll({
             where: { idProveedor },
             include: [
@@ -4686,11 +4697,36 @@ const verProveedor = async (req, res) => {
             facturas,
             documentos,
             tiposDocumento: TIPOS_DOCUMENTO_PROVEEDOR,
+            historialEstado: historialEstado.map(h => ({
+                ...h,
+                fecha: new Date(h.createdAt).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
+            })),
+            motivoEstadoMax: MOTIVO_ESTADO_MAX,
             currentPath: req.path
         });
     } catch (error) {
         console.error('verProveedor:', error);
         return res.status(500).send('Error al cargar el proveedor.');
+    }
+};
+
+// POST /admin/provedores/:idProveedor/estado — { accion: 'suspender' | 'reactivar', motivo }.
+// Permiso Proveedores EDIT. Las reglas y la constancia viven en helpers/proveedores.js.
+const cambiarEstadoProveedorHandler = async (req, res) => {
+    const accion = String(req.body?.accion ?? '');
+    if (!['suspender', 'reactivar'].includes(accion)) return res.status(422).json({ success: false, mensaje: 'Acción no válida.' });
+    try {
+        await db.transaction((transaction) => cambiarEstadoProveedor({
+            idProveedor: req.params.idProveedor,
+            suspender: accion === 'suspender',
+            motivo: req.body?.motivo,
+            usuario: { idUsuario: req.usuario.idUsuario, nombre: actorDelPanel(req).nombreUsuario }
+        }, transaction));
+        return res.json({ success: true, mensaje: accion === 'suspender' ? 'Proveedor suspendido.' : 'Proveedor reactivado.' });
+    } catch (e) {
+        if (e?.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message });
+        console.error('cambiarEstadoProveedor:', e);
+        return res.status(500).json({ success: false, mensaje: 'No se pudo cambiar el estado del proveedor.' });
     }
 };
 
@@ -4955,7 +4991,9 @@ const filterSupplierListJson = async (req, res) => {
         const limit = parseInt(process.env.LIMIT_PER_PAGE) || 10;
         const offset = (pagina - 1) * limit;
 
-        const whereCondition = {};
+        // Los suspendidos no salen en la búsqueda; solo con el filtro "Suspendidos"
+        // (helpers/proveedores.js PROVEEDOR_ACTIVO).
+        const whereCondition = req.query.estado === 'suspendidos' ? { estado: false } : { ...PROVEEDOR_ACTIVO };
 
         // Filtro por búsqueda (Nombre, NIT, Contacto)
         if (busqueda) {
@@ -5140,42 +5178,18 @@ const filterStoreInventoryJson = async (req, res) => {
     }
 }
 
+// Un PDF con la etiqueta de un SKU, en memoria: lo usa el ZIP de etiquetas, que necesita un
+// archivo por producto. La etiqueta en sí es helpers/etiquetaCodigo.js (compartida con los
+// rollos de tela).
 const generarPdfEtiquetaSKU = async (sku, nombre) => {
-    const W = 155.91;
-    const H = 70.87;
-    const mx = 4;
-    const ALTO_TEXTO = 21;
-    const Y_TEXTO = H - mx - ALTO_TEXTO;
-    const ALTO_BARRAS = Y_TEXTO - mx - 1;
-
-    const doc = new PDFDocument({
-        size: [W, H],
-        margins: { top: mx, bottom: mx, left: mx, right: mx },
-        autoFirstPage: false
-    });
+    const doc = nuevoDocEtiquetas();
     const partes = [];
     const pdf = new Promise((resolve, reject) => {
         doc.on('data', parte => partes.push(parte));
         doc.on('end', () => resolve(Buffer.concat(partes)));
         doc.on('error', reject);
     });
-
-    const buffer = await bwipjs.toBuffer({
-        bcid: 'code128',
-        text: sku,
-        scale: 4,
-        height: 14,
-        includetext: false
-    });
-    doc.addPage({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
-    doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
-    doc.fontSize(9).font('Helvetica-Bold')
-        .text(nombre, mx, Y_TEXTO, {
-            width: W - mx * 2,
-            height: ALTO_TEXTO,
-            align: 'center',
-            lineGap: 0
-        });
+    await paginaEtiqueta(doc, { codigo: sku, lineas: [{ texto: nombre, tamano: 9, negrita: true, alto: 21 }] });
     doc.end();
     return pdf;
 };
@@ -5334,46 +5348,14 @@ const imprimirEtiquetaSKU = async (req, res) => {
         return;
     }
 
-    // 5.5 cm = 155.91 pt (ancho) | 2.5 cm = 70.87 pt (alto)
-    const W  = 155.91;
-    const H  = 70.87;
-    const mx = 4;
-    // Reparto vertical de la etiqueta. El alto de las barras se fija acá y NO se deja
-    // que salga de la proporción del PNG: el ancho del código depende de cuántos
-    // caracteres tenga el SKU, así que un SKU largo daba barras más bajas que uno corto
-    // y la etiqueta cambiaba de aspecto entre productos.
-    const ALTO_TEXTO   = 21;              // hasta dos líneas a 9 pt
-    const Y_TEXTO      = H - mx - ALTO_TEXTO;
-    const ALTO_BARRAS  = Y_TEXTO - mx - 1; // separación mínima antes del nombre
-
+    // Una página por SKU, en streaming (CLAUDE.md §11). La etiqueta: helpers/etiquetaCodigo.js.
     try {
-        const doc = new PDFDocument({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx }, autoFirstPage: false });
-
+        const doc = nuevoDocEtiquetas();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=sku_${etiquetas[0].sku}.pdf`);
         doc.pipe(res);
-
         for (const { sku, nombre } of etiquetas) {
-            doc.addPage({ size: [W, H], margins: { top: mx, bottom: mx, left: mx, right: mx } });
-
-            // Barcode (sin texto incluido, sin título)
-            const buffer = await bwipjs.toBuffer({
-                bcid:        'code128',
-                text:        sku,
-                scale:       4,
-                height:      14,
-                includetext: false,
-            });
-            doc.image(buffer, mx, mx, { fit: [W - mx * 2, ALTO_BARRAS], align: 'center', valign: 'center' });
-
-            // Nombre del producto centrado, pegado al pie de las barras
-                doc.fontSize(9).font('Helvetica-Bold')
-                    .text(nombre, mx, Y_TEXTO, {
-                         width: W - mx * 2,
-                         height: ALTO_TEXTO,
-                         align: 'center',
-                         lineGap: 0
-                    });
+            await paginaEtiqueta(doc, { codigo: sku, lineas: [{ texto: nombre, tamano: 9, negrita: true, alto: 21 }] });
         }
 
         doc.end();
@@ -9028,6 +9010,8 @@ const registrarAbonoProveedor = async (req, res) => {
     try {
         const factura = await FacturaProveedores.findOne({ where: { idFacturaPro } });
         if (!factura) { await t.rollback(); return res.status(404).json({ success: false, mensaje: 'Factura no encontrada.' }); }
+        // A un proveedor suspendido no se le abona (helpers/proveedores.js).
+        await exigirProveedorActivo(factura.idProveedor, { transaction: t });
 
         const ultima = await CuentasPorPagar.findOne({
             where: { idFacturaPro },
@@ -9062,6 +9046,7 @@ const registrarAbonoProveedor = async (req, res) => {
         });
     } catch (error) {
         await t.rollback();
+        if (error?.publico) return res.status(error.status || 400).json({ success: false, mensaje: error.message });
         console.error('registrarAbonoProveedor:', error);
         return res.status(500).json({ success: false, mensaje: 'Error al registrar el abono.' });
     }
@@ -9282,7 +9267,7 @@ export {
     batchBuyOrder, saveBatchOrder,
     dashboardSupplier,
     newSupplier,
-    verProveedor, actualizarProveedor,
+    verProveedor, actualizarProveedor, cambiarEstadoProveedorHandler,
     saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto,
     dashboardCustomers, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito,
     dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta,

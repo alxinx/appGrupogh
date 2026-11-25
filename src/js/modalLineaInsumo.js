@@ -1,5 +1,6 @@
 import { escaparHtml as esc } from './escaparHtml.js';
 import { activarFormularioInsumo } from './formularioInsumo.js';
+import { crearModalColores } from './modalColores.js';
 
 // Modal "Agregar insumo" de una orden de compra (también edita: mismo formulario, con los
 // datos de la línea precargados). Lo usan la orden nueva (ordenCompra.js) y el detalle de
@@ -227,111 +228,15 @@ export function iniciarModalLineaInsumo({ tabla, buscarLinea, alConfirmar }) {
     };
 
     // ── Sub-modal "Elegir colores" ──────────────────────────────────────────────────────
-    // Mismo patrón que "Colores para Talla" en admin/inventario/ingreso
-    // (views/administrador/inventarios/forms/product.pug): grilla de swatches + buscador,
-    // acá además con alta de un color simple nuevo.
-    const modalColores = document.getElementById('modal-colores-insumo');
-    const inputBuscadorColor = document.getElementById('buscador-color-insumo');
-    const gridColores = document.getElementById('grid-colores-insumo');
-    const formNuevoColor = document.getElementById('form-nuevo-color');
-
-    const abrirModalColores = () => { modalColores.classList.remove('hidden'); modalColores.classList.add('flex'); };
-    const cerrarModalColores = () => { modalColores.classList.add('hidden'); modalColores.classList.remove('flex'); };
-
-    const filtrarColoresInsumo = (texto) => {
-        const termino = texto.toLowerCase().trim();
-        gridColores.querySelectorAll('.color-insumo-item').forEach(label => {
-            const nombre = label.querySelector('span:last-child')?.textContent.toLowerCase() || '';
-            label.style.display = nombre.includes(termino) ? '' : 'none';
-        });
-    };
-    inputBuscadorColor?.addEventListener('input', (e) => filtrarColoresInsumo(e.target.value));
-
-    const ocultarFormNuevoColor = () => {
-        formNuevoColor.classList.add('hidden');
-        formNuevoColor.classList.remove('flex');
-        document.getElementById('error-nuevo-color')?.classList.add('hidden');
-    };
-
-    document.getElementById('li-btn-elegir-colores')?.addEventListener('click', () => {
-        gridColores.querySelectorAll('.color-insumo-checkbox').forEach(chk => {
-            chk.checked = coloresElegidos.some(c => String(c.idAtributo) === chk.value);
-        });
-        inputBuscadorColor.value = '';
-        filtrarColoresInsumo('');
-        ocultarFormNuevoColor();
-        abrirModalColores();
-    });
-    document.getElementById('modal-colores-insumo-cerrar')?.addEventListener('click', cerrarModalColores);
-    modalColores.addEventListener('click', (e) => { if (e.target === modalColores) cerrarModalColores(); });
-
-    document.getElementById('btn-usar-colores')?.addEventListener('click', () => {
-        coloresElegidos = Array.from(gridColores.querySelectorAll('.color-insumo-checkbox:checked')).map(chk => ({
-            idAtributo: chk.value, valor: chk.dataset.nombre, codigo1: chk.dataset.hex
-        }));
-        cerrarModalColores();
+    // El componente compartido de colores (views/components/modalColores.pug), con alta de
+    // un color simple nuevo. `coloresElegidos` guarda { idAtributo, valor, codigo1 } como antes.
+    const selectorColores = crearModalColores('modal-colores-insumo', (_ids, colores) => {
+        coloresElegidos = colores.map(c => ({ idAtributo: String(c.idAtributo), valor: c.valor, codigo1: c.codigo1 }));
         renderChipsColores();
         renderSeccionCantidadValor();
     });
-
-    // Dar de alta un color simple nuevo si no está en la grilla.
-    document.getElementById('btn-mostrar-nuevo-color')?.addEventListener('click', () => {
-        const visible = !formNuevoColor.classList.contains('hidden');
-        if (visible) { ocultarFormNuevoColor(); return; }
-        formNuevoColor.classList.remove('hidden');
-        formNuevoColor.classList.add('flex');
-        document.getElementById('nuevo-color-nombre')?.focus();
-    });
-
-    document.getElementById('btn-guardar-nuevo-color')?.addEventListener('click', async () => {
-        const inpNombre = document.getElementById('nuevo-color-nombre');
-        const inpHex    = document.getElementById('nuevo-color-hex');
-        const errEl     = document.getElementById('error-nuevo-color');
-        const btn       = document.getElementById('btn-guardar-nuevo-color');
-
-        const nombre = inpNombre.value.trim();
-        if (!nombre) {
-            errEl.textContent = 'Escribe el nombre del color.';
-            errEl.classList.remove('hidden');
-            inpNombre.focus();
-            return;
-        }
-
-        const textoOriginal = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Agregando…';
-        try {
-            const r = await fetch('/admin/insumos/compra/colores', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json'},
-                body: JSON.stringify({ valor: nombre, codigo1: inpHex.value })
-            });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok || !data.success) {
-                throw new Error(data.mensaje || data.errores?.valor || data.errores?.codigo1 || 'No se pudo agregar el color.');
-            }
-
-            const c = data.color;
-            const label = document.createElement('label');
-            label.className = 'color-insumo-item flex items-center gap-2.5 p-2.5 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-50';
-            label.innerHTML = `
-                <input type="checkbox" value="${c.idAtributo}" data-nombre="${esc(c.valor)}" data-hex="${c.codigo1}" checked class="color-insumo-checkbox w-4 h-4 flex-shrink-0">
-                <span class="w-4 h-4 rounded-full border border-black/10 flex-shrink-0" style="background-color:${c.codigo1}"></span>
-                <span class="text-sm font-medium text-slate-700 truncate">${esc(c.valor)}</span>`;
-            gridColores.prepend(label);
-
-            inpNombre.value = '';
-            inpHex.value = '#E24C95';
-            ocultarFormNuevoColor();
-            inputBuscadorColor.value = '';
-            filtrarColoresInsumo('');
-        } catch (e) {
-            errEl.textContent = e.message;
-            errEl.classList.remove('hidden');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = textoOriginal;
-        }
+    document.getElementById('li-btn-elegir-colores')?.addEventListener('click', () => {
+        selectorColores.abrir(coloresElegidos.map(c => c.idAtributo));
     });
 
     // ── Otras características (libre, compartidas por todos los colores de este insumo) ──
@@ -382,13 +287,12 @@ export function iniciarModalLineaInsumo({ tabla, buscarLinea, alConfirmar }) {
         renderSeccionCantidadValor();
         ['material', 'cantidad', 'valorUnitario'].forEach(c => pintarErrorLi(c, ''));
         errorPorColor.classList.add('hidden');
-        ocultarFormNuevoColor();
     };
     document.getElementById('btn-limpiar-li')?.addEventListener('click', limpiarModal);
     document.getElementById('btn-agregar-insumo')?.addEventListener('click', limpiarModal);
 
-    // Lápiz de una fila: mismo modal precargado con la línea. El color se busca en la grilla
-    // real (gridColores) para recuperar su hex, que la línea guardada no trae. El uid viene
+    // Lápiz de una fila: mismo modal precargado con la línea. El color se busca en el modal
+    // de colores (selectorColores.color) para recuperar su hex, que la línea guardada no trae. El uid viene
     // siempre del dataset del botón, nunca del objeto: en el detalle una línea existente se
     // identifica por `idDetalleOrdenCompra` y una nueva por `uid`.
     const abrirParaEditar = (l, uid) => {
@@ -405,9 +309,9 @@ export function iniciarModalLineaInsumo({ tabla, buscarLinea, alConfirmar }) {
         if (selPresentacion && l.unidadCompra) { selPresentacion.value = l.unidadCompra; pintarSufijos(); }
 
         if (l.idAtributoColor) {
-            const chk = gridColores.querySelector(`.color-insumo-checkbox[value="${CSS.escape(String(l.idAtributoColor))}"]`);
-            coloresElegidos = [chk
-                ? { idAtributo: l.idAtributoColor, valor: chk.dataset.nombre, codigo1: chk.dataset.hex }
+            const c = selectorColores.color(l.idAtributoColor);
+            coloresElegidos = [c
+                ? { idAtributo: l.idAtributoColor, valor: c.valor, codigo1: c.codigo1 }
                 : { idAtributo: l.idAtributoColor, valor: l.colorNombre, codigo1: null }];
             renderChipsColores();
             renderSeccionCantidadValor();

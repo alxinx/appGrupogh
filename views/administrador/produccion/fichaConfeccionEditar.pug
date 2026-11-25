@@ -51,6 +51,11 @@ block contenedor
                                             button#btn-borrar-ficha(type="button" data-referencia=ficha.referencia class="btn btn-secondary btn-sm text-xs whitespace-nowrap !text-rose-600")
                                                 i(class="fi fi-rr-trash text-xs")
                                                 | Borrar ficha
+                                    //- Acción principal al final (CLAUDE.md §4.1.1): producir esta prenda.
+                                    if puedeAdmin('Procesos', 'CREATE') && ficha.estado === 'activa'
+                                        a(href=`/admin/procesos/ordenes/nueva?ficha=${ficha.idFicha}` class="btn btn-danger btn-sm text-xs whitespace-nowrap")
+                                            i(class="fi fi-rr-list-check text-xs")
+                                            | Nueva orden de producción
 
                             if ficha.estado === 'anulada'
                                 div(class="col-span-12 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4")
@@ -64,6 +69,43 @@ block contenedor
                                         button#btn-reactivar-ficha(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
                                             i(class="fi fi-rr-refresh text-xs")
                                             | Reactivar ficha
+
+                            //- Ficha por terminar (la ficha base que se crea desde un corte): sin molde o
+                            //- sin familia no pasa a confección. Al tener los dos pasa sola a activa
+                            //- (helpers/ordenesCorte.js promoverFichaSiCompleta; src/js/fichaConfeccionEditar.js).
+                            if faltan.length
+                                div#ficha-por-terminar(class="col-span-12 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 flex flex-col gap-3")
+                                    div(class="flex items-start gap-3")
+                                        span(class="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0")
+                                            i(class="fi fi-rr-time-quarter-past text-xs leading-none")
+                                        div
+                                            p(class="text-sm font-bold text-amber-800")= `Ficha por terminar: falta ${faltan.join(' y ')}`
+                                            p(class="text-xs text-amber-700/90") Sus prendas no pasan a confección hasta tenerlo. Lo demás (insumos, videos, imágenes) se completa cuando quieras.
+                                    if puedeAdmin('Procesos', 'EDIT')
+                                        div(class="flex flex-col md:flex-row gap-3 md:items-end")
+                                            if familiaActual
+                                                p(class="text-xs font-semibold text-emerald-700")
+                                                    i(class="fi fi-rr-check mr-1")
+                                                    | Familia: #{familiaActual}
+                                            else
+                                                label(class="flex-1 flex flex-col gap-1 text-xs font-semibold text-slate-600") Familia
+                                                    input#input-familia-ficha(list="familias-ficha-editar" maxlength="150" class="field-text text-sm" placeholder="Nueva o una que ya existe")
+                                                    datalist#familias-ficha-editar
+                                                        each f in familias
+                                                            option(value=f)
+                                                button#btn-familia-ficha(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                                    i(class="fi fi-rr-check text-xs")
+                                                    | Guardar familia
+                                            if ficha.idMolde
+                                                p(class="text-xs font-semibold text-emerald-700")
+                                                    i(class="fi fi-rr-check mr-1")
+                                                    | Molde cargado
+                                            else
+                                                input#input-molde-ficha(type="file" accept=".jpg,.jpeg,.webp,.pdf" class="hidden" aria-hidden="true")
+                                                button#btn-molde-ficha(type="button" class="btn btn-danger btn-sm text-xs whitespace-nowrap")
+                                                    i(class="fi fi-rr-upload text-xs")
+                                                    | Subir molde
+                                        p#error-por-terminar(class="hidden text-xs font-semibold text-rose-600")
 
                             - var insumosIniciales = (ficha.insumos || []).map(function (l) { return { idDetalle: l.idDetalle, idMaterial: l.idMaterial, nombre: l.nombreMaterial, cantidad: l.cantidad }; })
                             div(
@@ -267,29 +309,8 @@ block contenedor
                                             | Guardar cambios
 
                             //- ── MODAL "ELEGIR INSUMO" ────────────────────────────────
-                            div#modal-elegir-insumo-editar(class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md")
-                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col")
-                                    div(class="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0")
-                                        h2(class="text-lg font-bold text-slate-800") Elige un insumo
-                                        button#cerrar-modal-insumo-editar(type="button" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
-                                            i(class="fi fi-rr-cross-small text-xl")
-                                    div(class="px-7 pt-5 flex-shrink-0")
-                                        input#buscador-insumo-ficha-editar(type="text" autocomplete="off" placeholder="Buscar insumo…" class="field-text")
-                                    div#grid-insumos-ficha-editar(class="px-7 py-5 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto")
-                                        each m in (insumosCatalogo || [])
-                                            button(
-                                                type="button"
-                                                data-opcion-insumo
-                                                data-id=m.idMaterial
-                                                data-nombre=m.nombre
-                                                data-imagen=m.imagenUrl || ''
-                                                class="flex items-center gap-2.5 p-3 border border-gray-100 rounded-2xl cursor-pointer hover:bg-gh-primarySoft/40 hover:border-gh-primary/30 transition-colors text-left")
-                                                span(class="w-8 h-8 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400")
-                                                    if m.imagenUrl
-                                                        img(src=m.imagenUrl alt=m.nombre class="w-full h-full object-cover")
-                                                    else
-                                                        i(class=`fi ${m.icono} text-sm`)
-                                                span(class="text-sm font-medium text-slate-700 truncate")= m.nombre
+                            include ../../components/modalElegirInsumo
+                            +modalElegirInsumo('modal-elegir-insumo-editar', insumosCatalogo)
 
                             //- Plantilla de una línea de insumo: el insumo (se cambia con "Reemplazar")
                             //- y su cantidad por prenda. Sin quitar: ver la tarjeta de Insumos.

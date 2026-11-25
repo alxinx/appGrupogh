@@ -1,6 +1,6 @@
 import express from "express";
 const routes = express.Router(); // 2. Definir router antes de usarlo
-import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto, dashboardSettings, municipiosJson, categoriasJson, skuJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU, adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getEgresosDiaTienda, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea, jsonPermisosRecursos, jsonPermisosAcciones, verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado, getPagosHoyPorMetodo, destrabarCuadreTienda, listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, decidirTrasladoEfectivo, validarEmpleadoBancos, getTrasladoPDFAdmin, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, verDetallesEntidad, editarEntidad, getTransaccionesEntidad, getStatsVendedorMes, getCajasCerradasAdmin, getAdminCuadrePDF, getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor, storeCierresCaja, storeTrasladosTienda, getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON, getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda, trasladarProductoAdmin } from "../controller/adminControllers.js";
+import { dashboard, dashboardStores, newStore, saveStoreBasic, verTienda, editarTienda, dashboardInventorys, storeInventory, billingToday, storeEmployers, storeDocuments, saveProduct, listaProductos, verProducto, stockTotalProducto, unidadesVendidasProducto, diasInventarioProducto, stockPorTiendaProducto, ventasHistoricoProducto, ventasPorTiendaProducto, editarProducto, batchBuyOrder, saveBatchOrder, dashboardCustomers, dashboardEmployees, newEmployer, saveEmployee, checkDocumentoPersonal, checkEmailPersonal, filterEmployeeListJson, dashboardSupplier, newSupplier, verProveedor, actualizarProveedor, cambiarEstadoProveedorHandler, saveSupplier, checkNitSupplier, verificarCuentaProveedor, verDocumentoProveedor, exportarProductos, familiasPreciosMasivos, productosPreciosMasivos, editarPreciosMasivos, historialPreciosProducto, dashboardSettings, municipiosJson, categoriasJson, skuJson, familiaSugerenciasJson, filterProductListJson, jsonImageProduct, jsonUnicidad, filterSupplierListJson, filterStoreInventoryJson, imprimirEtiquetaSKU, adminSseConnect, getTiendasStatsHoy, getTiendaStatsHoyDetalle, getEgresosDiaTienda, getFacturasJSON, exportarFacturasTienda, getCajasAbiertasPorFecha, autorizarFacturaExtemporanea, jsonPermisosRecursos, jsonPermisosAcciones, verEmpleado, actualizarEmpleado, eliminarDocumentoEmpleado, cambiarEstadoEmpleado, getPagosHoyPorMetodo, destrabarCuadreTienda, listarEntidades, crearEntidad, crearCajaBanco, getCajaBancoEditar, editarCajaBanco, verPerfilCajaBanco, decidirTrasladoEfectivo, validarEmpleadoBancos, getTrasladoPDFAdmin, getMovimientosCuentaJSON, crearMovimientoCuenta, exportarMovimientosCuenta, verDetallesEntidad, editarEntidad, getTransaccionesEntidad, getStatsVendedorMes, getCajasCerradasAdmin, getAdminCuadrePDF, getStockBajoGlobal, getStockBajoPorTienda, getVentasPdv30d, getCarteraUrgente, getClientesStats, filterClientesListJson, getClientePerfil, getClienteHistorial, getClienteArchivos, eliminarDocumentoCliente, otorgarCreditoCliente, suspenderCreditoCliente, asignarCreditoDisponibleCliente, verificarCodigoEmpleadoCredito, dashboardClienteCredito, generarInformeCreditoPDF, modificarCreditoCliente, abonarFactura, abonoGlobalCliente, getTirillaAbonoCliente, getTirillaMovimientoCuenta, newCliente, saveCliente, editarClienteForm, updateCliente, checkDocumentoCliente, getFacturasPendientesProveedores, getDetalleFacturaPendiente, registrarAbonoProveedor, getTirillaAbonoProveedor, storeCierresCaja, storeTrasladosTienda, getCierresCajaListaJSON, getCierreCajaDatosJSON, getCierreFacturasJSON, getCierreEgresosJSON, getTrasladosTiendaJSON, getTiendaDocumentos, subirDocumentoTienda, eliminarDocumentoTienda, trasladarProductoAdmin } from "../controller/adminControllers.js";
 import { getTirillaPDF } from "../controller/storeControllers.js"
 import { subirQrEntidad, toggleQrEntidad, previewQrEntidad } from "../controller/qrPagoControllers.js"
 import { PuntosDeVenta } from "../models/index.js";
@@ -12,14 +12,17 @@ import { guardarDosificacion, homeDose, newDose, obtenerDosificacionesPaginadas,
 import { paginaTraslados, listarControversiasJSON, listarHistorialJSON, detalleTrasladoAdminJSON, validarEmpleadoTraslados, recibirDevolucionAdmin } from '../controller/trasladosAdminController.js'
 
 //CONTROLADOR PRODUCCIÓN (Confeccionistas, Procesos, Insumos):
-import { homeConfeccionistas, fotoConfeccionista, imagenFichaConfeccion, homeProcesosNuevo, homeCorteNuevo, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, filterFichaConfeccionListJson, homeInsumos, crearInsumo, verInsumo, editarInsumo, ajustarExistenciaInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo } from '../controller/produccionController.js'
+import { homeConfeccionistas, fotoConfeccionista, imagenFichaConfeccion, homeProcesosNuevo, homeFichasConfeccion, homeFichaConfeccionNueva, homeFichaConfeccionBiblioteca, filterFichaConfeccionListJson, homeInsumos, crearInsumo, verInsumo, editarInsumo, ajustarExistenciaInsumo, cambiarEstadoInsumo, codigoInsumoOcupado, gruposInsumo } from '../controller/produccionController.js'
 import { homeProcesosListado, verProceso, avanzarProceso, agregarBitacora } from '../controller/fichaConfeccionProcesoController.js'
+import { homeCortes, homeCorteNuevo, verCorte, verTrazoCorte, pdfCorte, analizarTrazoCorte, crearCorte, registrarCorteHandler, cancelarCorteHandler } from '../controller/ordenCorteController.js'
+import { tenderRollosMaterial, adelantarReposoRollo, deshacerTendidoRollo, etiquetasRollos } from '../controller/rollosTelaController.js'
+import { homeOrdenesProduccion, homeOrdenProduccionNueva, homeOrdenProduccionEditar, verOrdenProduccion, crearOrdenProduccion, actualizarOrdenProduccion, confirmarOrdenProduccion, cancelarOrdenProduccion, revisarMaterialOrden } from '../controller/ordenProduccionController.js'
 import { subirDxfFicha, estadoDxfFicha, crearFamiliaDxf } from '../controller/fichaConfeccionDxfController.js'
 import { recibirDxf } from '../middlewares/uploadDxf.js';
 import { subirMolde, iniciarGeneracionMolde, estadoIntentoMolde, aprobarMoldeIa } from '../controller/fichaConfeccionMoldeController.js'
 import { recibirMolde } from '../middlewares/uploadMolde.js';
 import { solicitarSubidaVideo, confirmarSubidaVideo, estadoVideo, reintentarVideo, marcarErrorVideo, asociarVideoFicha, eliminarVideoFicha } from '../controller/fichaConfeccionVideoController.js'
-import { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion, asignarImagenFicha, anularFicha, reactivarFicha, borrarFicha } from '../controller/fichaConfeccionController.js'
+import { finalizarFicha, verFichaPdf, verFichaDxf, homeFichaConfeccionEditar, actualizarFichaConfeccion, asignarImagenFicha, asignarFamiliaFicha, anularFicha, reactivarFicha, borrarFicha } from '../controller/fichaConfeccionController.js'
 import { homeOrdenCompra, buscarProveedoresOrden, verProveedorOrden, guardarBorradorOrden, crearOrdenCompra, crearColorSimple, homeHistorialCompras, historialComprasJson, verOrdenCompra, guardarEdicionOrden, convertirACompra, recibirOrden, pdfOrdenCompra } from '../controller/ordenesCompraController.js'
 
 //CONTROLADOR IMPORTACIONES:
@@ -190,6 +193,7 @@ routes.get('/provedores/', pPro('READ'), dashboardSupplier);
 routes.get('/provedores/new/', pPro('CREATE'), newSupplier);
 routes.get('/provedores/ver/:idProveedor', pPro('READ'), verProveedor);
 routes.post('/provedores/editar/:idProveedor', pPro('EDIT'), actualizarProveedor);
+routes.post('/provedores/:idProveedor/estado', pPro('EDIT'), cambiarEstadoProveedorHandler);
 routes.post('/provedores/:idProveedor/cuentas/:idCuentaBancaria/verificar', pPro('EDIT'), verificarCuentaProveedor);
 routes.get('/provedores/documentos/:idDocumento', pPro('READ'), verDocumentoProveedor);
 routes.get('/api/provedores/facturas-pendientes', pPro('READ'), getFacturasPendientesProveedores);
@@ -277,9 +281,30 @@ routes.get('/confeccionistas/fotos/:idDocumento', pCon('READ'), fotoConfeccionis
 // Procesos es un submenú (ver leftMenu.pug): nuevo antes de la carpeta genérica, igual que
 // /insumos/compra va antes del catch-all /insumos/:idMaterial.
 routes.get('/procesos/nuevo',                            pPrc('CREATE'), homeProcesosNuevo);
-// Corte (submenú Procesos → Corte). Antes del catch-all /procesos/:idProceso, si no
-// "cortes" se tomaría como un idProceso.
+// Órdenes de corte desde el trazo (controller/ordenCorteController.js). Antes del catch-all
+// /procesos/:idProceso, si no "cortes" se tomaría como un idProceso; "nuevo" y "analizar"
+// antes de :idOrdenCorte. Registrar el corte mueve tela: mismos candados que el ajuste de un
+// insumo (sesión con Procesos, código de un empleado de la sesión y ese empleado con Insumos EDIT).
+routes.get('/procesos/cortes',                           pPrc('READ'),   homeCortes);
 routes.get('/procesos/cortes/nuevo',                     pPrc('CREATE'), homeCorteNuevo);
+routes.post('/procesos/cortes/analizar',                 pPrc('CREATE'), recibirDxf, analizarTrazoCorte);
+routes.post('/procesos/cortes',                          pPrc('CREATE'), recibirDxf, crearCorte);
+routes.get('/procesos/cortes/:idOrdenCorte',             pPrc('READ'),   verCorte);
+routes.get('/procesos/cortes/:idOrdenCorte/trazo',       pPrc('READ'),   verTrazoCorte);
+routes.get('/procesos/cortes/:idOrdenCorte/pdf',         pPrc('READ'),   pdfCorte);
+routes.post('/procesos/cortes/:idOrdenCorte/registrar',  pPrc('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), registrarCorteHandler);
+routes.post('/procesos/cortes/:idOrdenCorte/cancelar',   pPrc('DELETE'), cancelarCorteHandler);
+// Órdenes de producción (controller/ordenProduccionController.js). También antes del
+// catch-all /procesos/:idProceso; "nueva" y "revisar-material" antes de :idOrdenProduccion.
+routes.get('/procesos/ordenes',                            pPrc('READ'),   homeOrdenesProduccion);
+routes.get('/procesos/ordenes/nueva',                      pPrc('CREATE'), homeOrdenProduccionNueva);
+routes.post('/procesos/ordenes',                           pPrc('CREATE'), crearOrdenProduccion);
+routes.post('/procesos/ordenes/revisar-material',          pPrc('READ'),   revisarMaterialOrden);
+routes.get('/procesos/ordenes/:idOrdenProduccion',         pPrc('READ'),   verOrdenProduccion);
+routes.get('/procesos/ordenes/:idOrdenProduccion/editar',  pPrc('EDIT'),   homeOrdenProduccionEditar);
+routes.post('/procesos/ordenes/:idOrdenProduccion/actualizar', pPrc('EDIT'),   actualizarOrdenProduccion);
+routes.post('/procesos/ordenes/:idOrdenProduccion/confirmar',  pPrc('EDIT'),   confirmarOrdenProduccion);
+routes.post('/procesos/ordenes/:idOrdenProduccion/cancelar',   pPrc('DELETE'), cancelarOrdenProduccion);
 routes.get('/procesos/fichas-confeccion/nueva',           pPrc('CREATE'), homeFichaConfeccionNueva);
 // Subida + análisis del DXF (controller/fichaConfeccionDxfController.js).
 routes.post('/procesos/fichas-confeccion/dxf',            pPrc('CREATE'), recibirDxf, subirDxfFicha);
@@ -326,6 +351,7 @@ routes.get('/procesos/fichas-confeccion/:idFicha/dxf',    pPrc('READ'),   verFic
 routes.post('/procesos/fichas-confeccion/:idFicha/videos/:idVideo/asociar', pPrc('EDIT'), asociarVideoFicha);
 routes.post('/procesos/fichas-confeccion/:idFicha/videos/:idVideo/eliminar', pPrc('EDIT'), eliminarVideoFicha);
 routes.post('/procesos/fichas-confeccion/:idFicha/imagenes', pPrc('EDIT'), asignarImagenFicha);
+routes.post('/procesos/fichas-confeccion/:idFicha/familia',  pPrc('EDIT'), asignarFamiliaFicha);
 routes.post('/procesos/fichas-confeccion/:idFicha/anular',    pPrc('DELETE'), anularFicha);
 routes.post('/procesos/fichas-confeccion/:idFicha/reactivar', pPrc('DELETE'), reactivarFicha);
 routes.post('/procesos/fichas-confeccion/:idFicha/borrar',    pPrc('DELETE'), borrarFicha);
@@ -385,6 +411,9 @@ routes.post('/insumos/compra/:idOrdenCompra/convertir', pIns('EDIT'), verificarC
 // igual que crear la orden.
 routes.post('/insumos/compra/:idOrdenCompra/recibir', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), recibirOrden);
 
+// Etiquetas de rollos de tela: antes de /insumos/:idMaterial por si algún día ese catch-all
+// gana más segmentos.
+routes.get('/insumos/rollos/etiquetas', pIns('READ'), etiquetasRollos);
 routes.get('/insumos/:idMaterial', pIns('READ'), verInsumo);
 
 // Editar datos básicos y suspender/reactivar: mismo triple candado que "Editar precios
@@ -394,6 +423,10 @@ routes.get('/insumos/:idMaterial', pIns('READ'), verInsumo);
 routes.put('/insumos/:idMaterial', pIns('EDIT'), uploadImages.single('imagen'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), editarInsumo);
 // Ajuste de inventario por conteo físico (entrada o salida), mismos candados que editar.
 routes.post('/insumos/:idMaterial/ajuste', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), ajustarExistenciaInsumo);
+// Rollos de tela (controller/rollosTelaController.js): mismos candados que el ajuste.
+routes.post('/insumos/:idMaterial/rollos/tender', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), tenderRollosMaterial);
+routes.post('/insumos/rollos/:idRollo/adelantar-reposo', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), adelantarReposoRollo);
+routes.post('/insumos/rollos/:idRollo/deshacer-tendido', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), deshacerTendidoRollo);
 routes.post('/insumos/:idMaterial/estado', pIns('EDIT'), verificarCodigoEmpleadoAdmin, verificarPermisoEmpleado('Insumos', 'administrativo', 'EDIT'), cambiarEstadoInsumo);
 
 routes.get('/configuracion', pCfg('READ'), dashboardSettings);

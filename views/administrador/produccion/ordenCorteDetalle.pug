@@ -1,0 +1,220 @@
+extends ../../layout/index
+block contenedor
+    //- Detalle de una orden de corte (controller/ordenCorteController.js verCorte; navegador en
+    //- src/js/ordenCorteDetalle.js). El tendido (rollos y capas), lo que sale por referencia,
+    //- color y talla, las piezas, las órdenes de confección que nacieron y la bitácora.
+    include ../../components/headerAdmin
+
+    - var claseEstado = { borrador: 'table-badge-pending', cortada: 'table-badge-active', cancelada: 'table-badge-low' }
+    - var claseOrden = { borrador: 'table-badge-pending', en_curso: 'table-badge-active', cerrada: 'table-badge-active', cancelada: 'table-badge-low' }
+    - var num = function (v, d) { return Number(v).toLocaleString('es-CO', { maximumFractionDigits: d === undefined ? 2 : d }); }
+    - var pesos = function (v) { return v === null || v === undefined ? '—' : `$${Number(v).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`; }
+    - var fechaLarga = function (f) { return new Date(`${f}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }); }
+    - var fechaHora = function (f) { return new Date(f).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }); }
+    - var etiquetaAccion = { creada: 'Creada', cortada: 'Corte registrado', cancelada: 'Cancelada' }
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div(class="mainDashboard")
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-scissors',
+                                    titulo:    `Corte ${corte.numeroCorte}`,
+                                    subtitulo: subtituloSeguro,
+                                    iconoSub:  'fi-rr-ruler-combined'
+                                })
+                                    span(class=`table-badge ${claseEstado[corte.estado]}`)
+                                        span(class="table-badge-dot")
+                                        = etiquetaEstado[corte.estado]
+                                div#corte-acciones(class="flex flex-wrap items-center gap-2 flex-shrink-0"
+                                    data-id-corte=corte.idOrdenCorte
+                                    data-numero=corte.numeroCorte
+                                    data-capas=capasTotal
+                                    data-metros=metrosTotal
+                                    data-tela=corte.material ? corte.material.nombre : ''
+                                    data-motivo-max=limites.motivoMax)
+                                    a(href="/admin/procesos/cortes" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-arrow-left text-xs")
+                                        | Volver
+                                    a(href=`/admin/procesos/cortes/${corte.idOrdenCorte}/trazo` class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-download text-xs")
+                                        | Trazo
+                                    a(href=`/admin/procesos/cortes/${corte.idOrdenCorte}/pdf` target="_blank" rel="noopener" class="btn btn-secondary btn-sm text-xs whitespace-nowrap")
+                                        i(class="fi fi-rr-print text-xs")
+                                        | Imprimir orden de corte
+                                    if corte.estado === 'borrador' && puedeAdmin('Procesos', 'DELETE')
+                                        button#btn-cancelar-corte(type="button" class="btn btn-secondary btn-sm text-xs whitespace-nowrap !text-rose-600")
+                                            i(class="fi fi-rr-ban text-xs")
+                                            | Cancelar
+                                    if corte.estado === 'borrador' && puedeAdmin('Procesos', 'EDIT')
+                                        button#btn-registrar-corte(type="button" class="btn btn-danger btn-sm text-xs whitespace-nowrap" disabled=conProblema)
+                                            i(class="fi fi-rr-scissors text-xs")
+                                            | Registrar corte
+
+                            if corte.estado === 'borrador' && conProblema
+                                div(class="col-span-12 rounded-2xl bg-rose-50 border border-rose-100 px-5 py-4 text-sm text-rose-700")
+                                    i(class="fi fi-rr-triangle-warning mr-1.5")
+                                    | Algún rollo de este corte ya no sirve (ver abajo). Cancela este corte y vuelve a subir el trazo con otros rollos.
+
+                            if fichasPorTerminar.length
+                                div(class="col-span-12 rounded-2xl bg-amber-50 border border-amber-100 px-5 py-4 text-sm text-amber-800")
+                                    p(class="font-semibold mb-1")
+                                        i(class="fi fi-rr-info mr-1.5")
+                                        | Fichas por terminar antes de pasar a confección
+                                    ul(class="list-disc pl-6 text-xs")
+                                        each r in fichasPorTerminar
+                                            li
+                                                a(href=`/admin/procesos/fichas-confeccion/${r.ficha.idFicha}` class="font-bold underline")= r.ficha.referencia
+                                                |  — falta #{r.ficha.faltan.join(' y ')}
+
+                            div(class="col-span-12 grid grid-cols-1 xl:grid-cols-3 gap-4")
+                                div(class="xl:col-span-2 flex flex-col gap-4")
+
+                                    //- ── Datos ─────────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 grid grid-cols-2 sm:grid-cols-4 gap-4")
+                                        div
+                                            span(class="text-xs text-slate-400 block") Capas
+                                            span(class="text-sm font-bold text-slate-800")= capasTotal
+                                        div
+                                            span(class="text-xs text-slate-400 block") Tela
+                                            span(class="text-sm font-bold text-slate-800")= `${num(metrosTotal)} m`
+                                        div
+                                            span(class="text-xs text-slate-400 block") Aprovechamiento
+                                            span(class="text-sm font-bold text-slate-800")= `${aprovechamiento} %`
+                                        div
+                                            span(class="text-xs text-slate-400 block") Para
+                                            span(class="text-sm font-bold text-slate-800")= fechaLarga(corte.fechaRequerida)
+                                        if corte.costoTela !== null
+                                            div
+                                                span(class="text-xs text-slate-400 block") Costo de la tela
+                                                span(class="text-sm font-bold text-slate-800")= pesos(corte.costoTela)
+                                        if corte.notas
+                                            div(class="col-span-2 sm:col-span-4 pt-3 border-t border-slate-100")
+                                                span(class="text-xs text-slate-400 block") Notas
+                                                p(class="text-sm text-slate-700 whitespace-pre-line")= corte.notas
+
+                                    //- ── Referencias ───────────────────────────────────────
+                                    each r in referencias
+                                        div(class=`bg-white rounded-2xl shadow-sm border border-slate-100 p-5 ${r.excluida ? 'opacity-60' : ''}`)
+                                            div(class="flex flex-wrap items-start justify-between gap-2 mb-3")
+                                                div
+                                                    p(class="text-sm font-black text-slate-800")= r.ficha ? r.ficha.referencia : r.estilo
+                                                    p(class="text-xs text-slate-400")= r.tipoPrenda ? `${r.tipoPrenda} · ${r.estilo}` : r.estilo
+                                                div(class="flex flex-wrap gap-1.5")
+                                                    if r.fichaCreadaEnCorte
+                                                        span(class="table-badge table-badge-pending")
+                                                            span(class="table-badge-dot")
+                                                            | Ficha creada en este corte
+                                                    if r.excluida
+                                                        span(class="table-badge table-badge-low")
+                                                            span(class="table-badge-dot")
+                                                            | No se corta
+                                                    else if r.pendientes
+                                                        span(class="table-badge table-badge-pending")
+                                                            span(class="table-badge-dot")
+                                                            | Con piezas pendientes
+                                                    if r.ficha
+                                                        a(href=`/admin/procesos/fichas-confeccion/${r.ficha.idFicha}` class="text-xs font-bold text-gh-primaryHover hover:underline") Ver ficha
+                                            if !r.excluida && r.prendas
+                                                div(class="overflow-x-auto")
+                                                    table(class="w-full text-sm")
+                                                        thead
+                                                            tr(class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                                th(class="py-2 pr-3") Color
+                                                                each t in r.tallas
+                                                                    th(class="py-2 px-2 text-center")= `${t.etiqueta} (${t.porCapa}/capa)`
+                                                        tbody
+                                                            each f in r.grilla
+                                                                tr(class="border-b border-slate-100 last:border-0")
+                                                                    td(class="py-2 pr-3")
+                                                                        span(class="inline-flex items-center gap-2 font-semibold text-slate-700")
+                                                                            span(class="w-3 h-3 rounded-full flex-shrink-0 ring-1 ring-black/10" style=`background:${f.color.hex || '#ccc'}`)
+                                                                            = f.color.valor
+                                                                    each t in r.tallas
+                                                                        td(class="py-2 px-2 text-center text-slate-700")= f.porTalla[t.codigo] ? f.porTalla[t.codigo].toLocaleString('es-CO') : '—'
+                                                p(class="text-xs text-slate-500 mt-2")= `${r.prendas.toLocaleString('es-CO')} prendas completas`
+                                            else if !r.excluida
+                                                p(class="text-sm text-rose-600 font-semibold") No da prendas completas: sus piezas quedan pendientes.
+                                            details(class="mt-3 group")
+                                                summary(class="text-xs font-bold text-slate-500 cursor-pointer select-none") Piezas
+                                                table(class="w-full text-xs mt-2")
+                                                    thead
+                                                        tr(class="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200")
+                                                            th(class="py-1.5 pr-3") Pieza
+                                                            th(class="py-1.5 pr-3") Talla
+                                                            th(class="py-1.5 pr-3 text-right") Por capa
+                                                            th(class="py-1.5 pr-3 text-right") Por prenda
+                                                            th(class="py-1.5 text-right") En el corte
+                                                    tbody
+                                                        each p in r.piezas
+                                                            tr(class="border-b border-slate-100 last:border-0")
+                                                                td(class="py-1.5 pr-3 font-semibold text-slate-700")= p.nombre
+                                                                td(class="py-1.5 pr-3")= p.talla
+                                                                td(class="py-1.5 pr-3 text-right")= p.porCapa
+                                                                td(class="py-1.5 pr-3 text-right")= p.porPrenda
+                                                                td(class="py-1.5 text-right font-semibold")= p.total
+                                            if r.sueltas.length
+                                                p(class="mt-2 text-xs text-amber-700")
+                                                    i(class="fi fi-rr-puzzle-alt mr-1")
+                                                    | Piezas sueltas pendientes: #{r.sueltas.map(s => `${s.total} ${s.nombre} (${s.talla})`).join(', ')}
+                                            if r.costoTela !== null
+                                                p(class="mt-2 text-xs text-slate-500")= `Su parte de la tela: ${num(Number(r.cmTela) / 100)} m · ${pesos(r.costoTela)}`
+
+                                div(class="flex flex-col gap-4")
+                                    //- ── Tendido ───────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Rollos del tendido
+                                        div(class="flex flex-col gap-2")
+                                            each r in rollos
+                                                div(class="rounded-xl border border-slate-100 px-3 py-2")
+                                                    div(class="flex items-center justify-between gap-2")
+                                                        span(class="inline-flex items-center gap-2 text-sm font-bold text-slate-800")
+                                                            span(class="w-3 h-3 rounded-full ring-1 ring-black/10" style=`background:${r.colorHex || '#ccc'}`)
+                                                            = r.codigo
+                                                        span(class="text-xs text-slate-500")= `${r.capas} capa(s) · ${num(r.metros)} m`
+                                                    div(class="flex items-center justify-between gap-2 mt-0.5 text-[11px] text-slate-400")
+                                                        span= r.color
+                                                        span= r.costo !== null ? pesos(r.costo) : r.estado
+                                                    if r.problema
+                                                        p(class="text-[11px] font-semibold text-rose-600 mt-1")= `Este rollo ${r.problema}.`
+
+                                    //- ── Órdenes de confección ─────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Órdenes de confección
+                                        if ordenes.length
+                                            div(class="flex flex-col gap-2")
+                                                each o in ordenes
+                                                    a(href=`/admin/procesos/ordenes/${o.idOrdenProduccion}` class="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2 hover:border-gh-primary")
+                                                        span
+                                                            span(class="block text-sm font-bold text-slate-800")= o.numeroProduccion
+                                                            span(class="block text-xs text-slate-500")= o.referencia
+                                                        span(class=`table-badge ${claseOrden[o.estado]}`)
+                                                            span(class="table-badge-dot")
+                                                            = etiquetaEstadoOrden[o.estado]
+                                        else
+                                            p(class="text-sm text-slate-400")= corte.estado === 'borrador' ? 'Nacen al registrar el corte, una por referencia, con lo que de verdad se cortó.' : 'Este corte no dio órdenes de confección.'
+
+                                    //- ── Bitácora ──────────────────────────────────────────
+                                    div(class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5")
+                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-3") Bitácora
+                                        ol(class="flex flex-col gap-3")
+                                            each h in historial
+                                                li(class="text-xs")
+                                                    span(class="font-bold text-slate-700")= etiquetaAccion[h.accion] || h.accion
+                                                    span(class="text-slate-400")= ` · ${fechaHora(h.createdAt)}`
+                                                    div(class="text-slate-500")= [h.nombreUsuario, h.nombreEmpleado ? `autorizó ${h.nombreEmpleado}` : null].filter(Boolean).join(' · ')
+                                                    if h.motivo
+                                                        div(class="text-slate-600 italic")= h.motivo
+
+                            include ../../components/modalConfirmacion
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/ordenCorteDetalle.js")

@@ -1,12 +1,56 @@
 import { Op } from 'sequelize';
-import { Provedores, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Municipios, Departamentos } from '../models/index.js';
+import { Provedores, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion, Municipios, Departamentos, ProvedorEstado } from '../models/index.js';
 import { validarDocumento, CODIGOS_TIPO_DOCUMENTO_PROVEEDOR } from './tiposDocumento.js';
+import { errorPublico } from './helpers.js';
 
 // Un proveedor, escrito desde un solo lugar: lo usan el alta del panel (saveSupplier), su
 // edición (actualizarProveedor) y el registro público (registroProveedorWebController.js).
 // Cada uno aporta lo suyo —el panel sus archivos libres, la web su Turnstile y su
 // constancia—, pero el documento, las categorías, las cuentas y su verificación se
 // resuelven acá, igual para todos.
+
+// ── Suspendido ───────────────────────────────────────────────────────────────
+// Un proveedor suspendido (PROVEDORES.estado = false; decidido con el dueño el 2026-11-23) no
+// recibe órdenes de compra nuevas, no se le asignan trabajos de taller, no se le abona y no
+// sale en listas ni buscadores, salvo en el filtro "Suspendidos" del listado. Sus órdenes y
+// facturas anteriores siguen como están. Una sola copia del criterio: todo lo que liste o
+// elija proveedores filtra con PROVEEDOR_ACTIVO, y lo que escriba a nombre de uno (orden de
+// compra, abono, asignar taller) llama a exigirProveedorActivo.
+export const PROVEEDOR_ACTIVO = { estado: true };
+export const MOTIVO_ESTADO_MAX = 500;
+
+/** Lanza un error público 409 si el proveedor está suspendido (o no existe). */
+export async function exigirProveedorActivo(idProveedor, { transaction } = {}) {
+    const p = await Provedores.findOne({ where: { idProveedor: String(idProveedor ?? '') }, attributes: ['razonSocial', 'estado'], transaction });
+    if (!p) throw errorPublico('Ese proveedor no existe.', 404);
+    if (!p.estado) throw errorPublico(`${p.razonSocial} está suspendido: no se le pueden hacer pagos, órdenes de compra ni asignar trabajos. Reactívalo desde su ficha.`, 409);
+    return p;
+}
+
+/**
+ * Suspende (`suspender = true`) o reactiva un proveedor, con su constancia, en la
+ * transacción del llamador. Update condicionado al estado contrario (§9): si otro ya lo hizo,
+ * 409.
+ */
+export async function cambiarEstadoProveedor({ idProveedor, suspender, motivo, usuario }, transaction) {
+    const texto = String(motivo ?? '').trim();
+    if (texto.length < 3) throw errorPublico(`Escribe el motivo de la ${suspender ? 'suspensión' : 'reactivación'}.`, 422);
+    if (texto.length > MOTIVO_ESTADO_MAX) throw errorPublico(`El motivo no puede pasar de ${MOTIVO_ESTADO_MAX} caracteres.`, 422);
+    const [filas] = await Provedores.update(
+        { estado: !suspender },
+        { where: { idProveedor: String(idProveedor ?? ''), estado: suspender }, transaction }
+    );
+    if (!filas) {
+        const existe = await Provedores.count({ where: { idProveedor: String(idProveedor ?? '') }, transaction });
+        throw existe
+            ? errorPublico(`Ese proveedor ya estaba ${suspender ? 'suspendido' : 'activo'}. Recarga la página.`, 409)
+            : errorPublico('Ese proveedor no existe.', 404);
+    }
+    await ProvedorEstado.create({
+        idProveedor, accion: suspender ? 'suspendido' : 'reactivado', motivo: texto,
+        idUsuario: usuario.idUsuario, nombreUsuario: String(usuario.nombre ?? '').slice(0, 150) || null
+    }, { transaction });
+}
 
 // ── Documento ────────────────────────────────────────────────────────────────
 // Busca otro proveedor con ese número, INCLUIDOS los eliminados: taxIdSupplier es único en

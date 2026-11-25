@@ -1,3 +1,10 @@
+import { crearModalColores } from './modalColores.js';
+
+// El modal "Colores para Talla" es el componente compartido (views/components/modalColores.pug).
+// Vive a nivel de módulo porque lo leen dos bloques: el de variantes (abajo) y la
+// confirmación de combinaciones (nombreColorPorId / circulosColorPorId).
+let modalColoresProducto = null;
+
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
         
@@ -5,7 +12,6 @@
         const inputHiddenVariantes = document.getElementById('variantes_finales');
         const contenedorSubCategorias = document.getElementById('SubCategorias');
         const resumenContainer = document.getElementById('resumenVariantes');
-        const modal = document.getElementById('modalColores');
         const btnGuardarMaster = document.getElementById('guardar');
         
         const categoriasYaMarcadas = typeof categoriasSeleccionadas !== 'undefined' ? categoriasSeleccionadas : [];
@@ -60,7 +66,11 @@
 
         // --- 3. LÓGICA DE VARIANTES Y RESUMEN INTERACTIVO ---
         const triggersTalla = document.querySelectorAll('.talla-trigger');
-        const checksColor = document.querySelectorAll('.color-checkbox');
+        // Abre el modal para una talla con los colores que ya tiene.
+        const abrirColoresTalla = (idTalla, nombreTalla) => {
+            tallaActualId = idTalla;
+            modalColoresProducto.abrir(variantesSeleccionadas[idTalla] || [], { resaltado: nombreTalla });
+        };
 
         const renderizarResumen = () => {
             if(!resumenContainer) return;
@@ -81,19 +91,12 @@
                 
                 card.onclick = (e) => {
                     if (e.target.closest('button')) return;
-                    tallaActualId = idTalla;
-                    document.getElementById('tallaTitulo').innerText = nombreTalla;
-                    const seleccionados = variantesSeleccionadas[idTalla] || [];
-                    checksColor.forEach(c => c.checked = seleccionados.includes(c.value));
-                    const buscador = document.getElementById('buscadorColor');
-                    if (buscador) { buscador.value = ''; filtrarColores(''); }
-                    modal.classList.remove('hidden');
+                    abrirColoresTalla(idTalla, nombreTalla);
                 };
 
-                const nombresColores = variantesSeleccionadas[idTalla].map(idColor => {
-                    const check = document.querySelector(`.color-checkbox[value="${idColor}"]`);
-                    return check ? check.dataset.nombre : 'Color';
-                }).join(', ');
+                const nombresColores = variantesSeleccionadas[idTalla]
+                    .map(idColor => modalColoresProducto.color(idColor)?.valor || 'Color')
+                    .join(', ');
 
                 card.innerHTML = `
                     <div class="flex flex-col flex-1">
@@ -112,13 +115,7 @@
         triggersTalla.forEach(trigger => {
             trigger.addEventListener('change', function() {
                 if (this.checked) {
-                    tallaActualId = this.value;
-                    document.getElementById('tallaTitulo').innerText = this.dataset.nombre;
-                    const seleccionados = variantesSeleccionadas[tallaActualId] || [];
-                    checksColor.forEach(c => c.checked = seleccionados.includes(c.value));
-                    const buscador = document.getElementById('buscadorColor');
-                    if (buscador) { buscador.value = ''; filtrarColores(''); }
-                    modal.classList.remove('hidden');
+                    abrirColoresTalla(this.value, this.dataset.nombre);
                 } else {
                     Swal.fire({
                         title: '¿Eliminar combinación?',
@@ -140,18 +137,21 @@
             });
         });
 
-        document.getElementById('guardarColores').addEventListener('click', () => {
-            const seleccionados = Array.from(checksColor).filter(c => c.checked).map(c => c.value);
-            if (seleccionados.length > 0) {
-                variantesSeleccionadas[tallaActualId] = seleccionados;
-            } else {
-                const checkTalla = document.querySelector(`.talla-trigger[value="${tallaActualId}"]`);
-                if(checkTalla) checkTalla.checked = false;
-                delete variantesSeleccionadas[tallaActualId];
-            }
-            modal.classList.add('hidden');
+        // Una talla sin colores no es una combinación: se desmarca. Pasa al guardar sin
+        // ninguno y también al cerrar sin guardar una talla recién marcada.
+        const soltarTallaSinColores = () => {
+            if ((variantesSeleccionadas[tallaActualId] || []).length) return;
+            const checkTalla = document.querySelector(`.talla-trigger[value="${tallaActualId}"]`);
+            if (checkTalla) checkTalla.checked = false;
+            delete variantesSeleccionadas[tallaActualId];
+        };
+        // Los ids viajan como texto, igual que antes (variantes_finales y saveProduct).
+        modalColoresProducto = crearModalColores('modalColores', (ids) => {
+            if (ids.length) variantesSeleccionadas[tallaActualId] = ids.map(String);
+            else delete variantesSeleccionadas[tallaActualId];
+            soltarTallaSinColores();
             renderizarResumen();
-        });
+        }, { alCerrar: () => { soltarTallaSinColores(); renderizarResumen(); } });
 
         // --- 4. PROCESO DE HIDRATACIÓN INICIAL ---
         const hidratarFormulario = () => {
@@ -169,24 +169,6 @@
 
         hidratarFormulario();
 
-        document.getElementById('cerrarModal').onclick = () => {
-            modal.classList.add('hidden');
-            const buscador = document.getElementById('buscadorColor');
-            if (buscador) { buscador.value = ''; filtrarColores(''); }
-        };
-
-        const filtrarColores = (texto) => {
-            const termino = texto.toLowerCase().trim();
-            document.querySelectorAll('#gridColores label').forEach(label => {
-                const nombre = label.querySelector('span')?.textContent.toLowerCase() || '';
-                label.style.display = nombre.includes(termino) ? '' : 'none';
-            });
-        };
-
-        const buscadorColor = document.getElementById('buscadorColor');
-        if (buscadorColor) {
-            buscadorColor.addEventListener('input', (e) => filtrarColores(e.target.value));
-        }
         
         window.eliminarTalla = (idTalla) => {
             Swal.fire({
@@ -527,16 +509,15 @@ actualizarEstadoWeb();
         return el ? el.dataset.nombre : 'S/N';
     }
     function nombreColorPorId(idColor) {
-        const el = document.querySelector(`.color-checkbox[value="${idColor}"]`);
-        return el ? el.dataset.nombre : 'Color';
+        return modalColoresProducto?.color(idColor)?.valor || 'Color';
     }
     // Los círculos de un color tal como se ven en el selector: uno, o dos cuando el color
     // es una combinación (codigo1 + codigo2, ej. Rosado + Camel). Antes se tomaba solo el
     // primero y la combinación se veía de un único tono en la confirmación.
     function circulosColorPorId(idColor, extraClases = '') {
-        const el = document.querySelector(`.color-checkbox[value="${idColor}"]`);
-        const swatches = Array.from(el?.closest('label')?.querySelectorAll('div[style*="background-color"]') || []);
-        const tonos = swatches.length ? swatches.map(sw => sw.style.backgroundColor) : ['#ccc'];
+        const c = modalColoresProducto?.color(idColor);
+        const tonos = [c?.codigo1, c?.codigo2].filter(Boolean);
+        if (!tonos.length) tonos.push('#ccc');
         return tonos.map(tono =>
             `<span class="w-4 h-4 rounded-full inline-block shadow-sm ${extraClases}" style="background-color:${tono}"></span>`
         ).join('');

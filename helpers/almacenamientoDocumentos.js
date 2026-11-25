@@ -63,6 +63,12 @@ export async function urlDocumento(key, { nombre } = {}) {
     );
 }
 
+/** El contenido de un objeto del bucket privado, como Buffer. */
+export async function bajarObjetoPrivado(key) {
+    const obj = await r2PrivateClient.send(new GetObjectCommand({ Bucket: R2_PRIVATE_BUCKET, Key: key }));
+    return Buffer.from(await obj.Body.transformToByteArray());
+}
+
 /** Borra objetos de R2, cada uno de su bucket. Nunca lanza: es limpieza. */
 export async function borrarObjetos(keys = []) {
     await Promise.all(keys.map(k => {

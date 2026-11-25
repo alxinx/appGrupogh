@@ -2,7 +2,7 @@ import { Op, QueryTypes } from 'sequelize';
 import db from '../config/bd.js';
 import { Provedores, CategoriasDeProvedores, ProvedoresCuentasBancarias, Documentacion } from '../models/index.js';
 import {
-    CATEGORIA_CONFECCIONISTA, PREFIJO_FOTOS_LUGAR_TRABAJO, inicialesProveedor, resolverUbicacionesProveedores
+    CATEGORIA_CONFECCIONISTA, PREFIJO_FOTOS_LUGAR_TRABAJO, inicialesProveedor, resolverUbicacionesProveedores, PROVEEDOR_ACTIVO
 } from './proveedores.js';
 import { money } from './formatMoney.js';
 import { fmtFechaCorta } from './plantillaCorreo.js';
@@ -102,6 +102,7 @@ const telefonoLegible = (tel) => {
 
 export async function listarConfeccionistas() {
     const talleres = await Provedores.findAll({
+        where: PROVEEDOR_ACTIVO,   // un taller suspendido no sale en la lista (helpers/proveedores.js)
         include: [{
             model: CategoriasDeProvedores, as: 'categorias', attributes: [],
             where: { nombre: CATEGORIA_CONFECCIONISTA }, through: { attributes: [] }

@@ -6,7 +6,7 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4")
             | Listado de Provedores
 
     //- Filtros
-    div(class="col-span-12 md:col-span-6")
+    div(class="col-span-12 md:col-span-5")
         div.input-group
             i.fi-rr-search.input-icon.input-icon-left
             input.input.input-has-icon-left(
@@ -15,13 +15,22 @@ div(class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4")
                 placeholder="Buscar por Nombre, NIT o Contacto..."
             )
     
-    div(class="col-span-12 md:col-span-6")
+    div(class="col-span-12 md:col-span-4")
          div.select-wrapper
             select(id="filtroCategoriaProvedor" class="field-select")
                 option(value="") -- Todas las Categorías --
                 if categorias
                     each cat in categorias
                         option(value=cat.idCategoria)= cat.nombre
+            span.select-icon
+                i.fi-rr-chevron-double-down
+
+    //- Los suspendidos no salen en la búsqueda: solo con este filtro (helpers/proveedores.js).
+    div(class="col-span-12 md:col-span-3")
+         div.select-wrapper
+            select(id="filtroEstadoProvedor" class="field-select")
+                option(value="") Activos
+                option(value="suspendidos") Suspendidos
             span.select-icon
                 i.fi-rr-chevron-double-down
 

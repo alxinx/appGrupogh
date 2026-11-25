@@ -60,6 +60,13 @@ const Material = db.define('MATERIAL', {
         type: DataTypes.DECIMAL(8, 2),
         allowNull: true
     },
+    // Horas que una tela tiene que reposar tendida antes de cortarse (helpers/rollosTela.js).
+    // 48 por defecto (decidido con el dueño el 2026-11-21); solo cuenta para telas.
+    reposoHoras: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 48
+    },
     activo: {
         type: DataTypes.BOOLEAN,
         defaultValue: true

@@ -68,10 +68,11 @@ export function activarFormularioInsumo(opts) {
         unidadConsumo:     document.getElementById('unidadConsumo'),
         anchoUtilCm:       document.getElementById('anchoUtilCm'),
         gramajeGm2:        document.getElementById('gramajeGm2'),
+        reposoHoras:       document.getElementById('reposoHoras'),
         imagen:            document.getElementById('imagen')
     };
     // imagen no entra a validar(): el único error posible lo manda el servidor.
-    const CAMPOS = ['codigoMaterial', 'grupoMaterial', 'subCodigoMaterial', 'nombre', 'tipo', 'unidadCompra', 'unidadConsumo', 'anchoUtilCm', 'gramajeGm2', 'imagen'];
+    const CAMPOS = ['codigoMaterial', 'grupoMaterial', 'subCodigoMaterial', 'nombre', 'tipo', 'unidadCompra', 'unidadConsumo', 'anchoUtilCm', 'gramajeGm2', 'reposoHoras', 'imagen'];
 
     // ── FOTO ────────────────────────────────────────────────────────────────────
     const previewImagen  = document.getElementById('preview-imagen');
@@ -251,6 +252,8 @@ export function activarFormularioInsumo(opts) {
                 const txt = campos[campo]?.value.trim();
                 if (txt && !(Number(window.leerDecimal(txt)) > 0)) e[campo] = `${etiqueta} debe ser un número mayor a 0.`;
             }
+            const reposo = campos.reposoHoras?.value.trim();
+            if (reposo && !(/^\d{1,3}$/.test(reposo) && Number(reposo) <= 720)) e.reposoHoras = 'El reposo va en horas enteras, de 0 a 720 (30 días).';
         }
         return e;
     };
@@ -263,7 +266,8 @@ export function activarFormularioInsumo(opts) {
         unidadConsumo:  campos.unidadConsumo?.value || null,
         // Ancho y gramaje solo cuentan para una tela; el servidor los ignora en un insumo.
         anchoUtilCm:    esTela() ? (window.leerDecimal(campos.anchoUtilCm?.value) ?? '') : '',
-        gramajeGm2:     esTela() ? (window.leerDecimal(campos.gramajeGm2?.value) ?? '') : ''
+        gramajeGm2:     esTela() ? (window.leerDecimal(campos.gramajeGm2?.value) ?? '') : '',
+        reposoHoras:    esTela() ? (campos.reposoHoras?.value.trim() ?? '') : ''
     });
 
     // ── PINTADO DE ERRORES ───────────────────────────────────────────────────────
@@ -492,7 +496,7 @@ export function activarFormularioInsumo(opts) {
             pintarEtiquetaNombre();
             pintarCamposTela();
         }));
-    ['anchoUtilCm', 'gramajeGm2'].forEach(n => campos[n]?.addEventListener('blur', () => pintarError(n, validar()[n])));
+    ['anchoUtilCm', 'gramajeGm2', 'reposoHoras'].forEach(n => campos[n]?.addEventListener('blur', () => pintarError(n, validar()[n])));
 
     document.getElementById('btn-limpiar-insumo')?.addEventListener('click', () => {
         form.reset();

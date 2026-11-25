@@ -1,6 +1,7 @@
+import { crearModalElegirInsumo } from './modalElegirInsumo.js';
 import { duracionVideo } from './duracionVideo.js';
 import { subirArchivoMolde, iniciarGeneracionIa, consultarIntentoIa, aprobarIntentoIa } from './moldeIaCliente.js';
-import { subirVideo, esperarVideoListo } from './subidaVideo.js';
+import { subirVideoProceso } from './subidaVideo.js';
 import { opcionesConfirmacion, cabeceraConfirmacion } from './modalConfirmacion.js';
 import { escaparHtml as esc } from './escaparHtml.js';
 
@@ -46,39 +47,12 @@ import { escaparHtml as esc } from './escaparHtml.js';
     (function () {
         const lista = document.querySelector('[data-lista-insumos-editar]');
         const plantilla = document.getElementById('plantilla-fila-insumo-editar');
-        const modal = document.getElementById('modal-elegir-insumo-editar');
-        const buscador = document.getElementById('buscador-insumo-ficha-editar');
-        const grid = document.getElementById('grid-insumos-ficha-editar');
-        const btnCerrarModal = document.getElementById('cerrar-modal-insumo-editar');
         if (!lista || !plantilla) return;
 
-        let filaActual = null;
-
-        const cerrarCatalogo = () => {
-            modal?.classList.add('hidden'); modal?.classList.remove('flex');
-            filaActual = null;
-            if (buscador) buscador.value = '';
-            grid?.querySelectorAll('[data-opcion-insumo]').forEach((b) => { b.style.display = ''; });
-        };
-        const abrirCatalogo = (fila) => {
-            filaActual = fila;
-            modal?.classList.remove('hidden'); modal?.classList.add('flex');
-            buscador?.focus();
-        };
-        btnCerrarModal?.addEventListener('click', cerrarCatalogo);
-        modal?.addEventListener('click', (e) => { if (e.target === modal) cerrarCatalogo(); });
-        buscador?.addEventListener('input', (e) => {
-            const termino = e.target.value.toLowerCase().trim();
-            grid?.querySelectorAll('[data-opcion-insumo]').forEach((b) => {
-                b.style.display = (b.dataset.nombre || '').toLowerCase().includes(termino) ? '' : 'none';
-            });
+        const catalogo = crearModalElegirInsumo('modal-elegir-insumo-editar', (insumo, fila) => {
+            if (fila) pintarInsumo(fila, insumo);
         });
-        grid?.addEventListener('click', (e) => {
-            const opcion = e.target.closest('[data-opcion-insumo]');
-            if (!opcion || !filaActual) return;
-            pintarInsumo(filaActual, { idMaterial: opcion.dataset.id, nombre: opcion.dataset.nombre, imagen: opcion.dataset.imagen });
-            cerrarCatalogo();
-        });
+        const abrirCatalogo = (fila) => catalogo.abrir(fila);
 
         function pintarInsumo(fila, insumo) {
             fila.querySelector('[data-insumo-id]').value = insumo.idMaterial;
@@ -133,6 +107,44 @@ import { escaparHtml as esc } from './escaparHtml.js';
     })();
 
     // ── Referencias visuales ─────────────────────────────────────────────────────────────
+    // Ficha por terminar: familia y molde (views/.../fichaConfeccionEditar.pug,
+    // #ficha-por-terminar). Cada uno se guarda solo y la página se recarga: con los dos, la
+    // ficha pasa a activa en el servidor.
+    (function () {
+        const tarjeta = document.getElementById('ficha-por-terminar');
+        if (!tarjeta) return;
+        const errorEl = document.getElementById('error-por-terminar');
+        const guardar = async (ruta, cuerpo) => {
+            const r = await fetch(`${URL_FICHA}/${ruta}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) throw new Error(d.mensaje || 'No se pudo guardar.');
+            window.location.reload();
+        };
+        const fallar = (boton, e) => { mostrarError(errorEl, e.message); if (boton) boton.disabled = false; };
+
+        const btnFamilia = document.getElementById('btn-familia-ficha');
+        btnFamilia?.addEventListener('click', async () => {
+            const nombre = document.getElementById('input-familia-ficha').value.trim();
+            if (!nombre) return fallar(null, new Error('Escribe el nombre de la familia.'));
+            btnFamilia.disabled = true;
+            try { await guardar('familia', { nombre }); } catch (e) { fallar(btnFamilia, e); }
+        });
+
+        const inputMolde = document.getElementById('input-molde-ficha');
+        const btnMolde = document.getElementById('btn-molde-ficha');
+        btnMolde?.addEventListener('click', () => inputMolde.click());
+        inputMolde?.addEventListener('change', async () => {
+            const archivo = inputMolde.files?.[0];
+            inputMolde.value = '';
+            if (!archivo) return;
+            btnMolde.disabled = true;
+            try {
+                const d = await subirArchivoMolde(archivo, 'No se pudo subir el molde.');
+                await guardar('imagenes', { tipo: 'molde', idMolde: d.idMolde });
+            } catch (e) { fallar(btnMolde, e); }
+        });
+    })();
+
     // Clic en una imagen → en grande. "Foto de referencia" sube una imagen y la asigna;
     // "Generar con IA" parte del molde JPG de la ficha y, al aprobarla, la asigna. En los
     // dos casos la nueva reemplaza a la anterior y la página se recarga con el PDF ya
@@ -260,7 +272,6 @@ import { escaparHtml as esc } from './escaparHtml.js';
     // el archivo DIRECTO a Cloudflare, confirma, y recién ahí se asocia a ESTA ficha. "Ver"
     // abre el reproductor en un modal; "Borrar" lo quita de la ficha y de Cloudflare.
     (function () {
-        const urlBase = '/admin/procesos/fichas-confeccion/video';
         const input = document.getElementById('input-video-editar');
         const zona = document.getElementById('zona-agregar-video-editar');
         const lista = document.querySelector('[data-lista-videos-editar]');
@@ -351,31 +362,16 @@ import { escaparHtml as esc } from './escaparHtml.js';
             if (textoProgreso) textoProgreso.textContent = 'Iniciando…';
 
             try {
-                const rSolicitar = await fetch(`${urlBase}/solicitar-subida`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orden: total + 1, nombreOriginal: archivo.name, pesoBytes: archivo.size, duracionSegundos: await duracionVideo(archivo) })
+                // Solicitar → subir → confirmar → esperar: src/js/subidaVideo.js. Asociar exige el
+                // video listo, y el procesamiento puede tardar más que la subida.
+                const idVideo = await subirVideoProceso(archivo, {
+                    orden: total + 1,
+                    duracionSegundos: await duracionVideo(archivo),
+                    alProgreso: (p) => { if (textoProgreso) textoProgreso.textContent = p >= 100 ? 'Procesando…' : `Subiendo… ${p}%`; },
+                    alEstado: (estado) => { if (estado === 'procesando' && textoProgreso) textoProgreso.textContent = 'Procesando…'; }
                 });
-                const dSolicitar = await rSolicitar.json();
-                if (!rSolicitar.ok || !dSolicitar.success) throw new Error(dSolicitar.mensaje || 'No se pudo iniciar la subida.');
 
-                if (dSolicitar.uploadURL) {
-                    await subirVideo(archivo, {
-                        uploadURL: dSolicitar.uploadURL,
-                        modo: dSolicitar.modo,
-                        alProgreso: (p) => { if (textoProgreso) textoProgreso.textContent = `Subiendo… ${p}%`; }
-                    });
-                }
-
-                if (textoProgreso) textoProgreso.textContent = 'Procesando…';
-                const rConfirmar = await fetch(`${urlBase}/${dSolicitar.idVideo}/confirmar`, { method: 'POST' });
-                const dConfirmar = await rConfirmar.json();
-                if (!rConfirmar.ok || !dConfirmar.success) throw new Error(dConfirmar.mensaje || 'No se pudo confirmar la subida.');
-                if (dConfirmar.estado === 'error') throw new Error(dConfirmar.errorMensaje || 'No se pudo procesar el video.');
-                // Asociar exige el video listo: el procesamiento puede tardar más que la subida.
-                if (dConfirmar.estado !== 'ready') await esperarVideoListo(urlBase, dSolicitar.idVideo);
-
-                const rAsociar = await fetch(`${URL_FICHA}/videos/${dSolicitar.idVideo}/asociar`, { method: 'POST' });
+                const rAsociar = await fetch(`${URL_FICHA}/videos/${idVideo}/asociar`, { method: 'POST' });
                 const dAsociar = await rAsociar.json();
                 if (!rAsociar.ok || !dAsociar.success) throw new Error(dAsociar.mensaje || 'No se pudo asociar el video a la ficha.');
 

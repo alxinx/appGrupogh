@@ -19,10 +19,12 @@ export function subirArchivoMolde(archivo, mensajeError = 'No se pudo subir el a
 }
 
 /** Abre un intento nuevo a partir del molde (JPG). Devuelve `{ idIntento, … }`. */
-export const iniciarGeneracionIa = (idMolde, { pattern, colors, idDxf }) => pedir(`${URL_MOLDE}/${idMolde}/generar`, {
+// La tela sale del DXF de la ficha (`idDxf`) o, cuando todavía no hay ficha (el corte nuevo),
+// del material del trazo (`idMaterial`).
+export const iniciarGeneracionIa = (idMolde, { pattern, colors, idDxf = null, idMaterial = null }) => pedir(`${URL_MOLDE}/${idMolde}/generar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pattern, colors, idDxf })
+    body: JSON.stringify({ pattern, colors, idDxf, idMaterial })
 }, 'No se pudo iniciar la generación.');
 
 /** Estado del intento (`procesando`, `listo`, `error`) con su vista previa. Null si la consulta falla. */
@@ -37,3 +39,40 @@ export async function consultarIntentoIa(idIntento) {
 
 /** Aprueba el intento: recién ahí la imagen queda guardada como definitiva. */
 export const aprobarIntentoIa = (idIntento) => pedir(`${URL_MOLDE}/intento/${idIntento}/aprobar`, { method: 'POST' }, 'No se pudo aprobar la imagen.');
+
+/**
+ * Abre el modal "Generar vista previa con IA" (views/components/modalMoldeIa.pug) y espera la
+ * respuesta: `{ pattern, colors }` al generar, `null` al cerrar. `inicial` precarga los campos
+ * (para "Repetir"). Lo usa el "Crear la ficha" del corte nuevo; el asistente y el editor tienen
+ * todavía su propio cableado del mismo modal.
+ */
+export function pedirDatosIa(inicial = {}) {
+    const modal = document.getElementById('modal-molde-ia');
+    if (!modal) return Promise.resolve(null);
+    const pattern = document.getElementById('molde-ia-pattern');
+    const colors = document.getElementById('molde-ia-colors');
+    pattern.value = inicial.pattern || '';
+    colors.value = inicial.colors || '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    pattern.focus();
+    return new Promise((resolve) => {
+        const botones = ['modal-molde-ia-cerrar', 'btn-molde-ia-cancelar', 'btn-molde-ia-generar'].map((id) => document.getElementById(id));
+        const terminar = (valor) => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            botones.forEach((b) => b?.removeEventListener('click', alClic));
+            modal.removeEventListener('click', alFondo);
+            modal.removeEventListener('keydown', alTecla);
+            resolve(valor);
+        };
+        const alClic = (e) => terminar(e.currentTarget.id === 'btn-molde-ia-generar'
+            ? { pattern: pattern.value.trim().slice(0, 255), colors: colors.value.trim().slice(0, 255) }
+            : null);
+        const alFondo = (e) => { if (e.target === modal) terminar(null); };
+        const alTecla = (e) => { if (e.key === 'Escape') { e.stopPropagation(); terminar(null); } };
+        botones.forEach((b) => b?.addEventListener('click', alClic));
+        modal.addEventListener('click', alFondo);
+        modal.addEventListener('keydown', alTecla);
+    });
+}

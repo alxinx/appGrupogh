@@ -1,0 +1,207 @@
+extends ../../layout/index
+block contenedor
+    //- Nuevo corte desde el trazo (controller/ordenCorteController.js; navegador en
+    //- src/js/ordenCorteNueva.js; reglas en helpers/ordenesCorte.js y helpers/trazo.js).
+    //- 1) se sube el DXF del trazo de Optitex, 2) se responde lo que el sistema no puede
+    //- adivinar (fichas que faltan, espejos, piezas que no forman prendas), 3) se eligen los
+    //- rollos listos y las capas de cada uno. Las cuentas se ven mientras se responde.
+    include ../../components/headerAdmin
+    include ../../components/fechaInput.pug
+
+    body(class="bg-gray-100 min-h-screen")
+        main(class="flex-1 overflow-y-auto")
+            div(class="flex min-h-screen")
+                include ../../partials/leftMenu
+
+                div(class="flex-1 flex flex-col")
+                    include ../../partials/header
+                    main(class="flex-1 overflow-y-auto md:p-4")
+                        div#corte-nuevo(class="mainDashboard"
+                            data-hoy=hoy
+                            data-capas-max=limites.capasMax
+                            data-notas-max=limites.notasMax
+                            data-dxf-max-bytes=limites.dxfMaxBytes
+                            data-precio-max=limites.precioConfeccionMax
+                            data-videos-max=limites.videosMax
+                            data-familias=JSON.stringify(familias))
+
+                            div(class="col-span-12 bg-white/70 backdrop-blur-md rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4")
+                                +headerAdmin({
+                                    icono:     'fi-rr-scissors',
+                                    titulo:    'Nuevo corte',
+                                    subtitulo: 'Sube el trazo de Optitex y el sistema arma la orden de corte',
+                                    iconoSub:  'fi-rr-ruler-combined'
+                                })
+                                div(class="flex items-center gap-2 flex-shrink-0")
+                                    a(href="/admin/procesos/cortes" class="btn btn-secondary")
+                                        i(class="fi fi-rr-arrow-left")
+                                        | Volver
+
+                            //- ── 1. El trazo
+                            section#paso-trazo(class="col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-5 md:p-6")
+                                h2(class="text-base font-bold text-slate-800 mb-1 flex items-center gap-2")
+                                    span(class="w-6 h-6 rounded-full bg-gh-primarySoft text-gh-primaryHover text-xs font-black flex items-center justify-center") 1
+                                    | El trazo
+                                p(class="text-xs text-slate-500 mb-4") El archivo .dxf que exportaste de Optitex, con las etiquetas de pieza (Style Name, Piece Name, Size, Material).
+                                div#zona-trazo(class="relative group")
+                                    input#input-trazo(type="file" accept=".dxf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" aria-label="Subir el trazo")
+                                    div(class="inputUpload !p-8 !mb-0")
+                                        div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-gh-primaryHover")
+                                            i(class="fi fi-rr-file-code text-xl")
+                                        span(class="text-sm font-bold text-gray-600") Sube el trazo (.dxf)
+                                        span(class="text-xs text-gray-400 mt-1") Arrástralo aquí o haz clic para elegirlo
+                                div#estado-trazo(class="hidden items-center gap-2 text-sm font-semibold text-slate-500 py-4" role="status")
+                                    span(class="w-4 h-4 rounded-full border-2 border-slate-300 border-t-gh-primaryHover animate-spin")
+                                    span Leyendo el trazo…
+                                div#error-trazo(class="hidden mt-3 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3" role="alert")
+                                div#resumen-trazo(class="hidden")
+
+                            //- ── 2. Las referencias (las pinta el JS)
+                            section#paso-referencias(class="hidden col-span-12 flex flex-col gap-4")
+
+                            //- ── 3. Rollos y capas
+                            section#paso-rollos(class="hidden col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-5 md:p-6")
+
+                            //- ── 4. Resultado, fecha y guardar
+                            section#paso-resultado(class="hidden col-span-12 bg-white rounded-2xl shadow-sm border border-slate-100 p-5 md:p-6")
+                                h2(class="text-base font-bold text-slate-800 mb-1 flex items-center gap-2")
+                                    span(class="w-6 h-6 rounded-full bg-gh-primarySoft text-gh-primaryHover text-xs font-black flex items-center justify-center") 4
+                                    | Lo que sale del corte
+                                p(class="text-xs text-slate-500 mb-4") Prendas completas por referencia, color y talla. Al registrar el corte nace una orden de confección por referencia con estas cantidades.
+                                div#tabla-resultado
+                                div(class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6")
+                                    label(class="flex flex-col gap-1 text-xs font-semibold text-slate-500") ¿Para cuándo se necesitan las prendas?
+                                        input#fecha-requerida(type="text" class="field-text" data-min=hoy placeholder="dd/mm/aaaa")
+                                    label(class="md:col-span-2 flex flex-col gap-1 text-xs font-semibold text-slate-500")
+                                        span(class="flex items-center justify-between gap-2")
+                                            | Notas para el cortador
+                                            span#notas-contador(class="font-normal text-slate-400 tabular-nums" aria-live="polite")
+                                        textarea#notas-corte(rows="2" maxlength=limites.notasMax class="field-text resize-none" placeholder="Opcional")
+                                //- Lo que falta para poder crear, a la vista: el `title` del botón
+                                //- deshabilitado no se ve en una pantalla táctil ni con el teclado.
+                                div(class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 mt-5")
+                                    p#falta-corte(class="text-xs font-semibold text-amber-700 sm:text-right" aria-live="polite")
+                                    button#btn-crear-corte(type="button" class="btn btn-danger flex items-center justify-center gap-2 flex-shrink-0" disabled aria-describedby="falta-corte")
+                                        i(class="fi fi-rr-scissors")
+                                        | Crear orden de corte
+
+                            include ../../components/modalConfirmacion
+
+                            //- ── MODAL "CREAR LA FICHA" ───────────────────────────────────────
+                            //- Lo mismo que piden los pasos 1 y 3 del asistente de ficha nueva
+                            //- (fichaConfeccionNueva.pug), menos el DXF: piezas, tallas y tela salen
+                            //- del trazo. Un solo modal para todas las referencias sin ficha: el JS
+                            //- (src/js/ordenCorteNueva.js) lo llena con la referencia que se edita.
+                            //- La ficha recién se crea al crear el corte.
+                            div#modal-ficha-corte(class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-6 bg-slate-900/40 backdrop-blur-md"
+                                role="dialog" aria-modal="true" aria-labelledby="modal-ficha-titulo")
+                                div(class="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col")
+                                    div(class="flex items-start justify-between gap-4 px-6 sm:px-8 py-5 border-b border-slate-100 flex-shrink-0")
+                                        div(class="flex items-center gap-3 min-w-0")
+                                            div(class="w-11 h-11 rounded-2xl bg-gh-primarySoft flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                i(class="fi fi-rr-document text-lg")
+                                            div(class="min-w-0")
+                                                h2#modal-ficha-titulo(class="text-lg sm:text-xl font-black tracking-tight text-slate-800 truncate") Crear la ficha
+                                                p(class="text-xs sm:text-sm text-slate-500") Piezas, tallas y tela salen del trazo. Para pasar a confección necesita la familia y el molde.
+                                        button(type="button" data-cerrar-ficha aria-label="Cerrar" class="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer flex-shrink-0")
+                                            i(class="fi fi-rr-cross-small text-xl")
+
+                                    div(class="flex-1 overflow-y-auto px-6 sm:px-8 py-6 flex flex-col gap-7")
+                                        //- Familia
+                                        div(class="flex flex-col gap-1.5 max-w-md")
+                                            label(class="text-sm font-bold text-slate-700" for="ficha-familia") Familia
+                                            input#ficha-familia(type="text" list="ficha-familias" maxlength="150" autocomplete="off" class="field-text" placeholder="Nueva o una que ya existe")
+                                            datalist#ficha-familias
+                                                each f in (familias || [])
+                                                    option(value=f)
+
+                                        //- Archivos de la prenda (paso 1 del asistente)
+                                        section
+                                            h3(class="text-base font-black tracking-tight text-slate-800") Archivos de la prenda
+                                            p(class="mt-1 mb-4 text-sm text-slate-500") El DXF ya viene del trazo. Sube el molde y, si quieres, el video del proceso.
+                                            div(class="grid grid-cols-1 md:grid-cols-3 gap-4")
+                                                //- DXF: lleno desde el principio, no se cambia acá.
+                                                div(class="flex flex-col gap-2")
+                                                    span(class="text-sm font-bold text-slate-700") Archivo DXF
+                                                    div(class="flex flex-col gap-2 border-2 border-gh-primary bg-gh-primarySoft/40 rounded-2xl px-4 py-3.5 h-full")
+                                                        div(class="flex items-center gap-3")
+                                                            div(class="w-9 h-9 rounded-full bg-white flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                                i(class="fi fi-rr-file-code text-sm")
+                                                            div(class="flex-1 min-w-0")
+                                                                p(class="text-xs font-bold text-slate-800 truncate") Sale del trazo
+                                                                p#ficha-dxf-detalle(class="text-[11px] text-slate-500")
+                                                            span(class="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0" aria-hidden="true")
+                                                                i(class="fi fi-rr-check text-white text-[9px]")
+
+                                                //- Molde + foto de referencia + vista previa con IA
+                                                div(class="flex flex-col gap-2")
+                                                    span(class="text-sm font-bold text-slate-700") Molde
+                                                    div#ficha-molde-vacio(class="relative group")
+                                                        input#ficha-molde(type="file" accept=".jpg,.jpeg,.webp,.pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" aria-label="Subir el molde")
+                                                        div(class="inputUpload !p-6 !mb-0 h-full")
+                                                            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-gh-primaryHover")
+                                                                i(class="fi fi-rr-vector text-xl")
+                                                            span(class="text-sm font-bold text-gray-600 text-center leading-snug") Carga el molde
+                                                            span(class="text-xs text-gray-400 mt-1 text-center") JPG, WebP o PDF · después, foto de referencia o IA
+                                                    div#ficha-molde-lleno(class="hidden flex-col gap-3 border-2 border-gh-primary bg-gh-primarySoft/40 rounded-2xl px-4 py-3.5")
+                                                    input#ficha-referencia(type="file" accept=".jpg,.jpeg,.webp" class="hidden" aria-hidden="true" tabindex="-1")
+
+                                                //- Videos del proceso
+                                                div(class="flex flex-col gap-2")
+                                                    span(class="text-sm font-bold text-slate-700") Video del proceso
+                                                    div#ficha-video-vacio(class="relative group")
+                                                        input#ficha-video(type="file" accept=".mp4,.mov,.avi" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" aria-label="Subir videos del proceso")
+                                                        div(class="inputUpload !p-6 !mb-0 h-full")
+                                                            div(class="w-12 h-12 bg-white shadow-sm rounded-full flex items-center justify-center mb-2 text-gh-primaryHover")
+                                                                i(class="fi fi-rr-video-camera text-xl")
+                                                            span(class="text-sm font-bold text-gray-600 text-center leading-snug") Carga el video del proceso
+                                                            span(class="text-xs text-gray-400 mt-1 text-center") Hasta 3 — .mp4, .mov, .avi
+                                                    div#ficha-videos(class="flex flex-col gap-2")
+
+                                        //- Complementos, observaciones y precio (paso 3 del asistente)
+                                        section(class="flex flex-col gap-4")
+                                            div(class="grid grid-cols-1 md:grid-cols-2 gap-4")
+                                                div(class="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4")
+                                                    div(class="flex items-center gap-2")
+                                                        div(class="w-7 h-7 rounded-lg bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                            i(class="fi fi-rr-tags text-xs")
+                                                        label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-complementos") Complementos
+                                                    textarea#ficha-complementos(rows="3" maxlength="2000" placeholder="Botones, cierres, elástico, marquilla…" class="field-text resize-none bg-white")
+                                                    div(class="pt-2.5 border-t border-slate-200/70 flex flex-col gap-2")
+                                                        p(class="text-[11px] font-semibold text-slate-400") ¿Necesita algún insumo del catálogo? Agrégalo con lo que lleva cada prenda.
+                                                        div#ficha-insumos(class="flex flex-col gap-2")
+                                                        button#ficha-agregar-insumo(type="button" class="btn btn-secondary btn-sm w-fit")
+                                                            i(class="fi fi-rr-plus-small text-xs")
+                                                            | Agregar insumo
+                                                div(class="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4")
+                                                    div(class="flex items-center gap-2")
+                                                        div(class="w-7 h-7 rounded-lg bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-slate-500")
+                                                            i(class="fi fi-rr-comment-alt text-xs")
+                                                        label(class="text-[11px] font-bold uppercase tracking-wide text-slate-400" for="ficha-observaciones") Observaciones
+                                                    textarea#ficha-observaciones(rows="3" maxlength="2000" placeholder="Instrucciones o notas para confección…" class="field-text resize-none bg-white flex-1")
+
+                                            div(class="rounded-2xl border border-gh-primary/20 bg-gh-primarySoft/30 px-5 py-4 flex items-center justify-between gap-4 flex-wrap")
+                                                div(class="flex items-center gap-3")
+                                                    div(class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0 text-gh-primaryHover")
+                                                        i(class="fi fi-rr-sack-dollar text-base")
+                                                    div
+                                                        p(class="text-[11px] font-bold uppercase tracking-wide text-slate-400") Precio de confección
+                                                        p(class="text-xs text-slate-500") Lo que se paga por prenda confeccionada (opcional)
+                                                div(class="relative")
+                                                    span(class="absolute left-4 top-1/2 -translate-y-1/2 text-gh-primaryHover font-bold" aria-hidden="true") $
+                                                    input#ficha-precio(type="text" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="0" class="w-40 pl-8 pr-4 py-2.5 rounded-xl border border-gh-primary/30 bg-white text-right text-lg font-bold text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-gh-primary/40" aria-label="Precio de confección")
+
+                                    div(class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 px-6 sm:px-8 py-4 border-t border-slate-100 bg-white flex-shrink-0")
+                                        p#ficha-error(class="text-xs font-semibold text-rose-600" role="alert")
+                                        div(class="flex gap-3 justify-end flex-shrink-0")
+                                            button(type="button" data-cerrar-ficha class="btn btn-secondary") Cancelar
+                                            button#ficha-guardar(type="button" class="btn btn-danger") Usar estos datos
+
+                            //- Después del modal de la ficha: se abren encima de él.
+                            include ../../components/modalElegirInsumo
+                            +modalElegirInsumo('modal-elegir-insumo', insumos)
+                            include ../../components/modalMoldeIa
+
+        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+        script(src="/js/helpers.js")
+        script(src="/js/ordenCorteNueva.js")

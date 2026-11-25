@@ -10,13 +10,14 @@ import {
 } from '../models/index.js';
 import { crearConCodigo } from '../helpers/secuencias.js';
 import { empleadoTienePermiso } from '../middlewares/verificarPermisoEmpleado.js';
-import { resolverUbicacionesProveedores, inicialesProveedor } from '../helpers/proveedores.js';
+import { resolverUbicacionesProveedores, inicialesProveedor, PROVEEDOR_ACTIVO } from '../helpers/proveedores.js';
 import { money } from '../helpers/formatMoney.js';
 import { TIPOS_DOCUMENTO_PROVEEDOR } from '../helpers/tiposDocumento.js';
 import { TIPOS_INSUMO, UNIDADES_COMPRA, LIMITES_INSUMO } from '../helpers/insumos.js';
 import { errorPublico } from '../helpers/helpers.js';
 import { dec, a4, convertirRecepcion, factorFijo, UNIDAD_CONSUMO_CORTA, UNIDADES_CONSUMO, CONVERSIONES_FIJAS } from '../helpers/unidadesInsumo.js';
 import { registrarEntrada, recordarPresentacion, presentacionesRecordadas, actorDelPanel } from '../helpers/inventarioInsumos.js';
+import { crearRollos, esTelaPorRollo } from '../helpers/rollosTela.js';
 import {
     TIPOS_ORDEN, ESTADOS_ORDEN, IVA_PORCENTAJE_DEFECTO, UNIDAD_ETIQUETA_CORTA, coloresSimplesDisponibles, materialesDisponibles,
     validarLineaOrden, calcularTotalesOrden, validarCabeceraOrden, validarColorNuevo,
@@ -132,6 +133,7 @@ const buscarProveedoresOrden = async (req, res) => {
     try {
         const proveedores = await Provedores.findAll({
             where: {
+                ...PROVEEDOR_ACTIVO,   // un suspendido no recibe órdenes nuevas (helpers/proveedores.js)
                 [Op.or]: [
                     { razonSocial: { [Op.like]: `%${q}%` } },
                     { taxIdSupplier: { [Op.like]: `%${q}%` } },
@@ -336,6 +338,7 @@ const crearOrdenCompra = async (req, res) => {
     }
 
     try {
+        let rollos = [];   // los que nacieron al recibir, para imprimir sus etiquetas
         const ordenes = await db.transaction(async (transaction) => {
             const creadas = await insertarOrden({
                 cabecera, lineas, estado: 'enviada',
@@ -352,7 +355,7 @@ const crearOrdenCompra = async (req, res) => {
                 })).map(d => d.idDetalleOrdenCompra);
                 const recepcion = Array.isArray(req.body.recepcion) ? req.body.recepcion : [];
                 const lineasBody = ids.map((idDetalleOrdenCompra, i) => ({ idDetalleOrdenCompra, ...(recepcion[i] || {}) }));
-                await recibirEnTransaccion({ orden, lineasBody, req, transaction });
+                ({ rollos } = await recibirEnTransaccion({ orden, lineasBody, req, transaction }));
             }
             return creadas;
         });
@@ -361,6 +364,7 @@ const crearOrdenCompra = async (req, res) => {
             mensaje: ordenes.length > 1 ? `${ordenes.length} cotizaciones creadas.`
                 : recibirAhora ? 'Orden de compra creada y recibida: entró al inventario.' : 'Orden de compra creada.',
             recibida: recibirAhora,
+            rollos,
             ordenes: ordenes.map(o => ({ idOrdenCompra: o.idOrdenCompra, numeroOrden: o.numeroOrden }))
         });
     } catch (e) {
@@ -494,7 +498,7 @@ const cargarOrdenParaDetalle = (idOrdenCompra) => OrdenesCompra.findOne({
             model: DetallesOrdenCompra, as: 'detalles',
             include: [
                 { model: Atributos, as: 'color', attributes: ['idAtributo', 'valor', 'codigo1'] },
-                { model: Material, as: 'material', attributes: ['idMaterial', 'unidadConsumo'] }
+                { model: Material, as: 'material', attributes: ['idMaterial', 'unidadConsumo', 'tipo'] }
             ]
         }
     ],
@@ -538,6 +542,8 @@ const verOrdenCompra = async (req, res) => {
             // que se sugiere (el último de esta línea o el último confirmado de ese material).
             unidadConsumo: d.material?.unidadConsumo || 'unidad',
             factorFijo: factorFijo(d.unidadCompra || 'unidad', d.material?.unidadConsumo || 'unidad'),
+            // Tela comprada por rollo: la recepción pide los metros de cada rollo.
+            porRollo: d.unidadCompra === 'rollo' && esTelaPorRollo(d.material),
             contenidoSugerido: d.contenidoPorPresentacion !== null
                 ? Number(d.contenidoPorPresentacion)
                 : (recordadas[d.idMaterial]?.[d.unidadCompra] !== undefined ? Number(recordadas[d.idMaterial][d.unidadCompra]) : null)
@@ -820,7 +826,7 @@ const recibirEnTransaccion = async ({ orden, lineasBody, req, transaction }) => 
     }
     const detalles = await DetallesOrdenCompra.findAll({
         where: { idOrdenCompra: orden.idOrdenCompra },
-        include: [{ model: Material, as: 'material', attributes: ['idMaterial', 'unidadConsumo'] }],
+        include: [{ model: Material, as: 'material', attributes: ['idMaterial', 'unidadConsumo', 'tipo'] }],
         transaction
     });
     const { errores, datos } = validarRecepcionOrden({ lineas: lineasBody }, detalles);
@@ -829,15 +835,20 @@ const recibirEnTransaccion = async ({ orden, lineasBody, req, transaction }) => 
     const actor = actorDelPanel(req);
     const pctIva = dec(orden.porcentajeIva).div(100);
     const partes = [];
-    for (const { detalle: d, llega, contenido, fijo } of datos.lineas) {
-        const { cantidadConsumo, costoUnitario } = convertirRecepcion({ cantidad: llega, contenido, valorUnitario: d.valorUnitario });
+    const rollosCreados = [];   // para imprimir sus etiquetas al terminar
+    for (const { detalle: d, llega, contenido, fijo, metrajesCm, totalCm } of datos.lineas) {
+        // Por rollo: entra exactamente la suma de los metrajes, al valor de la línea repartido
+        // en esos cm (rollo × valor ÷ cm). Si no, la conversión de siempre.
+        const { cantidadConsumo, costoUnitario } = metrajesCm
+            ? { cantidadConsumo: totalCm, costoUnitario: llega.times(dec(d.valorUnitario)).div(totalCm) }
+            : convertirRecepcion({ cantidad: llega, contenido, valorUnitario: d.valorUnitario });
         await DetallesOrdenCompra.update({
             cantidadRecibida: a4(dec(d.cantidadRecibida).plus(llega)),
             cantidadConsumoRecibida: a4(dec(d.cantidadConsumoRecibida).plus(cantidadConsumo)),
             contenidoPorPresentacion: a4(contenido)
         }, { where: { idDetalleOrdenCompra: d.idDetalleOrdenCompra }, transaction });
 
-        await registrarEntrada({
+        const capa = await registrarEntrada({
             idMaterial: d.idMaterial,
             idAtributoColor: d.idAtributoColor,
             cantidad: cantidadConsumo,
@@ -848,6 +859,12 @@ const recibirEnTransaccion = async ({ orden, lineasBody, req, transaction }) => 
             actor,
             transaction
         });
+        // Una tela entra en rollos sin tender: uno por rollo, o una sola pieza si se compró
+        // por metro o por kilo (helpers/rollosTela.js).
+        if (esTelaPorRollo(d.material)) {
+            const rollos = await crearRollos({ capa, metrajesCm: metrajesCm || [capa.cantidadInicial], actor, transaction });
+            rollosCreados.push(...rollos.map(r => ({ idRollo: r.idRollo, codigo: r.codigoRollo })));
+        }
         // El contenido confirmado queda como sugerencia para la próxima recepción.
         if (!fijo) await recordarPresentacion({ idMaterial: d.idMaterial, presentacion: d.unidadCompra || 'unidad', contenido, transaction });
 
@@ -861,23 +878,25 @@ const recibirEnTransaccion = async ({ orden, lineasBody, req, transaction }) => 
     await registrarMovimientoOrden({
         idOrdenCompra: orden.idOrdenCompra,
         accion: 'recepcion',
-        resumen: `Recibió — ${partes.join('; ')}. Entró al inventario de insumos.`,
+        resumen: `Recibió — ${partes.join('; ')}. Entró al inventario de insumos.`
+            + (rollosCreados.length ? ` Rollos: ${rollosCreados.map(r => r.codigo).join(', ')}.` : ''),
         usuario: req.usuario,
         empleado: req.empleadoVerificado,
         transaction
     });
+    return { rollos: rollosCreados };
 };
 
 const recibirOrden = async (req, res) => {
     try {
-        await db.transaction(async (transaction) => {
+        const recibido = await db.transaction(async (transaction) => {
             const orden = await OrdenesCompra.findOne({
                 where: { idOrdenCompra: req.params.idOrdenCompra }, lock: transaction.LOCK.UPDATE, transaction
             });
             if (!orden) throw errorPublico('Esa orden no existe.', 404);
-            await recibirEnTransaccion({ orden, lineasBody: req.body?.lineas, req, transaction });
+            return recibirEnTransaccion({ orden, lineasBody: req.body?.lineas, req, transaction });
         });
-        return res.json({ success: true, mensaje: 'Recepción registrada: entró al inventario.', estado: 'recibida' });
+        return res.json({ success: true, mensaje: 'Recepción registrada: entró al inventario.', estado: 'recibida', rollos: recibido.rollos });
     } catch (e) {
         if (e.publico) return res.status(e.status || 400).json({ success: false, mensaje: e.message, errores: e.errores });
         console.error('ordenesCompraController(recibir):', e);

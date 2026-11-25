@@ -4,6 +4,7 @@ import { activarMenuMas } from './menuMasAcciones.js';
 import { opcionesConfirmacion, cabeceraConfirmacion, activarVerificacionCodigo } from './modalConfirmacion.js';
 import { campoCodigoEmpleado, codigoRequerido } from './codigoCajitas.js';
 import { escaparHtml as esc } from './escaparHtml.js';
+import './rollosTela.js';
 
 // Perfil de un material (admin/insumos/:id). La dona de "Resumen de compras" es la única
 // pieza con JS de verdad; el resto de la pantalla ya llega pintado del servidor (los datos
@@ -178,12 +179,19 @@ import { escaparHtml as esc } from './escaparHtml.js';
     const btn = document.getElementById('btn-ajustar-existencia');
     const elDatos = document.getElementById('datos-ajuste-existencia');
     if (!btn || !elDatos) return;
-    const { idMaterial, unidad, colores } = JSON.parse(elDatos.textContent);
+    const { idMaterial, unidad, colores, porRollo, rollos = [] } = JSON.parse(elDatos.textContent);
+    // Una tela se lleva por rollo (helpers/rollosTela.js): lo que sale, sale de un rollo
+    // elegido, no del color.
+    const salidaPorRollo = (tipo) => porRollo && tipo === 'salida';
+    const metros = (cm) => (Number(cm) / 100).toLocaleString('es-CO', { maximumFractionDigits: 2 });
     const INPUT_CODIGO = 'ajuste-codigo-empleado';
     const ESTADO_CODIGO = 'ajuste-codigo-estado';
 
     // Salida: solo de un color con disponible. Entrada: además "sin color".
     const opcionesColor = (tipo) => {
+        if (salidaPorRollo(tipo)) {
+            return rollos.map(r => `<option value="${esc(r.idRollo)}">${esc(r.codigo)}${r.color ? ` · ${esc(r.color)}` : ''} · ${metros(r.metrajeCm)} m (${esc(r.metrajeCm.replace(/\.?0+$/, ''))} ${esc(unidad)})</option>`).join('');
+        }
         const lista = tipo === 'salida' ? colores : [{ idAtributoColor: null, nombre: 'Sin color' }, ...colores.filter(c => c.idAtributoColor !== null)];
         return lista.map(c => `<option value="${c.idAtributoColor ?? ''}">${esc(c.nombre)}${tipo === 'salida' ? ` · ${esc(c.disponible)} ${esc(unidad)} disponibles` : ''}</option>`).join('');
     };
@@ -199,7 +207,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
                             <label class="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="radio" name="ajuste-tipo" value="entrada" checked> Entra</label>
                             <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 ${colores.length ? '' : 'opacity-40'}"><input type="radio" name="ajuste-tipo" value="salida" ${colores.length ? '' : 'disabled'}> Sale</label>
                         </div>
-                        <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">Color
+                        <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500"><span id="ajuste-color-etiqueta">Color</span>
                             <select id="ajuste-color" class="field-text text-sm">${opcionesColor('entrada')}</select></label>
                         <div class="grid grid-cols-2 gap-2">
                             <label class="flex flex-col gap-1 text-xs font-semibold text-slate-500">Cantidad (${esc(unidad)})
@@ -224,6 +232,7 @@ import { escaparHtml as esc } from './escaparHtml.js';
                 const cajaCosto = popup.querySelector('#ajuste-costo-caja');
                 popup.querySelectorAll('input[name="ajuste-tipo"]').forEach(r => r.addEventListener('change', () => {
                     color.innerHTML = opcionesColor(r.value);
+                    popup.querySelector('#ajuste-color-etiqueta').textContent = salidaPorRollo(r.value) ? 'Rollo del que sale' : 'Color';
                     cajaCosto.classList.toggle('invisible', r.value === 'salida');
                 }));
                 const boton = Swal.getConfirmButton();
@@ -252,7 +261,9 @@ import { escaparHtml as esc } from './escaparHtml.js';
                     const r = await fetch(`/admin/insumos/${encodeURIComponent(idMaterial)}/ajuste`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tipo, cantidad, costoUnitario, motivo, idAtributoColor: popup.querySelector('#ajuste-color').value, codigoEmpleado })
+                        body: JSON.stringify(salidaPorRollo(tipo)
+                            ? { tipo, cantidad, motivo, idRollo: popup.querySelector('#ajuste-color').value, codigoEmpleado }
+                            : { tipo, cantidad, costoUnitario, motivo, idAtributoColor: popup.querySelector('#ajuste-color').value, codigoEmpleado })
                     });
                     const d = await r.json().catch(() => ({}));
                     if (d.logout) { window.location.href = '/'; return false; }
